@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Business Control database backup
+
+[Timer]
+OnCalendar=*-*-* 02:15:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+Unit=business-control-backup.service
+
+[Install]
+WantedBy=timers.target

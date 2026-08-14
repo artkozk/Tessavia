@@ -1,0 +1,22 @@
+[Unit]
+Description=Business Control Platform
+After=network.target
+
+[Service]
+Type=simple
+User=business-control
+Group=business-control
+WorkingDirectory=/opt/business-control/current
+EnvironmentFile=/etc/business-control.env
+ExecStart=/opt/business-control/current/business-control
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/business-control
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

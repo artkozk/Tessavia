@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#faf9f5">
+  <title>BizFlow</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="auth-root" class="auth-root" hidden>
+    <div class="auth-layout">
+      <section class="auth-intro">
+        <div class="auth-brand"><span class="brand-mark"><span class="brand-symbol"><i></i><i></i></span></span><span><strong>BizFlow</strong><small>пространство основателей</small></span></div>
+        <div class="auth-statement">
+          <p class="eyebrow">От мысли до результата</p>
+          <h1>BizFlow</h1>
+          <p>Единое место для решений, задач и договорённостей команды.</p>
+        </div>
+        <p class="auth-caption">Рабочая память проекта</p>
+      </section>
+      <main class="auth-panel">
+        <div class="auth-panel-brand"><span class="brand-mark"><span class="brand-symbol"><i></i><i></i></span></span><strong>BizFlow</strong></div>
+        <div class="auth-heading">
+          <p class="eyebrow">Закрытое пространство</p>
+          <h2 id="auth-heading-title">Войдите в проект</h2>
+          <p class="muted" id="auth-heading-copy">Продолжите работу с того места, где остановились.</p>
+        </div>
+        <div class="segmented" role="tablist" aria-label="Вход или регистрация">
+          <button type="button" class="segment active" data-auth-mode="login">Вход</button>
+          <button type="button" class="segment" data-auth-mode="register">Регистрация</button>
+        </div>
+        <form id="auth-form" class="stack-form">
+          <label id="email-field" hidden>Почта<input name="email" type="email" autocomplete="email"></label>
+          <label><span id="login-label">Логин или почта</span><input name="login" autocomplete="username" required></label>
+          <label>Пароль<input name="password" type="password" autocomplete="current-password" minlength="8" required></label>
+          <button class="primary wide" type="submit" id="auth-submit">Войти</button>
+          <p id="auth-error" class="form-error" role="alert"></p>
+        </form>
+      </main>
+    </div>
+  </div>
+
+  <div id="app-root" class="app-shell" hidden>
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark small"><span class="brand-symbol"><i></i><i></i></span></span><span><strong>BizFlow</strong><small>пространство основателей</small></span><button type="button" class="sidebar-close icon-button" id="sidebar-close" aria-label="Закрыть меню"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+      <nav id="main-nav" class="main-nav" aria-label="Разделы"></nav>
+      <div class="sidebar-footer">
+        <button type="button" class="user-button" id="profile-button"><span class="avatar" id="user-avatar"></span><span><strong id="user-name"></strong><small>Профиль</small></span></button>
+        <button type="button" class="quiet" id="logout-button">Выйти</button>
+      </div>
+    </aside>
+    <button type="button" class="sidebar-backdrop" id="sidebar-backdrop" aria-label="Закрыть меню" tabindex="-1"></button>
+    <div class="workspace">
+      <header class="topbar">
+        <button type="button" class="menu-button icon-button" id="menu-button" aria-label="Открыть меню"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <div><p class="eyebrow">BizFlow</p><h2 id="page-title">Обзор</h2></div>
+        <div class="global-search" id="global-search">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="global-search-input" type="search" placeholder="Найти карточку, вопрос, ответ или итог" autocomplete="off" aria-label="Глобальный поиск">
+          <kbd>Ctrl K</kbd>
+          <div id="global-search-results" class="global-search-results" hidden></div>
+        </div>
+        <div class="topbar-actions"><span id="sync-state" class="sync-state">На связи</span><button type="button" class="icon-button topbar-icon" id="onboarding-button" title="Как работать" aria-label="Как работать"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.6 2.6 0 0 1 5 1c0 2-2.5 2-2.5 4M12 18h.01"/></svg></button><button type="button" class="icon-button topbar-icon notification-button" id="notification-button" title="Уведомления" aria-label="Уведомления"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><b id="notification-badge" hidden>0</b></button><div class="create-control"><button type="button" class="primary" id="new-record-button"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Создать</button><div id="create-menu" class="create-menu" hidden></div></div></div>
+      </header>
+      <main id="main-content" class="main-content"></main>
+    </div>
+  </div>
+
+  <dialog id="record-dialog" class="record-dialog"><div id="record-dialog-content"></div></dialog>
+  <dialog id="event-dialog" class="event-dialog"><div id="event-dialog-content"></div></dialog>
+  <dialog id="create-dialog" class="create-dialog"><div id="create-dialog-content"></div></dialog>
+  <dialog id="reason-dialog" class="reason-dialog"><div id="reason-dialog-content"></div></dialog>
+  <dialog id="onboarding-dialog" class="onboarding-dialog"><div id="onboarding-dialog-content" class="onboarding-layout"></div></dialog>
+  <dialog id="profile-dialog" class="profile-dialog"><div id="profile-dialog-content"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/vendor/cytoscape-3.34.1.min.js"></script>
+  <script src="/vendor/marked-18.0.9.umd.js"></script>
+  <script src="/vendor/dompurify-3.4.13.min.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+[Unit]
+Description=Verified backup of Business Control SQLite database
+After=business-control.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=-/etc/business-control.env
+ExecStart=/usr/local/sbin/business-control-backup
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/business-control
