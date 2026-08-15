@@ -837,7 +837,7 @@ func (s *Server) listAttachments(ctx context.Context, recordID string) ([]Record
 
 func allowedAttachment(name, contentType string) bool {
 	ext := strings.ToLower(filepath.Ext(name))
-	allowedExt := map[string]bool{".pdf": true, ".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".txt": true, ".md": true, ".csv": true, ".xlsx": true, ".docx": true, ".pptx": true, ".zip": true}
+	allowedExt := map[string]bool{".pdf": true, ".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".mp4": true, ".webm": true, ".mov": true, ".txt": true, ".md": true, ".csv": true, ".xlsx": true, ".docx": true, ".pptx": true, ".zip": true}
 	if !allowedExt[ext] {
 		return false
 	}

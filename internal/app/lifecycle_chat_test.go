@@ -152,11 +152,12 @@ func TestTeamChatReadReplyReactionFavoriteAndCall(t *testing.T) {
 		t.Fatalf("reply = %#v", reply)
 	}
 	requestJSON(t, sweetybboy, http.MethodPost, server.URL+"/api/chat/messages/"+first.ID+"/reaction", map[string]any{"emoji": "✅"}, http.StatusNoContent, nil)
+	requestJSON(t, artkozk, http.MethodPost, server.URL+"/api/chat/messages/"+first.ID+"/reaction", map[string]any{"emoji": "🫡"}, http.StatusNoContent, nil)
 	requestJSON(t, artkozk, http.MethodPost, server.URL+"/api/chat/messages/"+first.ID+"/favorite", nil, http.StatusNoContent, nil)
 
 	var messages []ChatMessage
 	requestJSON(t, artkozk, http.MethodGet, server.URL+"/api/chat/threads/"+threadID+"/messages", nil, http.StatusOK, &messages)
-	if len(messages) != 2 || len(messages[0].ReadBy) != 1 || len(messages[0].Reactions) != 1 || messages[0].Reactions[0].Count != 1 {
+	if len(messages) != 2 || len(messages[0].ReadBy) != 1 || len(messages[0].Reactions) != 2 || messages[0].Reactions[0].Count != 1 {
 		t.Fatalf("chat state = %#v", messages)
 	}
 	var favorites []ChatMessage

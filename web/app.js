@@ -44,6 +44,12 @@ const iconPaths = {
   maximize: '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>',
   rotate: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
   flag: '<path d="M5 22V4M5 4h11l-1 4 1 4H5"/>',
+	bookmark: '<path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/>',
+	reply: '<path d="m9 17-6-5 6-5v3h4a7 7 0 0 1 7 7v1a9 9 0 0 0-7-5H9Z"/>',
+	smile: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
+	video: '<path d="M15 10 21 7v10l-6-3Z"/><rect width="13" height="14" x="2" y="5" rx="2"/>',
+	copy: '<rect width="13" height="13" x="8" y="8" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
+	stop: '<rect width="12" height="12" x="6" y="6" rx="1"/>',
   lock: '<rect width="16" height="11" x="4" y="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
   sparkles: '<path d="m12 3-1.2 3.3L7.5 7.5l3.3 1.2L12 12l1.2-3.3 3.3-1.2-3.3-1.2Z"/><path d="m18.5 13-.8 2.2-2.2.8 2.2.8.8 2.2.8-2.2 2.2-.8-2.2-.8ZM5.5 14l-.6 1.6-1.6.6 1.6.6.6 1.6.6-1.6 1.6-.6-1.6-.6Z"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15M10 11v6M14 11v6"/>',
@@ -146,7 +152,7 @@ const state = {
   researchComparisons: new Map(), researchComparisonRequests: new Map(), activeResearchOptionId: '',
   chatThreads: [], chatMessages: [], activeChatThreadId: '', chatLoadedThreadId: '', chatReplyToId: '', chatLinkedRecordId: '', chatFavoritesOnly: false,
   chatSearch: '', chatSearchOpen: false, chatDigests: new Map(), chatDigestLoading: '', chatUploadItems: [], chatEditingMessageId: '',
-  chatSending: false, chatDraftNonce: '', chatDraftText: '', outcomeFilter: 'all',
+  chatSending: false, chatDraftNonce: '', chatDraftText: '', chatEmojiTarget: '', chatRecentEmojis: [], outcomeFilter: 'all',
   chatPollTimer: null, chatRecording: null, chatCall: null, chatIncomingCall: null, chatICEServers: null,
   savedViews: [], workingDraftTimers: new Map(), sidebarReturnFocus: null, liveRefreshRunning: false,
 };
@@ -1035,7 +1041,10 @@ function bindSidebarSwipe() {
 
 function workspaceHasActiveInput() {
   const active = document.activeElement;
-  return Boolean(active?.matches('input, textarea, [contenteditable="true"]'));
+  return Boolean(
+    active?.matches('input, textarea, [contenteditable="true"]') ||
+    document.querySelector('.chat-message-menu[open], .chat-emoji-picker, .chat-composer-context > div, .chat-main.drag-files, .chat-composer.is-recording')
+  );
 }
 
 async function refreshLiveData() {
@@ -1603,21 +1612,58 @@ function chatMessagePreview(message) {
 	return markdownPlain(message.body, message.linkedRecordTitle || 'Сообщение');
 }
 
+const chatEmojiCatalog = {
+	'Смайлы': ['😀','😃','😄','😁','😅','😂','🤣','😊','🙂','🙃','😉','😍','🥰','😘','😎','🤓','🧐','🤔','🫡','🤨','😐','😶','🙄','😬','😮','😴','🥳','😤','😢','😭','😡'],
+	'Жесты': ['👍','👎','👌','✌️','🤞','🤝','👏','🙌','🫶','🙏','💪','👀','🧠','🫂','☝️','✋','🤚','👋','🫡','💯'],
+	'Работа': ['✅','❌','⚠️','❗','❓','💡','🎯','🚀','📌','📎','📝','📊','📈','🔍','🧪','🛠️','⏳','🔥','⭐','🏆'],
+	'Знаки': ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','💔','✨','🎉','⚡','☀️','🌙','🔔','🔒','🔗','➡️','⬆️','⬇️'],
+};
+
+function chatRecentEmojiList() {
+	if (!state.chatRecentEmojis.length) {
+		try { state.chatRecentEmojis = JSON.parse(localStorage.getItem('business-control:chat-recent-emojis') || '[]'); } catch (_) { state.chatRecentEmojis = []; }
+	}
+	const used = state.chatMessages.flatMap((message) => message.reactions || []).sort((left, right) => right.count - left.count).map((reaction) => reaction.emoji);
+	return [...new Set([...state.chatRecentEmojis, ...used, '👍','✅','❤️','😂','🤔','🔥'])].slice(0, 12);
+}
+
+function rememberChatEmoji(emoji) {
+	state.chatRecentEmojis = [emoji, ...state.chatRecentEmojis.filter((item) => item !== emoji)].slice(0, 18);
+	try { localStorage.setItem('business-control:chat-recent-emojis', JSON.stringify(state.chatRecentEmojis)); } catch (_) { /* Recent reactions are an optional local convenience. */ }
+}
+
+function renderChatEmojiPicker() {
+	if (!state.chatEmojiTarget) return '';
+	return `<section class="chat-emoji-picker" aria-label="Выбор эмодзи"><header><strong>${state.chatEmojiTarget === 'composer' ? 'Добавить эмодзи' : 'Реакция на сообщение'}</strong><button type="button" class="icon-button" data-close-chat-emoji aria-label="Закрыть">${icon('x')}</button></header><div class="chat-emoji-recent"><span>Частые</span><div>${chatRecentEmojiList().map((emoji) => `<button type="button" data-chat-emoji-choice="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}</div></div><div class="chat-emoji-catalog">${Object.entries(chatEmojiCatalog).map(([label, emojis]) => `<section><span>${escapeHTML(label)}</span><div>${emojis.map((emoji) => `<button type="button" data-chat-emoji-choice="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}</div></section>`).join('')}</div><form class="chat-emoji-custom"><input type="text" maxlength="16" inputmode="text" placeholder="Вставьте любой эмодзи" aria-label="Любой эмодзи"><button type="submit" class="secondary">Добавить</button></form></section>`;
+}
+
+function chatMediaMarkup(message, source) {
+	const attachment = message.attachment;
+	if (!attachment) return '';
+	if (message.messageType === 'voice') {
+		return `<div class="chat-voice" data-chat-audio><button type="button" class="chat-media-control" data-audio-toggle aria-label="Воспроизвести">${icon('play')}</button><div class="chat-waveform" aria-hidden="true">${Array.from({ length: 32 }, (_, index) => `<i style="--wave:${24 + ((index * 17) % 68)}%"></i>`).join('')}</div><input type="range" min="0" max="1000" value="0" data-audio-seek aria-label="Позиция голосового сообщения"><time data-audio-time>0:00</time><audio preload="metadata" src="${source}"></audio></div>`;
+	}
+	if (attachment.contentType?.startsWith('image/')) {
+		return `<a class="chat-image" href="${source}" target="_blank" title="Открыть изображение"><img src="${source}" alt="${escapeHTML(attachment.originalName)}" loading="lazy"></a>`;
+	}
+	if (attachment.contentType?.startsWith('video/')) {
+		return `<div class="chat-video-note"><video controls playsinline preload="metadata" src="${source}" aria-label="Видеосообщение"></video></div>`;
+	}
+	return `<a class="chat-file" href="${source}" target="_blank"><span class="type-icon type-document">${icon('fileText')}</span><span><strong>${escapeHTML(attachment.originalName)}</strong><small>${formatFileSize(attachment.sizeBytes)}</small></span>${icon('chevronRight')}</a>`;
+}
+
 function renderChatMessage(message) {
 	const mine = message.authorId === state.me.id;
 	const reply = message.replyToId ? `<button type="button" class="chat-reply-preview" data-scroll-message="${message.replyToId}"><strong>${escapeHTML(message.replyAuthor)}</strong><span>${escapeHTML(markdownPlain(message.replyBody).slice(0, 120))}</span></button>` : '';
 	const linked = message.linkedRecordId ? `<button type="button" class="chat-record-link" data-open-record="${message.linkedRecordId}"><span class="type-icon type-${message.linkedRecordType}">${icon(typeMeta[message.linkedRecordType]?.icon || 'fileText')}</span><span><small>${escapeHTML(typeMeta[message.linkedRecordType]?.singular || 'Карточка')}</small><strong>${escapeHTML(message.linkedRecordTitle)}</strong></span>${icon('chevronRight')}</button>` : '';
-	let media = '';
-	if (message.attachment) {
-		const source = `/api/chat/attachments/${message.attachment.id}`;
-		media = message.messageType === 'voice' ? `<div class="chat-voice">${icon('play')}<audio controls preload="metadata" src="${source}"></audio></div>` : `<a class="chat-file" href="${source}" target="_blank"><span class="type-icon type-document">${icon('fileText')}</span><span><strong>${escapeHTML(message.attachment.originalName)}</strong><small>${formatFileSize(message.attachment.sizeBytes)}</small></span>${icon('chevronRight')}</a>`;
-	}
+	const media = message.attachment ? chatMediaMarkup(message, `/api/chat/attachments/${message.attachment.id}`) : '';
 	const reactions = message.reactions.map((reaction) => `<button type="button" class="chat-reaction ${reaction.mine ? 'mine' : ''}" data-chat-reaction="${message.id}" data-emoji="${escapeHTML(reaction.emoji)}" title="${escapeHTML(reaction.usernames.join(', '))}"><span>${escapeHTML(reaction.emoji)}</span><b>${reaction.count}</b></button>`).join('');
 	const receipt = message.readBy.at(-1);
-	const read = mine ? (receipt ? `${icon('check')} прочитано ${formatDate(receipt.readAt, true)}` : `${icon('check')} отправлено`) : '';
+	const read = mine ? `<span class="chat-checks ${receipt ? 'read' : ''}" title="${receipt ? `Прочитано ${escapeHTML(formatDate(receipt.readAt, true))}` : 'Отправлено'}">${receipt ? '✓✓' : '✓'}</span>` : '';
 	const ownActions = mine ? `${message.messageType === 'text' ? `<button type="button" data-chat-edit="${message.id}">${icon('edit')} Редактировать</button>` : ''}<button type="button" data-chat-archive="${message.id}">${icon('archive')} Убрать из чата</button>` : '';
 	const projectActions = message.body ? `<button type="button" data-chat-create="decision" data-message-id="${message.id}">${icon('scale')} Зафиксировать решение</button><button type="button" data-chat-create="task" data-message-id="${message.id}">${icon('checkSquare')} Создать задачу</button>` : '';
-	return `<article class="chat-message ${mine ? 'mine' : ''} type-${message.messageType}" id="chat-message-${message.id}" data-chat-message="${message.id}"><div class="chat-bubble"><header><strong>${mine ? 'Вы' : escapeHTML(message.authorUsername)}</strong><details class="chat-message-menu"><summary aria-label="Действия">•••</summary><div><button type="button" data-chat-reply="${message.id}">${icon('send')} Ответить</button><button type="button" data-chat-favorite="${message.id}">${icon('flag')} ${message.favorite ? 'Убрать из избранного' : 'В избранное'}</button>${projectActions}${ownActions}<span>${['👍','✅','❤️','🤔'].map((emoji) => `<button type="button" data-chat-reaction="${message.id}" data-emoji="${emoji}">${emoji}</button>`).join('')}</span></div></details></header>${reply}${message.body ? `<div class="markdown-body chat-message-body">${renderMarkdown(message.body)}</div>` : ''}${linked}${media}<footer><time>${formatDate(message.createdAt, true)}</time>${message.editedAt ? `<span title="Изменено ${escapeHTML(formatDate(message.editedAt, true))}">изменено</span>` : ''}<span class="chat-read-state">${read}</span></footer></div>${reactions ? `<div class="chat-reactions">${reactions}</div>` : ''}</article>`;
+	const quick = chatRecentEmojiList().slice(0, 5);
+	return `<article class="chat-message ${mine ? 'mine' : ''} type-${message.messageType}" id="chat-message-${message.id}" data-chat-message="${message.id}"><div class="chat-message-actions"><button type="button" data-chat-reply="${message.id}" title="Ответить" aria-label="Ответить">${icon('reply')}</button><button type="button" data-chat-emoji-more="${message.id}" title="Реакция" aria-label="Добавить реакцию">${icon('smile')}</button><details class="chat-message-menu"><summary aria-label="Другие действия">•••</summary><div><button type="button" data-chat-reply="${message.id}">${icon('reply')} Ответить</button><button type="button" data-chat-copy="${message.id}">${icon('copy')} Копировать</button><button type="button" data-chat-favorite="${message.id}">${icon('bookmark')} ${message.favorite ? 'Убрать из сохранённых' : 'Сохранить сообщение'}</button>${projectActions}${ownActions}<span>${quick.map((emoji) => `<button type="button" data-chat-reaction="${message.id}" data-emoji="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}<button type="button" data-chat-emoji-more="${message.id}" aria-label="Все эмодзи">${icon('smile')}</button></span></div></details></div><div class="chat-bubble">${!mine ? `<header><strong>${escapeHTML(message.authorUsername)}</strong></header>` : ''}${reply}${message.body ? `<div class="markdown-body chat-message-body">${renderMarkdown(message.body)}</div>` : ''}${linked}${media}<footer>${message.favorite ? `<span class="chat-saved" title="Сохранено">${icon('bookmark')}</span>` : ''}<time>${formatDate(message.createdAt, true)}</time>${message.editedAt ? `<span title="Изменено ${escapeHTML(formatDate(message.editedAt, true))}">изменено</span>` : ''}${read}</footer></div>${reactions ? `<div class="chat-reactions">${reactions}<button type="button" class="chat-add-reaction" data-chat-emoji-more="${message.id}" aria-label="Добавить реакцию">${icon('smile')}</button></div>` : ''}${state.chatEmojiTarget === message.id ? renderChatEmojiPicker() : ''}</article>`;
 }
 
 function renderChatTimeline(messages) {
@@ -1629,6 +1675,36 @@ function renderChatTimeline(messages) {
 		previousDay = day || previousDay;
 		return separator + renderChatMessage(message);
 	}).join('');
+}
+
+function recordingTimeLabel(startedAt = Date.now()) {
+	const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+	return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function decorateChatUI() {
+	const main = $('.chat-main');
+	const favoriteButton = $('[data-chat-favorites]');
+	if (favoriteButton) {
+		favoriteButton.innerHTML = icon('bookmark');
+		favoriteButton.title = state.chatFavoritesOnly ? 'Показать все сообщения' : 'Сохранённые сообщения';
+		favoriteButton.setAttribute('aria-label', favoriteButton.title);
+	}
+	if (!main) return;
+	main.insertAdjacentHTML('beforeend', `<div class="chat-drop-overlay" aria-hidden="true"><span>${icon('fileText')}</span><strong>Отправить файлы</strong><small>Отпустите их в любом месте диалога</small></div>`);
+	const form = $('#chat-composer');
+	if (!form) return;
+	if (state.chatEmojiTarget === 'composer') form.insertAdjacentHTML('beforebegin', renderChatEmojiPicker());
+	if (state.chatRecording) {
+		form.classList.add('is-recording');
+		form.innerHTML = `<div class="chat-recording-strip"><span class="chat-recording-pulse"></span><strong>${state.chatRecording.kind === 'video' ? 'Видеосообщение' : 'Голосовое сообщение'}</strong><time data-recording-duration>${recordingTimeLabel(state.chatRecording.startedAt)}</time><button type="button" class="text-button danger-text" data-cancel-chat-recording>${icon('trash')} Отмена</button><button type="button" class="primary" data-send-chat-recording>${icon('send')} Отправить</button></div>`;
+		return;
+	}
+	const actionBar = form.querySelector(':scope > div:nth-child(2)');
+	const attach = $('[data-chat-attach]', form);
+	const voice = $('[data-chat-voice]', form);
+	if (actionBar && attach) attach.insertAdjacentHTML('beforebegin', `<button type="button" class="icon-button ${state.chatEmojiTarget === 'composer' ? 'active' : ''}" data-chat-composer-emoji title="Эмодзи" aria-label="Добавить эмодзи">${icon('smile')}</button>`);
+	if (actionBar && voice) voice.insertAdjacentHTML('beforebegin', `<button type="button" class="icon-button" data-chat-video title="Записать видеосообщение" aria-label="Записать видеосообщение">${icon('video')}</button>`);
 }
 
 function renderChatCallBanner(thread) {
@@ -1670,8 +1746,9 @@ function renderChat() {
 	$('#main-content').innerHTML = `<section class="chat-shell">
 		<button type="button" class="chat-thread-backdrop" data-close-chat-threads aria-label="Закрыть список диалогов"></button>
 		<aside class="chat-thread-list"><header><div><h1>Сообщения</h1><p>Личный диалог и обсуждения карточек</p></div><button type="button" class="icon-button" data-new-chat-thread title="Новая ветка">${icon('plus')}</button></header><div>${state.chatThreads.map((item) => `<button type="button" class="chat-thread ${item.id === state.activeChatThreadId ? 'active' : ''}" data-chat-thread="${item.id}"><span class="avatar">${escapeHTML((item.kind === 'team' ? item.partnerUsername || 'П' : item.title).slice(0, 2).toUpperCase())}</span><span><strong>${escapeHTML(chatThreadTitle(item))}</strong><small>${escapeHTML(item.lastMessage || (item.kind === 'record' ? 'Обсуждение карточки' : chatPresenceLabel(item)))}</small></span><time>${item.lastMessageAt ? formatDate(item.lastMessageAt) : ''}</time>${item.unreadCount ? `<b>${item.unreadCount}</b>` : ''}</button>`).join('') || '<div class="guided-empty compact">Диалоги ещё не созданы</div>'}</div></aside>
-		<main class="chat-main">${thread ? `<header class="chat-header"><button type="button" class="chat-mobile-threads icon-button" data-toggle-chat-threads title="Диалоги" aria-label="Диалоги">${icon('menu')}</button><span class="avatar">${escapeHTML((thread.partnerUsername || thread.title).slice(0, 2).toUpperCase())}</span><div><h2>${escapeHTML(threadTitle)}</h2><p class="${thread.partnerOnline ? 'online' : ''}">${thread.kind === 'record' ? `Ветка карточки · ${escapeHTML(thread.recordTitle)}` : escapeHTML(chatPresenceLabel(thread))}</p></div><div class="chat-header-actions">${thread.recordId ? `<button type="button" class="icon-button" data-open-record="${thread.recordId}" title="Открыть карточку">${icon('link')}</button>` : ''}<button type="button" class="icon-button ${state.chatSearchOpen ? 'active' : ''}" data-toggle-chat-search title="Поиск в диалоге">${icon('search')}</button><button type="button" class="icon-button" data-chat-ai-digest title="Собрать AI-выжимку">${icon('sparkles')}</button><button type="button" class="icon-button ${state.chatFavoritesOnly ? 'active' : ''}" data-chat-favorites title="Избранные сообщения">${icon('flag')}</button><button type="button" class="icon-button" data-start-call title="Аудиозвонок">${icon('phone')}</button></div>${state.chatSearchOpen ? `<label class="chat-search">${icon('search')}<input type="search" value="${escapeHTML(state.chatSearch)}" placeholder="Найти сообщение" aria-label="Поиск в диалоге"><button type="button" data-close-chat-search aria-label="Закрыть поиск">${icon('x')}</button></label>` : ''}</header><div class="chat-context-stack">${renderChatCallBanner(thread)}${renderChatDigest(thread)}</div><div class="chat-messages" data-drag-scroll="true">${renderChatTimeline(messages) || `<div class="chat-empty"><span>${icon(state.chatSearch ? 'search' : 'messages')}</span><strong>${state.chatSearch ? 'Совпадений нет' : 'Начните разговор'}</strong><p>${state.chatSearch ? 'Измените запрос или очистите поиск.' : `Напишите ${escapeHTML(threadTitle)} или прикрепите карточку проекта.`}</p></div>`}</div><div class="chat-composer-context">${editingMessage ? `<div><span>${icon('edit')}</span><span><strong>Редактирование сообщения</strong><small>Предыдущая версия останется в журнале.</small></span><button type="button" data-clear-chat-edit>${icon('x')}</button></div>` : ''}${state.chatReplyToId ? (() => { const reply = state.chatMessages.find((item) => item.id === state.chatReplyToId); return `<div><span>${icon('send')}</span><span><strong>Ответ ${escapeHTML(reply?.authorUsername || '')}</strong><small>${escapeHTML(chatMessagePreview(reply || {}).slice(0, 120))}</small></span><button type="button" data-clear-chat-reply>${icon('x')}</button></div>`; })() : ''}${state.chatLinkedRecordId ? (() => { const linked = state.records.find((item) => item.id === state.chatLinkedRecordId); return `<div><span>${icon('link')}</span><span><strong>Прикреплена карточка</strong><small>${escapeHTML(linked?.title || '')}</small></span><button type="button" data-clear-chat-record>${icon('x')}</button></div>`; })() : ''}</div><form class="chat-composer" id="chat-composer"><label class="chat-drop" data-chat-drop><textarea name="body" rows="1" placeholder="${editingMessage ? 'Исправьте сообщение' : 'Сообщение'}" aria-label="Сообщение" ${state.chatSending ? 'disabled' : ''}>${escapeHTML(editingMessage?.body ?? state.chatDraftText)}</textarea><input type="file" name="file" multiple hidden></label><div><button type="button" class="icon-button" data-chat-attach title="Прикрепить файл" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('plus')}</button><button type="button" class="icon-button" data-chat-link-record title="Связать карточку" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('link')}</button><button type="button" class="icon-button" data-chat-voice title="Записать голосовое" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('mic')}</button><button type="submit" class="primary icon-button" title="${editingMessage ? 'Сохранить' : 'Отправить'}" ${state.chatSending ? 'disabled' : ''}>${state.chatSending ? '<span class="spinner"></span>' : icon(editingMessage ? 'check' : 'send')}</button></div><div class="chat-upload-progress" hidden><span></span><progress max="100" value="0"></progress></div></form>` : `<div class="chat-empty"><strong>Выберите диалог</strong></div>`}</main>
+		<main class="chat-main">${thread ? `<header class="chat-header"><button type="button" class="chat-mobile-threads icon-button" data-toggle-chat-threads title="Диалоги" aria-label="Диалоги">${icon('menu')}</button><span class="avatar">${escapeHTML((thread.partnerUsername || thread.title).slice(0, 2).toUpperCase())}</span><div><h2>${escapeHTML(threadTitle)}</h2><p class="${thread.partnerOnline ? 'online' : ''}">${thread.kind === 'record' ? `Ветка карточки · ${escapeHTML(thread.recordTitle)}` : escapeHTML(chatPresenceLabel(thread))}</p></div><div class="chat-header-actions">${thread.recordId ? `<button type="button" class="icon-button" data-open-record="${thread.recordId}" title="Открыть карточку">${icon('link')}</button>` : ''}<button type="button" class="icon-button ${state.chatSearchOpen ? 'active' : ''}" data-toggle-chat-search title="Поиск в диалоге">${icon('search')}</button><button type="button" class="icon-button" data-chat-ai-digest title="Собрать AI-выжимку">${icon('sparkles')}</button><button type="button" class="icon-button ${state.chatFavoritesOnly ? 'active' : ''}" data-chat-favorites title="Сохранённые сообщения" aria-label="Сохранённые сообщения">${icon('bookmark')}</button><button type="button" class="icon-button" data-start-call title="Аудиозвонок">${icon('phone')}</button></div>${state.chatSearchOpen ? `<label class="chat-search">${icon('search')}<input type="search" value="${escapeHTML(state.chatSearch)}" placeholder="Найти сообщение" aria-label="Поиск в диалоге"><button type="button" data-close-chat-search aria-label="Закрыть поиск">${icon('x')}</button></label>` : ''}</header><div class="chat-context-stack">${renderChatCallBanner(thread)}${renderChatDigest(thread)}</div><div class="chat-messages" data-drag-scroll="true">${renderChatTimeline(messages) || `<div class="chat-empty"><span>${icon(state.chatSearch ? 'search' : 'messages')}</span><strong>${state.chatSearch ? 'Совпадений нет' : 'Начните разговор'}</strong><p>${state.chatSearch ? 'Измените запрос или очистите поиск.' : `Напишите ${escapeHTML(threadTitle)} или прикрепите карточку проекта.`}</p></div>`}</div><div class="chat-composer-context">${editingMessage ? `<div><span>${icon('edit')}</span><span><strong>Редактирование сообщения</strong><small>Предыдущая версия останется в журнале.</small></span><button type="button" data-clear-chat-edit>${icon('x')}</button></div>` : ''}${state.chatReplyToId ? (() => { const reply = state.chatMessages.find((item) => item.id === state.chatReplyToId); return `<div><span>${icon('reply')}</span><span><strong>Ответ ${escapeHTML(reply?.authorUsername || '')}</strong><small>${escapeHTML(chatMessagePreview(reply || {}).slice(0, 120))}</small></span><button type="button" data-clear-chat-reply aria-label="Отменить ответ">${icon('x')}</button></div>`; })() : ''}${state.chatLinkedRecordId ? (() => { const linked = state.records.find((item) => item.id === state.chatLinkedRecordId); return `<div><span>${icon('link')}</span><span><strong>Прикреплена карточка</strong><small>${escapeHTML(linked?.title || '')}</small></span><button type="button" data-clear-chat-record>${icon('x')}</button></div>`; })() : ''}</div><form class="chat-composer" id="chat-composer"><label class="chat-drop" data-chat-drop><textarea name="body" rows="1" placeholder="${editingMessage ? 'Исправьте сообщение' : 'Сообщение'}" aria-label="Сообщение" ${state.chatSending ? 'disabled' : ''}>${escapeHTML(editingMessage?.body ?? state.chatDraftText)}</textarea><input type="file" name="file" multiple hidden></label><div><button type="button" class="icon-button" data-chat-attach title="Прикрепить файл" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('plus')}</button><button type="button" class="icon-button" data-chat-link-record title="Связать карточку" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('link')}</button><button type="button" class="icon-button" data-chat-voice title="Записать голосовое" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('mic')}</button><button type="submit" class="primary icon-button" title="${editingMessage ? 'Сохранить' : 'Отправить'}" ${state.chatSending ? 'disabled' : ''}>${state.chatSending ? '<span class="spinner"></span>' : icon(editingMessage ? 'check' : 'send')}</button></div><div class="chat-upload-progress" hidden><span></span><progress max="100" value="0"></progress></div></form>` : `<div class="chat-empty"><strong>Выберите диалог</strong></div>`}</main>
 	</section>`;
+	decorateChatUI();
 	const mobileThreadsButton = $('[data-toggle-chat-threads]');
 	if (mobileThreadsButton) mobileThreadsButton.innerHTML = icon('messages');
 	bindChatEvents();
@@ -1736,21 +1813,103 @@ async function uploadChatFiles(files) {
 	setTimeout(() => { state.chatUploadItems = []; renderChatUploadProgress(); }, 1800);
 }
 
-async function toggleVoiceRecording(button) {
-	if (state.chatRecording) {
-		state.chatRecording.recorder.stop(); button.classList.remove('recording'); return;
-	}
+async function startChatRecording(kind = 'voice') {
+	if (state.chatRecording) return;
 	try {
-		const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-		const chunks = []; const recorder = new MediaRecorder(stream);
-		recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-		recorder.onstop = async () => { stream.getTracks().forEach((track) => track.stop()); state.chatRecording = null; const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }); const file = new File([blob], `voice-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`, { type: blob.type }); await uploadChatFiles([file]); };
-		state.chatRecording = { recorder, stream, startedAt: Date.now() }; recorder.start(); button.classList.add('recording'); toast('Запись началась. Нажмите ещё раз, чтобы отправить');
-	} catch (_) { toast('Не удалось получить доступ к микрофону', true); }
+		const constraints = kind === 'video' ? { audio: true, video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } } } : { audio: true };
+		const stream = await navigator.mediaDevices.getUserMedia(constraints);
+		const preferred = kind === 'video' ? ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'] : ['audio/webm;codecs=opus','audio/webm'];
+		const mimeType = preferred.find((type) => window.MediaRecorder?.isTypeSupported?.(type)) || '';
+		const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+		const recording = { kind, recorder, stream, chunks: [], startedAt: Date.now(), cancelled: false, timer: null };
+		recorder.ondataavailable = (event) => { if (event.data.size) recording.chunks.push(event.data); };
+		recorder.onstop = async () => {
+			clearInterval(recording.timer);
+			stream.getTracks().forEach((track) => track.stop());
+			const shouldSend = !recording.cancelled && recording.chunks.length > 0;
+			state.chatRecording = null;
+			if (state.view === 'chat') renderChat();
+			if (!shouldSend) return;
+			const type = recorder.mimeType || (kind === 'video' ? 'video/webm' : 'audio/webm');
+			const blob = new Blob(recording.chunks, { type });
+			const prefix = kind === 'video' ? 'video-note' : 'voice';
+			const file = new File([blob], `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`, { type });
+			await uploadChatFiles([file]);
+		};
+		state.chatRecording = recording;
+		recorder.start(250);
+		recording.timer = setInterval(() => { const timer = $('[data-recording-duration]'); if (timer) timer.textContent = recordingTimeLabel(recording.startedAt); }, 500);
+		renderChat();
+	} catch (_) { toast(kind === 'video' ? 'Не удалось получить доступ к камере и микрофону' : 'Не удалось получить доступ к микрофону', true); }
+}
+
+function finishChatRecording(send) {
+	const recording = state.chatRecording;
+	if (!recording) return;
+	recording.cancelled = !send;
+	if (recording.recorder.state !== 'inactive') recording.recorder.stop();
+}
+
+function chatTime(seconds) {
+	if (!Number.isFinite(seconds)) return '0:00';
+	return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+}
+
+function bindChatMediaPlayers() {
+	$$('[data-chat-audio]').forEach((player) => {
+		const audio = $('audio', player); const toggle = $('[data-audio-toggle]', player); const seek = $('[data-audio-seek]', player); const label = $('[data-audio-time]', player);
+		if (!audio || !toggle || !seek || !label) return;
+		const paint = () => { const ratio = audio.duration ? audio.currentTime / audio.duration : 0; seek.value = String(Math.round(ratio * 1000)); label.textContent = `${chatTime(audio.currentTime)} / ${chatTime(audio.duration)}`; player.style.setProperty('--audio-progress', `${ratio * 100}%`); };
+		audio.addEventListener('loadedmetadata', paint); audio.addEventListener('timeupdate', paint);
+		audio.addEventListener('play', () => { toggle.innerHTML = icon('pause'); player.classList.add('playing'); });
+		audio.addEventListener('pause', () => { toggle.innerHTML = icon('play'); player.classList.remove('playing'); });
+		audio.addEventListener('ended', () => { audio.currentTime = 0; paint(); });
+		toggle.addEventListener('click', () => { $$('[data-chat-audio] audio').forEach((item) => { if (item !== audio) item.pause(); }); if (audio.paused) audio.play(); else audio.pause(); });
+		seek.addEventListener('input', () => { if (audio.duration) audio.currentTime = Number(seek.value) * audio.duration / 1000; paint(); });
+	});
+}
+
+async function applyChatEmoji(emoji) {
+	const value = String(emoji || '').trim();
+	if (!value) return;
+	rememberChatEmoji(value);
+	const target = state.chatEmojiTarget;
+	state.chatEmojiTarget = '';
+	if (target === 'composer') {
+		state.chatDraftText = `${state.chatDraftText}${state.chatDraftText && !/\s$/.test(state.chatDraftText) ? ' ' : ''}${value}`;
+		renderChat();
+		const textarea = $('#chat-composer textarea'); textarea?.focus(); textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
+		return;
+	}
+	try { await api(`/api/chat/messages/${target}/reaction`, { method: 'POST', body: JSON.stringify({ emoji: value }) }); await loadChatThread(state.activeChatThreadId); }
+	catch (error) { toast(error.message, true); }
+}
+
+function bindChatMessageGestures() {
+	$$('.chat-message').forEach((message) => {
+		const bubble = $('.chat-bubble', message); const menu = $('.chat-message-menu', message);
+		bubble?.addEventListener('dblclick', (event) => { if (event.target.closest('a,button,input,audio,video')) return; state.chatReplyToId = message.dataset.chatMessage; renderChat(); $('#chat-composer textarea')?.focus(); });
+		bubble?.addEventListener('contextmenu', (event) => { if (!menu) return; event.preventDefault(); $$('.chat-message-menu[open]').forEach((item) => { if (item !== menu) item.removeAttribute('open'); }); menu.setAttribute('open', ''); });
+		let pointer = null;
+		bubble?.addEventListener('pointerdown', (event) => { if (!event.isPrimary || event.target.closest('button,a,input,audio,video,details')) return; pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, delta: 0 }; });
+		bubble?.addEventListener('pointermove', (event) => { if (!pointer || pointer.id !== event.pointerId) return; const dx = event.clientX - pointer.x; const dy = event.clientY - pointer.y; if (Math.abs(dx) <= Math.abs(dy) || dx < 0) return; pointer.delta = Math.min(dx, 72); bubble.style.transform = `translateX(${pointer.delta}px)`; message.classList.toggle('reply-ready', pointer.delta > 52); });
+		const finish = () => { if (!pointer) return; const reply = pointer.delta > 52; pointer = null; bubble.style.removeProperty('transform'); message.classList.remove('reply-ready'); if (reply) { state.chatReplyToId = message.dataset.chatMessage; renderChat(); $('#chat-composer textarea')?.focus(); } };
+		bubble?.addEventListener('pointerup', finish); bubble?.addEventListener('pointercancel', finish);
+	});
+}
+
+function bindChatDropSurface() {
+	const main = $('.chat-main');
+	if (!main) return;
+	const hasFiles = (event) => [...(event.dataTransfer?.types || [])].includes('Files');
+	main.addEventListener('dragenter', (event) => { if (!hasFiles(event)) return; event.preventDefault(); main.classList.add('drag-files'); });
+	main.addEventListener('dragover', (event) => { if (!hasFiles(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; main.classList.add('drag-files'); });
+	main.addEventListener('dragleave', (event) => { if (!main.contains(event.relatedTarget)) main.classList.remove('drag-files'); });
+	main.addEventListener('drop', async (event) => { if (!hasFiles(event)) return; event.preventDefault(); main.classList.remove('drag-files'); await uploadChatFiles(event.dataTransfer.files); });
 }
 
 function bindChatEvents() {
-	$$('[data-chat-thread]').forEach((button) => button.addEventListener('click', () => { state.activeChatThreadId = button.dataset.chatThread; state.chatLoadedThreadId = ''; state.chatMessages = []; state.chatSearch = ''; state.chatSearchOpen = false; state.chatEditingMessageId = ''; state.chatReplyToId = ''; state.chatLinkedRecordId = ''; state.chatDraftNonce = ''; state.chatDraftText = ''; $('.chat-shell')?.classList.remove('show-threads'); renderChat(); }));
+	$$('[data-chat-thread]').forEach((button) => button.addEventListener('click', () => { state.activeChatThreadId = button.dataset.chatThread; state.chatLoadedThreadId = ''; state.chatMessages = []; state.chatSearch = ''; state.chatSearchOpen = false; state.chatEditingMessageId = ''; state.chatReplyToId = ''; state.chatLinkedRecordId = ''; state.chatDraftNonce = ''; state.chatDraftText = ''; state.chatEmojiTarget = ''; $('.chat-shell')?.classList.remove('show-threads'); renderChat(); }));
 	$('[data-toggle-chat-threads]')?.addEventListener('click', () => $('.chat-shell').classList.toggle('show-threads'));
 	const chatThreadBackdrop = $('[data-close-chat-threads]');
 	const closeChatThreads = (event) => {
@@ -1786,6 +1945,12 @@ function bindChatEvents() {
 		openCreateDialog(output.type, { kind: output.kind, title: output.title, description: output.description, priority: output.priority, estimateMinutes: output.estimateMinutes, sourceRecordId: thread?.recordId || '', relationType: 'produced', reason: 'Сущность извлечена AI из командного обсуждения и подтверждена пользователем' });
 	}));
 	$$('[data-chat-reply]').forEach((button) => button.addEventListener('click', () => { state.chatReplyToId = button.dataset.chatReply; renderChat(); $('#chat-composer textarea')?.focus(); }));
+	$$('[data-chat-copy]').forEach((button) => button.addEventListener('click', async () => { const message = state.chatMessages.find((item) => item.id === button.dataset.chatCopy); if (!message) return; try { await navigator.clipboard.writeText(message.body || chatMessagePreview(message)); toast('Сообщение скопировано'); } catch (_) { toast('Не удалось скопировать сообщение', true); } }));
+	$$('[data-chat-emoji-more]').forEach((button) => button.addEventListener('click', () => { state.chatEmojiTarget = state.chatEmojiTarget === button.dataset.chatEmojiMore ? '' : button.dataset.chatEmojiMore; renderChat(); }));
+	$('[data-chat-composer-emoji]')?.addEventListener('click', () => { state.chatEmojiTarget = state.chatEmojiTarget === 'composer' ? '' : 'composer'; renderChat(); $('#chat-composer textarea')?.focus(); });
+	$('[data-close-chat-emoji]')?.addEventListener('click', () => { state.chatEmojiTarget = ''; renderChat(); });
+	$$('[data-chat-emoji-choice]').forEach((button) => button.addEventListener('click', () => applyChatEmoji(button.dataset.chatEmojiChoice)));
+	$('.chat-emoji-custom')?.addEventListener('submit', (event) => { event.preventDefault(); applyChatEmoji($('input', event.currentTarget).value); });
 	$('[data-clear-chat-reply]')?.addEventListener('click', () => { state.chatReplyToId = ''; renderChat(); });
 	$('[data-clear-chat-record]')?.addEventListener('click', () => { state.chatLinkedRecordId = ''; renderChat(); });
 	$('[data-clear-chat-edit]')?.addEventListener('click', () => { state.chatEditingMessageId = ''; renderChat(); $('#chat-composer textarea')?.focus(); });
@@ -1800,7 +1965,7 @@ function bindChatEvents() {
 		catch (error) { toast(error.message, true); }
 	}));
 	$$('[data-chat-favorite]').forEach((button) => button.addEventListener('click', async () => { await api(`/api/chat/messages/${button.dataset.chatFavorite}/favorite`, { method: 'POST' }); await loadChatThread(state.activeChatThreadId); }));
-	$$('[data-chat-reaction]').forEach((button) => button.addEventListener('click', async () => { await api(`/api/chat/messages/${button.dataset.chatReaction}/reaction`, { method: 'POST', body: JSON.stringify({ emoji: button.dataset.emoji }) }); await loadChatThread(state.activeChatThreadId); }));
+	$$('[data-chat-reaction]').forEach((button) => button.addEventListener('click', async () => { rememberChatEmoji(button.dataset.emoji); await api(`/api/chat/messages/${button.dataset.chatReaction}/reaction`, { method: 'POST', body: JSON.stringify({ emoji: button.dataset.emoji }) }); await loadChatThread(state.activeChatThreadId); }));
 	$$('[data-chat-create]').forEach((button) => button.addEventListener('click', () => {
 		const message = state.chatMessages.find((item) => item.id === button.dataset.messageId);
 		if (!message?.body) return;
@@ -1818,18 +1983,32 @@ function bindChatEvents() {
 		requestAnimationFrame(() => {
 			const popup = menu.querySelector(':scope > div');
 			const viewport = $('.chat-messages')?.getBoundingClientRect();
-			if (popup && viewport) menu.classList.toggle('open-up', popup.getBoundingClientRect().bottom > viewport.bottom - 8);
+			const trigger = menu.querySelector('summary')?.getBoundingClientRect();
+			if (!popup || !viewport || !trigger) return;
+			const availableAbove = Math.max(150, trigger.top - viewport.top - 44);
+			const availableBelow = Math.max(150, viewport.bottom - trigger.top - 44);
+			const openUp = availableAbove > availableBelow;
+			menu.classList.toggle('open-up', openUp);
+			popup.style.maxHeight = `${Math.floor(openUp ? availableAbove : availableBelow)}px`;
 		});
 	}));
 	$$('[data-scroll-message]').forEach((button) => button.addEventListener('click', () => { const message = $(`#chat-message-${CSS.escape(button.dataset.scrollMessage)}`); message?.scrollIntoView({ behavior: 'smooth', block: 'center' }); message?.classList.add('highlight'); setTimeout(() => message?.classList.remove('highlight'), 1400); }));
 	$('[data-chat-link-record]')?.addEventListener('click', async () => { const records = state.records.filter(isActiveRecord); const id = await askChoice({ title: 'Прикрепить карточку', label: 'Карточка откроется прямо из сообщения', choices: records.slice(0, 80).map((record) => ({ value: record.id, label: `${typeMeta[record.type].singular}: ${record.title}` })) }); if (id) { state.chatLinkedRecordId = id; renderChat(); $('#chat-composer textarea')?.focus(); } });
-	const form = $('#chat-composer'); if (!form) return; const textarea = form.elements.body; const input = form.elements.file; const drop = $('[data-chat-drop]', form);
+	bindChatMediaPlayers(); bindChatMessageGestures(); bindChatDropSurface();
+	const form = $('#chat-composer'); if (!form) return;
+	if (state.chatRecording) {
+		$('[data-cancel-chat-recording]', form)?.addEventListener('click', () => finishChatRecording(false));
+		$('[data-send-chat-recording]', form)?.addEventListener('click', () => finishChatRecording(true));
+		return;
+	}
+	const textarea = form.elements.body; const input = form.elements.file; const drop = $('[data-chat-drop]', form);
 	textarea.addEventListener('input', () => {
 		if (state.chatEditingMessageId) return;
 		state.chatDraftText = textarea.value;
 		state.chatDraftNonce = '';
 	});
 	textarea.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); } });
+	textarea.addEventListener('paste', async (event) => { const files = [...(event.clipboardData?.files || [])]; if (!files.length) return; event.preventDefault(); await uploadChatFiles(files); });
 	form.addEventListener('submit', async (event) => {
 		event.preventDefault();
 		if (state.chatSending) return;
@@ -1856,8 +2035,9 @@ function bindChatEvents() {
 	input.addEventListener('change', async () => { await uploadChatFiles(input.files); input.value = ''; });
 	['dragenter','dragover'].forEach((name) => drop.addEventListener(name, (event) => { event.preventDefault(); drop.classList.add('drag-active'); }));
 	drop.addEventListener('dragleave', () => drop.classList.remove('drag-active'));
-	drop.addEventListener('drop', async (event) => { event.preventDefault(); drop.classList.remove('drag-active'); await uploadChatFiles(event.dataTransfer.files); });
-	$('[data-chat-voice]', form).addEventListener('click', (event) => toggleVoiceRecording(event.currentTarget));
+	drop.addEventListener('drop', async (event) => { event.preventDefault(); event.stopPropagation(); drop.classList.remove('drag-active'); await uploadChatFiles(event.dataTransfer.files); });
+	$('[data-chat-voice]', form).addEventListener('click', () => startChatRecording('voice'));
+	$('[data-chat-video]', form)?.addEventListener('click', () => startChatRecording('video'));
 	$('[data-start-call]')?.addEventListener('click', startChatCall);
 	$('[data-accept-call]')?.addEventListener('click', acceptChatCall);
 	$$('[data-end-call]').forEach((button) => button.addEventListener('click', endChatCall));
@@ -2026,13 +2206,13 @@ async function renderGraph() {
         <div class="graph-mode segmented compact"><button type="button" class="segment ${!state.graphFocusRecordId ? 'active' : ''}" data-graph-mode="global">Весь проект</button><button type="button" class="segment ${state.graphFocusRecordId ? 'active' : ''}" data-graph-mode="local" ${state.graphFocusRecordId ? '' : 'disabled'}>Локальная карта</button></div>
         <div class="search-box graph-search">${icon('search')}<input id="graph-search" type="search" value="${escapeHTML(state.graphSearch)}" placeholder="Фильтр объектов"></div>
         <label class="graph-branch-picker"><span>Ветка</span><select id="graph-branch-filter"><option value="">Все ветки проекта</option>${branchChoices.map((item) => `<option value="${item.id}" ${state.graphBranchRootId === item.id ? 'selected' : ''}>${item.root ? 'Корень' : typeMeta[item.type]?.singular || 'Карточка'}: ${escapeHTML(item.title)} (${item.count})</option>`).join('')}</select></label>
-        <label class="graph-branch-move" title="При перетаскивании родителя все его дочерние карточки сохраняют расположение относительно него"><input id="graph-move-branch" type="checkbox" ${state.graphMoveBranch ? 'checked' : ''}> Двигать ветку целиком</label>
+        <button type="button" class="graph-branch-move ${state.graphMoveBranch ? 'active' : ''}" id="graph-move-branch" aria-pressed="${state.graphMoveBranch}" title="${state.graphMoveBranch ? 'Родитель перемещается вместе со всеми дочерними узлами' : 'Перемещать только один выбранный узел'}">${icon('network')}<span><strong>${state.graphMoveBranch ? 'Ветка целиком' : 'Один узел'}</strong><small>${state.graphMoveBranch ? 'родитель + потомки' : 'без потомков'}</small></span></button>
         ${state.graphFocusRecordId ? `<label class="graph-depth">Глубина <input id="graph-depth" type="range" min="1" max="4" value="${state.graphDepth}"><b>${state.graphDepth}</b></label>` : ''}
         <span class="graph-count" id="graph-count"></span>
         <div class="graph-icon-actions"><button type="button" class="icon-button" id="graph-zoom-out" title="Уменьшить" aria-label="Уменьшить">${icon('minus')}</button><button type="button" class="icon-button" id="graph-zoom-in" title="Увеличить" aria-label="Увеличить">${icon('plus')}</button><button type="button" class="icon-button" id="graph-relayout" title="Перестроить карту" aria-label="Перестроить карту">${icon('rotate')}</button><button type="button" class="icon-button" id="graph-fit" title="Показать карту целиком" aria-label="Показать карту целиком">${icon('maximize')}</button><button type="button" class="icon-button ${state.graphSettingsOpen ? 'active' : ''}" id="graph-settings-toggle" title="Настройки карты" aria-label="Настройки карты">${icon('settings')}</button></div>
       </header>
       <div class="graph-stage"><div id="relationship-graph" tabindex="0" role="application" aria-label="Интерактивная карта связей"><div class="graph-loading"><span class="spinner"></span><strong>Строим карту проекта</strong></div></div><aside id="graph-inspector" class="graph-inspector ${state.graphSelectedId && !state.graphSettingsOpen ? 'open' : ''}">${renderGraphInspector()}</aside>${renderGraphSettings()}<div id="graph-context-menu" class="graph-context-menu"></div></div>
-      <footer class="graph-legend"><span><i class="legend-card"></i> Карточка</span><span><i class="legend-question"></i> Вопрос</span><span><i class="legend-answer"></i> Ответ</span><span><i class="legend-decision"></i> Итог</span><em>Колесо / + −: масштаб · перетаскивание: движение · правый клик: действия</em></footer>
+      <footer class="graph-legend"><span><i class="legend-card"></i> Карточка</span><span><i class="legend-question"></i> Вопрос</span><span><i class="legend-answer"></i> Ответ</span><span><i class="legend-decision"></i> Итог</span><em>${state.graphMoveBranch ? 'Перетаскивание родителя двигает всю его ветку' : 'Перетаскивание двигает только выбранный узел'} · правый клик: действия</em></footer>
     </section>`;
   bindGraphControls();
   try {
@@ -2144,9 +2324,10 @@ function clearGraphPositions() {
 function graphHierarchyDescendants(cy, rootID) {
   const result = new Set();
   let frontier = [rootID];
+	const childRelations = new Set(['parent_of', 'contains', 'answered_by', 'decided_as', 'contains_option', 'produced', 'leads_to']);
   while (frontier.length) {
     const parentID = frontier.shift();
-    cy.edges(`[relationType = "parent_of"][source = "${parentID}"]`).forEach((edge) => {
+	cy.edges().filter((edge) => edge.source().id() === parentID && childRelations.has(edge.data('relationType'))).forEach((edge) => {
       const childID = edge.target().id();
       if (!result.has(childID)) { result.add(childID); frontier.push(childID); }
     });
@@ -2238,6 +2419,8 @@ function mountGraph() {
       { selector: 'node.zoom-hidden', style: { 'text-opacity': 0 } },
       { selector: 'edge.zoom-hidden', style: { 'text-opacity': 0 } },
       { selector: '.link-source', style: { 'border-width': 4, 'border-color': '#ef9ca5', 'underlay-color': '#ef7180', 'underlay-opacity': .16, 'underlay-padding': 9 } },
+	  { selector: 'node.branch-moving', style: { 'border-width': 3, 'border-color': '#9ee6cd', 'underlay-color': '#70caae', 'underlay-opacity': .14, 'underlay-padding': 8 } },
+	  { selector: 'edge.branch-moving', style: { width: 2.4 * state.graphLinkThickness / 100, 'line-color': '#7fd1b5', 'line-opacity': .86, 'target-arrow-color': '#7fd1b5' } },
       { selector: '.timeline-hidden', style: { opacity: 0, 'text-opacity': 0 } },
     ],
     layout: usePreset ? { name: 'preset', fit: true, padding: window.innerWidth <= 560 ? 28 : 48, animate: false } : (nodes.length > 1 ? graphLayoutOptions(true, nodes.length) : { name: 'grid', fit: true, padding: 48 }),
@@ -2268,6 +2451,11 @@ function mountGraph() {
       rootStart: { ...root.position() },
       descendants: descendants.map((node) => ({ node, start: { ...node.position() } })),
     };
+	if (state.graphMoveBranch && descendants.length) {
+		const branchNodes = root.union(descendants.reduce((collection, node) => collection.union(node), cy.collection()));
+		branchNodes.addClass('branch-moving');
+		cy.edges().filter((edge) => branchNodes.contains(edge.source()) && branchNodes.contains(edge.target())).addClass('branch-moving');
+	}
   });
   cy.on('drag', 'node', (event) => {
     const branch = state.graphDragBranch;
@@ -2276,7 +2464,7 @@ function mountGraph() {
     const delta = { x: current.x - branch.rootStart.x, y: current.y - branch.rootStart.y };
     cy.batch(() => branch.descendants.forEach(({ node, start }) => node.position({ x: start.x + delta.x, y: start.y + delta.y })));
   });
-  cy.on('free', 'node', () => { state.graphDragBranch = null; saveGraphPositions(cy); });
+  cy.on('free', 'node', () => { cy.elements().removeClass('branch-moving'); state.graphDragBranch = null; saveGraphPositions(cy); });
   let lastTapped = { id: '', time: 0 };
   cy.on('tap', 'node', (event) => {
     const now = Date.now(); const id = event.target.id();
@@ -2375,7 +2563,7 @@ function renderGraphInspector() {
   const canLink = recordNode && (node.editPolicy !== 'owner_only' || node.ownerUsername === state.me.username);
   const sourceActive = state.graphLinkSourceId === node.id;
   const context = recordNode ? `<div class="graph-node-context"><span class="workstream-mark workstream-${node.workstream || 'business'}">${escapeHTML(workstreamLabels[node.workstream || 'business'])}</span>${node.isRoot ? '<span class="root-mark">Новый корень</span>' : ''}${node.editPolicy === 'owner_only' ? `<span class="access-mark">${icon('lock')} Только владелец</span>` : ''}</div>` : '';
-  return `<div class="graph-inspector-head"><span class="type-icon">${icon(meta.icon)}</span><button type="button" class="icon-button" data-close-graph-inspector aria-label="Закрыть">${icon('x')}</button></div><small>${escapeHTML(meta.singular)}${node.ownerUsername ? ` · ${escapeHTML(node.ownerUsername)}` : ''}</small><h2>${escapeHTML(node.title)}</h2>${context}${node.description ? `<p>${escapeHTML(node.description).replace(/\n/g, '<br>')}</p>` : ''}<div class="graph-inspector-actions"><button type="button" class="primary" data-open-graph-node>${icon('chevronRight')} Открыть</button><button type="button" class="secondary" data-focus-graph-node>${icon('network')} В фокус</button>${recordNode ? `<button type="button" class="secondary" data-show-graph-branch>${icon('gitCompare')} Только эта ветка</button>` : ''}${canLink ? `<button type="button" class="secondary ${sourceActive ? 'danger-action' : ''}" data-graph-link-source>${icon('link')} ${sourceActive ? 'Отменить связь' : state.graphLinkSourceId ? 'Связать сюда' : 'Создать связь'}</button>` : ''}</div>${state.graphLinkSourceId && state.graphLinkSourceId !== node.id && recordNode ? `<div class="graph-link-callout"><strong>Создать связь с выбранной карточкой?</strong><select id="graph-relation-type"><option value="related">Связано</option><option value="supports">Поддерживает</option><option value="depends_on">Зависит от</option><option value="leads_to">Приводит к</option></select><button type="button" class="primary" data-confirm-graph-link>Связать</button></div>` : ''}<section class="graph-neighbors"><header><span>Ближайшие связи</span><b>${edges.length}</b></header>${neighbors || '<p>Связей пока нет.</p>'}</section>`;
+  return `<div class="graph-inspector-head"><span class="type-icon">${icon(meta.icon)}</span><button type="button" class="icon-button" data-close-graph-inspector aria-label="Закрыть">${icon('x')}</button></div><small>${escapeHTML(meta.singular)}${node.ownerUsername ? ` · ${escapeHTML(node.ownerUsername)}` : ''}</small><h2>${escapeHTML(node.title)}</h2>${context}${node.description ? `<p>${escapeHTML(node.description).replace(/\n/g, '<br>')}</p>` : ''}<div class="graph-inspector-actions"><button type="button" class="primary" data-open-graph-node>${icon('chevronRight')} Открыть</button><button type="button" class="secondary" data-focus-graph-node>${icon('network')} В фокус</button>${recordNode ? `<button type="button" class="secondary" data-show-graph-branch>${icon('gitCompare')} Только эта ветка</button><button type="button" class="secondary" data-arrange-graph-branch>${icon('network')} Собрать ветку рядом</button>` : ''}${canLink ? `<button type="button" class="secondary ${sourceActive ? 'danger-action' : ''}" data-graph-link-source>${icon('link')} ${sourceActive ? 'Отменить связь' : state.graphLinkSourceId ? 'Связать сюда' : 'Создать связь'}</button>` : ''}</div>${state.graphLinkSourceId && state.graphLinkSourceId !== node.id && recordNode ? `<div class="graph-link-callout"><strong>Создать связь с выбранной карточкой?</strong><select id="graph-relation-type"><option value="related">Связано</option><option value="supports">Поддерживает</option><option value="depends_on">Зависит от</option><option value="leads_to">Приводит к</option></select><button type="button" class="primary" data-confirm-graph-link>Связать</button></div>` : ''}<section class="graph-neighbors"><header><span>Ближайшие связи</span><b>${edges.length}</b></header>${neighbors || '<p>Связей пока нет.</p>'}</section>`;
 }
 
 function closeGraphContextMenu() {
@@ -2425,6 +2613,26 @@ function zoomGraph(multiplier) {
   const cy = state.graphInstance;
   if (!cy) return;
   cy.animate({ zoom: Math.max(cy.minZoom(), Math.min(cy.maxZoom(), cy.zoom() * multiplier)), duration: 130 });
+}
+
+function arrangeSelectedGraphBranch() {
+	const cy = state.graphInstance; const root = cy?.$id(state.graphSelectedId);
+	if (!cy || !root?.length) return;
+	const descendants = graphHierarchyDescendants(cy, root.id()).map((id) => cy.$id(id)).filter((node) => node.length);
+	if (!descendants.length) { toast('У выбранного объекта нет дочерней ветки'); return; }
+	const levels = new Map([[root.id(), 0]]); const queue = [root.id()];
+	const childRelations = new Set(['parent_of', 'contains', 'answered_by', 'decided_as', 'contains_option', 'produced', 'leads_to']);
+	while (queue.length) {
+		const parentID = queue.shift(); const level = levels.get(parentID) || 0;
+		cy.edges().filter((edge) => edge.source().id() === parentID && childRelations.has(edge.data('relationType'))).forEach((edge) => { const childID = edge.target().id(); if (!levels.has(childID)) { levels.set(childID, level + 1); queue.push(childID); } });
+	}
+	const rootPosition = root.position();
+	const grouped = new Map(); descendants.forEach((node) => { const level = Math.max(1, levels.get(node.id()) || 1); if (!grouped.has(level)) grouped.set(level, []); grouped.get(level).push(node); });
+	cy.batch(() => grouped.forEach((nodes, level) => nodes.forEach((node, index) => {
+		const spacing = Math.max(112, 360 / Math.max(1, nodes.length));
+		node.animate({ position: { x: rootPosition.x + level * 225, y: rootPosition.y + (index - (nodes.length - 1) / 2) * spacing }, duration: 260, easing: 'ease-out-cubic' });
+	})));
+	setTimeout(() => { saveGraphPositions(cy); cy.animate({ fit: { eles: root.union(descendants.reduce((collection, node) => collection.union(node), cy.collection())), padding: 90 }, duration: 240 }); }, 290);
 }
 
 function stopGraphTimeline(reveal = true) {
@@ -2488,7 +2696,7 @@ function bindGraphControls() {
   $$('[data-graph-mode]').forEach((button) => button.addEventListener('click', () => { if (button.dataset.graphMode === 'global') state.graphFocusRecordId = ''; renderGraph(); }));
   $('#graph-search').addEventListener('input', (event) => { state.graphSearch = event.target.value; applyGraphSearch(); });
   $('#graph-branch-filter')?.addEventListener('change', (event) => { state.graphBranchRootId = event.target.value; state.graphFocusRecordId = ''; state.graphSelectedId = event.target.value || ''; mountGraph(); });
-  $('#graph-move-branch')?.addEventListener('change', (event) => { state.graphMoveBranch = event.target.checked; saveGraphSettings(); });
+  $('#graph-move-branch')?.addEventListener('click', () => { state.graphMoveBranch = !state.graphMoveBranch; saveGraphSettings(); renderGraph(); toast(state.graphMoveBranch ? 'Режим ветки включён: родитель двигается вместе с потомками' : 'Теперь перемещается только один узел'); });
   $('#graph-depth')?.addEventListener('input', (event) => { state.graphDepth = Number(event.target.value); event.target.nextElementSibling.textContent = String(state.graphDepth); mountGraph(); });
   $('#graph-fit').addEventListener('click', fitGraph);
   $('#graph-zoom-in').addEventListener('click', () => zoomGraph(1.18));
@@ -2542,6 +2750,7 @@ function bindGraphInspector() {
     state.graphFocusRecordId = node.recordId; state.graphDepth = 2; renderGraph();
   });
   $('[data-show-graph-branch]')?.addEventListener('click', () => { if (!state.graphSelectedId) return; state.graphFocusRecordId = ''; state.graphBranchRootId = state.graphSelectedId; renderGraph(); });
+	$('[data-arrange-graph-branch]')?.addEventListener('click', arrangeSelectedGraphBranch);
   $$('[data-graph-neighbor]').forEach((button) => button.addEventListener('click', () => selectGraphNode(button.dataset.graphNeighbor)));
   $('[data-graph-link-source]')?.addEventListener('click', () => {
     const node = state.graphData.nodes.find((item) => item.id === state.graphSelectedId); if (!node || node.entityKind !== 'record') return;

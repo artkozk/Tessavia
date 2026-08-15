@@ -572,10 +572,10 @@ func (s *Server) handleUploadChatAttachment(w http.ResponseWriter, r *http.Reque
 	count, _ := io.ReadFull(file, buffer)
 	buffer = buffer[:count]
 	contentType := http.DetectContentType(buffer)
-	if strings.HasPrefix(header.Header.Get("Content-Type"), "audio/") {
+	if strings.HasPrefix(header.Header.Get("Content-Type"), "audio/") || strings.HasPrefix(header.Header.Get("Content-Type"), "video/") {
 		contentType = header.Header.Get("Content-Type")
 	}
-	if !allowedAttachment(name, contentType) && !strings.HasPrefix(contentType, "audio/") {
+	if !allowedAttachment(name, contentType) && !strings.HasPrefix(contentType, "audio/") && !strings.HasPrefix(contentType, "video/") {
 		writeError(w, 400, "Этот тип файла не разрешён")
 		return
 	}

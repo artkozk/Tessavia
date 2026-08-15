@@ -179,9 +179,14 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 		[]byte("function renderOutcomes"),
 		[]byte("function changeRecordParent"),
 		[]byte("graph-branch-filter"),
-		[]byte("Двигать ветку целиком"),
+		[]byte("Ветка целиком"),
+		[]byte("function arrangeSelectedGraphBranch"),
 		[]byte("data-close-chat-threads"),
 		[]byte("chatClientNonce"),
+		[]byte("chatEmojiCatalog"),
+		[]byte("data-chat-video"),
+		[]byte("chat-drop-overlay"),
+		[]byte("data-chat-audio"),
 	} {
 		if !bytes.Contains(app, marker) {
 			t.Fatalf("app.js does not contain knowledge refinement marker %q", marker)
@@ -189,5 +194,12 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	}
 	if bytes.Contains(app, []byte("recordStatusLabel(record)")) {
 		t.Fatal("record lists must use the existing statusLabel helper; the obsolete helper breaks sidebar navigation")
+	}
+	index, err := Files.ReadFile("index.html")
+	if err != nil {
+		t.Fatalf("read index.html: %v", err)
+	}
+	if !bytes.Contains(index, []byte("20260815-chat-interaction")) {
+		t.Fatal("chat interaction release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }
