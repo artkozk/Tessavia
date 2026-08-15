@@ -36,9 +36,11 @@ var recordStatuses = map[string]struct{}{
 }
 
 type Server struct {
-	store  *Store
-	config Config
-	mux    *http.ServeMux
+	store       *Store
+	config      Config
+	mux         *http.ServeMux
+	aiClient    *http.Client
+	aiClientErr error
 }
 
 type contextKey string
@@ -46,7 +48,8 @@ type contextKey string
 const userContextKey contextKey = "user"
 
 func NewServer(store *Store, config Config) http.Handler {
-	server := &Server{store: store, config: config, mux: http.NewServeMux()}
+	aiClient, aiClientErr := newAIHTTPClient(config.AIProxyURL)
+	server := &Server{store: store, config: config, mux: http.NewServeMux(), aiClient: aiClient, aiClientErr: aiClientErr}
 	server.routes()
 	return server.securityHeaders(server.mux)
 }
@@ -65,6 +68,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/search", s.requireAuth(http.HandlerFunc(s.handleSearch)))
 	s.mux.Handle("POST /api/ai/suggest-record", s.requireAuth(http.HandlerFunc(s.handleSuggestRecord)))
 	s.mux.Handle("POST /api/records/{id}/ai-analysis", s.requireAuth(http.HandlerFunc(s.handleAnalyzeRecord)))
+	s.mux.Handle("POST /api/records/{id}/ai-draft-field", s.requireAuth(http.HandlerFunc(s.handleAIFieldDraft)))
 
 	s.mux.Handle("GET /api/records", s.requireAuth(http.HandlerFunc(s.handleListRecords)))
 	s.mux.Handle("POST /api/records", s.requireAuth(http.HandlerFunc(s.handleCreateRecord)))
@@ -81,15 +85,26 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/records/{id}/research-options/{optionId}/archive", s.requireAuth(http.HandlerFunc(s.handleArchiveResearchOption)))
 	s.mux.Handle("POST /api/records/{id}/research-fields", s.requireAuth(http.HandlerFunc(s.handleCreateResearchField)))
 	s.mux.Handle("POST /api/records/{id}/research-fields/{fieldId}/archive", s.requireAuth(http.HandlerFunc(s.handleArchiveResearchField)))
+	s.mux.Handle("POST /api/records/{id}/complete-research", s.requireAuth(http.HandlerFunc(s.handleCompleteResearch)))
 	s.mux.Handle("POST /api/records/{id}/links", s.requireAuth(http.HandlerFunc(s.handleCreateLink)))
 	s.mux.Handle("POST /api/records/{id}/links/{linkId}/remove", s.requireAuth(http.HandlerFunc(s.handleRemoveLink)))
 	s.mux.Handle("PUT /api/records/{id}/criteria/{criterionId}", s.requireAuth(http.HandlerFunc(s.handleScoreCriterion)))
 	s.mux.Handle("POST /api/records/{id}/proofs", s.requireAuth(http.HandlerFunc(s.handleAddProof)))
 	s.mux.Handle("POST /api/records/{id}/complete", s.requireAuth(http.HandlerFunc(s.handleCompleteTask)))
 	s.mux.Handle("POST /api/records/{id}/notify", s.requireAuth(http.HandlerFunc(s.handleNotifyPartners)))
+	s.mux.Handle("GET /api/records/{id}/workflow", s.requireAuth(http.HandlerFunc(s.handleGetRecordWorkflow)))
+	s.mux.Handle("POST /api/records/{id}/comments", s.requireAuth(http.HandlerFunc(s.handleAddComment)))
+	s.mux.Handle("POST /api/records/{id}/checklist", s.requireAuth(http.HandlerFunc(s.handleAddChecklistItem)))
+	s.mux.Handle("PATCH /api/records/{id}/checklist/{itemId}", s.requireAuth(http.HandlerFunc(s.handleUpdateChecklistItem)))
+	s.mux.Handle("POST /api/records/{id}/submit-review", s.requireAuth(http.HandlerFunc(s.handleSubmitTaskReview)))
+	s.mux.Handle("POST /api/records/{id}/review", s.requireAuth(http.HandlerFunc(s.handleReviewTask)))
+	s.mux.Handle("POST /api/records/{id}/attachments", s.requireAuth(http.HandlerFunc(s.handleUploadAttachment)))
+	s.mux.Handle("GET /api/attachments/{id}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadAttachment)))
+	s.mux.Handle("PUT /api/records/{id}/recurrence", s.requireAuth(http.HandlerFunc(s.handleSaveRecurrence)))
 	s.mux.Handle("POST /api/records/{id}/questions", s.requireAuth(http.HandlerFunc(s.handleAddQuestions)))
 	s.mux.Handle("PUT /api/records/{id}/questions/{questionId}/answer", s.requireAuth(http.HandlerFunc(s.handleSaveQuestionAnswer)))
 	s.mux.Handle("POST /api/records/{id}/questions/{questionId}/decision", s.requireAuth(http.HandlerFunc(s.handleSaveQuestionDecision)))
+	s.mux.Handle("POST /api/records/{id}/questions/{questionId}/ai-draft", s.requireAuth(http.HandlerFunc(s.handleAIQuestionDraft)))
 	s.mux.Handle("POST /api/records/{id}/questions/{questionId}/outputs", s.requireAuth(http.HandlerFunc(s.handleCreateQuestionOutput)))
 	s.mux.Handle("POST /api/records/{id}/questions/{questionId}/archive", s.requireAuth(http.HandlerFunc(s.handleArchiveQuestion)))
 	s.mux.Handle("GET /api/questions/pending", s.requireAuth(http.HandlerFunc(s.handlePendingQuestions)))
@@ -102,6 +117,30 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/notifications/read-all", s.requireAuth(http.HandlerFunc(s.handleReadAllNotifications)))
 	s.mux.Handle("POST /api/notifications/{id}/read", s.requireAuth(http.HandlerFunc(s.handleReadNotification)))
 	s.mux.Handle("GET /api/activity", s.requireAuth(http.HandlerFunc(s.handleActivity)))
+	s.mux.Handle("GET /api/saved-views", s.requireAuth(http.HandlerFunc(s.handleListSavedViews)))
+	s.mux.Handle("POST /api/saved-views", s.requireAuth(http.HandlerFunc(s.handleCreateSavedView)))
+	s.mux.Handle("DELETE /api/saved-views/{id}", s.requireAuth(http.HandlerFunc(s.handleDeleteSavedView)))
+	s.mux.Handle("GET /api/export", s.requireAuth(http.HandlerFunc(s.handleExportProject)))
+	s.mux.Handle("GET /api/ai/health", s.requireAuth(http.HandlerFunc(s.handleAIHealth)))
+	s.mux.Handle("GET /api/chat/threads", s.requireAuth(http.HandlerFunc(s.handleListChatThreads)))
+	s.mux.Handle("POST /api/chat/threads", s.requireAuth(http.HandlerFunc(s.handleCreateChatThread)))
+	s.mux.Handle("GET /api/chat/threads/{id}/messages", s.requireAuth(http.HandlerFunc(s.handleListChatMessages)))
+	s.mux.Handle("POST /api/chat/threads/{id}/messages", s.requireAuth(http.HandlerFunc(s.handleCreateChatMessage)))
+	s.mux.Handle("POST /api/chat/threads/{id}/read", s.requireAuth(http.HandlerFunc(s.handleReadChatThread)))
+	s.mux.Handle("POST /api/chat/threads/{id}/attachments", s.requireAuth(http.HandlerFunc(s.handleUploadChatAttachment)))
+	s.mux.Handle("POST /api/chat/threads/{id}/ai-digest", s.requireAuth(http.HandlerFunc(s.handleAIChatDigest)))
+	s.mux.Handle("GET /api/chat/ice-config", s.requireAuth(http.HandlerFunc(s.handleChatICEConfig)))
+	s.mux.Handle("POST /api/chat/messages/{messageId}/reaction", s.requireAuth(http.HandlerFunc(s.handleToggleChatReaction)))
+	s.mux.Handle("POST /api/chat/messages/{messageId}/favorite", s.requireAuth(http.HandlerFunc(s.handleToggleChatFavorite)))
+	s.mux.Handle("PATCH /api/chat/messages/{messageId}", s.requireAuth(http.HandlerFunc(s.handleEditChatMessage)))
+	s.mux.Handle("DELETE /api/chat/messages/{messageId}", s.requireAuth(http.HandlerFunc(s.handleArchiveChatMessage)))
+	s.mux.Handle("GET /api/chat/attachments/{id}", s.requireAuth(http.HandlerFunc(s.handleDownloadChatAttachment)))
+	s.mux.Handle("POST /api/chat/threads/{id}/calls", s.requireAuth(http.HandlerFunc(s.handleStartChatCall)))
+	s.mux.Handle("GET /api/chat/threads/{id}/calls/active", s.requireAuth(http.HandlerFunc(s.handleActiveChatCall)))
+	s.mux.Handle("POST /api/chat/calls/{callId}/answer", s.requireAuth(http.HandlerFunc(s.handleAnswerChatCall)))
+	s.mux.Handle("POST /api/chat/calls/{callId}/candidates", s.requireAuth(http.HandlerFunc(s.handleAddChatCallCandidate)))
+	s.mux.Handle("GET /api/chat/calls/{callId}/candidates", s.requireAuth(http.HandlerFunc(s.handleListChatCallCandidates)))
+	s.mux.Handle("POST /api/chat/calls/{callId}/end", s.requireAuth(http.HandlerFunc(s.handleEndChatCall)))
 
 	s.mux.Handle("GET /", http.FileServer(http.FS(web.Files)))
 }
@@ -111,7 +150,8 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "same-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+		w.Header().Set("Permissions-Policy", "microphone=(self), camera=()")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -356,7 +396,25 @@ const recordSelect = `
 		r.author_id, author.username, r.owner_id, owner.username,
 		r.decision_maker_id, decision_maker.username, r.due_at,
 		r.priority, r.workstream, r.edit_policy, r.parent_id, r.is_root,
-		r.estimate_minutes, r.actual_minutes, r.progress, r.progress_note, r.result, r.completed_at,
+		r.estimate_minutes, r.actual_minutes,
+		CASE
+			WHEN r.type = 'decision' AND r.status NOT IN ('archived', 'cancelled') THEN 100
+			WHEN r.type = 'research' AND r.status = 'completed' THEN 100
+			WHEN r.type = 'research' THEN MIN(95,
+				CASE WHEN TRIM(r.description) <> '' THEN 15 ELSE 0 END +
+				CASE WHEN EXISTS(SELECT 1 FROM research_option_fields rf WHERE rf.record_id = r.id AND rf.active = 1)
+					OR EXISTS(SELECT 1 FROM record_sections rs WHERE rs.record_id = r.id AND TRIM(rs.content) <> '') THEN 15 ELSE 0 END +
+				CASE WHEN (SELECT COUNT(*) FROM research_options ro WHERE ro.record_id = r.id AND ro.status = 'active') >= 2 THEN 20
+					WHEN EXISTS(SELECT 1 FROM research_options ro WHERE ro.record_id = r.id AND ro.status = 'active') THEN 10 ELSE 0 END +
+				CASE WHEN (SELECT COUNT(*) FROM research_options ro WHERE ro.record_id = r.id AND ro.status = 'active') = 0 THEN 0 ELSE
+					30 * (SELECT COUNT(*) FROM research_options ro WHERE ro.record_id = r.id AND ro.status = 'active'
+						AND (TRIM(ro.summary_md) <> '' OR TRIM(ro.pros_md) <> '' OR TRIM(ro.cons_md) <> '' OR TRIM(ro.notes_md) <> ''
+							OR EXISTS(SELECT 1 FROM research_option_values rv WHERE rv.option_id = ro.id AND TRIM(rv.value) <> '')))
+					/ (SELECT COUNT(*) FROM research_options ro WHERE ro.record_id = r.id AND ro.status = 'active') END +
+				CASE WHEN TRIM(r.result) <> '' THEN 20 ELSE 0 END)
+			ELSE r.progress
+		END,
+		r.progress_note, r.result, r.completed_at,
 		r.created_at, r.updated_at,
 		(SELECT COUNT(*) FROM task_proofs p WHERE p.record_id = r.id)
 	FROM records r
@@ -483,6 +541,8 @@ func defaultStatus(recordType string) string {
 		return "inbox"
 	case "goal", "task", "question_set", "meeting":
 		return "planned"
+	case "decision":
+		return "completed"
 	default:
 		return "draft"
 	}
@@ -495,8 +555,12 @@ func validStatusForType(recordType, status string) bool {
 	switch recordType {
 	case "idea":
 		return status == "inbox" || status == "review" || status == "main" || status == "rejected"
-	case "goal", "task", "question_set", "meeting":
+	case "task":
+		return status == "planned" || status == "in_progress" || status == "blocked" || status == "review" || status == "completed" || status == "postponed" || status == "cancelled"
+	case "goal", "question_set", "meeting":
 		return status == "planned" || status == "in_progress" || status == "blocked" || status == "completed" || status == "postponed" || status == "cancelled"
+	case "decision":
+		return status == "completed" || status == "cancelled"
 	default:
 		return status == "draft" || status == "in_progress" || status == "completed" || status == "cancelled"
 	}
@@ -515,8 +579,9 @@ func validEditPolicy(editPolicy string) bool {
 }
 
 func (s *Server) requireRecordEdit(w http.ResponseWriter, r *http.Request, record Record) bool {
-	if record.EditPolicy == "owner_only" && currentUser(r).ID != record.OwnerID {
-		writeError(w, http.StatusForbidden, "Эту карточку может изменять только её ответственный")
+	userID := currentUser(r).ID
+	if record.EditPolicy == "owner_only" && userID != record.OwnerID && userID != record.AuthorID {
+		writeError(w, http.StatusForbidden, "Эту карточку может изменять только постановщик или ответственный")
 		return false
 	}
 	return true
@@ -555,7 +620,7 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	if input.Status == "" {
 		input.Status = defaultStatus(input.Type)
 	}
-	if !validStatusForType(input.Type, input.Status) || input.Status == "completed" || input.Status == "archived" {
+	if !validStatusForType(input.Type, input.Status) || (input.Status == "completed" && input.Type != "decision") || input.Status == "archived" {
 		writeError(w, http.StatusBadRequest, "Некорректный начальный статус")
 		return
 	}
@@ -577,6 +642,11 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	if !validPriority(input.Priority) {
 		writeError(w, http.StatusBadRequest, "Некорректный приоритет")
 		return
+	}
+	if input.Type == "decision" {
+		input.DueAt = ""
+		input.EstimateMinutes = 0
+		input.ActualMinutes = 0
 	}
 	if input.Workstream == "" {
 		input.Workstream = "business"
@@ -637,7 +707,13 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Некорректный вид карточки")
 		return
 	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, type, subtype, record_kind, title, description, status, author_id, owner_id, decision_maker_id, due_at, priority, workstream, edit_policy, parent_id, is_root, estimate_minutes, actual_minutes, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, databaseType, subtype, recordKind, input.Title, strings.TrimSpace(input.Description), input.Status, user.ID, input.OwnerID, input.DecisionMakerID, dueAt, input.Priority, input.Workstream, input.EditPolicy, parentID, input.IsRoot, input.EstimateMinutes, input.ActualMinutes, now, now)
+	completedAt := any(nil)
+	progress := 0
+	if input.Type == "decision" {
+		completedAt = now
+		progress = 100
+	}
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, type, subtype, record_kind, title, description, status, author_id, owner_id, decision_maker_id, due_at, priority, workstream, edit_policy, parent_id, is_root, estimate_minutes, actual_minutes, progress, completed_at, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, databaseType, subtype, recordKind, input.Title, strings.TrimSpace(input.Description), input.Status, user.ID, input.OwnerID, input.DecisionMakerID, dueAt, input.Priority, input.Workstream, input.EditPolicy, parentID, input.IsRoot, input.EstimateMinutes, input.ActualMinutes, progress, completedAt, now, now)
 	if err != nil {
 		log.Printf("create record: %v", err)
 		writeError(w, http.StatusInternalServerError, "Не удалось создать карточку")
@@ -646,6 +722,12 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	if err := writeActivity(r.Context(), tx, user.ID, input.Type, id, "created", "", map[string]any{"title": input.Title, "status": input.Status, "ownerId": input.OwnerID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось записать историю")
 		return
+	}
+	if input.OwnerID != user.ID {
+		if err := insertNotification(r.Context(), tx, input.OwnerID, "assignment", "Назначена новая работа", fmt.Sprintf("%s назначил вам карточку «%s»", user.Username, input.Title), input.Type, id); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось создать уведомление о назначении")
+			return
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить создание")
@@ -789,8 +871,8 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if currentUser(r).ID != before.OwnerID && (input.OwnerID != nil || input.EditPolicy != nil) {
-		writeError(w, http.StatusForbidden, "Только текущий ответственный может менять владельца и режим доступа")
+	if currentUser(r).ID != before.OwnerID && currentUser(r).ID != before.AuthorID && (input.OwnerID != nil || input.EditPolicy != nil) {
+		writeError(w, http.StatusForbidden, "Только постановщик или текущий ответственный может менять владельца и режим доступа")
 		return
 	}
 	if input.ExpectedUpdatedAt != nil && *input.ExpectedUpdatedAt != before.UpdatedAt {
@@ -836,6 +918,10 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		if before.Type == "research" && *input.Status == "completed" && before.Status != "completed" {
+			writeError(w, http.StatusBadRequest, "Завершите исследование отдельным действием после фиксации вывода")
+			return
+		}
 		if *input.Status != before.Status {
 			add("status", *input.Status)
 			changes["status"] = map[string]any{"before": before.Status, "after": *input.Status}
@@ -873,6 +959,10 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 		changes["decisionMakerId"] = map[string]any{"before": before.DecisionMakerID, "after": nil}
 	}
 	if input.DueAt != nil {
+		if before.Type == "decision" {
+			writeError(w, http.StatusBadRequest, "У принятого решения нет срока выполнения")
+			return
+		}
 		dueAt, err := normalizeDueAt(*input.DueAt)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "Некорректный срок")
@@ -940,22 +1030,29 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 				add("parent_id", parentID)
 				add("is_root", 0)
 				changes["parentId"] = map[string]any{"before": before.ParentID, "after": parentID}
+				reasonRequired = true
 			}
 		}
 	}
 	if input.ClearParent && before.ParentID != nil {
 		add("parent_id", nil)
 		changes["parentId"] = map[string]any{"before": before.ParentID, "after": nil}
+		reasonRequired = true
 	}
 	if input.IsRoot != nil && *input.IsRoot != before.IsRoot {
 		add("is_root", *input.IsRoot)
 		changes["isRoot"] = map[string]any{"before": before.IsRoot, "after": *input.IsRoot}
+		reasonRequired = true
 		if *input.IsRoot && before.ParentID != nil && !input.ClearParent {
 			add("parent_id", nil)
 			changes["parentId"] = map[string]any{"before": before.ParentID, "after": nil}
 		}
 	}
 	if input.EstimateMinutes != nil {
+		if before.Type == "decision" {
+			writeError(w, http.StatusBadRequest, "Решение не является работой и не имеет оценки времени")
+			return
+		}
 		if *input.EstimateMinutes < 0 || *input.EstimateMinutes > 525600 {
 			writeError(w, http.StatusBadRequest, "Некорректная оценка времени")
 			return
@@ -966,6 +1063,10 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if input.ActualMinutes != nil {
+		if before.Type == "decision" {
+			writeError(w, http.StatusBadRequest, "Решение не является работой и не имеет фактического времени")
+			return
+		}
 		if *input.ActualMinutes < 0 || *input.ActualMinutes > 525600 {
 			writeError(w, http.StatusBadRequest, "Некорректное фактическое время")
 			return
@@ -976,6 +1077,10 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if input.Progress != nil {
+		if before.Type == "decision" || before.Type == "research" {
+			writeError(w, http.StatusBadRequest, "Прогресс этой карточки рассчитывается автоматически")
+			return
+		}
 		if *input.Progress < 0 || *input.Progress > 100 {
 			writeError(w, http.StatusBadRequest, "Прогресс должен быть от 0 до 100")
 			return
@@ -1004,7 +1109,7 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if reasonRequired && strings.TrimSpace(input.Reason) == "" {
-		writeError(w, http.StatusBadRequest, "Укажите причину фактического изменения статуса или срока")
+		writeError(w, http.StatusBadRequest, "Укажите причину изменения статуса, срока или места карточки в иерархии")
 		return
 	}
 	if len(updates) == 0 {
@@ -1028,6 +1133,12 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 	if err := writeActivity(r.Context(), tx, user.ID, before.Type, before.ID, "updated", strings.TrimSpace(input.Reason), changes); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось записать историю")
 		return
+	}
+	if input.OwnerID != nil && *input.OwnerID != before.OwnerID && *input.OwnerID != user.ID {
+		if err := insertNotification(r.Context(), tx, *input.OwnerID, "assignment", "Работа переназначена", fmt.Sprintf("%s назначил вам карточку «%s»", user.Username, before.Title), before.Type, before.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось создать уведомление о назначении")
+			return
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить изменение")
@@ -1663,10 +1774,54 @@ func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	input.Result = strings.TrimSpace(input.Result)
+	if input.Result == "" {
+		writeError(w, http.StatusBadRequest, "Кратко опишите полученный результат")
+		return
+	}
 	var proofCount int
 	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM task_proofs WHERE record_id = ?`, record.ID).Scan(&proofCount)
 	if proofCount == 0 {
 		writeError(w, http.StatusConflict, "Сначала добавьте доказательство выполнения")
+		return
+	}
+	if record.AuthorID != record.OwnerID || record.DecisionMakerID != nil {
+		reviewerID := record.AuthorID
+		if record.DecisionMakerID != nil {
+			reviewerID = *record.DecisionMakerID
+		}
+		tx, err := s.store.db.BeginTx(r.Context(), nil)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось начать приёмку")
+			return
+		}
+		defer tx.Rollback()
+		now := nowText()
+		eventID, _ := newID()
+		if _, err := tx.ExecContext(r.Context(), `UPDATE records SET status = 'review', progress = 100, result = ?, completed_at = NULL, updated_at = ? WHERE id = ?`, input.Result, now, record.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось отправить результат на проверку")
+			return
+		}
+		if _, err := tx.ExecContext(r.Context(), `INSERT INTO task_review_events(id, record_id, actor_id, action, created_at) VALUES(?, ?, ?, 'submitted', ?)`, eventID, record.ID, user.ID, now); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось записать приёмку")
+			return
+		}
+		if err := writeActivity(r.Context(), tx, user.ID, "task", record.ID, "review_submitted", "", map[string]any{"proofCount": proofCount, "reviewerId": reviewerID}); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось записать историю приёмки")
+			return
+		}
+		if reviewerID != user.ID {
+			if err := insertNotification(r.Context(), tx, reviewerID, "task_review", "Результат ждёт проверки", fmt.Sprintf("%s отправил задачу «%s» на приёмку", user.Username, record.Title), "task", record.ID); err != nil {
+				writeError(w, http.StatusInternalServerError, "Не удалось уведомить проверяющего")
+				return
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось завершить приёмку")
+			return
+		}
+		reviewRecord, _ := s.getRecord(r.Context(), record.ID)
+		writeJSON(w, http.StatusOK, reviewRecord)
 		return
 	}
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
@@ -1676,7 +1831,7 @@ func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	now := nowText()
-	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET status = 'completed', progress = 100, result = ?, completed_at = ?, updated_at = ? WHERE id = ?`, strings.TrimSpace(input.Result), now, now, record.ID); err != nil {
+	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET status = 'completed', progress = 100, result = ?, completed_at = ?, updated_at = ? WHERE id = ?`, input.Result, now, now, record.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить задачу")
 		return
 	}
@@ -1689,6 +1844,10 @@ func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "Не удалось создать уведомление")
 			return
 		}
+	}
+	if _, err := s.spawnRecurringTask(r.Context(), tx, record, user.ID, now); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось создать следующее повторение")
+		return
 	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить операцию")
@@ -2224,9 +2383,9 @@ func (s *Server) handleCreateQuestionOutput(w http.ResponseWriter, r *http.Reque
 	case "limitation":
 		databaseType, recordKind, status = "criterion", "limitation", "draft"
 	case "rule":
-		databaseType, recordKind, status = "decision", "rule", "in_progress"
+		databaseType, recordKind, status = "decision", "rule", "completed"
 	case "insight":
-		databaseType, recordKind, status = "decision", "insight", "draft"
+		databaseType, recordKind, status = "decision", "insight", "completed"
 	case "task":
 		databaseType, status = "task", "planned"
 	case "idea":
@@ -2261,7 +2420,17 @@ func (s *Server) handleCreateQuestionOutput(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, type, subtype, record_kind, title, description, status, author_id, owner_id, due_at, workstream, parent_id, estimate_minutes, created_at, updated_at) VALUES(?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, outputID, databaseType, recordKind, input.Title, input.Description, status, user.ID, input.OwnerID, dueAt, source.Workstream, source.ID, input.EstimateMinutes, now, now); err != nil {
+	if databaseType == "decision" {
+		dueAt = nil
+		input.EstimateMinutes = 0
+	}
+	completedAt := any(nil)
+	progress := 0
+	if databaseType == "decision" {
+		completedAt = now
+		progress = 100
+	}
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, type, subtype, record_kind, title, description, status, author_id, owner_id, due_at, workstream, parent_id, estimate_minutes, progress, completed_at, created_at, updated_at) VALUES(?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, outputID, databaseType, recordKind, input.Title, input.Description, status, user.ID, input.OwnerID, dueAt, source.Workstream, source.ID, input.EstimateMinutes, progress, completedAt, now, now); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось создать карточку результата")
 		return
 	}
@@ -2554,6 +2723,9 @@ func (s *Server) handleReorderDefinitions(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
+	if err := s.ensureDeadlineNotifications(r.Context()); err != nil {
+		log.Printf("deadline notifications: %v", err)
+	}
 	user := currentUser(r)
 	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, type, title, body, entity_type, entity_id, read_at, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 200`, user.ID)
 	if err != nil {

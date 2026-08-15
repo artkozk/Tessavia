@@ -1,5 +1,5 @@
 [Unit]
-Description=Verified backup of Business Control SQLite database
+Description=Encrypted verified local backup of BizFlow database and attachments
 After=business-control.service
 
 [Service]
@@ -12,4 +12,4 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/business-control
+ReadWritePaths=/var/lib/business-control /var/backups/business-control

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -61,6 +62,84 @@ type researchOptionRequest struct {
 	Values            map[string]string `json:"values"`
 	Reason            string            `json:"reason"`
 	ExpectedUpdatedAt string            `json:"expectedUpdatedAt"`
+}
+
+type completeResearchRequest struct {
+	Result string `json:"result"`
+	Reason string `json:"reason"`
+}
+
+func (s *Server) handleCompleteResearch(w http.ResponseWriter, r *http.Request) {
+	record, ok := s.requireResearchRecord(w, r)
+	if !ok || !s.requireRecordEdit(w, r, record) {
+		return
+	}
+	if record.Status == "completed" {
+		writeJSON(w, http.StatusOK, record)
+		return
+	}
+	var input completeResearchRequest
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	input.Result = strings.TrimSpace(input.Result)
+	input.Reason = strings.TrimSpace(input.Reason)
+	if input.Result == "" {
+		writeError(w, http.StatusBadRequest, "Перед завершением зафиксируйте вывод исследования")
+		return
+	}
+	if len([]rune(input.Result)) > 100000 {
+		writeError(w, http.StatusBadRequest, "Вывод исследования слишком длинный")
+		return
+	}
+	if input.Reason == "" {
+		writeError(w, http.StatusBadRequest, "Укажите, почему исследование готово к завершению")
+		return
+	}
+	var options, filledSections int
+	if err := s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM research_options WHERE record_id = ? AND status = 'active'`, record.ID).Scan(&options); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить варианты исследования")
+		return
+	}
+	if err := s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM record_sections WHERE record_id = ? AND TRIM(content) <> ''`, record.ID).Scan(&filledSections); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить материалы исследования")
+		return
+	}
+	if options == 0 && filledSections == 0 {
+		writeError(w, http.StatusConflict, "Добавьте хотя бы один вариант сравнения или заполненный раздел исследования")
+		return
+	}
+	now := nowText()
+	user := currentUser(r)
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось начать завершение исследования")
+		return
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET result = ?, status = 'completed', progress = 100, completed_at = ?, updated_at = ? WHERE id = ?`, input.Result, now, now, record.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось завершить исследование")
+		return
+	}
+	details := map[string]any{
+		"before":  map[string]any{"status": record.Status, "progress": record.Progress, "result": record.Result},
+		"after":   map[string]any{"status": "completed", "progress": 100, "result": input.Result},
+		"options": options, "filledSections": filledSections,
+	}
+	if err := writeActivity(r.Context(), tx, user.ID, record.Type, record.ID, "research_completed", input.Reason, details); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось записать историю завершения")
+		return
+	}
+	if err := s.insertPartnerNotifications(r.Context(), tx, user, record, "Исследование завершено", "В карточке «"+record.Title+"» зафиксирован итог"); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось уведомить партнёра")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось завершить исследование")
+		return
+	}
+	completed, _ := s.getRecord(r.Context(), record.ID)
+	writeJSON(w, http.StatusOK, completed)
 }
 
 func (s *Server) listResearchRelationOptions(ctx context.Context, recordID string) ([]ResearchRelationOption, error) {
@@ -319,9 +398,9 @@ func (s *Server) handleUpdateResearchOption(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	optionID := r.PathValue("optionId")
-	var beforeTitle, beforeUpdatedAt string
+	var beforeTitle, beforeSummary, beforePros, beforeCons, beforeNotes, beforeUpdatedAt string
 	var beforeRating float64
-	if err := s.store.db.QueryRowContext(r.Context(), `SELECT title, rating, updated_at FROM research_options WHERE id = ? AND record_id = ? AND status = 'active'`, optionID, record.ID).Scan(&beforeTitle, &beforeRating, &beforeUpdatedAt); errors.Is(err, sql.ErrNoRows) {
+	if err := s.store.db.QueryRowContext(r.Context(), `SELECT title, summary_md, pros_md, cons_md, notes_md, rating, updated_at FROM research_options WHERE id = ? AND record_id = ? AND status = 'active'`, optionID, record.ID).Scan(&beforeTitle, &beforeSummary, &beforePros, &beforeCons, &beforeNotes, &beforeRating, &beforeUpdatedAt); errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "Вариант не найден")
 		return
 	} else if err != nil {
@@ -330,6 +409,55 @@ func (s *Server) handleUpdateResearchOption(w http.ResponseWriter, r *http.Reque
 	}
 	if input.ExpectedUpdatedAt != "" && input.ExpectedUpdatedAt != beforeUpdatedAt {
 		writeError(w, http.StatusConflict, "Вариант уже изменён. Откройте его заново")
+		return
+	}
+	beforeValues := make(map[string]string)
+	fieldNames := make(map[string]string)
+	rows, err := s.store.db.QueryContext(r.Context(), `
+		SELECT f.id, f.name, COALESCE(v.value, '')
+		FROM research_option_fields f
+		LEFT JOIN research_option_values v ON v.field_id = f.id AND v.option_id = ?
+		WHERE f.record_id = ? AND f.active = 1`, optionID, record.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось загрузить параметры варианта")
+		return
+	}
+	for rows.Next() {
+		var fieldID, fieldName, value string
+		if scanErr := rows.Scan(&fieldID, &fieldName, &value); scanErr != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать параметры варианта")
+			return
+		}
+		beforeValues[fieldID], fieldNames[fieldID] = value, fieldName
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		writeError(w, http.StatusInternalServerError, "Не удалось прочитать параметры варианта")
+		return
+	}
+	if err = rows.Close(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось завершить чтение параметров варианта")
+		return
+	}
+	changes := map[string]any{"optionId": optionID, "optionTitle": beforeTitle}
+	addChange := func(field string, before, after any) {
+		if fmt.Sprint(before) != fmt.Sprint(after) {
+			changes[field] = map[string]any{"before": before, "after": after}
+		}
+	}
+	addChange("title", beforeTitle, input.Title)
+	addChange("summaryMd", beforeSummary, input.SummaryMD)
+	addChange("prosMd", beforePros, input.ProsMD)
+	addChange("consMd", beforeCons, input.ConsMD)
+	addChange("notesMd", beforeNotes, input.NotesMD)
+	addChange("rating", beforeRating, input.Rating)
+	for fieldID, after := range input.Values {
+		addChange("Параметр: "+fieldNames[fieldID], beforeValues[fieldID], after)
+	}
+	if len(changes) == 2 {
+		comparison, _ := s.listResearchComparison(r.Context(), record.ID)
+		writeJSON(w, http.StatusOK, comparison)
 		return
 	}
 	now := nowText()
@@ -352,7 +480,7 @@ func (s *Server) handleUpdateResearchOption(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "Не удалось обновить исследование")
 		return
 	}
-	if err := writeActivity(r.Context(), tx, user.ID, record.Type, record.ID, "research_option_updated", input.Reason, map[string]any{"optionId": optionID, "title": map[string]any{"before": beforeTitle, "after": input.Title}, "rating": map[string]any{"before": beforeRating, "after": input.Rating}}); err != nil {
+	if err := writeActivity(r.Context(), tx, user.ID, record.Type, record.ID, "research_option_updated", input.Reason, changes); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось записать историю")
 		return
 	}

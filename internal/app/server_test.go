@@ -152,12 +152,19 @@ func TestBusinessWorkflow(t *testing.T) {
 		t.Fatalf("proof count = %d", len(proofs))
 	}
 
-	var completed Record
+	var submitted Record
 	requestJSON(t, sweetybboy, http.MethodPost, server.URL+"/api/records/"+task.ID+"/complete", map[string]any{
 		"result": "Подготовлены вопросы для установочной встречи", "notifyPartners": true,
+	}, http.StatusOK, &submitted)
+	if submitted.Status != "review" || submitted.Progress != 100 || submitted.ProofCount != 1 || submitted.CompletedAt != nil {
+		t.Fatalf("submitted task = %#v", submitted)
+	}
+	var completed Record
+	requestJSON(t, artkozk, http.MethodPost, server.URL+"/api/records/"+task.ID+"/review", map[string]any{
+		"decision": "accept", "reason": "Результат проверен",
 	}, http.StatusOK, &completed)
-	if completed.Status != "completed" || completed.Progress != 100 || completed.ProofCount != 1 {
-		t.Fatalf("completed task = %#v", completed)
+	if completed.Status != "completed" || completed.Progress != 100 || completed.CompletedAt == nil {
+		t.Fatalf("accepted task = %#v", completed)
 	}
 	requestJSON(t, artkozk, http.MethodPost, server.URL+"/api/records/"+task.ID+"/convert-to-questions", map[string]any{
 		"reason": "Проверка защиты данных",
@@ -522,7 +529,7 @@ func TestCollaborationHierarchyActivityAndSuggestion(t *testing.T) {
 	}, http.StatusBadRequest, nil)
 	var promoted Record
 	requestJSON(t, ownerClient, http.MethodPatch, server.URL+"/api/records/"+privateTask.ID, map[string]any{
-		"isRoot": true, "expectedUpdatedAt": privateTask.UpdatedAt,
+		"isRoot": true, "reason": "Работа стала самостоятельным направлением", "expectedUpdatedAt": privateTask.UpdatedAt,
 	}, http.StatusOK, &promoted)
 	if !promoted.IsRoot || promoted.ParentID != nil {
 		t.Fatalf("promoted root = %#v", promoted)

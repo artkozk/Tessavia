@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -62,6 +63,30 @@ func TestResearchComparisonWorkflow(t *testing.T) {
 	}, http.StatusOK, &comparison)
 	if comparison.Options[0].Rating != 9 || comparison.Options[0].Values[fieldID] != "1690" {
 		t.Fatalf("updated option = %#v", comparison.Options[0])
+	}
+	updatedOption := comparison.Options[0]
+	requestJSON(t, client, http.MethodPatch, server.URL+"/api/records/"+research.ID+"/research-options/"+option.ID, map[string]any{
+		"title": updatedOption.Title, "rating": updatedOption.Rating,
+		"summaryMd": updatedOption.SummaryMD, "prosMd": updatedOption.ProsMD, "consMd": updatedOption.ConsMD, "notesMd": updatedOption.NotesMD,
+		"values": map[string]string{fieldID: "1690"}, "expectedUpdatedAt": updatedOption.UpdatedAt,
+	}, http.StatusOK, &comparison)
+	var updateEvents int
+	var updateDetails string
+	if err := store.db.QueryRow(`SELECT COUNT(*), COALESCE(MAX(details_json), '') FROM activity WHERE entity_id = ? AND action = 'research_option_updated'`, research.ID).Scan(&updateEvents, &updateDetails); err != nil {
+		t.Fatalf("load option update history: %v", err)
+	}
+	if updateEvents != 1 {
+		t.Fatalf("no-op update created history event: %d", updateEvents)
+	}
+	var details map[string]any
+	if err := json.Unmarshal([]byte(updateDetails), &details); err != nil {
+		t.Fatalf("decode option update history: %v", err)
+	}
+	if _, ok := details["rating"].(map[string]any); !ok {
+		t.Fatalf("rating change is missing: %#v", details)
+	}
+	if _, ok := details["Параметр: Цена в месяц"].(map[string]any); !ok {
+		t.Fatalf("custom field change is missing: %#v", details)
 	}
 	requestJSON(t, client, http.MethodPatch, server.URL+"/api/records/"+research.ID+"/research-options/"+option.ID, map[string]any{
 		"title": "Timeweb Cloud", "rating": 7,

@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily Business Control database backup
+Description=Daily encrypted local BizFlow backup
 
 [Timer]
 OnCalendar=*-*-* 02:15:00 UTC

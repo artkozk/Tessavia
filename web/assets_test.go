@@ -137,3 +137,57 @@ func TestResearchComparisonAndSafeMarkdownAssetsAreEmbedded(t *testing.T) {
 		}
 	}
 }
+
+func TestContinuityAndLiveCollaborationAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("function bindWorkingDraft"),
+		[]byte("function refreshLiveData"),
+		[]byte("data-target-tab"),
+		[]byte("state.activeRecordTab = 'overview'"),
+		[]byte("sidebar.setPointerCapture"),
+		[]byte("workspace.inert"),
+		[]byte("graphDragBranch"),
+		[]byte("markdownPlain(result.context"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain continuity marker %q", marker)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{[]byte(".working-draft-note"), []byte(".sidebar.dragging")} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain continuity marker %q", marker)
+		}
+	}
+}
+
+func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("['research', 'Исследования'"),
+		[]byte("['outcomes', 'Решения и выводы'"),
+		[]byte("function renderOutcomes"),
+		[]byte("function changeRecordParent"),
+		[]byte("graph-branch-filter"),
+		[]byte("Двигать ветку целиком"),
+		[]byte("data-close-chat-threads"),
+		[]byte("chatClientNonce"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain knowledge refinement marker %q", marker)
+		}
+	}
+	if bytes.Contains(app, []byte("recordStatusLabel(record)")) {
+		t.Fatal("record lists must use the existing statusLabel helper; the obsolete helper breaks sidebar navigation")
+	}
+}
