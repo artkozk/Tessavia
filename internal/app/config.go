@@ -20,6 +20,7 @@ type Config struct {
 	GeminiModel        string
 	GeminiBaseURL      string
 	AIProxyURL         string
+	AIProxyURLs        []string
 	UploadPath         string
 	ChatSTUNURL        string
 	ChatTURNURL        string
@@ -28,6 +29,11 @@ type Config struct {
 }
 
 func LoadConfig() Config {
+	proxyURLs := parseAIProxyURLs(os.Getenv("AI_PROXY_URL"), os.Getenv("AI_PROXY_URLS"))
+	primaryProxyURL := ""
+	if len(proxyURLs) > 0 {
+		primaryProxyURL = proxyURLs[0]
+	}
 	return Config{
 		Address:            envOr("BUSINESS_ADDRESS", ":8522"),
 		DatabasePath:       envOr("BUSINESS_DATABASE_PATH", "./data/business-control.db"),
@@ -40,13 +46,35 @@ func LoadConfig() Config {
 		GeminiAPIKey:       strings.TrimSpace(os.Getenv("GEMINI_API_KEY")),
 		GeminiModel:        envOr("GEMINI_MODEL", "gemini-2.5-flash"),
 		GeminiBaseURL:      strings.TrimRight(envOr("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"), "/"),
-		AIProxyURL:         strings.TrimSpace(os.Getenv("AI_PROXY_URL")),
+		AIProxyURL:         primaryProxyURL,
+		AIProxyURLs:        proxyURLs,
 		UploadPath:         envOr("BUSINESS_UPLOAD_PATH", "./data/uploads"),
 		ChatSTUNURL:        envOr("BUSINESS_CHAT_STUN_URL", "stun:control.e-rd.ru:3478"),
 		ChatTURNURL:        strings.TrimSpace(os.Getenv("BUSINESS_CHAT_TURN_URL")),
 		ChatTURNUsername:   strings.TrimSpace(os.Getenv("BUSINESS_CHAT_TURN_USERNAME")),
 		ChatTURNCredential: strings.TrimSpace(os.Getenv("BUSINESS_CHAT_TURN_CREDENTIAL")),
 	}
+}
+
+func parseAIProxyURLs(values ...string) []string {
+	seen := make(map[string]struct{})
+	proxies := make([]string, 0)
+	for _, value := range values {
+		for _, proxyURL := range strings.FieldsFunc(value, func(r rune) bool {
+			return r == ',' || r == ';' || r == '\n' || r == '\r'
+		}) {
+			proxyURL = strings.TrimSpace(proxyURL)
+			if proxyURL == "" {
+				continue
+			}
+			if _, exists := seen[proxyURL]; exists {
+				continue
+			}
+			seen[proxyURL] = struct{}{}
+			proxies = append(proxies, proxyURL)
+		}
+	}
+	return proxies
 }
 
 func envOr(name, fallback string) string {

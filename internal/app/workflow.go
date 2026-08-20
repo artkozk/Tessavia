@@ -1173,10 +1173,14 @@ func (s *Server) handleAIHealth(w http.ResponseWriter, r *http.Request) {
 		provider, model, configured = "groq", s.config.GroqModel, true
 	}
 	route := "direct"
-	if strings.TrimSpace(s.config.AIProxyURL) != "" {
+	proxyRoutes := len(s.config.AIProxyURLs)
+	if proxyRoutes == 0 && strings.TrimSpace(s.config.AIProxyURL) != "" {
+		proxyRoutes = 1
+	}
+	if proxyRoutes > 0 {
 		route = "proxy"
 	}
-	response := map[string]any{"configured": configured, "providerAvailable": false, "provider": provider, "model": model, "route": route, "checkedAt": nowText(), "source": "heuristic"}
+	response := map[string]any{"configured": configured, "providerAvailable": false, "provider": provider, "model": model, "route": route, "proxyRoutesConfigured": proxyRoutes, "checkedAt": nowText(), "source": "heuristic"}
 	if !configured {
 		response["message"] = "Внешняя модель не настроена; локальные правила активны"
 		writeJSON(w, http.StatusOK, response)

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -65,5 +66,78 @@ func TestInvalidAIProxyDoesNotFallBackToDirectTraffic(t *testing.T) {
 	client, err := newAIHTTPClient("http://")
 	if !errors.Is(err, errInvalidAIProxy) || client != nil {
 		t.Fatalf("client = %v, err = %v", client, err)
+	}
+}
+
+func TestAITransportFailsOverAndRemembersWorkingRoute(t *testing.T) {
+	failedCalls := 0
+	failedProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		failedCalls++
+		http.Error(w, "proxy unavailable", http.StatusBadGateway)
+	}))
+	defer failedProxy.Close()
+
+	workingCalls := 0
+	workingProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		workingCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer workingProxy.Close()
+
+	clients, err := newAIHTTPClients([]string{failedProxy.URL, workingProxy.URL})
+	if err != nil {
+		t.Fatalf("newAIHTTPClients: %v", err)
+	}
+	server := &Server{aiClients: clients}
+	request := func() *http.Request {
+		req, requestErr := http.NewRequest(http.MethodPost, "http://provider.test/generate", bytes.NewBufferString(`{"prompt":"test"}`))
+		if requestErr != nil {
+			t.Fatalf("new request: %v", requestErr)
+		}
+		return req
+	}
+
+	response, err := server.doAIRequest(request())
+	if err != nil {
+		t.Fatalf("first request: %v", err)
+	}
+	_ = response.Body.Close()
+	response, err = server.doAIRequest(request())
+	if err != nil {
+		t.Fatalf("second request: %v", err)
+	}
+	_ = response.Body.Close()
+
+	if failedCalls != 1 {
+		t.Fatalf("failed proxy calls = %d, want 1", failedCalls)
+	}
+	if workingCalls != 2 {
+		t.Fatalf("working proxy calls = %d, want 2", workingCalls)
+	}
+}
+
+func TestAITransportNeverFallsBackToDirectTraffic(t *testing.T) {
+	directCalls := 0
+	directProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		directCalls++
+		_, _ = w.Write([]byte(`{"unexpected":true}`))
+	}))
+	defer directProvider.Close()
+
+	clients, err := newAIHTTPClients([]string{"http://127.0.0.1:1", "http://127.0.0.1:2"})
+	if err != nil {
+		t.Fatalf("newAIHTTPClients: %v", err)
+	}
+	server := &Server{aiClients: clients}
+	request, err := http.NewRequest(http.MethodPost, directProvider.URL, bytes.NewBufferString(`{"prompt":"test"}`))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if _, err = server.doAIRequest(request); err == nil {
+		t.Fatal("request unexpectedly succeeded")
+	}
+	if directCalls != 0 {
+		t.Fatalf("direct provider calls = %d, want 0", directCalls)
 	}
 }

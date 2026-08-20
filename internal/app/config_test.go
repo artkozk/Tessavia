@@ -9,6 +9,7 @@ func TestGeminiDeveloperAPIDefaults(t *testing.T) {
 	t.Setenv("GEMINI_MODEL", "")
 	t.Setenv("GEMINI_BASE_URL", "")
 	t.Setenv("AI_PROXY_URL", "")
+	t.Setenv("AI_PROXY_URLS", "")
 
 	config := LoadConfig()
 	if config.GeminiModel != "gemini-2.5-flash" {
@@ -19,6 +20,25 @@ func TestGeminiDeveloperAPIDefaults(t *testing.T) {
 	}
 	if config.AIProxyURL != "" {
 		t.Fatalf("AIProxyURL = %q", config.AIProxyURL)
+	}
+	if len(config.AIProxyURLs) != 0 {
+		t.Fatalf("AIProxyURLs = %#v", config.AIProxyURLs)
+	}
+}
+
+func TestAIProxyURLsKeepPrimaryFirstAndRemoveDuplicates(t *testing.T) {
+	t.Setenv("AI_PROXY_URL", "http://primary.test:8080")
+	t.Setenv("AI_PROXY_URLS", "http://backup.test:8080, http://primary.test:8080;http://third.test:8080")
+
+	config := LoadConfig()
+	want := []string{"http://primary.test:8080", "http://backup.test:8080", "http://third.test:8080"}
+	if len(config.AIProxyURLs) != len(want) {
+		t.Fatalf("AIProxyURLs = %#v", config.AIProxyURLs)
+	}
+	for index := range want {
+		if config.AIProxyURLs[index] != want[index] {
+			t.Fatalf("AIProxyURLs[%d] = %q, want %q", index, config.AIProxyURLs[index], want[index])
+		}
 	}
 }
 

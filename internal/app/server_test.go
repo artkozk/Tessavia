@@ -112,13 +112,13 @@ func TestBusinessWorkflow(t *testing.T) {
 	})
 	convertibleTask := createRecord(t, artkozk, server.URL, map[string]any{
 		"type": "task", "title": "Список вопросов основателей", "ownerId": me.ID,
-		"estimateMinutes": 120, "dueAt": "2026-08-20T12:00:00Z",
+		"estimateMinutes": 120, "dueAt": "2099-08-20T12:00:00Z",
 	})
 	var convertedQuestionSet Record
 	requestJSON(t, artkozk, http.MethodPost, server.URL+"/api/records/"+convertibleTask.ID+"/convert-to-questions", map[string]any{
 		"reason": "Задача на самом деле является совместной проработкой вопросов", "expectedUpdatedAt": convertibleTask.UpdatedAt,
 	}, http.StatusOK, &convertedQuestionSet)
-	if convertedQuestionSet.ID != convertibleTask.ID || convertedQuestionSet.Type != "question_set" || convertedQuestionSet.Status != "planned" || convertedQuestionSet.EstimateMinutes != 120 || convertedQuestionSet.DueAt == nil || *convertedQuestionSet.DueAt != "2026-08-20T12:00:00Z" {
+	if convertedQuestionSet.ID != convertibleTask.ID || convertedQuestionSet.Type != "question_set" || convertedQuestionSet.Status != "planned" || convertedQuestionSet.EstimateMinutes != 120 || convertedQuestionSet.DueAt == nil || *convertedQuestionSet.DueAt != "2099-08-20T12:00:00Z" {
 		t.Fatalf("converted task must preserve identity and planning fields: before=%#v after=%#v", convertibleTask, convertedQuestionSet)
 	}
 

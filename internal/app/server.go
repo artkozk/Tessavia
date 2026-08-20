@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"business-control/web"
@@ -40,6 +41,8 @@ type Server struct {
 	config      Config
 	mux         *http.ServeMux
 	aiClient    *http.Client
+	aiClients   []*http.Client
+	aiCursor    atomic.Uint32
 	aiClientErr error
 }
 
@@ -48,8 +51,16 @@ type contextKey string
 const userContextKey contextKey = "user"
 
 func NewServer(store *Store, config Config) http.Handler {
-	aiClient, aiClientErr := newAIHTTPClient(config.AIProxyURL)
-	server := &Server{store: store, config: config, mux: http.NewServeMux(), aiClient: aiClient, aiClientErr: aiClientErr}
+	proxyURLs := config.AIProxyURLs
+	if len(proxyURLs) == 0 && strings.TrimSpace(config.AIProxyURL) != "" {
+		proxyURLs = []string{config.AIProxyURL}
+	}
+	aiClients, aiClientErr := newAIHTTPClients(proxyURLs)
+	var aiClient *http.Client
+	if len(aiClients) > 0 {
+		aiClient = aiClients[0]
+	}
+	server := &Server{store: store, config: config, mux: http.NewServeMux(), aiClient: aiClient, aiClients: aiClients, aiClientErr: aiClientErr}
 	server.routes()
 	return server.securityHeaders(server.mux)
 }
