@@ -94,3 +94,41 @@
 ## Остаточный риск
 
 Proxy из внешнего пула может прекратить работу без предупреждения. Failover снижает влияние единичного отказа, но не заменяет мониторинг. Следующее инфраструктурное улучшение: периодический server-side health-check с уведомлением основателей, если количество доступных маршрутов стало меньше двух. Автоматически добавлять неизвестные публичные proxy запрещено.
+
+## Фактическое production-развёртывание
+
+### Артефакты
+
+- commit: `503fe8d` (`fix: add resilient Gemini proxy failover`);
+- release: `/opt/business-control/releases/20260820-gemini-failover-503fe8d`;
+- binary SHA-256: `708e004c858d2fd36a3bec8dad7cee585e0246821ca781eda1145d1dfd47c777`;
+- SQLite/uploads backup: `/var/backups/business-control/gemini-failover-20260820T093016Z`;
+- SQLite backup SHA-256: `662186219539d69819dbd967d4ba8dc774afb3f7b2c508105cc8fea627a3fdbf7`;
+- uploads backup SHA-256: `812234352e59cf0271b813769bdf2072402e861c84c54dc78fb175371db1358e`;
+- environment backup: `/etc/business-control.env.before-gemini-proxy-20260820T092246Z`;
+- environment и его backup имеют режим `0600`, владелец `root:root`.
+
+Первый preflight новой директории был остановлен до изменения symlink из-за неуспешной shell-проверки через `sudo`. Текущий production release, environment и сервис в этот момент не менялись. Исполнимость binary затем подтверждена через `runuser -u business-control -- test -x`, после чего переключение выполнено. Это не был пользовательский outage и rollback данных не потребовался.
+
+### Конфигурация
+
+В root-only environment настроены три предварительно проверенных маршрута: один primary через `AI_PROXY_URL` и два backup через `AI_PROXY_URLS`. Credentials отсутствуют в Git и не возвращаются API. В health-ответ добавлено только безопасное поле `proxyRoutesConfigured`.
+
+### Production smoke
+
+- `/opt/business-control/current` указывает на release `20260820-gemini-failover-503fe8d`;
+- release checksum совпал с локальной сборкой;
+- `business-control`, `nginx`, `coturn`: `active`;
+- `https://control.e-rd.ru/api/health`: `{"status":"ok"}`;
+- два последовательных настоящих вызова `/api/ai/health` вернули `providerAvailable=true`;
+- AI provider: `gemini`;
+- model: `gemini-2.5-flash`;
+- route: `proxy`;
+- `proxyRoutesConfigured=3`;
+- source: `gemini`;
+- временная диагностическая сессия после smoke удалена, остаток: `0`;
+- SQLite `integrity_check=ok`;
+- SQLite foreign key violations: `0`;
+- после запуска в journal нет новых AI или service errors.
+
+От имени `artkozk` создана и завершена задача `30a8f05aa2d476865002eafcfab14b3a` «Восстановить Gemini и добавить резервирование AI-прокси». План: `60` минут, факт: `50` минут, прогресс: `100%`; proof содержит commit, release, checksum и результаты AI/DB smoke.
