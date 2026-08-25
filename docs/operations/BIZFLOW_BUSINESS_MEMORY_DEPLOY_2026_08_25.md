@@ -69,3 +69,23 @@ BizFlow, production SQLite, вложения, резервные копии и �
 ## Фактический отчёт
 
 Коммит, release, backup, контрольные суммы, состояние сервисов и результаты production smoke добавляются ниже после переключения. Инструкции выше не удаляются и остаются основой для проверки следующего релиза.
+
+### Выполненное переключение 25 августа 2026 года
+
+- функциональный коммит: `89408a7` (`feat: add business memory and validation workflows`);
+- предыдущий release: `/opt/business-control/releases/20260825-mobile-reliability-30ebecb`;
+- активный release: `/opt/business-control/releases/20260825-business-memory-89408a7`;
+- SHA-256 Linux-бинарника: `2b3f792ee4ea537831823651ab8f874458ea9e02fb45d6f89c4522a9ac5c142f`;
+- согласованный backup: `/var/lib/business-control/backups/pre-business-memory-20260825T104534Z`;
+- SHA-256 backup SQLite: `3dc494fe08a0ed5371d1b61fe51d08c1318053d111ac5ed9626ce9031a908b17`;
+- SHA-256 архива вложений: `812234352e59cf0271b813769bdf2072402e861c84c54dc78fb175371db1358e`;
+- миграция `012_business_memory_and_safe_undo.sql` применена при первом старте новой версии;
+- `business-control` и `nginx` после переключения находятся в состоянии `active`;
+- локальный и внешний `/api/health` вернули `status=ok`, внешний HTTPS вернул HTTP 200;
+- HTML production содержит версию assets `20260825-business-memory-1`;
+- `PRAGMA integrity_check` до backup и после миграции вернул `ok`, `PRAGMA foreign_key_check` не вернул нарушений;
+- Gemini smoke через первый настроенный proxy-маршрут вернул HTTP 200; адрес и учётные данные маршрута намеренно не записываются;
+- выполненная работа сохранена в BizFlow задачей `73be0fa8b3c2914eb85a2e0f0837caac` от имени `artkozk`, с доказательством и связью с целью развития платформы;
+- автоматический rollback не потребовался; предыдущий release сохранён для быстрого возврата бинарника.
+
+До переключения локально пройдены `go test ./...`, `go vet ./...`, `node --check web/app.js`, `git diff --check`, desktop-проход всех разделов и mobile-проверка на ширине 390 пикселей. Race-проверка на Windows не запускалась, поскольку локальная Go-среда собрана без CGO; Linux production-бинарник статически собран с `CGO_ENABLED=0`.
