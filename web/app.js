@@ -9,6 +9,10 @@
   disagreement: { label: 'Разногласия', singular: 'Разногласие', icon: 'gitCompare' },
   document: { label: 'Документы', singular: 'Документ', icon: 'fileText' },
   meeting: { label: 'Встречи', singular: 'Встреча', icon: 'calendar' },
+  risk: { label: 'Риски', singular: 'Риск', icon: 'shield' },
+  hypothesis: { label: 'Гипотезы', singular: 'Гипотеза', icon: 'hypothesis' },
+  experiment: { label: 'Эксперименты', singular: 'Эксперимент', icon: 'testTube' },
+  inbox: { label: 'Входящие', singular: 'Входящее', icon: 'inbox' },
 };
 
 const iconPaths = {
@@ -59,7 +63,12 @@ const iconPaths = {
   pause: '<path d="M9 5v14M15 5v14"/>',
 	more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
 	phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2Z"/>',
-	mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>',
+  mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M12 8v4M12 16h.01"/>',
+  hypothesis: '<path d="M9 3h6M10 3v4.5l-5 9A3 3 0 0 0 7.6 21h8.8a3 3 0 0 0 2.6-4.5l-5-9V3"/><path d="M8 14h8"/>',
+  testTube: '<path d="m14.5 2-9 9a4.2 4.2 0 0 0 6 6l9-9"/><path d="m13 6 5 5M6.5 10.5l7 7"/>',
+  inbox: '<path d="M4 4h16v14H4z"/><path d="M4 13h4l2 3h4l2-3h4"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 0 1 7 7v4"/>',
 };
 
 function icon(name, className = '') {
@@ -76,6 +85,9 @@ function statusLabel(record) {
   if (record?.type === 'task' && record.status === 'review') return 'На проверке';
 	if (record?.type === 'decision' && record.status === 'completed') return 'Принято';
 	if (record?.type === 'research' && record.status === 'completed') return 'Завершено';
+  if (record?.type === 'risk' && record.status === 'completed') return 'Снижен';
+  if (record?.type === 'experiment' && record.status === 'completed') return 'Проверен';
+  if (record?.type === 'inbox' && record.status === 'inbox') return 'Нужно разобрать';
   return statusLabels[record?.status] || record?.status || '';
 }
 
@@ -86,6 +98,10 @@ const statusesByType = {
   question_set: ['planned', 'in_progress', 'blocked', 'completed', 'postponed', 'cancelled'],
 	research: ['draft', 'in_progress', 'cancelled'],
 	decision: ['completed', 'cancelled'],
+  risk: ['planned', 'in_progress', 'blocked', 'review', 'completed', 'postponed', 'cancelled'],
+  hypothesis: ['draft', 'review', 'in_progress', 'completed', 'rejected', 'cancelled'],
+  experiment: ['planned', 'in_progress', 'blocked', 'review', 'completed', 'postponed', 'cancelled'],
+  inbox: ['inbox', 'archived'],
   meeting: ['planned', 'in_progress', 'completed', 'postponed', 'cancelled'],
   default: ['draft', 'in_progress', 'completed', 'cancelled'],
 };
@@ -105,6 +121,10 @@ const graphGroups = [
   { key: 'disagreement', label: 'Разногласия', color: '#e47682' },
   { key: 'document', label: 'Документы', color: '#aeb8b3' },
   { key: 'meeting', label: 'Встречи', color: '#65c8c3' },
+  { key: 'risk', label: 'Риски', color: '#dc756f' },
+  { key: 'hypothesis', label: 'Гипотезы', color: '#d9ad54' },
+  { key: 'experiment', label: 'Эксперименты', color: '#7a9fc8' },
+  { key: 'inbox', label: 'Входящие', color: '#9aa49f' },
   { key: 'question', label: 'Вопросы', color: '#78b5cf' },
   { key: 'answer', label: 'Ответы', color: '#e0ad54' },
   { key: 'joint_decision', label: 'Совместные итоги', color: '#58c09a' },
@@ -121,6 +141,7 @@ const navItems = [
 	['chat', 'Чат', 'messages', 'Работа'],
   ['principles', 'Правила и критерии', 'bookOpen', 'Основа'], ['goal', 'Цели', 'target', 'Основа'],
   ['idea', 'Идеи', 'lightbulb', 'Бизнес'], ['research', 'Исследования', 'flask', 'Бизнес'],
+  ['validation', 'Риски и проверки', 'shield', 'Бизнес'],
   ['outcomes', 'Решения и выводы', 'scale', 'Бизнес'], ['document', 'Документы', 'fileText', 'Бизнес'],
   ['graph', 'Карта связей', 'network', 'Контроль'],
   ['history', 'История', 'history', 'Контроль'],
@@ -154,6 +175,7 @@ const state = {
   chatThreads: [], chatMessages: [], activeChatThreadId: '', chatLoadedThreadId: '', chatReplyToId: '', chatLinkedRecordId: '', chatFavoritesOnly: false,
   chatSearch: '', chatSearchOpen: false, chatDigests: new Map(), chatDigestLoading: '', chatUploadItems: [], chatEditingMessageId: '',
   chatSending: false, chatDraftNonce: '', chatDraftText: '', chatEmojiTarget: '', chatRecentEmojis: [], outcomeFilter: 'all',
+  validationFilter: 'all',
   chatPollTimer: null, chatRecording: null, chatCall: null, chatIncomingCall: null, chatICEServers: null,
   savedViews: [], workingDraftTimers: new Map(), sidebarReturnFocus: null, liveRefreshRunning: false,
 };
@@ -802,7 +824,7 @@ function deadlineState(record) {
 }
 
 function isWorkRecord(record) {
-  return ['task', 'question_set', 'research', 'disagreement', 'meeting'].includes(record.type);
+  return ['task', 'question_set', 'research', 'disagreement', 'meeting', 'risk', 'hypothesis', 'experiment', 'inbox'].includes(record.type);
 }
 
 function isActiveRecord(record) {
@@ -1204,6 +1226,7 @@ function renderNav() {
     const count = key === 'work'
       ? state.records.filter((record) => isWorkRecord(record) && isActiveRecord(record)).length
 			: key === 'chat' ? state.chatThreads.reduce((sum, thread) => sum + thread.unreadCount, 0)
+      : key === 'validation' ? state.records.filter((record) => ['risk', 'hypothesis', 'experiment'].includes(record.type) && record.status !== 'archived').length
       : key === 'outcomes' ? state.records.filter((record) => record.type === 'decision' || (record.type === 'research' && record.status === 'completed')).length
       : typeMeta[key] ? state.records.filter((record) => record.type === key && record.status !== 'archived').length : '';
     const groupLabel = group !== itemGroup ? `<p class="nav-group">${escapeHTML(itemGroup)}</p>` : '';
@@ -1226,6 +1249,7 @@ function renderContent() {
   if (state.view === 'work') return renderWorkList();
 	if (state.view === 'chat') return renderChat();
   if (state.view === 'outcomes') return renderOutcomes();
+  if (state.view === 'validation') return renderValidation();
   if (state.view === 'graph') return renderGraph();
   if (typeMeta[state.view]) return renderRecordList(state.view);
   if (state.view === 'history') return renderHistory();
@@ -1253,7 +1277,7 @@ function renderDashboard() {
       </article>
       <aside class="capture-panel">
         <div><p class="eyebrow">Создать</p><h3>Быстрая фиксация</h3></div>
-        <div class="quick-actions"><button type="button" class="quick-action idea" data-quick-create="idea"><span class="quick-icon">${icon('lightbulb')}</span><span><strong>Идея</strong><small>Название, детали позже</small></span>${icon('chevronRight')}</button><button type="button" class="quick-action task" data-quick-create="task"><span class="quick-icon">${icon('checkSquare')}</span><span><strong>Задача</strong><small>Кто, что и когда</small></span>${icon('chevronRight')}</button><button type="button" class="quick-action discussion" data-quick-create="meeting"><span class="quick-icon">${icon('calendar')}</span><span><strong>Встреча</strong><small>Заметки и результаты</small></span>${icon('chevronRight')}</button><button type="button" class="quick-action discussion" data-quick-create="question_set"><span class="quick-icon">${icon('messages')}</span><span><strong>Вопросы</strong><small>Два ответа и итог</small></span>${icon('chevronRight')}</button></div>
+        <div class="quick-actions"><button type="button" class="quick-action capture" data-quick-create="inbox"><span class="quick-icon">${icon('inbox')}</span><span><strong>Записать входящее</strong><small>Мысль без выбора типа и оценки</small></span>${icon('chevronRight')}</button><button type="button" class="quick-action idea" data-quick-create="idea"><span class="quick-icon">${icon('lightbulb')}</span><span><strong>Идея</strong><small>Название, детали позже</small></span>${icon('chevronRight')}</button><button type="button" class="quick-action task" data-quick-create="task"><span class="quick-icon">${icon('checkSquare')}</span><span><strong>Задача</strong><small>Кто, что и когда</small></span>${icon('chevronRight')}</button><button type="button" class="quick-action discussion" data-quick-create="question_set"><span class="quick-icon">${icon('messages')}</span><span><strong>Вопросы</strong><small>Два ответа и итог</small></span>${icon('chevronRight')}</button></div>
       </aside>
     </section>
     <section class="dashboard-grid">
@@ -1288,6 +1312,9 @@ function metric(label, value, note, tone = '', iconName = 'dashboard') {
 
 function renderFocusRecord(record, primary = false) {
   const deadline = deadlineState(record);
+  if (record.type === 'inbox') {
+    return `<button type="button" class="focus-record focus-inbox ${primary ? 'primary-focus' : ''}" data-open-record="${record.id}"><span class="focus-marker">${icon(typeMeta[record.type].icon)}</span><span class="focus-copy"><small>${primary ? 'Новая запись' : 'Входящее'} · ${escapeHTML(record.ownerUsername)}</small><strong>${escapeHTML(record.title)}</strong><span><em class="inbox-state">Нужно разобрать</em></span></span><span class="focus-next-step"><b>Определить тип</b><small>Без потери карточки</small></span>${icon('chevronRight', 'row-chevron')}</button>`;
+  }
   return `<button type="button" class="focus-record ${primary ? 'primary-focus' : ''}" data-open-record="${record.id}"><span class="focus-marker">${icon(typeMeta[record.type].icon)}</span><span class="focus-copy"><small>${primary ? 'Следующая работа' : escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(record.ownerUsername)}</small><strong>${escapeHTML(record.title)}</strong><span><em class="priority priority-${record.priority || 'normal'}">${priorityLabels[record.priority || 'normal']}</em><em class="deadline ${deadline.className}">${escapeHTML(deadline.label)}</em></span></span><span class="focus-progress"><b>${record.progress}%</b><progress class="focus-meter" max="100" value="${record.progress}"></progress></span>${icon('chevronRight', 'row-chevron')}</button>`;
 }
 
@@ -1332,7 +1359,8 @@ function renderCompactRecord(record) {
 
 const workTypeFilters = [
   ['all', 'Вся работа'], ['task', 'Задачи'], ['question_set', 'Вопросы'], ['research', 'Исследования'],
-  ['decision', 'Решения'], ['disagreement', 'Разногласия'], ['meeting', 'Встречи'],
+  ['inbox', 'Входящие'], ['risk', 'Риски'], ['hypothesis', 'Гипотезы'], ['experiment', 'Эксперименты'],
+  ['disagreement', 'Разногласия'], ['meeting', 'Встречи'],
 ];
 
 function workFilterCount() {
@@ -1397,6 +1425,7 @@ function filteredWorkRecords() {
 
 function renderWorkKanban(records) {
 	const columns = [
+		{ key: 'inbox', label: 'Разобрать', statuses: ['inbox'] },
 		{ key: 'queued', label: 'Не начато', statuses: ['draft', 'planned'] },
 		{ key: 'in_progress', label: 'В работе', statuses: ['in_progress'] },
 		{ key: 'blocked', label: 'Заблокировано', statuses: ['blocked'] },
@@ -1405,7 +1434,7 @@ function renderWorkKanban(records) {
 	return `<section class="work-kanban" data-drag-scroll="true">${columns.map((column) => {
 		const items = records.filter((record) => column.statuses.includes(record.status));
 		const empty = column.key === 'review' ? 'Отправьте задачу после результата и доказательства' : 'Перетащите карточку сюда';
-		return `<div class="kanban-column" data-kanban-status="${column.key}"><header><strong>${column.label}</strong><span>${items.length}</span></header><div>${items.map((record) => `<article class="kanban-card" draggable="${record.type !== 'question_set'}" data-kanban-record="${record.id}"><button type="button" data-open-record="${record.id}"><span><i class="type-icon type-${record.type}">${icon(typeMeta[record.type].icon)}</i><small>${escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(workstreamLabels[record.workstream || 'business'])}</small></span><strong>${escapeHTML(record.title)}</strong><p>${escapeHTML(markdownPlain(record.description, 'Без дополнительного контекста'))}</p><footer><em class="priority priority-${record.priority || 'normal'}">${icon('flag')} ${priorityLabels[record.priority || 'normal']}</em><span class="deadline ${deadlineState(record).className}">${escapeHTML(deadlineState(record).label)}</span></footer></button>${record.type !== 'question_set' ? `<button type="button" class="kanban-move" data-kanban-move="${record.id}" aria-label="Переместить карточку" title="Переместить">${icon('grip')}</button>` : ''}</article>`).join('') || `<div class="kanban-empty">${empty}</div>`}</div></div>`;
+		return `<div class="kanban-column" data-kanban-status="${column.key}"><header><strong>${column.label}</strong><span>${items.length}</span></header><div>${items.map((record) => { const movable = !['question_set', 'inbox'].includes(record.type); return `<article class="kanban-card" draggable="${movable}" data-kanban-record="${record.id}"><button type="button" data-open-record="${record.id}"><span><i class="type-icon type-${record.type}">${icon(typeMeta[record.type].icon)}</i><small>${escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(workstreamLabels[record.workstream || 'business'])}</small></span><strong>${escapeHTML(record.title)}</strong><p>${escapeHTML(markdownPlain(record.description, 'Без дополнительного контекста'))}</p><footer>${record.type === 'inbox' ? `<em class="inbox-state">Нужно разобрать</em>` : `<em class="priority priority-${record.priority || 'normal'}">${icon('flag')} ${priorityLabels[record.priority || 'normal']}</em><span class="deadline ${deadlineState(record).className}">${escapeHTML(deadlineState(record).label)}</span>`}</footer></button>${movable ? `<button type="button" class="kanban-move" data-kanban-move="${record.id}" aria-label="Переместить карточку" title="Переместить">${icon('grip')}</button>` : ''}</article>`; }).join('') || `<div class="kanban-empty">${empty}</div>`}</div></div>`;
 	}).join('')}</section>`;
 }
 
@@ -1573,7 +1602,7 @@ function renderWorkList() {
   const records = filteredWorkRecords();
   const activeFilters = workFilterCount();
   $('#main-content').innerHTML = `
-    <div class="work-title-row"><div><p class="eyebrow">Единая очередь</p><h1>Работа команды</h1><p><strong>${records.length}</strong> ${recordsCountLabel(records.length).replace(/^\d+\s*/, '')} в текущем представлении</p></div><details class="work-create-menu"><summary class="primary">${icon('plus')} Создать работу</summary><div>${[['task', 'Задача'], ['question_set', 'Вопросы'], ['meeting', 'Встреча'], ['research', 'Сравнение вариантов']].map(([type, label]) => `<button type="button" data-work-create="${type}" ${type === 'research' ? 'data-work-mode="comparison"' : ''}>${icon(typeMeta[type].icon)}<span>${label}</span></button>`).join('')}</div></details></div>
+    <div class="work-title-row"><div><p class="eyebrow">Единая очередь</p><h1>Работа команды</h1><p><strong>${records.length}</strong> ${recordsCountLabel(records.length).replace(/^\d+\s*/, '')} в текущем представлении</p></div><details class="work-create-menu"><summary class="primary">${icon('plus')} Создать работу</summary><div>${[['inbox', 'Входящее'], ['task', 'Задача'], ['question_set', 'Вопросы'], ['meeting', 'Встреча'], ['research', 'Сравнение вариантов'], ['experiment', 'Эксперимент']].map(([type, label]) => `<button type="button" data-work-create="${type}" ${type === 'research' ? 'data-work-mode="comparison"' : ''}>${icon(typeMeta[type].icon)}<span>${label}</span></button>`).join('')}</div></details></div>
     <section class="work-controls" aria-label="Фильтры рабочей очереди">
       <div class="work-scope segmented compact">${[['all', 'Вся'], ['mine', 'Моя'], ['partner', 'Партнёра']].map(([value, label]) => `<button type="button" class="segment ${!state.ownerFilter && state.workScope === value ? 'active' : ''}" data-work-scope="${value}">${label}</button>`).join('')}</div>
       <div class="search-box work-search">${icon('search')}<input id="work-search" type="search" placeholder="Найти в этой очереди" value="${escapeHTML(state.search)}"></div>
@@ -1631,11 +1660,12 @@ function renderWorkRow(record) {
   const parent = record.parentId ? state.records.find((item) => item.id === record.parentId) : null;
   const depth = state.workOrder === 'hierarchy' ? hierarchyDepth(record) : 0;
   const hierarchy = record.isRoot ? 'Корень проекта' : parent ? `В ветке: ${parent.title}` : 'Без родителя';
+  const isInbox = record.type === 'inbox';
   return `<button type="button" class="record-table row work-row type-row-${record.type} ${state.workOrder === 'hierarchy' ? 'hierarchy-row' : ''}" data-depth="${Math.min(depth, 6)}" data-open-record="${record.id}">
     <span class="record-title"><i class="type-icon type-${record.type}">${icon(typeMeta[record.type].icon)}</i><span><small>${escapeHTML(typeMeta[record.type].singular)}<b class="workstream-mark workstream-${record.workstream || 'business'}">${escapeHTML(workstreamLabels[record.workstream || 'business'])}</b></small><strong>${escapeHTML(record.title)}</strong><em>${escapeHTML(markdownPlain(record.description, 'Без дополнительного контекста'))}</em>${state.workOrder === 'hierarchy' || record.isRoot ? `<i class="hierarchy-caption">${icon(record.isRoot ? 'target' : 'network')} ${escapeHTML(hierarchy)}</i>` : ''}</span></span>
-    <span><b class="owner-chip">${escapeHTML(record.ownerUsername)}</b><small>${record.editPolicy === 'owner_only' ? 'Только владелец' : 'Общая'} · ${minutesLabel(record.estimateMinutes)}</small></span>
-    <span><em class="priority priority-${priority}">${icon('flag')} ${priorityLabels[priority]}</em><small>${escapeHTML(statusLabel(record))}</small></span>
-    <span><em class="deadline ${deadline.className}">${escapeHTML(deadline.label)}</em><progress class="progress-track" max="100" value="${record.progress}"></progress><small>${record.progress}%</small></span>
+    <span><b class="owner-chip">${escapeHTML(record.ownerUsername)}</b><small>${record.editPolicy === 'owner_only' ? 'Только владелец' : 'Общая'}${isInbox ? '' : ` · ${minutesLabel(record.estimateMinutes)}`}</small></span>
+    <span>${isInbox ? `<em class="inbox-state">Входящее</em><small>Нужно разобрать</small>` : `<em class="priority priority-${priority}">${icon('flag')} ${priorityLabels[priority]}</em><small>${escapeHTML(statusLabel(record))}</small>`}</span>
+    <span>${isInbox ? `<b class="work-next-step">Определить тип</b><small>Карточка уже сохранена</small>` : `<em class="deadline ${deadline.className}">${escapeHTML(deadline.label)}</em><progress class="progress-track" max="100" value="${record.progress}"></progress><small>${record.progress}%</small>`}</span>
   </button>`;
 }
 
@@ -2845,6 +2875,23 @@ function openGraphForRecord(recordId) {
   state.graphFocusRecordId = recordId; state.graphBranchRootId = ''; state.graphSelectedId = `record:${recordId}`; state.graphDepth = 2; state.view = 'graph'; render();
 }
 
+function renderValidation() {
+  const types = ['risk', 'hypothesis', 'experiment'];
+  const all = state.records.filter((record) => types.includes(record.type) && record.status !== 'archived');
+  const records = (state.validationFilter === 'all' ? all : all.filter((record) => record.type === state.validationFilter))
+    .slice().sort((left, right) => Number(isActiveRecord(right)) - Number(isActiveRecord(left)) || sortWorkRecords(left, right));
+  const filters = [['all', 'Все проверки'], ['risk', 'Риски'], ['hypothesis', 'Гипотезы'], ['experiment', 'Эксперименты']];
+  const counts = Object.fromEntries(filters.map(([key]) => [key, key === 'all' ? all.length : all.filter((record) => record.type === key).length]));
+  const verdictLabels = { pending: 'Ожидает проверки', confirmed: 'Подтверждено', rejected: 'Опровергнуто', inconclusive: 'Недостаточно данных' };
+  $('#main-content').innerHTML = `<div class="entity-list-heading validation-heading"><div><p class="eyebrow">Контроль предположений</p><h1>Риски и проверки</h1><p>Риски показывают, что может помешать. Гипотезы формулируют предположение, эксперименты дают проверяемый ответ.</p></div><div class="heading-actions"><button type="button" class="secondary" data-validation-create="risk">${icon('shield')} Риск</button><button type="button" class="primary" data-validation-create="hypothesis">${icon('plus')} Гипотеза</button></div></div>
+    <section class="validation-summary"><article><span>Открытые риски</span><strong>${all.filter((record) => record.type === 'risk' && isActiveRecord(record)).length}</strong><small>требуют владельца и меры снижения</small></article><article><span>На проверке</span><strong>${all.filter((record) => ['hypothesis', 'experiment'].includes(record.type) && isActiveRecord(record)).length}</strong><small>должны закончиться выводом</small></article><button type="button" data-validation-create="experiment">${icon('testTube')}<span><strong>Новый эксперимент</strong><small>Метод, метрика и порог успеха</small></span>${icon('chevronRight')}</button></section>
+    <section class="validation-filter segmented">${filters.map(([key, label]) => `<button type="button" class="segment ${state.validationFilter === key ? 'active' : ''}" data-validation-filter="${key}">${escapeHTML(label)} <b>${counts[key]}</b></button>`).join('')}</section>
+    <section class="validation-list">${records.map((record) => { const details = record.businessDetails || {}; const score = record.type === 'risk' && details.probability && details.impact ? details.probability * details.impact : 0; const outcome = record.type === 'risk' ? (details.occurred ? 'Риск наступил' : score ? `Оценка ${score} из 25` : 'Оценка не задана') : verdictLabels[details.verdict] || 'Ожидает проверки'; return `<button type="button" class="validation-row type-${record.type} ${isActiveRecord(record) ? '' : 'resolved'}" data-open-record="${record.id}"><span class="validation-icon">${icon(typeMeta[record.type].icon)}</span><span><small>${escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(record.ownerUsername)}</small><strong>${escapeHTML(record.title)}</strong><p>${escapeHTML(markdownPlain(record.description, 'Контекст ещё не описан.'))}</p></span><span class="validation-state"><b>${escapeHTML(outcome)}</b><small>${escapeHTML(statusLabel(record))}</small></span>${icon('chevronRight')}</button>`; }).join('') || `<div class="guided-empty entity-empty">${icon(typeMeta[state.validationFilter]?.icon || 'shield')}<h3>Записей в этом представлении нет</h3><p>Зафиксируйте риск или сформулируйте проверяемую гипотезу вместо хранения сомнений в заметках.</p></div>`}</section>`;
+  $$('[data-validation-filter]').forEach((button) => button.addEventListener('click', () => { state.validationFilter = button.dataset.validationFilter; renderValidation(); }));
+  $$('[data-validation-create]').forEach((button) => button.addEventListener('click', () => openCreateDialog(button.dataset.validationCreate)));
+  bindOpenRecords();
+}
+
 async function renderOutcomes() {
   const renderLoading = !state.graphData;
   if (renderLoading) {
@@ -2855,7 +2902,7 @@ async function renderOutcomes() {
   }
   const decisions = state.records
     .filter((record) => record.type === 'decision' && record.status !== 'archived' && record.status !== 'cancelled')
-    .map((record) => ({ id: `record:${record.id}`, kind: record.kind === 'rule' ? 'rule' : 'decision', recordId: record.id, title: record.title, body: record.description || record.result, author: record.authorUsername, updatedAt: record.updatedAt }));
+    .map((record) => ({ id: `record:${record.id}`, kind: record.kind === 'rule' ? 'rule' : 'decision', lifecycle: record.businessDetails?.decisionState || 'active', reviewAt: record.businessDetails?.reviewAt, recordId: record.id, title: record.title, body: record.description || record.result, author: record.authorUsername, updatedAt: record.updatedAt }));
   const research = state.records
     .filter((record) => record.type === 'research' && record.status === 'completed' && record.status !== 'archived')
     .map((record) => ({ id: `record:${record.id}`, kind: 'research', recordId: record.id, title: record.title, body: record.result || record.description, author: record.ownerUsername, updatedAt: record.completedAt || record.updatedAt }));
@@ -2864,15 +2911,17 @@ async function renderOutcomes() {
     .filter((node) => node.entityKind === 'joint_decision')
     .map((node) => ({ id: node.id, kind: 'joint', recordId: node.recordId, questionId: node.questionId, title: questionTitles.get(node.questionId) || 'Совместный итог', body: node.description, author: node.ownerUsername, updatedAt: node.updatedAt }));
   let items = [...decisions, ...research, ...joint].sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt));
-  if (state.outcomeFilter !== 'all') items = items.filter((item) => item.kind === state.outcomeFilter || (state.outcomeFilter === 'decision' && item.kind === 'rule'));
-  const filters = [['all', 'Все'], ['decision', 'Решения'], ['research', 'Исследования'], ['joint', 'Совместные итоги']];
-  const counts = { all: decisions.length + research.length + joint.length, decision: decisions.length, research: research.length, joint: joint.length };
+  if (state.outcomeFilter === 'active') items = items.filter((item) => ['decision', 'rule'].includes(item.kind) && item.lifecycle === 'active');
+  else if (state.outcomeFilter === 'review') items = items.filter((item) => ['decision', 'rule'].includes(item.kind) && item.lifecycle === 'review');
+  else if (state.outcomeFilter !== 'all') items = items.filter((item) => item.kind === state.outcomeFilter || (state.outcomeFilter === 'decision' && item.kind === 'rule'));
+  const filters = [['all', 'Все'], ['active', 'Действуют'], ['review', 'К пересмотру'], ['research', 'Исследования'], ['joint', 'Совместные итоги']];
+  const counts = { all: decisions.length + research.length + joint.length, active: decisions.filter((item) => item.lifecycle === 'active').length, review: decisions.filter((item) => item.lifecycle === 'review').length, research: research.length, joint: joint.length };
   const kindMeta = {
     decision: ['Решение', 'scale'], rule: ['Правило', 'bookOpen'], research: ['Вывод исследования', 'flask'], joint: ['Совместный итог', 'messages'],
   };
   $('#main-content').innerHTML = `<div class="entity-list-heading outcome-heading"><div><p class="eyebrow">Память проекта</p><h1>Решения и выводы</h1><p>Здесь остаётся то, к чему команда пришла и на чём основывает следующую работу.</p></div><button type="button" class="primary" data-outcome-create>${icon('plus')} Зафиксировать решение</button></div>
     <section class="outcome-filter segmented">${filters.map(([key, label]) => `<button type="button" class="segment ${state.outcomeFilter === key ? 'active' : ''}" data-outcome-filter="${key}">${escapeHTML(label)} <b>${counts[key]}</b></button>`).join('')}</section>
-    <section class="outcome-list">${items.map((item) => { const meta = kindMeta[item.kind] || kindMeta.decision; return `<button type="button" class="outcome-row kind-${item.kind}" data-outcome-record="${item.recordId}" data-outcome-question="${item.questionId || ''}"><span class="type-icon">${icon(meta[1])}</span><span><small>${escapeHTML(meta[0])}</small><strong>${escapeHTML(item.title)}</strong><p>${escapeHTML(markdownPlain(item.body, 'Итог зафиксирован без дополнительного описания.'))}</p><em>${escapeHTML(item.author || 'Команда')} · ${formatDate(item.updatedAt, true)}</em></span>${icon('chevronRight')}</button>`; }).join('') || `<div class="guided-empty entity-empty">${icon('scale')}<h3>В этом представлении итогов пока нет</h3><p>Завершите исследование, примите совместный итог вопроса или зафиксируйте отдельное решение.</p><button type="button" class="primary" data-outcome-create>${icon('plus')} Зафиксировать решение</button></div>`}</section>`;
+    <section class="outcome-list">${items.map((item) => { const meta = kindMeta[item.kind] || kindMeta.decision; const lifecycle = item.lifecycle ? `<em class="decision-lifecycle state-${item.lifecycle}">${escapeHTML(decisionStateLabels[item.lifecycle] || item.lifecycle)}${item.reviewAt && item.lifecycle === 'review' ? ` · до ${formatDate(item.reviewAt)}` : ''}</em>` : ''; return `<button type="button" class="outcome-row kind-${item.kind} ${item.lifecycle === 'superseded' ? 'superseded' : ''}" data-outcome-record="${item.recordId}" data-outcome-question="${item.questionId || ''}"><span class="type-icon">${icon(meta[1])}</span><span><small>${escapeHTML(meta[0])}${lifecycle}</small><strong>${escapeHTML(item.title)}</strong><p>${escapeHTML(markdownPlain(item.body, 'Итог зафиксирован без дополнительного описания.'))}</p><em>${escapeHTML(item.author || 'Команда')} · ${formatDate(item.updatedAt, true)}</em></span>${icon('chevronRight')}</button>`; }).join('') || `<div class="guided-empty entity-empty">${icon('scale')}<h3>В этом представлении итогов пока нет</h3><p>Завершите исследование, примите совместный итог вопроса или зафиксируйте отдельное решение.</p></div>`}</section>`;
   $$('[data-outcome-create]').forEach((button) => button.addEventListener('click', () => openCreateDialog('decision')));
   $$('[data-outcome-filter]').forEach((button) => button.addEventListener('click', () => { state.outcomeFilter = button.dataset.outcomeFilter; renderOutcomes(); }));
   $$('[data-outcome-record]').forEach((button) => button.addEventListener('click', () => openRecord(button.dataset.outcomeRecord, { tab: button.dataset.outcomeQuestion ? 'questions' : 'overview', questionId: button.dataset.outcomeQuestion })));
@@ -2912,7 +2961,7 @@ function renderRecordList(type) {
     </section>
     ${type === 'idea' && state.ideaViewMode === 'board' ? renderIdeaStageBoard(records) : `<section class="table-panel">
       <div class="record-table header ${['task', 'goal', 'question_set', 'meeting'].includes(type) ? '' : 'simple'}"><span>Карточка</span><span>${type === 'question_set' ? 'Координатор' : type === 'meeting' ? 'Организатор' : 'Ответственный'}</span><span>Статус</span><span>${['task', 'goal', 'question_set', 'meeting'].includes(type) ? 'Дата / прогресс' : 'Изменено'}</span></div>
-      <div class="record-rows">${records.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(renderRecordRow).join('') || `<div class="guided-empty entity-empty">${icon(typeMeta[type].icon)}<h3>${state.search || state.statusFilter || state.ownerFilter ? 'В этом фильтре ничего нет' : escapeHTML(emptyTitle)}</h3><p>${state.search || state.statusFilter || state.ownerFilter ? 'Измените условия фильтра или создайте новую карточку.' : 'Создайте первую карточку. Её можно заполнить и связать с другими объектами позже.'}</p><button type="button" class="primary" data-record-create="${type}">${icon('plus')} ${escapeHTML(createLabel)}</button></div>`}</div>
+      <div class="record-rows">${records.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(renderRecordRow).join('') || `<div class="guided-empty entity-empty">${icon(typeMeta[type].icon)}<h3>${state.search || state.statusFilter || state.ownerFilter ? 'В этом фильтре ничего нет' : escapeHTML(emptyTitle)}</h3><p>${state.search || state.statusFilter || state.ownerFilter ? 'Измените условия фильтра.' : 'Создайте первую карточку. Её можно заполнить и связать с другими объектами позже.'}</p></div>`}</div>
     </section>`}`;
   $('#record-search').addEventListener('input', (event) => {
     state.search = event.target.value;
@@ -3091,6 +3140,7 @@ function recordTabs(record, detail, activity) {
     tabs.unshift(['questions', 'Вопросы и ответы', `${workflow.resolved}/${workflow.questions.length}`]);
     tabs.splice(2, 1);
   }
+  if (record.type === 'inbox') tabs.splice(1, 1);
   return tabs.map(([key, label, count]) => `<button type="button" class="record-tab ${state.activeRecordTab === key ? 'active' : ''}" data-record-tab="${key}"><span>${label}</span>${count ? `<b>${count}</b>` : ''}</button>`).join('');
 }
 
@@ -3106,6 +3156,9 @@ function nextRecordOptions(record) {
     criterion: [['research', '', 'Исследование'], ['idea', '', 'Идея']],
     document: [['task', '', 'Задача'], ['decision', '', 'Решение']],
     meeting: [['task', '', 'Задача'], ['decision', '', 'Решение'], ['criterion', 'limitation', 'Ограничение'], ['idea', '', 'Идея'], ['research', '', 'Исследование']],
+    risk: [['task', '', 'Мера снижения'], ['experiment', '', 'Проверка риска'], ['decision', '', 'Решение']],
+    hypothesis: [['experiment', '', 'Эксперимент'], ['research', '', 'Исследование'], ['decision', 'insight', 'Вывод']],
+    experiment: [['decision', '', 'Решение'], ['task', '', 'Следующий шаг'], ['hypothesis', '', 'Новая гипотеза']],
   }[record.type] || [];
 }
 
@@ -3207,6 +3260,24 @@ function renderAIAnalysis(record, canEdit) {
   </section>`;
 }
 
+const decisionStateLabels = { active: 'Действует', review: 'Требует пересмотра', superseded: 'Заменено' };
+const verdictLabels = { pending: 'Ожидает проверки', confirmed: 'Подтверждено', rejected: 'Опровергнуто', inconclusive: 'Недостаточно данных' };
+
+function renderBusinessDetailsRead(record, canEdit) {
+  const details = record.businessDetails || {};
+  if (record.type === 'inbox') return `<section class="dossier-section business-read inbox-read"><header><div><p class="eyebrow">Разбор входящего</p><h3>Во что превратить эту запись?</h3></div></header><p>Карточка сохранит название, текст, автора, историю и связи. Меняется только её рабочий тип.</p>${canEdit ? `<div class="inbox-triage-actions">${[['task', 'Задача'], ['idea', 'Идея'], ['question_set', 'Вопросы'], ['research', 'Исследование'], ['risk', 'Риск'], ['hypothesis', 'Гипотеза'], ['experiment', 'Эксперимент'], ['document', 'Документ']].map(([type, label]) => `<button type="button" class="secondary" data-triage-inbox="${type}">${icon(typeMeta[type].icon)} ${label}</button>`).join('')}</div>` : ''}</section>`;
+  if (record.type === 'risk') {
+    const score = Number(details.probability || 0) * Number(details.impact || 0);
+    return `<section class="dossier-section business-read risk-read"><header><div><p class="eyebrow">Контроль риска</p><h3>${details.occurred ? 'Риск наступил' : score ? `Оценка ${score} из 25` : 'Нужна оценка'}</h3></div>${canEdit ? `<button type="button" class="icon-button" data-open-record-edit aria-label="Изменить риск">${icon('edit')}</button>` : ''}</header><div class="dossier-properties">${dossierProperty('Вероятность', details.probability ? `${details.probability} из 5` : 'Не оценена', '', false)}${dossierProperty('Влияние', details.impact ? `${details.impact} из 5` : 'Не оценено', '', false)}${dossierProperty('Состояние', details.occurred ? 'Наступил' : 'Не наступил', '', false, details.occurred ? 'overdue' : '')}</div><div class="business-markdown"><span>Мера снижения</span>${markdownView(details.mitigation, 'Мера снижения пока не определена.')}</div></section>`;
+  }
+  if (record.type === 'hypothesis' || record.type === 'experiment') return `<section class="dossier-section business-read experiment-read"><header><div><p class="eyebrow">Проверяемость</p><h3>${escapeHTML(verdictLabels[details.verdict] || 'Ожидает проверки')}</h3></div>${canEdit ? `<button type="button" class="icon-button" data-open-record-edit aria-label="Изменить проверку">${icon('edit')}</button>` : ''}</header><div class="dossier-properties">${dossierProperty('Метрика', details.metric || 'Не задана', '', false)}${dossierProperty('Порог успеха', details.successThreshold || 'Не задан', '', false)}</div><div class="business-markdown"><span>${record.type === 'experiment' ? 'Метод эксперимента' : 'Способ проверки'}</span>${markdownView(details.experimentMethod, 'Способ проверки пока не описан.')}</div></section>`;
+  if (record.type === 'decision') {
+    const replaced = details.supersedesId ? state.records.find((item) => item.id === details.supersedesId) : null;
+    return `<section class="dossier-section business-read decision-read state-${details.decisionState || 'active'}"><header><div><p class="eyebrow">Актуальность решения</p><h3>${escapeHTML(decisionStateLabels[details.decisionState] || 'Действует')}</h3></div>${canEdit ? `<button type="button" class="icon-button" data-open-record-edit aria-label="Изменить актуальность">${icon('edit')}</button>` : ''}</header><div class="dossier-properties">${dossierProperty('Действует с', details.effectiveAt ? formatDate(details.effectiveAt, true) : formatDate(record.createdAt, true), '', false)}${dossierProperty('Пересмотреть', details.reviewAt ? formatDate(details.reviewAt, true) : 'Дата не назначена', '', false)}</div>${replaced ? `<button type="button" class="decision-replaces" data-related-record="${replaced.id}">${icon('undo')}<span><small>Заменяет прежнее решение</small><strong>${escapeHTML(replaced.title)}</strong></span>${icon('chevronRight')}</button>` : ''}</section>`;
+  }
+  return '';
+}
+
 function renderRecordReadOverview(record, options) {
   const { language, hasDeadline, hasDecisionMaker, hasPriority, hasEstimate, hasManualProgress, hasResult, hasExecution, dueLabel, canEdit } = options;
   const origin = state.activeDetail.derivation;
@@ -3220,6 +3291,7 @@ function renderRecordReadOverview(record, options) {
     ${renderHierarchyPanel(record, canEdit)}
     <article class="record-dossier">
       <section class="dossier-section dossier-context"><header><div><p class="eyebrow">Содержание</p><h3>${escapeHTML(language.description)}</h3></div>${canEdit ? `<button type="button" class="icon-button" data-edit-field="description" aria-label="Изменить описание" title="Изменить описание">${icon('edit')}</button>` : ''}</header>${markdownView(record.description, 'Контекст пока не заполнен.', language.description)}</section>
+      ${renderBusinessDetailsRead(record, canEdit)}
       ${hasExecution ? `<section class="dossier-section"><header><div><p class="eyebrow">Контроль</p><h3>${record.type === 'question_set' ? 'Обсуждение и срок' : record.type === 'meeting' ? 'Организация встречи' : 'Исполнение'}</h3></div></header><div class="dossier-properties">
         ${dossierProperty(ownerLabel, record.ownerUsername, 'ownerId', canEdit)}
         ${dossierProperty('Статус', statusLabel(record), record.type === 'question_set' ? '' : 'status', canEdit)}
@@ -3252,13 +3324,17 @@ function renderRecordOverview(record, statuses) {
     disagreement: { description: 'Предмет разногласия и контекст', owner: 'Координатор' },
     document: { description: 'Краткое содержание документа', owner: 'Владелец' },
     meeting: { description: 'Повестка, заметки и договорённости', owner: 'Организатор' },
+    risk: { description: 'Сценарий риска и возможные последствия', owner: 'Владелец риска' },
+    hypothesis: { description: 'Проверяемое предположение', owner: 'Владелец гипотезы' },
+    experiment: { description: 'Что проверяем и зачем', owner: 'Ответственный за эксперимент' },
+    inbox: { description: 'Необработанная мысль или наблюдение', owner: 'Автор разбора' },
   }[record.type];
-  const hasDeadline = ['task', 'goal', 'question_set', 'research', 'disagreement', 'meeting'].includes(record.type);
+  const hasDeadline = ['task', 'goal', 'question_set', 'research', 'disagreement', 'meeting', 'risk', 'hypothesis', 'experiment'].includes(record.type);
   const hasDecisionMaker = ['disagreement'].includes(record.type);
-  const hasPriority = isWorkRecord(record) || record.type === 'goal';
-  const hasEstimate = isWorkRecord(record) || record.type === 'goal';
-  const hasManualProgress = !['question_set', 'research'].includes(record.type) && (isWorkRecord(record) || record.type === 'goal');
-  const hasResult = ['task', 'goal', 'research', 'disagreement'].includes(record.type);
+  const hasPriority = (isWorkRecord(record) && record.type !== 'inbox') || record.type === 'goal';
+  const hasEstimate = (isWorkRecord(record) && record.type !== 'inbox') || record.type === 'goal';
+  const hasManualProgress = !['question_set', 'research', 'inbox'].includes(record.type) && (isWorkRecord(record) || record.type === 'goal');
+  const hasResult = ['task', 'goal', 'research', 'disagreement', 'risk', 'hypothesis', 'experiment'].includes(record.type);
   const planningTitle = record.type === 'task' ? 'Исполнение задачи' : record.type === 'question_set' ? 'Срок и приоритет обсуждения' : record.type === 'meeting' ? 'Организатор и время' : hasDecisionMaker ? 'Ответственность за решение' : hasDeadline ? 'Планирование' : 'Владелец карточки';
   const dueLabel = ({ meeting: 'Дата и время', research: 'Срок исследования', disagreement: 'Срок разбора' })[record.type] || 'Срок';
   const planningGrid = hasDecisionMaker && hasDeadline ? 'three' : hasDeadline ? 'two' : 'one';
@@ -3276,8 +3352,9 @@ function renderRecordOverview(record, statuses) {
     ${canEdit ? '' : `<div class="access-banner">${icon('lock')}<span><strong>Личная карточка ${escapeHTML(record.ownerUsername)}</strong><small>Вы можете просматривать её ход и связи, но изменять содержание может только ответственный.</small></span></div>`}
     ${renderHierarchyPanel(record, canEdit)}
     <form id="record-edit-form" class="card-form record-overview-form" data-can-edit="${canEdit}">
-      <div class="form-grid two"><label>Название<input name="title" value="${escapeHTML(record.title)}" required></label><label>${record.type === 'question_set' ? 'Статус рассчитывается автоматически' : 'Статус'}<select name="status" ${record.type === 'question_set' ? 'disabled' : ''}>${statuses.map((status) => `<option value="${status}" ${record.status === status ? 'selected' : ''}>${record.type === 'task' && status === 'review' ? 'На проверке' : statusLabels[status]}</option>`).join('')}</select></label></div>
+      <div class="form-grid two"><label>Название<input name="title" value="${escapeHTML(record.title)}" required></label><label>${record.type === 'question_set' ? 'Статус рассчитывается автоматически' : 'Статус'}<select name="status" ${record.type === 'question_set' ? 'disabled' : ''}>${statuses.map((status) => `<option value="${status}" ${record.status === status ? 'selected' : ''}>${record.type === 'task' && status === 'review' ? 'На проверке' : record.type === 'inbox' && status === 'inbox' ? 'Нужно разобрать' : statusLabels[status]}</option>`).join('')}</select></label></div>
       ${markdownEditor('description', language.description, record.description, 5, 'Контекст, факты и ожидаемый результат')}
+      ${renderBusinessDetailsFields(record.type, record.businessDetails || {}, record.id)}
       ${hasExecution ? `<section class="execution-fields"><header><span>${icon(record.type === 'question_set' ? 'messages' : record.type === 'meeting' ? 'calendar' : 'checkSquare')}</span><div><h3>${planningTitle}</h3><p>${record.type === 'question_set' ? 'Карточка участвует в общей очереди наравне с задачами.' : 'Поля, по которым команда контролирует выполнение.'}</p></div></header>
         <div class="form-grid ${planningGrid}"><label>${language.owner}<select name="ownerId" ${canManageAccess ? '' : 'disabled'}>${userOptions(record.ownerId)}</select></label>${hasDecisionMaker ? `<label>Принимает решение<select name="decisionMakerId"><option value="">Не указан</option>${userOptions(record.decisionMakerId)}</select></label>` : ''}${hasDeadline ? `<label>${dueLabel}<input name="dueAt" type="datetime-local" value="${toLocalInput(record.dueAt)}"></label>` : ''}</div>
         ${(hasPriority || hasEstimate || hasManualProgress) ? `<div class="form-grid ${hasEstimate && hasManualProgress ? 'four' : 'three'}">${hasPriority ? `<label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${record.priority === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>` : ''}${hasEstimate ? `<label>План, минут<input name="estimateMinutes" type="number" min="0" value="${record.estimateMinutes}"></label><label>Факт, минут<input name="actualMinutes" type="number" min="0" value="${record.actualMinutes || 0}"></label>` : ''}${hasManualProgress ? `<label>Прогресс, %<input name="progress" type="number" min="0" max="100" value="${record.progress}"></label>` : ''}</div>` : ''}
@@ -3550,8 +3627,8 @@ function recordActivity(detail) {
 }
 
 function renderRecordContextStrip(record) {
-  const hasDeadline = ['task', 'goal', 'question_set', 'research', 'disagreement', 'meeting'].includes(record.type);
-  return `<div class="record-context-strip"><span><small>Ответственный</small><strong>${escapeHTML(record.ownerUsername)}</strong></span><span><small>Статус</small><strong>${escapeHTML(statusLabel(record))}</strong></span>${isWorkRecord(record) || record.type === 'goal' ? `<span><small>Приоритет</small><strong>${escapeHTML(priorityLabels[record.priority || 'normal'])}</strong></span>` : ''}${hasDeadline ? `<span><small>${record.type === 'meeting' ? 'Дата' : 'Срок'}</small><strong class="deadline ${deadlineState(record).className}">${escapeHTML(deadlineState(record).label)}</strong></span>` : ''}</div>`;
+  const hasDeadline = ['task', 'goal', 'question_set', 'research', 'disagreement', 'meeting', 'risk', 'hypothesis', 'experiment'].includes(record.type);
+  return `<div class="record-context-strip"><span><small>Ответственный</small><strong>${escapeHTML(record.ownerUsername)}</strong></span><span><small>Статус</small><strong>${escapeHTML(statusLabel(record))}</strong></span>${(isWorkRecord(record) && record.type !== 'inbox') || record.type === 'goal' ? `<span><small>Приоритет</small><strong>${escapeHTML(priorityLabels[record.priority || 'normal'])}</strong></span>` : ''}${hasDeadline ? `<span><small>${record.type === 'meeting' ? 'Дата' : 'Срок'}</small><strong class="deadline ${deadlineState(record).className}">${escapeHTML(deadlineState(record).label)}</strong></span>` : ''}</div>`;
 }
 
 function renderRecordDialog() {
@@ -3565,7 +3642,7 @@ function renderRecordDialog() {
 		.sort((left, right) => Number(right.workstream === record.workstream) - Number(left.workstream === record.workstream) || new Date(right.updatedAt) - new Date(left.updatedAt));
   const criteria = state.records.filter((item) => item.type === 'criterion' && item.status !== 'archived');
   const activity = recordActivity(detail);
-  const hasDeadline = ['task', 'goal', 'question_set', 'research', 'disagreement', 'meeting'].includes(record.type);
+  const hasDeadline = ['task', 'goal', 'question_set', 'research', 'disagreement', 'meeting', 'risk', 'hypothesis', 'experiment'].includes(record.type);
   const canEdit = record.editPolicy !== 'owner_only' || record.ownerId === state.me.id || record.authorId === state.me.id;
   const parent = record.parentId ? state.records.find((item) => item.id === record.parentId) : null;
   const children = state.records.filter((item) => item.parentId === record.id && item.status !== 'archived');
@@ -3692,8 +3769,20 @@ function buildRecordUpdate(form, record) {
   if ('progress' in values) compare('progress', Number(values.progress), record.progress);
   if ('progressNote' in values) compare('progressNote', values.progressNote.trim(), record.progressNote);
   if ('result' in values) compare('result', values.result.trim(), record.result);
+  const businessDetails = businessDetailsFromForm(form, record.type);
+  if (businessDetails) {
+    const previous = record.businessDetails || {};
+    const normalizedPrevious = record.type === 'risk'
+      ? { probability: Number(previous.probability || 0), impact: Number(previous.impact || 0), mitigation: previous.mitigation || '', occurred: Boolean(previous.occurred) }
+      : record.type === 'decision'
+        ? { decisionState: previous.decisionState || 'active', supersedesId: previous.supersedesId || '', effectiveAt: previous.effectiveAt ? new Date(previous.effectiveAt).toISOString() : '', reviewAt: previous.reviewAt ? new Date(previous.reviewAt).toISOString() : '' }
+        : { metric: previous.metric || '', successThreshold: previous.successThreshold || '', experimentMethod: previous.experimentMethod || '', verdict: previous.verdict || 'pending' };
+    if (JSON.stringify(businessDetails) !== JSON.stringify(normalizedPrevious)) body.businessDetails = businessDetails;
+  }
   const substantiveKeys = Object.keys(body).filter((key) => key !== 'expectedUpdatedAt');
-  const reasonRequired = ['status', 'dueAt', 'parentId', 'isRoot'].some((key) => Object.prototype.hasOwnProperty.call(body, key));
+  const previousDetails = record.businessDetails || {};
+  const importantBusinessChange = body.businessDetails && ((record.type === 'decision' && (body.businessDetails.decisionState !== (previousDetails.decisionState || 'active') || body.businessDetails.supersedesId !== (previousDetails.supersedesId || ''))) || (record.type === 'risk' && body.businessDetails.occurred !== Boolean(previousDetails.occurred)));
+  const reasonRequired = ['status', 'dueAt', 'parentId', 'isRoot'].some((key) => Object.prototype.hasOwnProperty.call(body, key)) || importantBusinessChange;
   if (reasonRequired) body.reason = values.reason.trim();
   return { body, substantiveKeys, reasonRequired, values };
 }
@@ -3747,6 +3836,22 @@ function bindRecordDialogEvents() {
   $$('[data-open-record-edit]').forEach((button) => button.addEventListener('click', () => startEditing()));
   $$('[data-edit-field]').forEach((button) => button.addEventListener('click', () => startEditing(button.dataset.editField)));
   $('[data-change-parent]')?.addEventListener('click', () => changeRecordParent(record));
+  $$('[data-triage-inbox]').forEach((button) => button.addEventListener('click', async () => {
+    const targetType = button.dataset.triageInbox;
+    const reasons = {
+      task: 'Из записи следует конкретная работа',
+      idea: 'Запись описывает идею для дальнейшего отбора',
+      question_set: 'Тему нужно отдельно обсудить обоим основателям',
+      research: 'Для вывода нужно собрать и сравнить данные',
+      risk: 'Запись описывает возможную помеху или потерю',
+      hypothesis: 'Запись содержит предположение, которое нужно проверить',
+      experiment: 'Нужна отдельная проверка с метрикой и порогом успеха',
+      document: 'Это справочный материал без отдельного рабочего процесса',
+    };
+    const reason = await askText({ title: `Сделать карточкой «${typeMeta[targetType].singular}»`, label: 'Почему выбран этот тип?', defaultValue: reasons[targetType] || 'Записи назначен подходящий рабочий тип', required: true });
+    if (!reason) return;
+    await mutateRecord(`/api/records/${record.id}/triage`, { method: 'POST', body: JSON.stringify({ targetType, reason }) });
+  }));
   const editForm = $('#record-edit-form');
   if (editForm) {
     const rootToggle = editForm.elements.isRoot;
@@ -4278,11 +4383,15 @@ async function mutateRecord(path, options, close = false, clearDraftOnSuccess = 
 function toggleCreateMenu() {
   const menu = $('#create-menu');
   menu.innerHTML = `
+    <button type="button" data-create-type="inbox">${icon('inbox')}<span><strong>Входящее</strong><small>Сохранить мысль, не выбирая тип</small></span></button>
     <button type="button" data-create-type="idea">${icon('lightbulb')}<span><strong>Быстрая идея</strong><small>Сохранить мысль без оценки</small></span></button>
     <button type="button" data-create-type="task">${icon('checkSquare')}<span><strong>Задача</strong><small>Себе или партнёру</small></span></button>
     <button type="button" data-create-type="meeting">${icon('calendar')}<span><strong>Встреча</strong><small>Повестка, заметки и результаты</small></span></button>
     <button type="button" data-create-type="question_set">${icon('messages')}<span><strong>Карточка вопросов</strong><small>Несколько вопросов, личные ответы и итоги</small></span></button>
     <button type="button" data-create-type="research" data-create-mode="comparison">${icon('flask')}<span><strong>Сравнение вариантов</strong><small>Общие параметры, плюсы, минусы и оценка</small></span></button>
+    <button type="button" data-create-type="risk">${icon('shield')}<span><strong>Риск</strong><small>Вероятность, влияние и мера снижения</small></span></button>
+    <button type="button" data-create-type="hypothesis">${icon('hypothesis')}<span><strong>Гипотеза</strong><small>Предположение и критерий проверки</small></span></button>
+    <button type="button" data-create-type="experiment">${icon('testTube')}<span><strong>Эксперимент</strong><small>Метод, метрика и порог успеха</small></span></button>
     <button type="button" data-create-type="decision">${icon('scale')}<span><strong>Решение</strong><small>Выбор, основания и ответственный</small></span></button>
     <button type="button" data-create-type="goal">${icon('target')}<span><strong>Цель</strong><small>Результат, срок и прогресс</small></span></button>
     <button type="button" data-create-type="document">${icon('fileText')}<span><strong>Документ</strong><small>Материал или рабочая заметка</small></span></button>`;
@@ -4290,6 +4399,26 @@ function toggleCreateMenu() {
   $$('[data-create-type]', menu).forEach((button) => button.addEventListener('click', (event) => {
     event.stopPropagation(); menu.hidden = true; openCreateDialog(button.dataset.createType, { comparisonMode: button.dataset.createMode === 'comparison' });
   }));
+}
+
+function renderBusinessDetailsFields(recordType, details = {}, recordID = '') {
+  const ratingOptions = (selected) => [0, 1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${Number(selected || 0) === value ? 'selected' : ''}>${value ? `${value} из 5` : 'Не оценено'}</option>`).join('');
+  const verdictOptions = [['pending', 'Ожидает проверки'], ['confirmed', 'Подтверждено'], ['rejected', 'Опровергнуто'], ['inconclusive', 'Недостаточно данных']];
+  if (recordType === 'risk') return `<section class="business-fields risk-fields"><header><span>${icon('shield')}</span><div><h3>Оценка риска</h3><p>Оценка помогает сравнивать риски, а не заменяет обоснование.</p></div></header><div class="form-grid two"><label>Вероятность<select name="businessProbability">${ratingOptions(details.probability)}</select></label><label>Влияние<select name="businessImpact">${ratingOptions(details.impact)}</select></label></div>${markdownEditor('businessMitigation', 'Как снизить риск', details.mitigation || '', 4, 'Конкретная мера, владелец или сигнал для реакции', 'risk-mitigation')}<label class="check"><input name="businessOccurred" type="checkbox" ${details.occurred ? 'checked' : ''}> Риск уже наступил</label></section>`;
+  if (recordType === 'hypothesis' || recordType === 'experiment') return `<section class="business-fields experiment-fields"><header><span>${icon(recordType === 'experiment' ? 'testTube' : 'hypothesis')}</span><div><h3>${recordType === 'experiment' ? 'Протокол эксперимента' : 'Проверка гипотезы'}</h3><p>Результат должен быть проверяемым: метрика, порог успеха и итог.</p></div></header><div class="form-grid two"><label>Метрика<input name="businessMetric" value="${escapeHTML(details.metric || '')}" placeholder="Например: 10 заявок за неделю"></label><label>Порог успеха<input name="businessThreshold" value="${escapeHTML(details.successThreshold || '')}" placeholder="Как поймём, что гипотеза верна"></label></div>${markdownEditor('businessMethod', recordType === 'experiment' ? 'Метод и ход проверки' : 'Как будем проверять', details.experimentMethod || '', 4, 'Выборка, шаги и источник данных', `${recordType}-method`)}<label>Итог проверки<select name="businessVerdict">${verdictOptions.map(([value, label]) => `<option value="${value}" ${(details.verdict || 'pending') === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label></section>`;
+  if (recordType === 'decision') {
+    const decisions = state.records.filter((record) => record.type === 'decision' && record.id !== recordID && record.status !== 'archived');
+    return `<section class="business-fields decision-fields"><header><span>${icon('scale')}</span><div><h3>Жизненный цикл решения</h3><p>Решение остаётся в истории, даже когда требует пересмотра или заменено новым.</p></div></header><div class="form-grid two"><label>Актуальность<select name="businessDecisionState"><option value="active" ${(details.decisionState || 'active') === 'active' ? 'selected' : ''}>Действует</option><option value="review" ${details.decisionState === 'review' ? 'selected' : ''}>Требует пересмотра</option><option value="superseded" ${details.decisionState === 'superseded' ? 'selected' : ''}>Заменено</option></select></label><label>Заменяет решение<select name="businessSupersedesId"><option value="">Не заменяет другое</option>${decisions.map((record) => `<option value="${record.id}" ${details.supersedesId === record.id ? 'selected' : ''}>${escapeHTML(record.title)}</option>`).join('')}</select></label></div><div class="form-grid two"><label>Действует с<input name="businessEffectiveAt" type="datetime-local" value="${toLocalInput(details.effectiveAt)}"></label><label>Пересмотреть не позднее<input name="businessReviewAt" type="datetime-local" value="${toLocalInput(details.reviewAt)}"></label></div></section>`;
+  }
+  return '';
+}
+
+function businessDetailsFromForm(form, recordType) {
+  const value = (name) => form.elements[name]?.value || '';
+  if (recordType === 'risk') return { probability: Number(value('businessProbability')), impact: Number(value('businessImpact')), mitigation: value('businessMitigation').trim(), occurred: Boolean(form.elements.businessOccurred?.checked) };
+  if (recordType === 'hypothesis' || recordType === 'experiment') return { metric: value('businessMetric').trim(), successThreshold: value('businessThreshold').trim(), experimentMethod: value('businessMethod').trim(), verdict: value('businessVerdict') || 'pending' };
+  if (recordType === 'decision') return { decisionState: value('businessDecisionState') || 'active', supersedesId: value('businessSupersedesId'), effectiveAt: value('businessEffectiveAt') ? new Date(value('businessEffectiveAt')).toISOString() : '', reviewAt: value('businessReviewAt') ? new Date(value('businessReviewAt')).toISOString() : '' };
+  return null;
 }
 
 function openCreateDialog(initialType = 'idea', preset = {}) {
@@ -4300,21 +4429,26 @@ function openCreateDialog(initialType = 'idea', preset = {}) {
   const defaultEditPolicy = preset.editPolicy || 'shared';
   const kindLabels = { preference: 'Критерий выбора', limitation: 'Ограничение', rule: 'Правило', insight: 'Вывод' };
   const displayName = preset.comparisonMode ? 'Сравнение вариантов' : kindLabels[preset.kind] || initialMeta.singular;
-  const titleLabel = preset.comparisonMode ? 'Что сравниваем' : initialType === 'question_set' ? 'Название группы вопросов' : initialType === 'meeting' ? 'Тема встречи' : 'Название';
-  const descriptionLabel = preset.comparisonMode ? 'Зачем сравниваем и какой вывод нужен' : preset.kind === 'limitation' ? 'Как применять ограничение' : preset.kind === 'rule' ? 'Формулировка и область действия' : initialType === 'question_set' ? 'Зачем обсуждаем' : initialType === 'meeting' ? 'Повестка и заметки' : initialType === 'task' ? 'Ожидаемый результат' : 'Краткое описание';
+  const titleLabel = preset.comparisonMode ? 'Что сравниваем' : initialType === 'question_set' ? 'Название группы вопросов' : initialType === 'meeting' ? 'Тема встречи' : initialType === 'inbox' ? 'Что нужно не потерять' : 'Название';
+  const descriptionLabel = preset.comparisonMode ? 'Зачем сравниваем и какой вывод нужен' : preset.kind === 'limitation' ? 'Как применять ограничение' : preset.kind === 'rule' ? 'Формулировка и область действия' : initialType === 'question_set' ? 'Зачем обсуждаем' : initialType === 'meeting' ? 'Повестка и заметки' : initialType === 'task' ? 'Ожидаемый результат' : initialType === 'risk' ? 'Что может произойти и почему это важно' : initialType === 'hypothesis' ? 'Проверяемое предположение' : initialType === 'experiment' ? 'Что именно хотим проверить' : initialType === 'decision' ? 'Что решили и на каких основаниях' : 'Краткое описание';
   const draftScope = `create:${initialType}:${preset.kind || 'default'}:${preset.comparisonMode ? 'comparison' : 'record'}:${preset.sourceRecordId || 'root'}`;
   const parentOptions = state.records.filter((record) => record.status !== 'archived').map((record) => `<option value="${record.id}" ${defaultParentID === record.id ? 'selected' : ''}>${escapeHTML(typeMeta[record.type]?.singular || 'Карточка')}: ${escapeHTML(record.title)}</option>`).join('');
-  const planned = ['task', 'goal', 'research', 'question_set', 'meeting', 'decision', 'disagreement'].includes(initialType);
-  $('#create-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon(initialMeta.icon)} Новая запись</span><h2>${escapeHTML(displayName)}</h2></div><button type="button" class="close-button icon-button" data-close-create aria-label="Закрыть">${icon('x')}</button></div><form id="create-record-form" class="card-form dialog-form"><label>${titleLabel}<input name="title" required maxlength="240" autofocus value="${escapeHTML(preset.title || '')}" placeholder="${preset.comparisonMode ? 'Например: Выбор сервера' : initialType === 'question_set' ? 'Например: Договорённости основателей' : ''}"></label>${markdownEditor('description', descriptionLabel, preset.description || '', 7, 'Факты, контекст и ожидаемый результат', 'create-record')}<input type="hidden" name="type" value="${initialType}"><input type="hidden" name="kind" value="${escapeHTML(preset.kind || '')}">${planned ? `<div class="form-grid two"><label>${initialType === 'question_set' ? 'Координатор' : initialType === 'meeting' ? 'Организатор' : 'Ответственный'}<select name="ownerId">${userOptions(state.me.id)}</select></label><label>${initialType === 'meeting' ? 'Дата и время' : 'Срок'}<input name="dueAt" type="datetime-local"></label></div><div class="form-grid two"><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === (preset.priority || 'normal') ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Оценка времени, минут<input name="estimateMinutes" type="number" min="0" value="${Number(preset.estimateMinutes || 0)}"></label></div>` : `<input type="hidden" name="ownerId" value="${state.me.id}"><input type="hidden" name="priority" value="${escapeHTML(preset.priority || 'normal')}"><input type="hidden" name="estimateMinutes" value="${Number(preset.estimateMinutes || 0)}">`}<details class="form-more create-organization" ${sourceRecord ? 'open' : ''}><summary>Место в проекте и доступ</summary><div class="form-more-body"><div class="form-grid three"><label>Направление<select name="workstream">${Object.entries(workstreamLabels).map(([value, label]) => `<option value="${value}" ${defaultWorkstream === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Доступ к изменениям<select name="editPolicy">${Object.entries(editPolicyLabels).map(([value, label]) => `<option value="${value}" ${defaultEditPolicy === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Родитель<select name="parentId"><option value="">Без родителя</option>${parentOptions}</select></label></div><label class="root-toggle"><input name="isRoot" type="checkbox" ${preset.isRoot ? 'checked' : ''}> <span><strong>Новый корень</strong><small>Начать самостоятельную крупную ветку вместо продолжения текущей цепочки.</small></span></label></div></details><div class="ai-suggestion"><span class="ai-suggestion-icon">${icon('sparkles')}</span><span><strong>AI-структура</strong><small id="ai-suggestion-status">После названия система предложит приоритет, оценку времени, направление и место в иерархии.</small></span><button type="button" class="secondary" data-ai-suggest>Предложить</button></div><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать</button><button type="button" class="secondary" data-close-create>Отмена</button></div></form>`;
+  const planned = ['task', 'goal', 'research', 'question_set', 'meeting', 'disagreement', 'risk', 'hypothesis', 'experiment'].includes(initialType);
+  $('#create-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon(initialMeta.icon)} Новая запись</span><h2>${escapeHTML(displayName)}</h2></div><button type="button" class="close-button icon-button" data-close-create aria-label="Закрыть">${icon('x')}</button></div><form id="create-record-form" class="card-form dialog-form"><label>${titleLabel}<input name="title" required maxlength="240" autofocus value="${escapeHTML(preset.title || '')}" placeholder="${preset.comparisonMode ? 'Например: Выбор сервера' : initialType === 'question_set' ? 'Например: Договорённости основателей' : initialType === 'inbox' ? 'Короткая мысль или наблюдение' : ''}"></label>${markdownEditor('description', descriptionLabel, preset.description || '', initialType === 'inbox' ? 4 : 7, 'Факты, контекст и ожидаемый результат', 'create-record')}<input type="hidden" name="type" value="${initialType}"><input type="hidden" name="kind" value="${escapeHTML(preset.kind || '')}">${renderBusinessDetailsFields(initialType)}${planned ? `<div class="form-grid two"><label>${initialType === 'question_set' ? 'Координатор' : initialType === 'meeting' ? 'Организатор' : 'Ответственный'}<select name="ownerId">${userOptions(state.me.id)}</select></label><label>${initialType === 'meeting' ? 'Дата и время' : 'Срок'}<input name="dueAt" type="datetime-local"></label></div><div class="form-grid two"><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === (preset.priority || 'normal') ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Оценка времени, минут<input name="estimateMinutes" type="number" min="0" value="${Number(preset.estimateMinutes || 0)}"></label></div>` : `<input type="hidden" name="ownerId" value="${state.me.id}"><input type="hidden" name="priority" value="${escapeHTML(preset.priority || 'normal')}"><input type="hidden" name="estimateMinutes" value="${Number(preset.estimateMinutes || 0)}">`}<details class="form-more create-organization" ${sourceRecord ? 'open' : ''}><summary>Место в проекте и доступ</summary><div class="form-more-body"><div class="form-grid three"><label>Направление<select name="workstream">${Object.entries(workstreamLabels).map(([value, label]) => `<option value="${value}" ${defaultWorkstream === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Доступ к изменениям<select name="editPolicy">${Object.entries(editPolicyLabels).map(([value, label]) => `<option value="${value}" ${defaultEditPolicy === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Родитель<select name="parentId"><option value="">Без родителя</option>${parentOptions}</select></label></div><label class="root-toggle"><input name="isRoot" type="checkbox" ${preset.isRoot ? 'checked' : ''}> <span><strong>Новый корень</strong><small>Начать самостоятельную крупную ветку вместо продолжения текущей цепочки.</small></span></label></div></details><div class="ai-suggestion"><span class="ai-suggestion-icon">${icon('sparkles')}</span><span><strong>AI-структура</strong><small id="ai-suggestion-status">После названия система предложит приоритет, оценку времени, направление и место в иерархии.</small></span><button type="button" class="secondary" data-ai-suggest>Предложить</button></div><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать</button><button type="button" class="secondary" data-close-create>Отмена</button></div></form>`;
   $$('[data-close-create]').forEach((button) => button.addEventListener('click', () => $('#create-dialog').close()));
   const createForm = $('#create-record-form');
+	if (initialType === 'inbox') createForm.querySelector('.ai-suggestion')?.remove();
 	bindMarkdownEditors($('#create-dialog'));
   bindWorkingDraft(createForm, draftScope);
-  bindCreateSuggestion(createForm, initialType);
+  if (initialType !== 'inbox') bindCreateSuggestion(createForm, initialType);
   $('#create-record-form').addEventListener('submit', async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget); const due = form.get('dueAt');
+    if (initialType === 'decision' && !String(form.get('description') || '').trim()) {
+      event.currentTarget.elements.description?.focus();
+      return toast('Зафиксируйте содержание и основание решения', true);
+    }
     try {
-      const record = await api('/api/records', { method: 'POST', body: JSON.stringify({ type: form.get('type'), kind: form.get('kind'), title: form.get('title'), description: form.get('description'), ownerId: Number(form.get('ownerId')), dueAt: due ? new Date(due).toISOString() : '', priority: form.get('priority') || 'normal', workstream: form.get('workstream') || 'business', editPolicy: form.get('editPolicy') || 'shared', parentId: form.get('parentId') || '', isRoot: event.currentTarget.elements.isRoot.checked, estimateMinutes: Number(form.get('estimateMinutes')) }) });
+      const record = await api('/api/records', { method: 'POST', body: JSON.stringify({ type: form.get('type'), kind: form.get('kind'), title: form.get('title'), description: form.get('description'), ownerId: Number(form.get('ownerId')), dueAt: due ? new Date(due).toISOString() : '', priority: form.get('priority') || 'normal', workstream: form.get('workstream') || 'business', editPolicy: form.get('editPolicy') || 'shared', parentId: form.get('parentId') || '', isRoot: event.currentTarget.elements.isRoot.checked, estimateMinutes: Number(form.get('estimateMinutes')), businessDetails: businessDetailsFromForm(event.currentTarget, initialType) }) });
       let linkError = '';
       if (preset.sourceRecordId) {
         try {
@@ -4372,7 +4506,7 @@ function bindCreateSuggestion(form, recordType) {
 }
 
 function actionLabel(action) {
-  return ({ created: 'создал карточку', profile_updated: 'изменил профиль', updated: 'изменил карточку', reordered: 'изменил порядок блоков', converted_to_questions: 'преобразовал в карточку вопросов', archived: 'перенёс в архив', section_updated: 'обновил раздел', link_created: 'создал связь', link_removed: 'убрал связь', criterion_scored: 'оценил по критерию', proof_added: 'добавил доказательство', completed: 'завершил задачу', partners_notified: 'уведомил партнёра', questions_added: 'добавил вопросы', question_answered: 'ответил на вопрос', question_decided: 'зафиксировал совместное решение', question_archived: 'архивировал вопрос', output_created: 'превратил вывод в рабочую карточку', created_from_question: 'создал карточку из совместного вывода', research_option_created: 'добавил вариант исследования', research_option_updated: 'обновил вариант исследования', research_option_archived: 'архивировал вариант исследования', research_field_created: 'добавил поле сравнения', research_field_archived: 'архивировал поле сравнения', comment_added: 'добавил комментарий', checklist_added: 'добавил шаг', checklist_updated: 'обновил шаг', review_submitted: 'отправил результат на проверку', review_accepted: 'принял результат', review_rework: 'вернул задачу на доработку', attachment_added: 'приложил файл', recurrence_created: 'создал следующее повторение', recurrence_updated: 'изменил повторение' }[action] || action);
+  return ({ created: 'создал карточку', profile_updated: 'изменил профиль', updated: 'изменил карточку', triaged: 'разобрал входящее', business_details_updated: 'обновил контрольные поля', change_undone: 'отменил ошибочное изменение', reordered: 'изменил порядок блоков', converted_to_questions: 'преобразовал в карточку вопросов', archived: 'перенёс в архив', section_updated: 'обновил раздел', link_created: 'создал связь', link_removed: 'убрал связь', criterion_scored: 'оценил по критерию', proof_added: 'добавил доказательство', completed: 'завершил задачу', partners_notified: 'уведомил партнёра', questions_added: 'добавил вопросы', question_answered: 'ответил на вопрос', question_decided: 'зафиксировал совместное решение', question_archived: 'архивировал вопрос', output_created: 'превратил вывод в рабочую карточку', created_from_question: 'создал карточку из совместного вывода', research_option_created: 'добавил вариант исследования', research_option_updated: 'обновил вариант исследования', research_option_archived: 'архивировал вариант исследования', research_field_created: 'добавил поле сравнения', research_field_archived: 'архивировал поле сравнения', comment_added: 'добавил комментарий', checklist_added: 'добавил шаг', checklist_updated: 'обновил шаг', review_submitted: 'отправил результат на проверку', review_accepted: 'принял результат', review_rework: 'вернул задачу на доработку', attachment_added: 'приложил файл', recurrence_created: 'создал следующее повторение', recurrence_updated: 'изменил повторение' }[action] || action);
 }
 
 function activityActionLabel(item) {
@@ -4542,10 +4676,32 @@ function openActivity(id, suppliedItem = null) {
   if (!item) return toast('Событие не найдено', true);
   state.activeActivity = item;
   const record = state.records.find((candidate) => candidate.id === item.entityId);
-  $('#event-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${formatDate(item.createdAt, true)} · ${escapeHTML(item.actorUsername)}</span><h2>${escapeHTML(activityActionLabel(item))}</h2><p>${escapeHTML(recordTitleByActivity(item))}</p></div><button type="button" class="close-button icon-button" data-close-event aria-label="Закрыть">${icon('x')}</button></div><div class="event-body">${item.reason ? `<section class="event-reason-block"><span>Почему</span><p>${escapeHTML(item.reason)}</p></section>` : ''}${activityChanges(item, true) ? `<section class="event-section"><h3>Что изменилось</h3><div class="event-change-list">${activityChanges(item, true)}</div></section>` : ''}${activityDetails(item) ? `<section class="event-section"><h3>Содержание события</h3>${activityDetails(item)}</section>` : ''}<div class="form-actions">${record ? `<button type="button" class="primary" data-event-record="${record.id}">Открыть карточку</button>` : ''}<button type="button" class="secondary" data-close-event>Закрыть</button></div></div>`;
+  const undoable = activityIsSafelyUndoable(item);
+  $('#event-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${formatDate(item.createdAt, true)} · ${escapeHTML(item.actorUsername)}</span><h2>${escapeHTML(activityActionLabel(item))}</h2><p>${escapeHTML(recordTitleByActivity(item))}</p></div><button type="button" class="close-button icon-button" data-close-event aria-label="Закрыть">${icon('x')}</button></div><div class="event-body">${item.reason ? `<section class="event-reason-block"><span>Почему</span><p>${escapeHTML(item.reason)}</p></section>` : ''}${activityChanges(item, true) ? `<section class="event-section"><h3>Что изменилось</h3><div class="event-change-list">${activityChanges(item, true)}</div></section>` : ''}${activityDetails(item) ? `<section class="event-section"><h3>Содержание события</h3>${activityDetails(item)}</section>` : ''}${undoable ? `<aside class="undo-note">${icon('undo')}<span><strong>Ошибочное действие?</strong><small>Отмена сработает, только если карточка или связь после этого не менялась.</small></span></aside>` : ''}<div class="form-actions">${record ? `<button type="button" class="primary" data-event-record="${record.id}">Открыть карточку</button>` : ''}${undoable ? `<button type="button" class="secondary" data-undo-activity="${item.id}">${icon('undo')} Отменить действие</button>` : ''}<button type="button" class="secondary" data-close-event>Закрыть</button></div></div>`;
   $$('[data-close-event]', $('#event-dialog')).forEach((button) => button.addEventListener('click', () => $('#event-dialog').close()));
   $('[data-event-record]')?.addEventListener('click', async (event) => { $('#event-dialog').close(); await openRecord(event.currentTarget.dataset.eventRecord); });
+  $('[data-undo-activity]')?.addEventListener('click', async (event) => {
+    const confirmed = await askChoice({ title: 'Отменить действие?', label: 'Изменение вернётся к предыдущему значению, а сама отмена останется в истории.', choices: [{ value: 'undo', label: 'Да, отменить действие' }] });
+    if (confirmed !== 'undo') return;
+    try {
+      await api(`/api/activity/${event.currentTarget.dataset.undoActivity}/undo`, { method: 'POST', body: '{}' });
+      $('#event-dialog').close(); await loadData(true); render(); toast('Действие отменено, запись сохранена в истории');
+    } catch (error) { toast(error.message, true); }
+  });
   openModal($('#event-dialog'));
+}
+
+function activityIsSafelyUndoable(item) {
+  if (item.actorId !== state.me.id) return false;
+  if (['link_created', 'link_removed'].includes(item.action)) return true;
+  if (item.action !== 'updated') return false;
+  const changes = Object.entries(item.details || {});
+  if (!changes.length) return false;
+  const allowed = new Set(['status', 'parentId', 'isRoot', 'priority']);
+  return changes.every(([field, change]) => {
+    if (!allowed.has(field) || !change || typeof change !== 'object' || !Object.prototype.hasOwnProperty.call(change, 'after')) return false;
+    return field !== 'status' || !['completed', 'archived'].includes(change.after);
+  });
 }
 
 function renderHistory() {
@@ -4582,7 +4738,7 @@ async function loadOlderHistory() {
 }
 
 function renderStructure() {
-  const configurableTypes = Object.entries(typeMeta).filter(([key]) => !['question_set', 'meeting'].includes(key));
+  const configurableTypes = Object.entries(typeMeta).filter(([key]) => !['question_set', 'meeting', 'risk', 'hypothesis', 'experiment', 'inbox'].includes(key));
   const selectedType = state.structureType || 'idea';
   state.structureType = selectedType;
   const definitions = state.definitions.filter((definition) => definition.scopeType === selectedType || !definition.scopeType);
@@ -4697,7 +4853,7 @@ function bindTemplateDrag(scopeType) {
 }
 
 function renderNotifications() {
-  $('#main-content').innerHTML = `<div class="list-toolbar"><div><p class="eyebrow">Личный кабинет</p><h3>Уведомления</h3></div><button type="button" class="secondary" id="read-all">Прочитать все</button></div><section class="section-panel"><div class="notification-list">${state.notifications.map((item) => `<button type="button" class="notification ${item.readAt ? '' : 'unread'}" data-notification-id="${item.id}" data-entity-id="${escapeHTML(item.entityId || '')}"><i></i><span><strong>${escapeHTML(item.title)}</strong><p>${escapeHTML(item.body)}</p><small>${formatDate(item.createdAt, true)}</small></span></button>`).join('') || emptyState('Уведомлений пока нет.')}</div></section>`;
+  $('#main-content').innerHTML = `<div class="list-toolbar"><div><p class="eyebrow">Личный кабинет</p><h3>Уведомления</h3></div><button type="button" class="secondary" id="read-all" ${state.notifications.some((item) => !item.readAt) ? '' : 'disabled'}>Прочитать все</button></div><section class="section-panel"><div class="notification-list">${state.notifications.map((item) => `<button type="button" class="notification ${item.readAt ? '' : 'unread'}" data-notification-id="${item.id}" data-entity-id="${escapeHTML(item.entityId || '')}"><i></i><span><strong>${escapeHTML(item.title)}</strong><p>${escapeHTML(item.body)}</p><small>${formatDate(item.createdAt, true)}</small></span></button>`).join('') || emptyState('Уведомлений пока нет.')}</div></section>`;
   $('#read-all').addEventListener('click', async () => { await api('/api/notifications/read-all', { method: 'POST' }); await loadData(true); });
   $$('[data-notification-id]').forEach((button) => button.addEventListener('click', async () => { await api(`/api/notifications/${button.dataset.notificationId}/read`, { method: 'POST' }); if (button.dataset.entityId) await openRecord(button.dataset.entityId); await loadData(true); }));
 }

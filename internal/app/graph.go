@@ -127,6 +127,32 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	replacementRows, err := s.store.db.QueryContext(r.Context(), `
+		SELECT b.record_id, b.supersedes_id
+		FROM record_business_details b
+		JOIN records current ON current.id = b.record_id
+		JOIN records previous ON previous.id = b.supersedes_id
+		WHERE b.supersedes_id IS NOT NULL
+			AND (? = 1 OR (current.status <> 'archived' AND previous.status <> 'archived'))
+		ORDER BY b.updated_at`, includeArchived)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось загрузить историю замены решений")
+		return
+	}
+	for replacementRows.Next() {
+		var currentID, previousID string
+		if err := replacementRows.Scan(&currentID, &previousID); err != nil {
+			replacementRows.Close()
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать замену решения")
+			return
+		}
+		addEdge(GraphEdge{ID: "supersedes:" + currentID, Source: graphRecordID(currentID), Target: graphRecordID(previousID), RelationType: "supersedes", Label: "заменяет решение"})
+	}
+	if err := replacementRows.Close(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось завершить чтение замен решений")
+		return
+	}
+
 	questionRows, err := s.store.db.QueryContext(r.Context(), `
 		SELECT q.id, q.record_id, q.body, q.status, q.created_at, q.updated_at
 		FROM question_items q
@@ -299,7 +325,7 @@ func graphRelationLabel(relationType string) string {
 	labels := map[string]string{
 		"related": "связано", "supports": "поддерживает", "depends_on": "зависит от",
 		"result_of": "является результатом", "leads_to": "приводит к", "produced": "порождает",
-		"evaluated_by": "оценивается по",
+		"evaluated_by": "оценивается по", "supersedes": "заменяет решение",
 	}
 	if label, ok := labels[relationType]; ok {
 		return label

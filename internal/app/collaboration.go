@@ -564,7 +564,7 @@ func (s *Server) recordAnalysisPrompt(ctx context.Context, record Record) (strin
 	if err != nil {
 		return "", nil, coverage, err
 	}
-	rows, err := s.store.db.QueryContext(ctx, `SELECT id, CASE WHEN subtype = 'question_set' THEN 'question_set' WHEN record_kind = 'meeting' THEN 'meeting' ELSE type END, title, description, status, workstream FROM records WHERE id <> ? AND status NOT IN ('archived', 'cancelled', 'completed', 'rejected') ORDER BY updated_at DESC LIMIT 60`, record.ID)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT id, CASE WHEN business_kind <> '' THEN business_kind WHEN subtype = 'question_set' THEN 'question_set' WHEN record_kind = 'meeting' THEN 'meeting' ELSE type END, title, description, status, workstream FROM records WHERE id <> ? AND status NOT IN ('archived', 'cancelled', 'completed', 'rejected') ORDER BY updated_at DESC LIMIT 60`, record.ID)
 	if err != nil {
 		return "", nil, coverage, err
 	}
@@ -585,7 +585,7 @@ func (s *Server) recordAnalysisPrompt(ctx context.Context, record Record) (strin
 	candidateJSON, _ := json.Marshal(candidates)
 	dossierJSON, _ := json.Marshal(dossier)
 	prompt := fmt.Sprintf(`Разбери рабочую карточку и верни только JSON:
-{"summary":"краткая выжимка всех существенных данных","proposedDecision":"предлагаемый итог или пустая строка","gaps":["..."],"risks":["..."],"nextAction":"...","priority":"low|normal|high|critical","estimateMinutes":60,"confidence":0.8,"suggestedLinks":[{"recordId":"id из списка","relationType":"related|supports|depends_on|result_of|leads_to","reason":"..."}],"suggestedOutputs":[{"type":"task|idea|criterion|research|decision|goal","kind":"|preference|limitation|rule|insight","title":"...","description":"...","priority":"low|normal|high|critical","estimateMinutes":60,"reason":"..."}]}.
+{"summary":"краткая выжимка всех существенных данных","proposedDecision":"предлагаемый итог или пустая строка","gaps":["..."],"risks":["..."],"nextAction":"...","priority":"low|normal|high|critical","estimateMinutes":60,"confidence":0.8,"suggestedLinks":[{"recordId":"id из списка","relationType":"related|supports|depends_on|result_of|leads_to","reason":"..."}],"suggestedOutputs":[{"type":"task|idea|criterion|research|decision|goal|risk|hypothesis|experiment","kind":"|preference|limitation|rule|insight","title":"...","description":"...","priority":"low|normal|high|critical","estimateMinutes":60,"reason":"..."}]}.
 
 ДОСЬЕ является единственным источником истины. Прочитай все его источники: sections, researchComparison, relations, criterionScores, questionWorkflow, recentComments, checklist, proofs, attachmentsMetadata, origin и recentHistory. Нельзя называть данные отсутствующими, если они есть хотя бы в одном источнике ДОСЬЕ.
 

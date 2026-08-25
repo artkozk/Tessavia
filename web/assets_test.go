@@ -199,8 +199,39 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260825-mobile-reliability-2")) {
-		t.Fatal("mobile reliability release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	if !bytes.Contains(index, []byte("20260825-business-memory-1")) {
+		t.Fatal("business memory release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	}
+}
+
+func TestBusinessMemoryAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("function renderValidation"),
+		[]byte("function renderBusinessDetailsRead"),
+		[]byte("function activityIsSafelyUndoable"),
+		[]byte("data-triage-inbox"),
+		[]byte("decision-lifecycle"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain business memory marker %q", marker)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte(".validation-summary"),
+		[]byte(".business-read"),
+		[]byte(".undo-note"),
+	} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain business memory marker %q", marker)
+		}
 	}
 }
 

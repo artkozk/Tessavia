@@ -971,7 +971,7 @@ func insertNotification(ctx context.Context, tx *sql.Tx, userID int64, notificat
 }
 
 func (s *Server) ensureDeadlineNotifications(ctx context.Context) error {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT id, CASE WHEN subtype = 'question_set' THEN 'question_set' WHEN record_kind = 'meeting' THEN 'meeting' ELSE type END, title, owner_id, due_at FROM records WHERE due_at IS NOT NULL AND status NOT IN ('completed','cancelled','archived','rejected')`)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT id, CASE WHEN business_kind <> '' THEN business_kind WHEN subtype = 'question_set' THEN 'question_set' WHEN record_kind = 'meeting' THEN 'meeting' ELSE type END, title, owner_id, due_at FROM records WHERE due_at IS NOT NULL AND status NOT IN ('completed','cancelled','archived','rejected')`)
 	if err != nil {
 		return err
 	}
@@ -1146,9 +1146,9 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tables := map[string]string{
-		"users": `SELECT id, email, username, created_at FROM users`, "records": `SELECT * FROM records`, "sections": `SELECT * FROM record_sections`, "links": `SELECT * FROM record_links`, "criterionScores": `SELECT * FROM criterion_scores`, "proofs": `SELECT * FROM task_proofs`, "questions": `SELECT * FROM question_items`, "answers": `SELECT * FROM question_answers`, "questionDecisions": `SELECT * FROM question_decisions`, "derivations": `SELECT * FROM record_derivations`, "comments": `SELECT * FROM record_comments`, "checklist": `SELECT * FROM checklist_items`, "reviews": `SELECT * FROM task_review_events`, "attachments": `SELECT id, record_id, uploader_id, original_name, content_type, size_bytes, sha256, created_at FROM record_attachments`, "recurrence": `SELECT * FROM recurrence_rules`, "activity": `SELECT * FROM activity`,
+		"users": `SELECT id, email, username, created_at FROM users`, "records": `SELECT * FROM records`, "recordBusinessDetails": `SELECT * FROM record_business_details`, "sections": `SELECT * FROM record_sections`, "links": `SELECT * FROM record_links`, "criterionScores": `SELECT * FROM criterion_scores`, "proofs": `SELECT * FROM task_proofs`, "questions": `SELECT * FROM question_items`, "answers": `SELECT * FROM question_answers`, "questionDecisions": `SELECT * FROM question_decisions`, "derivations": `SELECT * FROM record_derivations`, "comments": `SELECT * FROM record_comments`, "checklist": `SELECT * FROM checklist_items`, "reviews": `SELECT * FROM task_review_events`, "attachments": `SELECT id, record_id, uploader_id, original_name, content_type, size_bytes, sha256, created_at FROM record_attachments`, "recurrence": `SELECT * FROM recurrence_rules`, "activity": `SELECT * FROM activity`, "activityUndos": `SELECT * FROM activity_undos`,
 	}
-	payload := map[string]any{"schemaVersion": 7, "exportedAt": nowText(), "exportedBy": currentUser(r).Username, "tables": map[string]any{}}
+	payload := map[string]any{"schemaVersion": 8, "exportedAt": nowText(), "exportedBy": currentUser(r).Username, "tables": map[string]any{}}
 	data := payload["tables"].(map[string]any)
 	for name, query := range tables {
 		rows, err := exportRows(r.Context(), s.store.db, query)

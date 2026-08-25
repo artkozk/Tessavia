@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -27,7 +28,7 @@ var questionListPrefixPattern = regexp.MustCompile(`^\s*(?:[-*]\s+|[0-9]+[.)]\s+
 var recordTypes = map[string]struct{}{
 	"goal": {}, "task": {}, "idea": {}, "criterion": {}, "research": {},
 	"decision": {}, "disagreement": {}, "document": {}, "question_set": {},
-	"meeting": {},
+	"meeting": {}, "risk": {}, "hypothesis": {}, "experiment": {}, "inbox": {},
 }
 
 var recordStatuses = map[string]struct{}{
@@ -86,6 +87,8 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/records/{id}", s.requireAuth(http.HandlerFunc(s.handleGetRecord)))
 	s.mux.Handle("GET /api/records/{id}/relations", s.requireAuth(http.HandlerFunc(s.handleGetRecordRelations)))
 	s.mux.Handle("PATCH /api/records/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdateRecord)))
+	s.mux.Handle("PUT /api/records/{id}/business-details", s.requireAuth(http.HandlerFunc(s.handleUpdateBusinessDetails)))
+	s.mux.Handle("POST /api/records/{id}/triage", s.requireAuth(http.HandlerFunc(s.handleTriageInbox)))
 	s.mux.Handle("POST /api/records/{id}/convert-to-questions", s.requireAuth(http.HandlerFunc(s.handleConvertToQuestions)))
 	s.mux.Handle("POST /api/records/{id}/archive", s.requireAuth(http.HandlerFunc(s.handleArchiveRecord)))
 	s.mux.Handle("GET /api/records/{id}/sections", s.requireAuth(http.HandlerFunc(s.handleSections)))
@@ -128,6 +131,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/notifications/read-all", s.requireAuth(http.HandlerFunc(s.handleReadAllNotifications)))
 	s.mux.Handle("POST /api/notifications/{id}/read", s.requireAuth(http.HandlerFunc(s.handleReadNotification)))
 	s.mux.Handle("GET /api/activity", s.requireAuth(http.HandlerFunc(s.handleActivity)))
+	s.mux.Handle("POST /api/activity/{id}/undo", s.requireAuth(http.HandlerFunc(s.handleUndoActivity)))
 	s.mux.Handle("GET /api/saved-views", s.requireAuth(http.HandlerFunc(s.handleListSavedViews)))
 	s.mux.Handle("POST /api/saved-views", s.requireAuth(http.HandlerFunc(s.handleCreateSavedView)))
 	s.mux.Handle("DELETE /api/saved-views/{id}", s.requireAuth(http.HandlerFunc(s.handleDeleteSavedView)))
@@ -403,15 +407,15 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 type recordScanner interface{ Scan(...any) error }
 
 const recordSelect = `
-	SELECT r.id, CASE WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END, r.record_kind, r.title, r.description, r.status,
+	SELECT r.id, CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END, r.record_kind, r.title, r.description, r.status,
 		r.author_id, author.username, r.owner_id, owner.username,
 		r.decision_maker_id, decision_maker.username, r.due_at,
 		r.priority, r.workstream, r.edit_policy, r.parent_id, r.is_root,
 		r.estimate_minutes, r.actual_minutes,
 		CASE
 			WHEN r.type = 'decision' AND r.status NOT IN ('archived', 'cancelled') THEN 100
-			WHEN r.type = 'research' AND r.status = 'completed' THEN 100
-			WHEN r.type = 'research' THEN MIN(95,
+			WHEN r.type = 'research' AND r.business_kind = '' AND r.status = 'completed' THEN 100
+			WHEN r.type = 'research' AND r.business_kind = '' THEN MIN(95,
 				CASE WHEN TRIM(r.description) <> '' THEN 15 ELSE 0 END +
 				CASE WHEN EXISTS(SELECT 1 FROM research_option_fields rf WHERE rf.record_id = r.id AND rf.active = 1)
 					OR EXISTS(SELECT 1 FROM record_sections rs WHERE rs.record_id = r.id AND TRIM(rs.content) <> '') THEN 15 ELSE 0 END +
@@ -427,22 +431,30 @@ const recordSelect = `
 		END,
 		r.progress_note, r.result, r.completed_at,
 		r.created_at, r.updated_at,
-		(SELECT COUNT(*) FROM task_proofs p WHERE p.record_id = r.id)
+		(SELECT COUNT(*) FROM task_proofs p WHERE p.record_id = r.id),
+		business.record_id, business.probability, business.impact, business.mitigation_md,
+		business.occurred, business.metric, business.success_threshold, business.experiment_method_md,
+		business.verdict, business.decision_state, business.effective_at, business.review_at, business.supersedes_id
 	FROM records r
 	JOIN users author ON author.id = r.author_id
 	JOIN users owner ON owner.id = r.owner_id
-	LEFT JOIN users decision_maker ON decision_maker.id = r.decision_maker_id`
+	LEFT JOIN users decision_maker ON decision_maker.id = r.decision_maker_id
+	LEFT JOIN record_business_details business ON business.record_id = r.id`
 
 func scanRecord(scanner recordScanner) (Record, error) {
 	var record Record
 	var decisionMakerID sql.NullInt64
 	var decisionMakerName, dueAt, parentID, completedAt sql.NullString
+	var businessRecordID, mitigation, metric, threshold, method, verdict, decisionState, effectiveAt, reviewAt, supersedesID sql.NullString
+	var probability, impact, occurred sql.NullInt64
 	var isRoot int
 	err := scanner.Scan(&record.ID, &record.Type, &record.Kind, &record.Title, &record.Description, &record.Status,
 		&record.AuthorID, &record.AuthorUsername, &record.OwnerID, &record.OwnerUsername,
 		&decisionMakerID, &decisionMakerName, &dueAt, &record.Priority, &record.Workstream, &record.EditPolicy, &parentID, &isRoot,
 		&record.EstimateMinutes, &record.ActualMinutes, &record.Progress,
-		&record.ProgressNote, &record.Result, &completedAt, &record.CreatedAt, &record.UpdatedAt, &record.ProofCount)
+		&record.ProgressNote, &record.Result, &completedAt, &record.CreatedAt, &record.UpdatedAt, &record.ProofCount,
+		&businessRecordID, &probability, &impact, &mitigation, &occurred, &metric, &threshold, &method,
+		&verdict, &decisionState, &effectiveAt, &reviewAt, &supersedesID)
 	if decisionMakerID.Valid {
 		record.DecisionMakerID = &decisionMakerID.Int64
 	}
@@ -458,6 +470,23 @@ func scanRecord(scanner recordScanner) (Record, error) {
 	record.IsRoot = isRoot == 1
 	if completedAt.Valid {
 		record.CompletedAt = &completedAt.String
+	}
+	if businessRecordID.Valid {
+		details := &RecordBusinessDetails{
+			Probability: int(probability.Int64), Impact: int(impact.Int64), Mitigation: mitigation.String,
+			Occurred: occurred.Int64 == 1, Metric: metric.String, SuccessThreshold: threshold.String,
+			ExperimentMethod: method.String, Verdict: verdict.String, DecisionState: decisionState.String,
+		}
+		if effectiveAt.Valid {
+			details.EffectiveAt = &effectiveAt.String
+		}
+		if reviewAt.Valid {
+			details.ReviewAt = &reviewAt.String
+		}
+		if supersedesID.Valid {
+			details.SupersedesID = &supersedesID.String
+		}
+		record.BusinessDetails = details
 	}
 	return record, err
 }
@@ -475,13 +504,16 @@ func (s *Server) handleListRecords(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if recordType == "question_set" {
-			where = append(where, "r.subtype = 'question_set'")
+			where = append(where, "r.subtype = 'question_set' AND r.business_kind = ''")
 		} else if recordType == "meeting" {
-			where = append(where, "r.type = 'document' AND r.record_kind = 'meeting'")
+			where = append(where, "r.type = 'document' AND r.record_kind = 'meeting' AND r.business_kind = ''")
+		} else if recordType == "risk" || recordType == "hypothesis" || recordType == "experiment" || recordType == "inbox" {
+			where = append(where, "r.business_kind = ?")
+			args = append(args, recordType)
 		} else if recordType == "document" {
-			where = append(where, "r.type = 'document' AND r.subtype = '' AND r.record_kind = ''")
+			where = append(where, "r.type = 'document' AND r.subtype = '' AND r.record_kind = '' AND r.business_kind = ''")
 		} else {
-			where = append(where, "r.type = ? AND r.subtype = ''")
+			where = append(where, "r.type = ? AND r.subtype = '' AND r.business_kind = ''")
 			args = append(args, recordType)
 		}
 	}
@@ -529,29 +561,34 @@ func (s *Server) handleListRecords(w http.ResponseWriter, r *http.Request) {
 }
 
 type createRecordRequest struct {
-	Type            string `json:"type"`
-	Title           string `json:"title"`
-	Description     string `json:"description"`
-	Status          string `json:"status"`
-	OwnerID         int64  `json:"ownerId"`
-	DecisionMakerID *int64 `json:"decisionMakerId"`
-	DueAt           string `json:"dueAt"`
-	Priority        string `json:"priority"`
-	Workstream      string `json:"workstream"`
-	EditPolicy      string `json:"editPolicy"`
-	ParentID        string `json:"parentId"`
-	IsRoot          bool   `json:"isRoot"`
-	EstimateMinutes int    `json:"estimateMinutes"`
-	ActualMinutes   int    `json:"actualMinutes"`
-	Kind            string `json:"kind"`
+	Type            string                `json:"type"`
+	Title           string                `json:"title"`
+	Description     string                `json:"description"`
+	Status          string                `json:"status"`
+	OwnerID         int64                 `json:"ownerId"`
+	DecisionMakerID *int64                `json:"decisionMakerId"`
+	DueAt           string                `json:"dueAt"`
+	Priority        string                `json:"priority"`
+	Workstream      string                `json:"workstream"`
+	EditPolicy      string                `json:"editPolicy"`
+	ParentID        string                `json:"parentId"`
+	IsRoot          bool                  `json:"isRoot"`
+	EstimateMinutes int                   `json:"estimateMinutes"`
+	ActualMinutes   int                   `json:"actualMinutes"`
+	Kind            string                `json:"kind"`
+	BusinessDetails *businessDetailsInput `json:"businessDetails"`
 }
 
 func defaultStatus(recordType string) string {
 	switch recordType {
 	case "idea":
 		return "inbox"
-	case "goal", "task", "question_set", "meeting":
+	case "goal", "task", "question_set", "meeting", "risk", "experiment":
 		return "planned"
+	case "inbox":
+		return "inbox"
+	case "hypothesis":
+		return "draft"
 	case "decision":
 		return "completed"
 	default:
@@ -566,12 +603,16 @@ func validStatusForType(recordType, status string) bool {
 	switch recordType {
 	case "idea":
 		return status == "inbox" || status == "review" || status == "main" || status == "rejected"
-	case "task":
+	case "task", "risk", "experiment":
 		return status == "planned" || status == "in_progress" || status == "blocked" || status == "review" || status == "completed" || status == "postponed" || status == "cancelled"
 	case "goal", "question_set", "meeting":
 		return status == "planned" || status == "in_progress" || status == "blocked" || status == "completed" || status == "postponed" || status == "cancelled"
 	case "decision":
 		return status == "completed" || status == "cancelled"
+	case "hypothesis":
+		return status == "draft" || status == "review" || status == "in_progress" || status == "completed" || status == "rejected" || status == "cancelled"
+	case "inbox":
+		return status == "inbox" || status == "archived"
 	default:
 		return status == "draft" || status == "in_progress" || status == "completed" || status == "cancelled"
 	}
@@ -620,12 +661,17 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Type = strings.TrimSpace(input.Type)
 	input.Title = strings.TrimSpace(input.Title)
+	input.Description = strings.TrimSpace(input.Description)
 	if _, ok := recordTypes[input.Type]; !ok {
 		writeError(w, http.StatusBadRequest, "Неизвестный тип карточки")
 		return
 	}
 	if input.Title == "" || len(input.Title) > 240 {
 		writeError(w, http.StatusBadRequest, "Название обязательно и не длиннее 240 символов")
+		return
+	}
+	if input.Type == "decision" && input.Description == "" {
+		writeError(w, http.StatusBadRequest, "Зафиксируйте содержание и основание решения")
 		return
 	}
 	if input.Status == "" {
@@ -706,6 +752,7 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	databaseType := input.Type
 	subtype := ""
 	recordKind := strings.TrimSpace(input.Kind)
+	businessKind := ""
 	if input.Type == "question_set" {
 		databaseType = "document"
 		subtype = "question_set"
@@ -713,6 +760,18 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	} else if input.Type == "meeting" {
 		databaseType = "document"
 		recordKind = "meeting"
+	} else if input.Type == "risk" {
+		databaseType = "disagreement"
+		businessKind = "risk"
+	} else if input.Type == "hypothesis" {
+		databaseType = "idea"
+		businessKind = "hypothesis"
+	} else if input.Type == "experiment" {
+		databaseType = "research"
+		businessKind = "experiment"
+	} else if input.Type == "inbox" {
+		databaseType = "document"
+		businessKind = "inbox"
 	}
 	if !validRecordKind(databaseType, recordKind) {
 		writeError(w, http.StatusBadRequest, "Некорректный вид карточки")
@@ -724,11 +783,17 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 		completedAt = now
 		progress = 100
 	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, type, subtype, record_kind, title, description, status, author_id, owner_id, decision_maker_id, due_at, priority, workstream, edit_policy, parent_id, is_root, estimate_minutes, actual_minutes, progress, completed_at, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, databaseType, subtype, recordKind, input.Title, strings.TrimSpace(input.Description), input.Status, user.ID, input.OwnerID, input.DecisionMakerID, dueAt, input.Priority, input.Workstream, input.EditPolicy, parentID, input.IsRoot, input.EstimateMinutes, input.ActualMinutes, progress, completedAt, now, now)
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, type, subtype, record_kind, business_kind, title, description, status, author_id, owner_id, decision_maker_id, due_at, priority, workstream, edit_policy, parent_id, is_root, estimate_minutes, actual_minutes, progress, completed_at, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, databaseType, subtype, recordKind, businessKind, input.Title, strings.TrimSpace(input.Description), input.Status, user.ID, input.OwnerID, input.DecisionMakerID, dueAt, input.Priority, input.Workstream, input.EditPolicy, parentID, input.IsRoot, input.EstimateMinutes, input.ActualMinutes, progress, completedAt, now, now)
 	if err != nil {
 		log.Printf("create record: %v", err)
 		writeError(w, http.StatusInternalServerError, "Не удалось создать карточку")
 		return
+	}
+	if businessKind != "" || input.Type == "decision" {
+		if err := saveBusinessDetails(r.Context(), tx, id, input.Type, input.BusinessDetails, user.ID, now); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	if err := writeActivity(r.Context(), tx, user.ID, input.Type, id, "created", "", map[string]any{"title": input.Title, "status": input.Status, "ownerId": input.OwnerID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось записать историю")
@@ -843,26 +908,27 @@ func (s *Server) handleGetRecordRelations(w http.ResponseWriter, r *http.Request
 }
 
 type updateRecordRequest struct {
-	Title              *string `json:"title"`
-	Description        *string `json:"description"`
-	Status             *string `json:"status"`
-	OwnerID            *int64  `json:"ownerId"`
-	DecisionMakerID    *int64  `json:"decisionMakerId"`
-	ClearDecisionMaker bool    `json:"clearDecisionMaker"`
-	DueAt              *string `json:"dueAt"`
-	Priority           *string `json:"priority"`
-	Workstream         *string `json:"workstream"`
-	EditPolicy         *string `json:"editPolicy"`
-	ParentID           *string `json:"parentId"`
-	ClearParent        bool    `json:"clearParent"`
-	IsRoot             *bool   `json:"isRoot"`
-	EstimateMinutes    *int    `json:"estimateMinutes"`
-	ActualMinutes      *int    `json:"actualMinutes"`
-	Progress           *int    `json:"progress"`
-	ProgressNote       *string `json:"progressNote"`
-	Result             *string `json:"result"`
-	Reason             string  `json:"reason"`
-	ExpectedUpdatedAt  *string `json:"expectedUpdatedAt"`
+	Title              *string               `json:"title"`
+	Description        *string               `json:"description"`
+	Status             *string               `json:"status"`
+	OwnerID            *int64                `json:"ownerId"`
+	DecisionMakerID    *int64                `json:"decisionMakerId"`
+	ClearDecisionMaker bool                  `json:"clearDecisionMaker"`
+	DueAt              *string               `json:"dueAt"`
+	Priority           *string               `json:"priority"`
+	Workstream         *string               `json:"workstream"`
+	EditPolicy         *string               `json:"editPolicy"`
+	ParentID           *string               `json:"parentId"`
+	ClearParent        bool                  `json:"clearParent"`
+	IsRoot             *bool                 `json:"isRoot"`
+	EstimateMinutes    *int                  `json:"estimateMinutes"`
+	ActualMinutes      *int                  `json:"actualMinutes"`
+	Progress           *int                  `json:"progress"`
+	ProgressNote       *string               `json:"progressNote"`
+	Result             *string               `json:"result"`
+	Reason             string                `json:"reason"`
+	ExpectedUpdatedAt  *string               `json:"expectedUpdatedAt"`
+	BusinessDetails    *businessDetailsInput `json:"businessDetails"`
 }
 
 func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
@@ -894,6 +960,8 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 	args := make([]any, 0)
 	changes := make(map[string]any)
 	reasonRequired := false
+	businessDetailsChanged := false
+	var nextBusinessDetails RecordBusinessDetails
 	add := func(column string, value any) { updates = append(updates, column+" = ?"); args = append(args, value) }
 	if input.Title != nil {
 		value := strings.TrimSpace(*input.Title)
@@ -908,6 +976,10 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.Description != nil {
 		value := strings.TrimSpace(*input.Description)
+		if before.Type == "decision" && before.Description != "" && value == "" {
+			writeError(w, http.StatusBadRequest, "Принятое решение нельзя оставить без содержания и основания")
+			return
+		}
 		if value != before.Description {
 			add("description", value)
 			changes["description"] = map[string]any{"before": before.Description, "after": value}
@@ -1119,15 +1191,50 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 			changes["result"] = map[string]any{"before": before.Result, "after": value}
 		}
 	}
+	if input.BusinessDetails != nil {
+		nextBusinessDetails, err = normalizeBusinessDetails(before.Type, input.BusinessDetails, nowText())
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		beforeMap := businessDetailsMap(before.BusinessDetails)
+		afterMap := businessDetailsMap(&nextBusinessDetails)
+		businessDetailsChanged = !reflect.DeepEqual(beforeMap, afterMap)
+		if businessDetailsChanged {
+			changes["businessDetails"] = map[string]any{"before": beforeMap, "after": afterMap}
+			if beforeMap["decisionState"] != afterMap["decisionState"] || !reflect.DeepEqual(beforeMap["supersedesId"], afterMap["supersedesId"]) || beforeMap["occurred"] != afterMap["occurred"] {
+				reasonRequired = true
+			}
+		}
+	}
+	if input.Status != nil && (before.Type == "hypothesis" || before.Type == "experiment") && (*input.Status == "completed" || *input.Status == "rejected") {
+		details := before.BusinessDetails
+		if input.BusinessDetails != nil {
+			details = &nextBusinessDetails
+		}
+		if details == nil || details.Verdict == "" || details.Verdict == "pending" {
+			writeError(w, http.StatusBadRequest, "Сначала зафиксируйте итог проверки гипотезы")
+			return
+		}
+		result := before.Result
+		if input.Result != nil {
+			result = strings.TrimSpace(*input.Result)
+		}
+		if result == "" {
+			writeError(w, http.StatusBadRequest, "Зафиксируйте вывод проверки перед завершением")
+			return
+		}
+	}
 	if reasonRequired && strings.TrimSpace(input.Reason) == "" {
 		writeError(w, http.StatusBadRequest, "Укажите причину изменения статуса, срока или места карточки в иерархии")
 		return
 	}
-	if len(updates) == 0 {
+	if len(updates) == 0 && !businessDetailsChanged {
 		writeError(w, http.StatusBadRequest, "Нет изменений")
 		return
 	}
-	add("updated_at", nowText())
+	now := nowText()
+	add("updated_at", now)
 	args = append(args, before.ID)
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -1141,6 +1248,19 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := currentUser(r)
+	if businessDetailsChanged {
+		businessInput := *input.BusinessDetails
+		if nextBusinessDetails.EffectiveAt != nil {
+			businessInput.EffectiveAt = *nextBusinessDetails.EffectiveAt
+		}
+		if nextBusinessDetails.ReviewAt != nil {
+			businessInput.ReviewAt = *nextBusinessDetails.ReviewAt
+		}
+		if err := saveBusinessDetails(r.Context(), tx, before.ID, before.Type, &businessInput, user.ID, now); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	if err := writeActivity(r.Context(), tx, user.ID, before.Type, before.ID, "updated", strings.TrimSpace(input.Reason), changes); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось записать историю")
 		return
@@ -1482,7 +1602,7 @@ func (s *Server) handleSaveSection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listLinks(ctx context.Context, recordID string) ([]RecordLink, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT l.id, l.source_id, l.target_id, l.relation_type, l.created_at, r.id, CASE WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END, r.record_kind, r.title, r.description, r.status, r.author_id, a.username, r.owner_id, o.username, r.decision_maker_id, dm.username, r.due_at, r.priority, r.workstream, r.edit_policy, r.parent_id, r.is_root, r.estimate_minutes, r.actual_minutes, r.progress, r.progress_note, r.result, r.completed_at, r.created_at, r.updated_at, (SELECT COUNT(*) FROM task_proofs p WHERE p.record_id = r.id) FROM record_links l JOIN records r ON r.id = CASE WHEN l.source_id = ? THEN l.target_id ELSE l.source_id END JOIN users a ON a.id = r.author_id JOIN users o ON o.id = r.owner_id LEFT JOIN users dm ON dm.id = r.decision_maker_id WHERE l.active = 1 AND (l.source_id = ? OR l.target_id = ?) ORDER BY l.created_at DESC`, recordID, recordID, recordID)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT l.id, l.source_id, l.target_id, l.relation_type, l.created_at, r.id, CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END, r.record_kind, r.title, r.description, r.status, r.author_id, a.username, r.owner_id, o.username, r.decision_maker_id, dm.username, r.due_at, r.priority, r.workstream, r.edit_policy, r.parent_id, r.is_root, r.estimate_minutes, r.actual_minutes, r.progress, r.progress_note, r.result, r.completed_at, r.created_at, r.updated_at, (SELECT COUNT(*) FROM task_proofs p WHERE p.record_id = r.id) FROM record_links l JOIN records r ON r.id = CASE WHEN l.source_id = ? THEN l.target_id ELSE l.source_id END JOIN users a ON a.id = r.author_id JOIN users o ON o.id = r.owner_id LEFT JOIN users dm ON dm.id = r.decision_maker_id WHERE l.active = 1 AND (l.source_id = ? OR l.target_id = ?) ORDER BY l.created_at DESC`, recordID, recordID, recordID)
 	if err != nil {
 		return nil, err
 	}
@@ -1570,7 +1690,7 @@ func (s *Server) handleCreateLink(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if err := writeActivity(r.Context(), tx, user.ID, source.Type, source.ID, "link_created", input.Reason, map[string]any{"targetId": input.TargetID, "relationType": input.RelationType}); err != nil {
+	if err := writeActivity(r.Context(), tx, user.ID, source.Type, source.ID, "link_created", input.Reason, map[string]any{"linkId": id, "targetId": input.TargetID, "relationType": input.RelationType}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось записать историю")
 		return
 	}
@@ -2066,7 +2186,7 @@ func (s *Server) listQuestionWorkflow(ctx context.Context, recordID string) (Que
 		}
 		outputRows, err := s.store.db.QueryContext(ctx, `
 			SELECT d.id, r.id,
-				CASE WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
+				CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
 				r.record_kind, r.title, r.status, d.created_at
 			FROM record_derivations d
 			JOIN records r ON r.id = d.output_record_id

@@ -35,33 +35,49 @@ type User struct {
 }
 
 type Record struct {
-	ID                string  `json:"id"`
-	Type              string  `json:"type"`
-	Kind              string  `json:"kind"`
-	Title             string  `json:"title"`
-	Description       string  `json:"description"`
-	Status            string  `json:"status"`
-	AuthorID          int64   `json:"authorId"`
-	AuthorUsername    string  `json:"authorUsername"`
-	OwnerID           int64   `json:"ownerId"`
-	OwnerUsername     string  `json:"ownerUsername"`
-	DecisionMakerID   *int64  `json:"decisionMakerId"`
-	DecisionMakerName *string `json:"decisionMakerUsername"`
-	DueAt             *string `json:"dueAt"`
-	Priority          string  `json:"priority"`
-	Workstream        string  `json:"workstream"`
-	EditPolicy        string  `json:"editPolicy"`
-	ParentID          *string `json:"parentId"`
-	IsRoot            bool    `json:"isRoot"`
-	EstimateMinutes   int     `json:"estimateMinutes"`
-	ActualMinutes     int     `json:"actualMinutes"`
-	Progress          int     `json:"progress"`
-	ProgressNote      string  `json:"progressNote"`
-	Result            string  `json:"result"`
-	CompletedAt       *string `json:"completedAt"`
-	CreatedAt         string  `json:"createdAt"`
-	UpdatedAt         string  `json:"updatedAt"`
-	ProofCount        int     `json:"proofCount"`
+	ID                string                 `json:"id"`
+	Type              string                 `json:"type"`
+	Kind              string                 `json:"kind"`
+	Title             string                 `json:"title"`
+	Description       string                 `json:"description"`
+	Status            string                 `json:"status"`
+	AuthorID          int64                  `json:"authorId"`
+	AuthorUsername    string                 `json:"authorUsername"`
+	OwnerID           int64                  `json:"ownerId"`
+	OwnerUsername     string                 `json:"ownerUsername"`
+	DecisionMakerID   *int64                 `json:"decisionMakerId"`
+	DecisionMakerName *string                `json:"decisionMakerUsername"`
+	DueAt             *string                `json:"dueAt"`
+	Priority          string                 `json:"priority"`
+	Workstream        string                 `json:"workstream"`
+	EditPolicy        string                 `json:"editPolicy"`
+	ParentID          *string                `json:"parentId"`
+	IsRoot            bool                   `json:"isRoot"`
+	EstimateMinutes   int                    `json:"estimateMinutes"`
+	ActualMinutes     int                    `json:"actualMinutes"`
+	Progress          int                    `json:"progress"`
+	ProgressNote      string                 `json:"progressNote"`
+	Result            string                 `json:"result"`
+	CompletedAt       *string                `json:"completedAt"`
+	CreatedAt         string                 `json:"createdAt"`
+	UpdatedAt         string                 `json:"updatedAt"`
+	ProofCount        int                    `json:"proofCount"`
+	BusinessDetails   *RecordBusinessDetails `json:"businessDetails,omitempty"`
+}
+
+type RecordBusinessDetails struct {
+	Probability      int     `json:"probability"`
+	Impact           int     `json:"impact"`
+	Mitigation       string  `json:"mitigation"`
+	Occurred         bool    `json:"occurred"`
+	Metric           string  `json:"metric"`
+	SuccessThreshold string  `json:"successThreshold"`
+	ExperimentMethod string  `json:"experimentMethod"`
+	Verdict          string  `json:"verdict"`
+	DecisionState    string  `json:"decisionState"`
+	EffectiveAt      *string `json:"effectiveAt"`
+	ReviewAt         *string `json:"reviewAt"`
+	SupersedesID     *string `json:"supersedesId"`
 }
 
 type SectionDefinition struct {
@@ -323,14 +339,19 @@ func normalizeDueAt(value string) (*string, error) {
 }
 
 func writeActivity(ctx context.Context, tx *sql.Tx, actorID int64, entityType, entityID, action, reason string, details map[string]any) error {
+	_, err := writeActivityWithID(ctx, tx, actorID, entityType, entityID, action, reason, details)
+	return err
+}
+
+func writeActivityWithID(ctx context.Context, tx *sql.Tx, actorID int64, entityType, entityID, action, reason string, details map[string]any) (string, error) {
 	id, err := newID()
 	if err != nil {
-		return err
+		return "", err
 	}
 	body, err := json.Marshal(details)
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO activity(id, actor_id, entity_type, entity_id, action, details_json, reason, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, id, actorID, entityType, entityID, action, string(body), reason, nowText())
-	return err
+	return id, err
 }

@@ -34,9 +34,13 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		SELECT id, entity_kind, record_id, question_id, research_option_id, target_tab, type, title, context, status, updated_at
 		FROM (
 			SELECT 'record:' || r.id AS id, 'record' AS entity_kind, r.id AS record_id, '' AS question_id, '' AS research_option_id, 'overview' AS target_tab,
-				CASE WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END AS type,
-				r.title AS title, r.description || ' ' || r.progress_note || ' ' || r.result AS context, r.status AS status, r.updated_at AS updated_at, 1 AS rank
+				CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END AS type,
+				r.title AS title, r.description || ' ' || r.progress_note || ' ' || r.result || ' ' ||
+				COALESCE(b.mitigation_md, '') || ' ' || COALESCE(b.metric, '') || ' ' ||
+				COALESCE(b.success_threshold, '') || ' ' || COALESCE(b.experiment_method_md, '') AS context,
+				r.status AS status, r.updated_at AS updated_at, 1 AS rank
 			FROM records r
+			LEFT JOIN record_business_details b ON b.record_id = r.id
 			WHERE r.status <> 'archived'
 			UNION ALL
 			SELECT 'question:' || q.id, 'question', q.record_id, q.id, '', 'questions', 'question', q.body,
@@ -67,14 +71,14 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			WHERE r.status <> 'archived' AND o.status = 'active'
 			UNION ALL
 			SELECT 'section:' || s.id, 'section', s.record_id, '', '', 'content',
-				CASE WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
+				CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
 				s.title, s.content, r.status, s.updated_at, 6
 			FROM record_sections s
 			JOIN records r ON r.id = s.record_id
 			WHERE r.status <> 'archived'
 			UNION ALL
 			SELECT 'comment:' || c.id, 'comment', c.record_id, '', '', 'discussion',
-				CASE WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
+				CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
 				'Комментарий ' || u.username, c.body, r.status, c.created_at, 7
 			FROM record_comments c
 			JOIN records r ON r.id = c.record_id
@@ -95,7 +99,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			WHERE r.status <> 'archived'
 			UNION ALL
 			SELECT 'attachment:' || a.id, 'attachment', a.record_id, '', '', 'files',
-				CASE WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
+				CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
 				a.original_name, a.content_type, r.status, a.created_at, 10
 			FROM record_attachments a
 			JOIN records r ON r.id = a.record_id

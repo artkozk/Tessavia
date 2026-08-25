@@ -70,6 +70,22 @@ func (s *Server) buildAIRecordContext(ctx context.Context, record Record) (map[s
 			"createdAt": record.CreatedAt, "updatedAt": record.UpdatedAt,
 		},
 	}
+	if record.BusinessDetails != nil {
+		dossier["businessDetails"] = map[string]any{
+			"probability":      record.BusinessDetails.Probability,
+			"impact":           record.BusinessDetails.Impact,
+			"mitigation":       budget.take(record.BusinessDetails.Mitigation),
+			"occurred":         record.BusinessDetails.Occurred,
+			"metric":           budget.take(record.BusinessDetails.Metric),
+			"successThreshold": budget.take(record.BusinessDetails.SuccessThreshold),
+			"experimentMethod": budget.take(record.BusinessDetails.ExperimentMethod),
+			"verdict":          record.BusinessDetails.Verdict,
+			"decisionState":    record.BusinessDetails.DecisionState,
+			"effectiveAt":      record.BusinessDetails.EffectiveAt,
+			"reviewAt":         record.BusinessDetails.ReviewAt,
+			"supersedesId":     record.BusinessDetails.SupersedesID,
+		}
+	}
 
 	sections, err := s.listSections(ctx, record)
 	if err != nil {
@@ -88,7 +104,7 @@ func (s *Server) buildAIRecordContext(ctx context.Context, record Record) (map[s
 	coverage.Sections = len(sectionContext)
 	dossier["sections"] = sectionContext
 
-	if record.Type == "research" {
+	if record.Type == "research" || record.Type == "experiment" {
 		comparison, loadErr := s.listResearchComparison(ctx, record.ID)
 		if loadErr != nil {
 			return nil, coverage, loadErr
