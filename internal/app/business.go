@@ -24,6 +24,8 @@ type businessDetailsInput struct {
 	EffectiveAt       string  `json:"effectiveAt"`
 	ReviewAt          string  `json:"reviewAt"`
 	SupersedesID      string  `json:"supersedesId"`
+	Applicability     string  `json:"applicability"`
+	SourceExcerpt     string  `json:"sourceExcerpt"`
 	Reason            string  `json:"reason"`
 	ExpectedUpdatedAt *string `json:"expectedUpdatedAt"`
 }
@@ -48,10 +50,12 @@ func normalizeBusinessDetails(recordType string, input *businessDetailsInput, no
 	value.Verdict = strings.TrimSpace(value.Verdict)
 	value.DecisionState = strings.TrimSpace(value.DecisionState)
 	value.SupersedesID = strings.TrimSpace(value.SupersedesID)
+	value.Applicability = strings.TrimSpace(value.Applicability)
+	value.SourceExcerpt = strings.TrimSpace(value.SourceExcerpt)
 	if value.Probability < 0 || value.Probability > 5 || value.Impact < 0 || value.Impact > 5 {
 		return RecordBusinessDetails{}, errors.New("Вероятность и влияние должны быть от 0 до 5")
 	}
-	if len(value.Mitigation) > 20000 || len(value.ExperimentMethod) > 20000 || len(value.Metric) > 1000 || len(value.SuccessThreshold) > 2000 {
+	if len(value.Mitigation) > 20000 || len(value.ExperimentMethod) > 20000 || len(value.Metric) > 1000 || len(value.SuccessThreshold) > 2000 || len(value.Applicability) > 2000 || len(value.SourceExcerpt) > 20000 {
 		return RecordBusinessDetails{}, errors.New("Содержимое специальных полей слишком длинное")
 	}
 	details := RecordBusinessDetails{}
@@ -61,6 +65,11 @@ func normalizeBusinessDetails(recordType string, input *businessDetailsInput, no
 		details.Impact = value.Impact
 		details.Mitigation = value.Mitigation
 		details.Occurred = value.Occurred
+		reviewAt, err := normalizeDueAt(value.ReviewAt)
+		if err != nil {
+			return RecordBusinessDetails{}, errors.New("Некорректная дата пересмотра риска")
+		}
+		details.ReviewAt = reviewAt
 	case "hypothesis", "experiment":
 		if value.Verdict == "" {
 			value.Verdict = "pending"
@@ -93,9 +102,19 @@ func normalizeBusinessDetails(recordType string, input *businessDetailsInput, no
 		details.DecisionState = value.DecisionState
 		details.EffectiveAt = effectiveAt
 		details.ReviewAt = reviewAt
+		details.Applicability = value.Applicability
+		details.SourceExcerpt = value.SourceExcerpt
 		if value.SupersedesID != "" {
 			details.SupersedesID = &value.SupersedesID
 		}
+	case "criterion":
+		reviewAt, err := normalizeDueAt(value.ReviewAt)
+		if err != nil {
+			return RecordBusinessDetails{}, errors.New("Некорректная дата пересмотра критерия")
+		}
+		details.ReviewAt = reviewAt
+		details.Applicability = value.Applicability
+		details.SourceExcerpt = value.SourceExcerpt
 	case "inbox":
 		// Входящее намеренно не требует структуры до разбора.
 	default:
@@ -151,17 +170,19 @@ func saveBusinessDetails(ctx context.Context, tx *sql.Tx, recordID, recordType s
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO record_business_details(
 		record_id, probability, impact, mitigation_md, occurred, metric, success_threshold,
-		experiment_method_md, verdict, decision_state, effective_at, review_at, supersedes_id, updated_by, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		experiment_method_md, verdict, decision_state, effective_at, review_at, supersedes_id,
+		applicability, source_excerpt_md, updated_by, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(record_id) DO UPDATE SET probability = excluded.probability, impact = excluded.impact,
 		mitigation_md = excluded.mitigation_md, occurred = excluded.occurred, metric = excluded.metric,
 		success_threshold = excluded.success_threshold, experiment_method_md = excluded.experiment_method_md,
 		verdict = excluded.verdict, decision_state = excluded.decision_state, effective_at = excluded.effective_at,
 		review_at = excluded.review_at, supersedes_id = excluded.supersedes_id,
+		applicability = excluded.applicability, source_excerpt_md = excluded.source_excerpt_md,
 		updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
 		recordID, details.Probability, details.Impact, details.Mitigation, details.Occurred,
 		details.Metric, details.SuccessThreshold, details.ExperimentMethod, details.Verdict,
-		details.DecisionState, effectiveAt, reviewAt, supersedesID, actorID, now)
+		details.DecisionState, effectiveAt, reviewAt, supersedesID, details.Applicability, details.SourceExcerpt, actorID, now)
 	return err
 }
 
@@ -175,6 +196,7 @@ func businessDetailsMap(details *RecordBusinessDetails) map[string]any {
 		"experimentMethod": details.ExperimentMethod, "verdict": details.Verdict,
 		"decisionState": details.DecisionState, "effectiveAt": details.EffectiveAt,
 		"reviewAt": details.ReviewAt, "supersedesId": details.SupersedesID,
+		"applicability": details.Applicability, "sourceExcerpt": details.SourceExcerpt,
 	}
 }
 
@@ -225,7 +247,10 @@ func (s *Server) handleUpdateBusinessDetails(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "Нет изменений")
 		return
 	}
-	importantChange := beforeMap["decisionState"] != afterMap["decisionState"] || beforeMap["supersedesId"] != afterMap["supersedesId"] || beforeMap["occurred"] != afterMap["occurred"]
+	importantChange := beforeMap["decisionState"] != afterMap["decisionState"] ||
+		!reflect.DeepEqual(beforeMap["supersedesId"], afterMap["supersedesId"]) ||
+		beforeMap["occurred"] != afterMap["occurred"] ||
+		!reflect.DeepEqual(beforeMap["reviewAt"], afterMap["reviewAt"])
 	if importantChange && strings.TrimSpace(input.Reason) == "" {
 		writeError(w, http.StatusBadRequest, "Укажите причину изменения состояния")
 		return

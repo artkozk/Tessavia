@@ -37,7 +37,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 				CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END AS type,
 				r.title AS title, r.description || ' ' || r.progress_note || ' ' || r.result || ' ' ||
 				COALESCE(b.mitigation_md, '') || ' ' || COALESCE(b.metric, '') || ' ' ||
-				COALESCE(b.success_threshold, '') || ' ' || COALESCE(b.experiment_method_md, '') AS context,
+				COALESCE(b.success_threshold, '') || ' ' || COALESCE(b.experiment_method_md, '') || ' ' ||
+				COALESCE(b.applicability, '') || ' ' || COALESCE(b.source_excerpt_md, '') AS context,
 				r.status AS status, r.updated_at AS updated_at, 1 AS rank
 			FROM records r
 			LEFT JOIN record_business_details b ON b.record_id = r.id

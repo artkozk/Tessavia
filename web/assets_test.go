@@ -199,8 +199,38 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260825-business-memory-1")) {
-		t.Fatal("business memory release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	if !bytes.Contains(index, []byte("20260825-blockers-provenance-1")) {
+		t.Fatal("blockers and provenance release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	}
+}
+
+func TestBlockersAndKnowledgeProvenanceAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("function activeBlockers"),
+		[]byte("function renderBlockersPanel"),
+		[]byte("function knowledgeReviewState"),
+		[]byte("businessSourceExcerpt"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain blockers and provenance marker %q", marker)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte(".active-blockers-panel"),
+		[]byte(".kanban-blocker"),
+		[]byte(".principle-item.review-overdue"),
+	} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain blockers and provenance marker %q", marker)
+		}
 	}
 }
 

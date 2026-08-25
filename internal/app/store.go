@@ -63,6 +63,16 @@ type Record struct {
 	UpdatedAt         string                 `json:"updatedAt"`
 	ProofCount        int                    `json:"proofCount"`
 	BusinessDetails   *RecordBusinessDetails `json:"businessDetails,omitempty"`
+	Blockers          []RecordBlocker        `json:"blockers"`
+}
+
+type RecordBlocker struct {
+	ID            string `json:"id"`
+	Type          string `json:"type"`
+	Title         string `json:"title"`
+	Status        string `json:"status"`
+	OwnerID       int64  `json:"ownerId"`
+	OwnerUsername string `json:"ownerUsername"`
 }
 
 type RecordBusinessDetails struct {
@@ -78,6 +88,8 @@ type RecordBusinessDetails struct {
 	EffectiveAt      *string `json:"effectiveAt"`
 	ReviewAt         *string `json:"reviewAt"`
 	SupersedesID     *string `json:"supersedesId"`
+	Applicability    string  `json:"applicability"`
+	SourceExcerpt    string  `json:"sourceExcerpt"`
 }
 
 type SectionDefinition struct {

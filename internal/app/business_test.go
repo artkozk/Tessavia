@@ -123,3 +123,59 @@ func TestBusinessMemoryLifecycleAndSafeUndo(t *testing.T) {
 	}
 	requestJSON(t, client, http.MethodPost, server.URL+"/api/activity/"+activityID+"/undo", map[string]any{}, http.StatusConflict, nil)
 }
+
+func TestActiveDependencyBlockersAndKnowledgeMetadata(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "blockers-and-knowledge.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+	server := httptest.NewServer(NewServer(store, Config{SessionLifetime: 24 * time.Hour}))
+	defer server.Close()
+	client := testClient(t)
+	register(t, client, server.URL, "founder@example.test", "founder")
+
+	blocker := createRecord(t, client, server.URL, map[string]any{
+		"type": "task", "title": "Получить исходные данные",
+	})
+	dependent := createRecord(t, client, server.URL, map[string]any{
+		"type": "task", "title": "Собрать финансовую модель",
+	})
+	var links []RecordLink
+	requestJSON(t, client, http.MethodPost, server.URL+"/api/records/"+dependent.ID+"/links", map[string]any{
+		"targetId": blocker.ID, "relationType": "depends_on", "reason": "Без исходных данных расчёт недостоверен",
+	}, http.StatusCreated, &links)
+
+	var detail struct {
+		Record Record `json:"record"`
+	}
+	requestJSON(t, client, http.MethodGet, server.URL+"/api/records/"+dependent.ID, nil, http.StatusOK, &detail)
+	if len(detail.Record.Blockers) != 1 || detail.Record.Blockers[0].ID != blocker.ID {
+		t.Fatalf("active blockers = %#v, want blocker %s", detail.Record.Blockers, blocker.ID)
+	}
+	if _, err := store.db.Exec(`UPDATE records SET status = 'completed', progress = 100, completed_at = ?, updated_at = ? WHERE id = ?`, nowText(), nowText(), blocker.ID); err != nil {
+		t.Fatalf("complete blocker: %v", err)
+	}
+	requestJSON(t, client, http.MethodGet, server.URL+"/api/records/"+dependent.ID, nil, http.StatusOK, &detail)
+	if len(detail.Record.Blockers) != 0 {
+		t.Fatalf("completed dependency must not block work: %#v", detail.Record.Blockers)
+	}
+
+	reviewAt := "2026-09-30T12:00:00Z"
+	criterion := createRecord(t, client, server.URL, map[string]any{
+		"type": "criterion", "kind": "limitation", "title": "Не работать в постоянном холоде",
+		"businessDetails": map[string]any{
+			"applicability": "Оценка бизнес-направлений и операционных моделей",
+			"sourceExcerpt": "Оба основателя исключили постоянную работу в холоде.",
+			"reviewAt":      reviewAt,
+		},
+	})
+	if criterion.BusinessDetails == nil || criterion.BusinessDetails.Applicability == "" || criterion.BusinessDetails.SourceExcerpt == "" || criterion.BusinessDetails.ReviewAt == nil {
+		t.Fatalf("criterion metadata = %#v", criterion.BusinessDetails)
+	}
+	var searchResults []SearchResult
+	requestJSON(t, client, http.MethodGet, server.URL+"/api/search?q=%D0%BF%D0%BE%D1%81%D1%82%D0%BE%D1%8F%D0%BD%D0%BD%D1%83%D1%8E%20%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D1%83%20%D0%B2%20%D1%85%D0%BE%D0%BB%D0%BE%D0%B4%D0%B5", nil, http.StatusOK, &searchResults)
+	if len(searchResults) == 0 || searchResults[0].RecordID != criterion.ID {
+		t.Fatalf("knowledge source excerpt missing from search: %#v", searchResults)
+	}
+}

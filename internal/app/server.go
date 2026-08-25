@@ -434,7 +434,8 @@ const recordSelect = `
 		(SELECT COUNT(*) FROM task_proofs p WHERE p.record_id = r.id),
 		business.record_id, business.probability, business.impact, business.mitigation_md,
 		business.occurred, business.metric, business.success_threshold, business.experiment_method_md,
-		business.verdict, business.decision_state, business.effective_at, business.review_at, business.supersedes_id
+		business.verdict, business.decision_state, business.effective_at, business.review_at, business.supersedes_id,
+		business.applicability, business.source_excerpt_md
 	FROM records r
 	JOIN users author ON author.id = r.author_id
 	JOIN users owner ON owner.id = r.owner_id
@@ -445,7 +446,7 @@ func scanRecord(scanner recordScanner) (Record, error) {
 	var record Record
 	var decisionMakerID sql.NullInt64
 	var decisionMakerName, dueAt, parentID, completedAt sql.NullString
-	var businessRecordID, mitigation, metric, threshold, method, verdict, decisionState, effectiveAt, reviewAt, supersedesID sql.NullString
+	var businessRecordID, mitigation, metric, threshold, method, verdict, decisionState, effectiveAt, reviewAt, supersedesID, applicability, sourceExcerpt sql.NullString
 	var probability, impact, occurred sql.NullInt64
 	var isRoot int
 	err := scanner.Scan(&record.ID, &record.Type, &record.Kind, &record.Title, &record.Description, &record.Status,
@@ -454,7 +455,7 @@ func scanRecord(scanner recordScanner) (Record, error) {
 		&record.EstimateMinutes, &record.ActualMinutes, &record.Progress,
 		&record.ProgressNote, &record.Result, &completedAt, &record.CreatedAt, &record.UpdatedAt, &record.ProofCount,
 		&businessRecordID, &probability, &impact, &mitigation, &occurred, &metric, &threshold, &method,
-		&verdict, &decisionState, &effectiveAt, &reviewAt, &supersedesID)
+		&verdict, &decisionState, &effectiveAt, &reviewAt, &supersedesID, &applicability, &sourceExcerpt)
 	if decisionMakerID.Valid {
 		record.DecisionMakerID = &decisionMakerID.Int64
 	}
@@ -476,6 +477,7 @@ func scanRecord(scanner recordScanner) (Record, error) {
 			Probability: int(probability.Int64), Impact: int(impact.Int64), Mitigation: mitigation.String,
 			Occurred: occurred.Int64 == 1, Metric: metric.String, SuccessThreshold: threshold.String,
 			ExperimentMethod: method.String, Verdict: verdict.String, DecisionState: decisionState.String,
+			Applicability: applicability.String, SourceExcerpt: sourceExcerpt.String,
 		}
 		if effectiveAt.Valid {
 			details.EffectiveAt = &effectiveAt.String
@@ -492,7 +494,57 @@ func scanRecord(scanner recordScanner) (Record, error) {
 }
 
 func (s *Server) getRecord(ctx context.Context, id string) (Record, error) {
-	return scanRecord(s.store.db.QueryRowContext(ctx, recordSelect+` WHERE r.id = ?`, id))
+	record, err := scanRecord(s.store.db.QueryRowContext(ctx, recordSelect+` WHERE r.id = ?`, id))
+	if err != nil {
+		return Record{}, err
+	}
+	records := []Record{record}
+	if err := s.attachActiveBlockers(ctx, records); err != nil {
+		return Record{}, err
+	}
+	return records[0], nil
+}
+
+func (s *Server) attachActiveBlockers(ctx context.Context, records []Record) error {
+	indexes := make(map[string][]int, len(records))
+	placeholders := make([]string, 0, len(records))
+	args := make([]any, 0, len(records))
+	for index := range records {
+		records[index].Blockers = make([]RecordBlocker, 0)
+		if _, exists := indexes[records[index].ID]; !exists {
+			placeholders = append(placeholders, "?")
+			args = append(args, records[index].ID)
+		}
+		indexes[records[index].ID] = append(indexes[records[index].ID], index)
+	}
+	if len(indexes) == 0 {
+		return nil
+	}
+	rows, err := s.store.db.QueryContext(ctx, `SELECT links.source_id, target.id,
+		CASE WHEN target.business_kind <> '' THEN target.business_kind WHEN target.subtype = 'question_set' THEN 'question_set' WHEN target.record_kind = 'meeting' THEN 'meeting' ELSE target.type END,
+		target.title, target.status, target.owner_id, owner.username
+		FROM record_links links
+		JOIN records target ON target.id = links.target_id
+		JOIN users owner ON owner.id = target.owner_id
+		WHERE links.source_id IN (`+strings.Join(placeholders, ",")+`)
+			AND links.active = 1 AND links.relation_type = 'depends_on'
+			AND target.status NOT IN ('completed', 'cancelled', 'archived', 'rejected')
+		ORDER BY CASE WHEN target.due_at IS NULL THEN 1 ELSE 0 END, target.due_at, target.updated_at DESC`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sourceID string
+		var blocker RecordBlocker
+		if err := rows.Scan(&sourceID, &blocker.ID, &blocker.Type, &blocker.Title, &blocker.Status, &blocker.OwnerID, &blocker.OwnerUsername); err != nil {
+			return err
+		}
+		for _, index := range indexes[sourceID] {
+			records[index].Blockers = append(records[index].Blockers, blocker)
+		}
+	}
+	return rows.Err()
 }
 
 func (s *Server) handleListRecords(w http.ResponseWriter, r *http.Request) {
@@ -547,7 +599,6 @@ func (s *Server) handleListRecords(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить карточки")
 		return
 	}
-	defer rows.Close()
 	records := make([]Record, 0)
 	for rows.Next() {
 		record, err := scanRecord(rows)
@@ -556,6 +607,20 @@ func (s *Server) handleListRecords(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		writeError(w, http.StatusInternalServerError, "Не удалось прочитать карточки")
+		return
+	}
+	if err := rows.Close(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось завершить загрузку карточек")
+		return
+	}
+	if err := s.attachActiveBlockers(r.Context(), records); err != nil {
+		log.Printf("attach active blockers: %v", err)
+		writeError(w, http.StatusInternalServerError, "Не удалось загрузить зависимости карточек")
+		return
 	}
 	writeJSON(w, http.StatusOK, records)
 }
@@ -789,7 +854,7 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось создать карточку")
 		return
 	}
-	if businessKind != "" || input.Type == "decision" {
+	if businessKind != "" || input.Type == "decision" || input.Type == "criterion" {
 		if err := saveBusinessDetails(r.Context(), tx, id, input.Type, input.BusinessDetails, user.ID, now); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -2564,6 +2629,13 @@ func (s *Server) handleCreateQuestionOutput(w http.ResponseWriter, r *http.Reque
 	if _, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, type, subtype, record_kind, title, description, status, author_id, owner_id, due_at, workstream, parent_id, estimate_minutes, progress, completed_at, created_at, updated_at) VALUES(?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, outputID, databaseType, recordKind, input.Title, input.Description, status, user.ID, input.OwnerID, dueAt, source.Workstream, source.ID, input.EstimateMinutes, progress, completedAt, now, now); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось создать карточку результата")
 		return
+	}
+	if databaseType == "criterion" || databaseType == "decision" {
+		businessInput := &businessDetailsInput{SourceExcerpt: decisionContent}
+		if err = saveBusinessDetails(r.Context(), tx, outputID, databaseType, businessInput, user.ID, now); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось сохранить происхождение знания")
+			return
+		}
 	}
 	if _, err = tx.ExecContext(r.Context(), `INSERT INTO record_links(id, source_id, target_id, relation_type, created_by, created_at) VALUES(?, ?, ?, 'produced', ?, ?)`, linkID, source.ID, outputID, user.ID, now); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось связать результат с источником")

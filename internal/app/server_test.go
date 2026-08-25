@@ -254,6 +254,9 @@ func TestBusinessWorkflow(t *testing.T) {
 	if rule.Type != "decision" || rule.Kind != "rule" || rule.Description != workflow.Questions[1].Decision.Content {
 		t.Fatalf("rule created from question decision = %#v", rule)
 	}
+	if rule.BusinessDetails == nil || rule.BusinessDetails.SourceExcerpt != workflow.Questions[1].Decision.Content {
+		t.Fatalf("rule must preserve its source excerpt in business metadata: %#v", rule.BusinessDetails)
+	}
 	var ruleDetail struct {
 		Record     Record            `json:"record"`
 		Derivation *RecordDerivation `json:"derivation"`

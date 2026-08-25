@@ -84,6 +84,8 @@ func (s *Server) buildAIRecordContext(ctx context.Context, record Record) (map[s
 			"effectiveAt":      record.BusinessDetails.EffectiveAt,
 			"reviewAt":         record.BusinessDetails.ReviewAt,
 			"supersedesId":     record.BusinessDetails.SupersedesID,
+			"applicability":    budget.take(record.BusinessDetails.Applicability),
+			"sourceExcerpt":    budget.take(record.BusinessDetails.SourceExcerpt),
 		}
 	}
 
