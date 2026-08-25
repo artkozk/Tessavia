@@ -353,6 +353,22 @@ func TestBusinessWorkflow(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersAllowSameOriginMediaCapture(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "headers.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	response := httptest.NewRecorder()
+	NewServer(store, Config{}).ServeHTTP(response, request)
+
+	if got := response.Header().Get("Permissions-Policy"); got != "microphone=(self), camera=(self)" {
+		t.Fatalf("Permissions-Policy = %q, want same-origin microphone and camera", got)
+	}
+}
+
 func TestQuestionDecisionWaitsForSecondFounder(t *testing.T) {
 	store, err := OpenStore(filepath.Join(t.TempDir(), "single-founder.db"))
 	if err != nil {

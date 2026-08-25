@@ -199,7 +199,40 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260815-chat-interaction")) {
-		t.Fatal("chat interaction release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	if !bytes.Contains(index, []byte("20260825-mobile-reliability-2")) {
+		t.Fatal("mobile reliability release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	}
+}
+
+func TestMobileReliabilityAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("function closeGlobalSearch"),
+		[]byte("sidebar.inert = mobile"),
+		[]byte("calendar-agenda"),
+		[]byte("chat-composer-more"),
+		[]byte("function setGraphPanelOpen"),
+		[]byte("graphMobileInitialized"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain mobile reliability marker %q", marker)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte(".global-search.search-open"),
+		[]byte(".calendar-agenda-item"),
+		[]byte(".hierarchy-panel > header"),
+		[]byte(".chat-composer-actions"),
+	} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain mobile reliability marker %q", marker)
+		}
 	}
 }

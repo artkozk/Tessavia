@@ -57,6 +57,7 @@ const iconPaths = {
   minus: '<path d="M5 12h14"/>',
   play: '<path d="m8 5 11 7-11 7Z"/>',
   pause: '<path d="M9 5v14M15 5v14"/>',
+	more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
 	phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2Z"/>',
 	mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>',
 };
@@ -110,7 +111,7 @@ const graphGroups = [
   { key: 'research_option', label: 'Варианты исследований', color: '#b4a8ef' },
 ];
 const graphSettingDefaults = {
-  showDiscussion: true, showOrphans: true, showArrows: false, physics: true,
+  showDiscussion: true, showOrphans: true, showArrows: true, physics: true,
   textFade: 38, nodeSize: 100, linkThickness: 100,
   centerForce: 46, repelForce: 58, linkForce: 54, linkDistance: 52,
 };
@@ -136,7 +137,7 @@ const state = {
   graphResizeTimer: null,
   historyLoadedAll: false,
   graphData: null, graphInstance: null, graphFocusRecordId: '', graphDepth: 2, graphShowDiscussion: graphSettingDefaults.showDiscussion,
-  graphBranchRootId: '', graphMoveBranch: true,
+  graphBranchRootId: '', graphMoveBranch: true, graphMobileInitialized: false,
   graphTypeFilter: 'all', graphSearch: '', graphSelectedId: '', graphLinkSourceId: '', graphSettingsOpen: false,
   graphShowOrphans: graphSettingDefaults.showOrphans, graphShowArrows: graphSettingDefaults.showArrows, graphPhysics: graphSettingDefaults.physics,
   graphTextFade: graphSettingDefaults.textFade, graphNodeSize: graphSettingDefaults.nodeSize, graphLinkThickness: graphSettingDefaults.linkThickness,
@@ -853,6 +854,7 @@ function showApp() {
   $('#app-root').hidden = false;
   $('#user-name').textContent = state.me.username;
   $('#user-avatar').textContent = state.me.username.slice(0, 2).toUpperCase();
+  setSidebarOpen(false);
 }
 
 async function bootstrap() {
@@ -894,6 +896,20 @@ async function loadData(silent = false) {
   render();
 }
 
+function closeGlobalSearch({ clear = false, restoreFocus = false } = {}) {
+  const search = $('#global-search');
+  const input = $('#global-search-input');
+  const results = $('#global-search-results');
+  search.classList.remove('search-open');
+  results.hidden = true;
+  if (clear) {
+    input.value = '';
+    results.innerHTML = '';
+  }
+  input.blur();
+  if (restoreFocus) $('#menu-button').focus({ preventScroll: true });
+}
+
 function bindGlobalEvents() {
   $$('[data-auth-mode]').forEach((button) => button.addEventListener('click', () => setAuthMode(button.dataset.authMode)));
   $('#auth-form').addEventListener('submit', submitAuth);
@@ -907,27 +923,41 @@ function bindGlobalEvents() {
     clearTimeout(state.searchTimer);
     state.searchTimer = setTimeout(() => runGlobalSearch(globalSearchInput.value), 180);
   });
-  globalSearchInput.addEventListener('focus', () => { if (globalSearchInput.value.trim()) runGlobalSearch(globalSearchInput.value); });
+  globalSearchInput.addEventListener('focus', () => {
+    if (window.matchMedia('(max-width: 820px)').matches) $('#global-search').classList.add('search-open');
+    if (globalSearchInput.value.trim()) runGlobalSearch(globalSearchInput.value);
+  });
+  $('#global-search-close').addEventListener('click', () => closeGlobalSearch({ clear: true, restoreFocus: true }));
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.code === 'KeyK' && !event.target.closest('.markdown-editor')) {
       event.preventDefault(); globalSearchInput.focus(); globalSearchInput.select();
     }
     if (event.key === 'Escape') {
       closeCustomSelects();
-      if (!$('#global-search-results').hidden) $('#global-search-results').hidden = true;
+      if ($('#global-search').classList.contains('search-open')) {
+        event.preventDefault();
+        closeGlobalSearch({ clear: true, restoreFocus: true });
+      } else if (!$('#global-search-results').hidden) $('#global-search-results').hidden = true;
       $('.work-filter-menu[open]')?.removeAttribute('open');
       $('.work-create-menu[open]')?.removeAttribute('open');
       $('.record-more-actions[open]')?.removeAttribute('open');
+      $('.chat-header-more[open]')?.removeAttribute('open');
+      $('.chat-composer-more[open]')?.removeAttribute('open');
     }
   });
   document.addEventListener('click', (event) => {
 		if (event.target.closest('[data-close-chat-threads]')) $('.chat-shell')?.classList.remove('show-threads');
     if (!event.target.closest('.custom-select')) closeCustomSelects();
     if (!event.target.closest('.create-control')) $('#create-menu').hidden = true;
-    if (!event.target.closest('#global-search')) $('#global-search-results').hidden = true;
+    if (!event.target.closest('#global-search')) {
+      if (window.matchMedia('(max-width: 820px)').matches) closeGlobalSearch();
+      else $('#global-search-results').hidden = true;
+    }
     if (!event.target.closest('.work-filter-menu')) $('.work-filter-menu[open]')?.removeAttribute('open');
     if (!event.target.closest('.work-create-menu')) $('.work-create-menu[open]')?.removeAttribute('open');
     if (!event.target.closest('.record-more-actions')) $('.record-more-actions[open]')?.removeAttribute('open');
+    if (!event.target.closest('.chat-header-more')) $('.chat-header-more[open]')?.removeAttribute('open');
+    if (!event.target.closest('.chat-composer-more')) $('.chat-composer-more[open]')?.removeAttribute('open');
   });
   $('#menu-button').addEventListener('click', () => setSidebarOpen(!$('.sidebar').classList.contains('open')));
   $('#sidebar-close').addEventListener('click', () => setSidebarOpen(false));
@@ -958,6 +988,7 @@ function bindGlobalEvents() {
     if ($('.sidebar').classList.contains('open')) setSidebarOpen(false);
   });
   window.addEventListener('resize', () => {
+    setSidebarOpen($('.sidebar').classList.contains('open'));
     clearTimeout(state.graphResizeTimer);
     state.graphResizeTimer = setTimeout(() => {
       if (!state.graphInstance || state.view !== 'graph') return;
@@ -975,18 +1006,29 @@ function bindGlobalEvents() {
 function setSidebarOpen(open) {
   const sidebar = $('.sidebar');
   const workspace = $('.workspace');
-  if (open && !sidebar.classList.contains('open')) state.sidebarReturnFocus = document.activeElement;
+  const mobile = window.matchMedia('(max-width: 820px)').matches;
+  const shouldOpen = mobile && open;
+  if (shouldOpen && !sidebar.classList.contains('open')) state.sidebarReturnFocus = document.activeElement;
   sidebar.style.removeProperty('transform');
   sidebar.classList.remove('dragging');
-  sidebar.classList.toggle('open', open);
-  $('#sidebar-backdrop').classList.toggle('visible', open);
-  document.body.classList.toggle('mobile-nav-open', open);
-  workspace.inert = open && window.matchMedia('(max-width: 820px)').matches;
+  sidebar.classList.toggle('open', shouldOpen);
+  $('#sidebar-backdrop').classList.toggle('visible', shouldOpen);
+  $('#sidebar-backdrop').tabIndex = shouldOpen ? 0 : -1;
+  $('#menu-button').setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+  document.body.classList.toggle('mobile-nav-open', shouldOpen);
+  workspace.inert = shouldOpen;
   workspace.setAttribute('aria-hidden', workspace.inert ? 'true' : 'false');
-  if (open) requestAnimationFrame(() => ($('.nav-item.active', sidebar) || $('.nav-item', sidebar) || $('#sidebar-close')).focus({ preventScroll: true }));
-  else if (state.sidebarReturnFocus?.isConnected) {
+  if (shouldOpen) {
+    sidebar.inert = false;
+    sidebar.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => ($('.nav-item.active', sidebar) || $('.nav-item', sidebar) || $('#sidebar-close')).focus({ preventScroll: true }));
+  } else if (state.sidebarReturnFocus?.isConnected) {
     state.sidebarReturnFocus.focus({ preventScroll: true });
     state.sidebarReturnFocus = null;
+  }
+  if (!shouldOpen) {
+    sidebar.inert = mobile;
+    sidebar.setAttribute('aria-hidden', mobile ? 'true' : 'false');
   }
 }
 
@@ -1043,7 +1085,7 @@ function workspaceHasActiveInput() {
   const active = document.activeElement;
   return Boolean(
     active?.matches('input, textarea, [contenteditable="true"]') ||
-    document.querySelector('.chat-message-menu[open], .chat-emoji-picker, .chat-composer-context > div, .chat-main.drag-files, .chat-composer.is-recording')
+    document.querySelector('.chat-message-menu[open], .chat-header-more[open], .chat-composer-more[open], .chat-emoji-picker, .chat-composer-context > div, .chat-main.drag-files, .chat-composer.is-recording')
   );
 }
 
@@ -1097,8 +1139,7 @@ async function runGlobalSearch(query) {
     if ($('#global-search-input').value.trim() !== normalized) return;
     resultsNode.innerHTML = results.length ? results.map(renderSearchResult).join('') : `<div class="search-empty">Ничего не найдено</div>`;
     $$('[data-search-result]', resultsNode).forEach((button) => button.addEventListener('click', async () => {
-      resultsNode.hidden = true;
-      $('#global-search-input').value = '';
+      closeGlobalSearch({ clear: true });
       const tab = button.dataset.targetTab || (button.dataset.researchOptionId ? 'content' : button.dataset.questionId ? 'questions' : 'overview');
       await openRecord(button.dataset.recordId, { tab, questionId: button.dataset.questionId, workspace: $('#record-dialog').open });
     }));
@@ -1499,10 +1540,20 @@ function renderWorkCalendar(records) {
     dueMap.get(key).push(record);
   });
   const days = Array.from({ length: 42 }, (_, index) => { const day = new Date(start); day.setDate(start.getDate() + index); return day; });
+  const agendaGroups = [...dueMap.entries()]
+    .filter(([key]) => {
+      const day = new Date(`${key}T12:00:00`);
+      return day.getMonth() === month.getMonth() && day.getFullYear() === month.getFullYear();
+    })
+    .sort(([left], [right]) => left.localeCompare(right));
   return `<section class="work-calendar"><header><button type="button" class="icon-button" data-calendar-shift="-1" aria-label="Предыдущий месяц">‹</button><h2>${month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</h2><button type="button" class="icon-button" data-calendar-shift="1" aria-label="Следующий месяц">›</button></header><div class="calendar-weekdays">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map((day) => `<span>${day}</span>`).join('')}</div><div class="calendar-grid">${days.map((day) => {
     const key = localDateKey(day); const items = dueMap.get(key) || []; const outside = day.getMonth() !== month.getMonth(); const today = key === localDateKey(new Date());
     return `<div class="calendar-day ${outside ? 'outside' : ''} ${today ? 'today' : ''}"><span>${day.getDate()}</span><div>${items.slice(0, 4).map((record) => `<button type="button" data-open-record="${record.id}" class="calendar-item priority-${record.priority || 'normal'}"><i>${escapeHTML(typeMeta[record.type].singular)}</i><strong>${escapeHTML(record.title)}</strong></button>`).join('')}${items.length > 4 ? `<small>+ ещё ${items.length - 4}</small>` : ''}</div></div>`;
-  }).join('')}</div></section>`;
+  }).join('')}</div><div class="calendar-agenda">${agendaGroups.length ? agendaGroups.map(([key, items]) => {
+    const day = new Date(`${key}T12:00:00`);
+    const today = key === localDateKey(new Date());
+    return `<section class="calendar-agenda-day"><header><strong>${today ? 'Сегодня' : escapeHTML(day.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }))}</strong><span>${items.length}</span></header><div>${items.sort((left, right) => new Date(left.dueAt) - new Date(right.dueAt)).map((record) => `<button type="button" data-open-record="${record.id}" class="calendar-agenda-item priority-${record.priority || 'normal'}"><span class="type-icon type-${record.type}">${icon(typeMeta[record.type].icon)}</span><span><small>${escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(new Date(record.dueAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }))}</small><strong>${escapeHTML(record.title)}</strong><em>${escapeHTML(record.ownerUsername)}</em></span>${icon('chevronRight')}</button>`).join('')}</div></section>`;
+  }).join('') : `<div class="guided-empty calendar-agenda-empty">${icon('calendar')}<h3>В этом месяце сроков нет</h3><p>Работа с назначенной датой появится здесь по порядку.</p></div>`}</div></section>`;
 }
 
 function renderWorkBody(records) {
@@ -1686,9 +1737,10 @@ function decorateChatUI() {
 	const main = $('.chat-main');
 	const favoriteButton = $('[data-chat-favorites]');
 	if (favoriteButton) {
-		favoriteButton.innerHTML = icon('bookmark');
 		favoriteButton.title = state.chatFavoritesOnly ? 'Показать все сообщения' : 'Сохранённые сообщения';
 		favoriteButton.setAttribute('aria-label', favoriteButton.title);
+		const favoriteLabel = $('span', favoriteButton);
+		if (favoriteLabel) favoriteLabel.textContent = favoriteButton.title;
 	}
 	if (!main) return;
 	main.insertAdjacentHTML('beforeend', `<div class="chat-drop-overlay" aria-hidden="true"><span>${icon('fileText')}</span><strong>Отправить файлы</strong><small>Отпустите их в любом месте диалога</small></div>`);
@@ -1700,11 +1752,6 @@ function decorateChatUI() {
 		form.innerHTML = `<div class="chat-recording-strip"><span class="chat-recording-pulse"></span><strong>${state.chatRecording.kind === 'video' ? 'Видеосообщение' : 'Голосовое сообщение'}</strong><time data-recording-duration>${recordingTimeLabel(state.chatRecording.startedAt)}</time><button type="button" class="text-button danger-text" data-cancel-chat-recording>${icon('trash')} Отмена</button><button type="button" class="primary" data-send-chat-recording>${icon('send')} Отправить</button></div>`;
 		return;
 	}
-	const actionBar = form.querySelector(':scope > div:nth-child(2)');
-	const attach = $('[data-chat-attach]', form);
-	const voice = $('[data-chat-voice]', form);
-	if (actionBar && attach) attach.insertAdjacentHTML('beforebegin', `<button type="button" class="icon-button ${state.chatEmojiTarget === 'composer' ? 'active' : ''}" data-chat-composer-emoji title="Эмодзи" aria-label="Добавить эмодзи">${icon('smile')}</button>`);
-	if (actionBar && voice) voice.insertAdjacentHTML('beforebegin', `<button type="button" class="icon-button" data-chat-video title="Записать видеосообщение" aria-label="Записать видеосообщение">${icon('video')}</button>`);
 }
 
 function renderChatCallBanner(thread) {
@@ -1746,7 +1793,7 @@ function renderChat() {
 	$('#main-content').innerHTML = `<section class="chat-shell">
 		<button type="button" class="chat-thread-backdrop" data-close-chat-threads aria-label="Закрыть список диалогов"></button>
 		<aside class="chat-thread-list"><header><div><h1>Сообщения</h1><p>Личный диалог и обсуждения карточек</p></div><button type="button" class="icon-button" data-new-chat-thread title="Новая ветка">${icon('plus')}</button></header><div>${state.chatThreads.map((item) => `<button type="button" class="chat-thread ${item.id === state.activeChatThreadId ? 'active' : ''}" data-chat-thread="${item.id}"><span class="avatar">${escapeHTML((item.kind === 'team' ? item.partnerUsername || 'П' : item.title).slice(0, 2).toUpperCase())}</span><span><strong>${escapeHTML(chatThreadTitle(item))}</strong><small>${escapeHTML(item.lastMessage || (item.kind === 'record' ? 'Обсуждение карточки' : chatPresenceLabel(item)))}</small></span><time>${item.lastMessageAt ? formatDate(item.lastMessageAt) : ''}</time>${item.unreadCount ? `<b>${item.unreadCount}</b>` : ''}</button>`).join('') || '<div class="guided-empty compact">Диалоги ещё не созданы</div>'}</div></aside>
-		<main class="chat-main">${thread ? `<header class="chat-header"><button type="button" class="chat-mobile-threads icon-button" data-toggle-chat-threads title="Диалоги" aria-label="Диалоги">${icon('menu')}</button><span class="avatar">${escapeHTML((thread.partnerUsername || thread.title).slice(0, 2).toUpperCase())}</span><div><h2>${escapeHTML(threadTitle)}</h2><p class="${thread.partnerOnline ? 'online' : ''}">${thread.kind === 'record' ? `Ветка карточки · ${escapeHTML(thread.recordTitle)}` : escapeHTML(chatPresenceLabel(thread))}</p></div><div class="chat-header-actions">${thread.recordId ? `<button type="button" class="icon-button" data-open-record="${thread.recordId}" title="Открыть карточку">${icon('link')}</button>` : ''}<button type="button" class="icon-button ${state.chatSearchOpen ? 'active' : ''}" data-toggle-chat-search title="Поиск в диалоге">${icon('search')}</button><button type="button" class="icon-button" data-chat-ai-digest title="Собрать AI-выжимку">${icon('sparkles')}</button><button type="button" class="icon-button ${state.chatFavoritesOnly ? 'active' : ''}" data-chat-favorites title="Сохранённые сообщения" aria-label="Сохранённые сообщения">${icon('bookmark')}</button><button type="button" class="icon-button" data-start-call title="Аудиозвонок">${icon('phone')}</button></div>${state.chatSearchOpen ? `<label class="chat-search">${icon('search')}<input type="search" value="${escapeHTML(state.chatSearch)}" placeholder="Найти сообщение" aria-label="Поиск в диалоге"><button type="button" data-close-chat-search aria-label="Закрыть поиск">${icon('x')}</button></label>` : ''}</header><div class="chat-context-stack">${renderChatCallBanner(thread)}${renderChatDigest(thread)}</div><div class="chat-messages" data-drag-scroll="true">${renderChatTimeline(messages) || `<div class="chat-empty"><span>${icon(state.chatSearch ? 'search' : 'messages')}</span><strong>${state.chatSearch ? 'Совпадений нет' : 'Начните разговор'}</strong><p>${state.chatSearch ? 'Измените запрос или очистите поиск.' : `Напишите ${escapeHTML(threadTitle)} или прикрепите карточку проекта.`}</p></div>`}</div><div class="chat-composer-context">${editingMessage ? `<div><span>${icon('edit')}</span><span><strong>Редактирование сообщения</strong><small>Предыдущая версия останется в журнале.</small></span><button type="button" data-clear-chat-edit>${icon('x')}</button></div>` : ''}${state.chatReplyToId ? (() => { const reply = state.chatMessages.find((item) => item.id === state.chatReplyToId); return `<div><span>${icon('reply')}</span><span><strong>Ответ ${escapeHTML(reply?.authorUsername || '')}</strong><small>${escapeHTML(chatMessagePreview(reply || {}).slice(0, 120))}</small></span><button type="button" data-clear-chat-reply aria-label="Отменить ответ">${icon('x')}</button></div>`; })() : ''}${state.chatLinkedRecordId ? (() => { const linked = state.records.find((item) => item.id === state.chatLinkedRecordId); return `<div><span>${icon('link')}</span><span><strong>Прикреплена карточка</strong><small>${escapeHTML(linked?.title || '')}</small></span><button type="button" data-clear-chat-record>${icon('x')}</button></div>`; })() : ''}</div><form class="chat-composer" id="chat-composer"><label class="chat-drop" data-chat-drop><textarea name="body" rows="1" placeholder="${editingMessage ? 'Исправьте сообщение' : 'Сообщение'}" aria-label="Сообщение" ${state.chatSending ? 'disabled' : ''}>${escapeHTML(editingMessage?.body ?? state.chatDraftText)}</textarea><input type="file" name="file" multiple hidden></label><div><button type="button" class="icon-button" data-chat-attach title="Прикрепить файл" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('plus')}</button><button type="button" class="icon-button" data-chat-link-record title="Связать карточку" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('link')}</button><button type="button" class="icon-button" data-chat-voice title="Записать голосовое" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('mic')}</button><button type="submit" class="primary icon-button" title="${editingMessage ? 'Сохранить' : 'Отправить'}" ${state.chatSending ? 'disabled' : ''}>${state.chatSending ? '<span class="spinner"></span>' : icon(editingMessage ? 'check' : 'send')}</button></div><div class="chat-upload-progress" hidden><span></span><progress max="100" value="0"></progress></div></form>` : `<div class="chat-empty"><strong>Выберите диалог</strong></div>`}</main>
+		<main class="chat-main">${thread ? `<header class="chat-header"><button type="button" class="chat-mobile-threads icon-button" data-toggle-chat-threads title="Диалоги" aria-label="Диалоги">${icon('menu')}</button><span class="avatar">${escapeHTML((thread.partnerUsername || thread.title).slice(0, 2).toUpperCase())}</span><div><h2>${escapeHTML(threadTitle)}</h2><p class="${thread.partnerOnline ? 'online' : ''}">${thread.kind === 'record' ? `Ветка карточки · ${escapeHTML(thread.recordTitle)}` : escapeHTML(chatPresenceLabel(thread))}</p></div><div class="chat-header-actions">${thread.recordId ? `<button type="button" class="icon-button" data-open-record="${thread.recordId}" title="Открыть карточку">${icon('link')}</button>` : ''}<button type="button" class="icon-button ${state.chatSearchOpen ? 'active' : ''}" data-toggle-chat-search title="Поиск в диалоге">${icon('search')}</button><details class="chat-header-more"><summary class="icon-button" aria-label="Действия диалога" title="Действия диалога">${icon('more')}</summary><div><button type="button" data-chat-ai-digest>${icon('sparkles')}<span>Собрать AI-выжимку</span></button><button type="button" class="${state.chatFavoritesOnly ? 'active' : ''}" data-chat-favorites>${icon('bookmark')}<span>${state.chatFavoritesOnly ? 'Все сообщения' : 'Сохранённые сообщения'}</span></button><button type="button" data-start-call>${icon('phone')}<span>Аудиозвонок</span></button></div></details></div>${state.chatSearchOpen ? `<label class="chat-search">${icon('search')}<input type="search" value="${escapeHTML(state.chatSearch)}" placeholder="Найти сообщение" aria-label="Поиск в диалоге"><button type="button" data-close-chat-search aria-label="Закрыть поиск">${icon('x')}</button></label>` : ''}</header><div class="chat-context-stack">${renderChatCallBanner(thread)}${renderChatDigest(thread)}</div><div class="chat-messages" data-drag-scroll="true">${renderChatTimeline(messages) || `<div class="chat-empty"><span>${icon(state.chatSearch ? 'search' : 'messages')}</span><strong>${state.chatSearch ? 'Совпадений нет' : 'Начните разговор'}</strong><p>${state.chatSearch ? 'Измените запрос или очистите поиск.' : `Напишите ${escapeHTML(threadTitle)} или прикрепите карточку проекта.`}</p></div>`}</div><div class="chat-composer-context">${editingMessage ? `<div><span>${icon('edit')}</span><span><strong>Редактирование сообщения</strong><small>Предыдущая версия останется в журнале.</small></span><button type="button" data-clear-chat-edit>${icon('x')}</button></div>` : ''}${state.chatReplyToId ? (() => { const reply = state.chatMessages.find((item) => item.id === state.chatReplyToId); return `<div><span>${icon('reply')}</span><span><strong>Ответ ${escapeHTML(reply?.authorUsername || '')}</strong><small>${escapeHTML(chatMessagePreview(reply || {}).slice(0, 120))}</small></span><button type="button" data-clear-chat-reply aria-label="Отменить ответ">${icon('x')}</button></div>`; })() : ''}${state.chatLinkedRecordId ? (() => { const linked = state.records.find((item) => item.id === state.chatLinkedRecordId); return `<div><span>${icon('link')}</span><span><strong>Прикреплена карточка</strong><small>${escapeHTML(linked?.title || '')}</small></span><button type="button" data-clear-chat-record>${icon('x')}</button></div>`; })() : ''}</div><form class="chat-composer" id="chat-composer"><label class="chat-drop" data-chat-drop><textarea name="body" rows="1" placeholder="${editingMessage ? 'Исправьте сообщение' : 'Сообщение'}" aria-label="Сообщение" ${state.chatSending ? 'disabled' : ''}>${escapeHTML(editingMessage?.body ?? state.chatDraftText)}</textarea><input type="file" name="file" multiple hidden></label><div class="chat-composer-actions"><details class="chat-composer-more"><summary class="icon-button" title="Вложения и дополнительные действия" aria-label="Вложения и дополнительные действия">${icon('plus')}</summary><div><button type="button" class="${state.chatEmojiTarget === 'composer' ? 'active' : ''}" data-chat-composer-emoji ${state.chatSending ? 'disabled' : ''}>${icon('smile')}<span>Эмодзи</span></button><button type="button" data-chat-attach ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('fileText')}<span>Отправить файл</span></button><button type="button" data-chat-link-record ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('link')}<span>Прикрепить карточку</span></button><button type="button" data-chat-video ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('video')}<span>Видеосообщение</span></button></div></details><button type="button" class="icon-button" data-chat-voice title="Записать голосовое" aria-label="Записать голосовое" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('mic')}</button><button type="submit" class="primary icon-button" title="${editingMessage ? 'Сохранить' : 'Отправить'}" aria-label="${editingMessage ? 'Сохранить сообщение' : 'Отправить сообщение'}" ${state.chatSending ? 'disabled' : ''}>${state.chatSending ? '<span class="spinner"></span>' : icon(editingMessage ? 'check' : 'send')}</button></div><div class="chat-upload-progress" hidden><span></span><progress max="100" value="0"></progress></div></form>` : `<div class="chat-empty"><strong>Выберите диалог</strong></div>`}</main>
 	</section>`;
 	decorateChatUI();
 	const mobileThreadsButton = $('[data-toggle-chat-threads]');
@@ -2175,7 +2222,7 @@ function graphRange(name, label, value, min = 0, max = 100) {
 }
 
 function renderGraphSettings() {
-  return `<aside id="graph-settings" class="graph-settings ${state.graphSettingsOpen ? 'open' : ''}" aria-label="Настройки карты">
+  return `<aside id="graph-settings" class="graph-settings ${state.graphSettingsOpen ? 'open' : ''}" aria-label="Настройки карты" aria-hidden="${state.graphSettingsOpen ? 'false' : 'true'}" ${state.graphSettingsOpen ? '' : 'inert'}>
     <header><div><p class="eyebrow">Graph View</p><h2>Настройки карты</h2></div><div><button type="button" class="text-button" data-reset-graph-settings>Сбросить</button><button type="button" class="icon-button" data-close-graph-settings aria-label="Закрыть">${icon('x')}</button></div></header>
     <div class="graph-settings-body">
       <section><h3>Фильтры</h3><label class="graph-setting-toggle"><input type="checkbox" data-graph-setting="showDiscussion" ${state.graphShowDiscussion ? 'checked' : ''}><span>Вопросы и ответы</span></label><label class="graph-setting-toggle"><input type="checkbox" data-graph-setting="showOrphans" ${state.graphShowOrphans ? 'checked' : ''}><span>Объекты без связей</span></label></section>
@@ -2199,6 +2246,13 @@ function graphBranchChoices() {
 async function renderGraph() {
   loadGraphSettings();
   $('#main-content').classList.add('graph-main-content');
+  if (window.innerWidth <= 560 && state.graphData && !state.graphMobileInitialized) {
+    state.graphMobileInitialized = true;
+    if (!state.graphFocusRecordId && !state.graphBranchRootId) {
+      const preferredBranch = graphBranchChoices()[0];
+      if (preferredBranch) state.graphBranchRootId = preferredBranch.id;
+    }
+  }
   const branchChoices = graphBranchChoices();
   $('#main-content').innerHTML = `
     <section class="graph-workspace">
@@ -2211,7 +2265,7 @@ async function renderGraph() {
         <span class="graph-count" id="graph-count"></span>
         <div class="graph-icon-actions"><button type="button" class="icon-button" id="graph-zoom-out" title="Уменьшить" aria-label="Уменьшить">${icon('minus')}</button><button type="button" class="icon-button" id="graph-zoom-in" title="Увеличить" aria-label="Увеличить">${icon('plus')}</button><button type="button" class="icon-button" id="graph-relayout" title="Перестроить карту" aria-label="Перестроить карту">${icon('rotate')}</button><button type="button" class="icon-button" id="graph-fit" title="Показать карту целиком" aria-label="Показать карту целиком">${icon('maximize')}</button><button type="button" class="icon-button ${state.graphSettingsOpen ? 'active' : ''}" id="graph-settings-toggle" title="Настройки карты" aria-label="Настройки карты">${icon('settings')}</button></div>
       </header>
-      <div class="graph-stage"><div id="relationship-graph" tabindex="0" role="application" aria-label="Интерактивная карта связей"><div class="graph-loading"><span class="spinner"></span><strong>Строим карту проекта</strong></div></div><aside id="graph-inspector" class="graph-inspector ${state.graphSelectedId && !state.graphSettingsOpen ? 'open' : ''}">${renderGraphInspector()}</aside>${renderGraphSettings()}<div id="graph-context-menu" class="graph-context-menu"></div></div>
+      <div class="graph-stage"><div id="relationship-graph" tabindex="0" role="application" aria-label="Интерактивная карта связей"><div class="graph-loading"><span class="spinner"></span><strong>Строим карту проекта</strong></div></div><aside id="graph-inspector" class="graph-inspector ${state.graphSelectedId && !state.graphSettingsOpen ? 'open' : ''}" aria-hidden="${state.graphSelectedId && !state.graphSettingsOpen ? 'false' : 'true'}" ${state.graphSelectedId && !state.graphSettingsOpen ? '' : 'inert'}>${renderGraphInspector()}</aside>${renderGraphSettings()}<div id="graph-context-menu" class="graph-context-menu"></div></div>
       <footer class="graph-legend"><span><i class="legend-card"></i> Карточка</span><span><i class="legend-question"></i> Вопрос</span><span><i class="legend-answer"></i> Ответ</span><span><i class="legend-decision"></i> Итог</span><em>${state.graphMoveBranch ? 'Перетаскивание родителя двигает всю его ветку' : 'Перетаскивание двигает только выбранный узел'} · правый клик: действия</em></footer>
     </section>`;
   bindGraphControls();
@@ -2345,7 +2399,7 @@ function graphLayoutOptions(randomize = false, nodeCount = state.graphInstance?.
     gravity: .02 + state.graphCenterForce * .0036,
     componentSpacing: compact ? 124 : 132, nestingFactor: 1.15,
     numIter: compact ? 900 : 1300, initialTemp: 170, coolingFactor: .96, minTemp: 1,
-    fit: true, padding: window.innerWidth <= 560 ? 30 : 64,
+    fit: true, padding: window.innerWidth <= 560 ? 30 : 64, nodeDimensionsIncludeLabels: true,
   };
 }
 
@@ -2534,6 +2588,14 @@ function applyGraphSearch() {
   state.graphSearchTimer = setTimeout(() => mountGraph(), 220);
 }
 
+function setGraphPanelOpen(selector, open) {
+  const panel = $(selector);
+  if (!panel) return;
+  panel.classList.toggle('open', open);
+  panel.inert = !open;
+  panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+}
+
 function selectGraphNode(id, skipCenter = false) {
   const cy = state.graphInstance;
   if (!cy) return;
@@ -2546,7 +2608,7 @@ function selectGraphNode(id, skipCenter = false) {
   applyGraphEmphasis();
   $('#graph-inspector').innerHTML = renderGraphInspector();
   bindGraphInspector();
-  $('#graph-inspector').classList.toggle('open', Boolean(id));
+  setGraphPanelOpen('#graph-inspector', Boolean(id) && !state.graphSettingsOpen);
 }
 
 function renderGraphInspector() {
@@ -2591,7 +2653,7 @@ function openGraphContextMenu(nodeID) {
       selectGraphNode(current.id, true);
       if (!state.graphLinkSourceId) state.graphLinkSourceId = current.id;
       $('#graph-inspector').innerHTML = renderGraphInspector();
-      $('#graph-inspector').classList.add('open');
+      setGraphPanelOpen('#graph-inspector', true);
       bindGraphInspector();
       state.graphInstance.nodes().removeClass('link-source');
       if (state.graphLinkSourceId) state.graphInstance.$id(state.graphLinkSourceId).addClass('link-source');
@@ -2710,13 +2772,13 @@ function bindGraphControls() {
   });
   $('#graph-settings-toggle').addEventListener('click', () => {
     state.graphSettingsOpen = !state.graphSettingsOpen;
-    $('#graph-settings').classList.toggle('open', state.graphSettingsOpen);
+    setGraphPanelOpen('#graph-settings', state.graphSettingsOpen);
     $('#graph-settings-toggle').classList.toggle('active', state.graphSettingsOpen);
-    $('#graph-inspector').classList.toggle('open', Boolean(state.graphSelectedId) && !state.graphSettingsOpen);
+    setGraphPanelOpen('#graph-inspector', Boolean(state.graphSelectedId) && !state.graphSettingsOpen);
   });
   $('[data-close-graph-settings]')?.addEventListener('click', () => {
-    state.graphSettingsOpen = false; $('#graph-settings').classList.remove('open'); $('#graph-settings-toggle').classList.remove('active');
-    $('#graph-inspector').classList.toggle('open', Boolean(state.graphSelectedId));
+    state.graphSettingsOpen = false; setGraphPanelOpen('#graph-settings', false); $('#graph-settings-toggle').classList.remove('active');
+    setGraphPanelOpen('#graph-inspector', Boolean(state.graphSelectedId));
   });
   $('[data-reset-graph-settings]')?.addEventListener('click', () => { resetGraphSettings(); renderGraph(); });
   const settingMap = { showDiscussion: 'graphShowDiscussion', showOrphans: 'graphShowOrphans', showArrows: 'graphShowArrows', physics: 'graphPhysics' };
