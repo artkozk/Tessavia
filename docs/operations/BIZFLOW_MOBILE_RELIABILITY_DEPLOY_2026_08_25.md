@@ -49,3 +49,49 @@
 ## Фактический отчёт
 
 Коммит, release, backup, контрольные суммы, активные сервисы и результаты smoke добавляются ниже после production-переключения. Этот раздел дополняется, а инструкции выше не удаляются.
+
+### Выполненное переключение
+
+- Git commit приложения: `30ebecb fix: harden mobile workflows and graph controls`.
+- Активный release: `/opt/business-control/releases/20260825-mobile-reliability-30ebecb`.
+- Предыдущий release: `/opt/business-control/releases/20260820-gemini-failover-503fe8d`.
+- Backup SQLite до переключения: `/var/lib/business-control/backups/business-control-20260825-092453-pre-mobile-reliability.db`.
+- Backup uploads до переключения: `/var/lib/business-control/backups/uploads-20260825-092453-pre-mobile-reliability.tar.gz`.
+- SHA-256 backup SQLite: `a2b5b5e2edab93b454098472a89a1307ff2a4bc4e4a6201ef14649ea0fc50b6d`.
+- SHA-256 backup uploads: `812234352e59cf0271b813769bdf2072402e861c84c54dc78fb175371db1358e`.
+- SHA-256 production-бинарника: `f13e1be21e07d4919e9464da12254aeae290abc06f0c6dd720a44262b3830301`.
+- Миграции отсутствуют; структура и существующие записи БД релизом не преобразовывались.
+
+### Проверки до переключения
+
+- `node --check web/app.js`: успешно.
+- `go test ./...`: успешно.
+- `go vet ./...`: успешно.
+- `git diff --check`: успешно.
+- проверка diff на известные форматы секретов: совпадений нет.
+- Linux amd64 сборка: успешно; локальная и серверная SHA-256 совпали.
+- browser QA 360 × 800: меню, поиск, карточка, Markdown, календарь, чат и карта проверены.
+- browser QA 1280 × 720: чат и двухстрочная панель карты проверены без горизонтального переполнения.
+
+### Результаты production smoke
+
+- `https://control.e-rd.ru/api/health`: `{"status":"ok"}`.
+- `business-control`: `active`.
+- `nginx`: `active`.
+- `coturn`: `active`.
+- `business-control-backup.timer`: `active`.
+- `PRAGMA integrity_check`: `ok` для backup до переключения и для рабочей БД после переключения.
+- `PRAGMA foreign_key_check`: нарушений нет.
+- production index содержит версию assets `20260825-mobile-reliability-2`.
+- production `app.js` содержит новый сценарий закрытия глобального поиска.
+- публичные index и `app.js` не содержат проверяемых форматов API-ключей, паролей и прокси-учётных данных.
+- `Permissions-Policy`: `microphone=(self), camera=(self)`.
+- после запуска в журнале есть штатная остановка старого процесса и запуск нового; сообщений об ошибке приложения нет.
+
+### История работы в BizFlow
+
+От имени `artkozk` создана и завершена задача `Завершить первую волну мобильной надёжности BizFlow` с ID `2d703b195aff57ecc128f8dd1784157e`. Она связана причинным родителем с целью `Развитие платформы «BizFlow»`, имеет прогресс 100%, факт 240 минут, предметный результат и текстовое доказательство тестов и production-переключения.
+
+### Проверенный путь отката
+
+Для отката следует остановить `business-control`, атомарно вернуть symlink на `/opt/business-control/releases/20260820-gemini-failover-503fe8d` и снова запустить сервис. Затем обязательны локальный и внешний health, `PRAGMA integrity_check`, `PRAGMA foreign_key_check` и проверка версии assets. Восстанавливать SQLite backup без подтверждённого повреждения не требуется, потому что миграций не было.
