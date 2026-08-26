@@ -65,6 +65,7 @@ const iconPaths = {
 	phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2Z"/>',
   mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M12 8v4M12 16h.01"/>',
+  alertTriangle: '<path d="M10.3 3.7 2.2 18a2 2 0 0 0 1.8 3h16a2 2 0 0 0 1.8-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
   hypothesis: '<path d="M9 3h6M10 3v4.5l-5 9A3 3 0 0 0 7.6 21h8.8a3 3 0 0 0 2.6-4.5l-5-9V3"/><path d="M8 14h8"/>',
   testTube: '<path d="m14.5 2-9 9a4.2 4.2 0 0 0 6 6l9-9"/><path d="m13 6 5 5M6.5 10.5l7 7"/>',
   inbox: '<path d="M4 4h16v14H4z"/><path d="M4 13h4l2 3h4l2-3h4"/>',
@@ -144,6 +145,7 @@ const navItems = [
   ['validation', 'Риски и проверки', 'shield', 'Бизнес'],
   ['outcomes', 'Решения и выводы', 'scale', 'Бизнес'], ['document', 'Документы', 'fileText', 'Бизнес'],
   ['graph', 'Карта связей', 'network', 'Контроль'],
+  ['quality', 'Качество базы', 'shield', 'Контроль'],
   ['history', 'История', 'history', 'Контроль'],
   ['structure', 'Шаблоны карточек', 'settings', 'Настройки'],
 ];
@@ -178,6 +180,8 @@ const state = {
   validationFilter: 'all',
   chatPollTimer: null, chatRecording: null, chatCall: null, chatIncomingCall: null, chatICEServers: null,
   savedViews: [], workingDraftTimers: new Map(), sidebarReturnFocus: null, liveRefreshRunning: false,
+  syncRecordsSince: '1970-01-01T00:00:00Z', syncActivitySince: '1970-01-01T00:00:00Z',
+  qualityReport: null, qualityFilter: 'all', teamCapacity: null, dashboardInsightsLoading: false,
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -914,8 +918,49 @@ async function loadData(silent = false) {
     if (!current || current.updatedAt !== detail.record.updatedAt) state.detailCache.delete(id);
   });
   Object.assign(state, { users, records, notifications, activity: projectActivity, definitions, pendingQuestions, savedViews, chatThreads });
+  state.syncRecordsSince = latestTimestamp(records, 'updatedAt', state.syncRecordsSince);
+  state.syncActivitySince = latestTimestamp(projectActivity, 'createdAt', state.syncActivitySince);
+  state.qualityReport = null;
+  state.teamCapacity = null;
   state.historyLoadedAll = activity.length < 200;
   render();
+}
+
+function latestTimestamp(items, field, fallback = '1970-01-01T00:00:00Z') {
+  return items.reduce((latest, item) => {
+    const value = item?.[field];
+    return value && new Date(value).getTime() > new Date(latest).getTime() ? value : latest;
+  }, fallback);
+}
+
+async function syncProjectChanges({ renderCurrent = false, includeCompanions = true } = {}) {
+  const query = new URLSearchParams({ recordsSince: state.syncRecordsSince, activitySince: state.syncActivitySince });
+  const requests = [api(`/api/sync?${query}`)];
+  if (includeCompanions) requests.push(api('/api/notifications'), api('/api/questions/pending'), api('/api/chat/threads'));
+  const [changes, notifications, pendingQuestions, chatThreads] = await Promise.all(requests);
+  const recordsByID = new Map(state.records.map((record) => [record.id, record]));
+  let changed = false;
+  (changes.records || []).forEach((record) => {
+    const previous = recordsByID.get(record.id);
+    if (!previous || previous.updatedAt !== record.updatedAt || JSON.stringify(previous.blockers || []) !== JSON.stringify(record.blockers || [])) changed = true;
+    recordsByID.set(record.id, record);
+    if (!previous || previous.updatedAt !== record.updatedAt) state.detailCache.delete(record.id);
+  });
+  state.records = [...recordsByID.values()];
+  const knownActivity = new Set(state.activity.map((item) => item.id));
+  const newActivity = (changes.activity || []).filter((item) => !knownActivity.has(item.id) && (typeMeta[item.entityType] || item.entityType === 'section_definition'));
+  if (newActivity.length) state.activity = [...newActivity.slice().reverse(), ...state.activity].slice(0, 500);
+  state.syncRecordsSince = latestTimestamp(changes.records || [], 'updatedAt', state.syncRecordsSince);
+  state.syncActivitySince = latestTimestamp(changes.activity || [], 'createdAt', state.syncActivitySince);
+  if (includeCompanions) Object.assign(state, { notifications, pendingQuestions, chatThreads });
+  if (changed || newActivity.length) {
+    state.qualityReport = null;
+    state.teamCapacity = null;
+  }
+  renderNav();
+  renderNotificationBadge();
+  if (renderCurrent && (changed || newActivity.length || state.view === 'notifications')) renderContent();
+  return { changed, activityChanged: Boolean(newActivity.length) };
 }
 
 function closeGlobalSearch({ clear = false, restoreFocus = false } = {}) {
@@ -936,7 +981,7 @@ function bindGlobalEvents() {
   $$('[data-auth-mode]').forEach((button) => button.addEventListener('click', () => setAuthMode(button.dataset.authMode)));
   $('#auth-form').addEventListener('submit', submitAuth);
   $('#logout-button').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.reload(); });
-  $('#profile-button').addEventListener('click', () => openProfile(state.me.id));
+  $('#profile-button').addEventListener('click', () => { setSidebarOpen(false); openProfile(state.me.id); });
   $('#new-record-button').addEventListener('click', (event) => { event.stopPropagation(); toggleCreateMenu(); });
   $('#notification-button').addEventListener('click', () => { state.view = 'notifications'; render(); });
   $('#onboarding-button').addEventListener('click', () => openOnboarding(0));
@@ -1115,24 +1160,9 @@ async function refreshLiveData() {
   if (!state.me || document.hidden || state.liveRefreshRunning) return;
   state.liveRefreshRunning = true;
   try {
-    const [records, notifications, pendingQuestions, activity, chatThreads] = await Promise.all([
-      api('/api/records?includeArchived=true'), api('/api/notifications'), api('/api/questions/pending'), api('/api/activity?limit=200'), api('/api/chat/threads'),
-    ]);
-    const previousByID = new Map(state.records.map((record) => [record.id, record]));
-    const changed = records.length !== state.records.length || records.some((record) => previousByID.get(record.id)?.updatedAt !== record.updatedAt);
-    const projectActivity = activity.filter((item) => typeMeta[item.entityType] || item.entityType === 'section_definition');
-    const activityChanged = projectActivity[0]?.id !== state.activity[0]?.id || projectActivity.length !== state.activity.length;
-    const recordsByID = new Map(records.map((record) => [record.id, record]));
-    state.detailCache.forEach((detail, id) => {
-      const current = recordsByID.get(id);
-      if (!current || current.updatedAt !== detail.record.updatedAt) state.detailCache.delete(id);
-    });
-    Object.assign(state, { records, notifications, pendingQuestions, activity: projectActivity, chatThreads });
-    state.historyLoadedAll = activity.length < 200;
-    renderNav();
-    renderNotificationBadge();
+    const result = await syncProjectChanges();
     const overlayOpen = Boolean(document.querySelector('dialog[open]')) || $('.sidebar').classList.contains('open');
-    if (!workspaceHasActiveInput() && !overlayOpen && state.view !== 'graph' && (changed || activityChanged || state.view === 'notifications')) renderContent();
+    if (!workspaceHasActiveInput() && !overlayOpen && state.view !== 'graph' && (result.changed || result.activityChanged || state.view === 'notifications')) renderContent();
   } catch (_) {
     // A background refresh must not interrupt active work. Foreground API actions report their errors explicitly.
   } finally {
@@ -1244,7 +1274,7 @@ function renderContent() {
   if (state.view !== 'graph' && state.graphInstance) {
     state.graphInstance.destroy(); state.graphInstance = null;
   }
-  $('#page-title').textContent = titles[state.view] || (state.view === 'notifications' ? 'Уведомления' : 'Обзор');
+  $('#page-title').textContent = titles[state.view] || (state.view === 'notifications' ? 'Уведомления' : state.view === 'quality' ? 'Качество базы' : 'Обзор');
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'work') return renderWorkList();
 	if (state.view === 'chat') return renderChat();
@@ -1254,6 +1284,7 @@ function renderContent() {
   if (typeMeta[state.view]) return renderRecordList(state.view);
   if (state.view === 'history') return renderHistory();
   if (state.view === 'principles') return renderPrinciples();
+  if (state.view === 'quality') return renderQuality();
   if (state.view === 'structure') return renderStructure();
   if (state.view === 'notifications') return renderNotifications();
 }
@@ -1262,7 +1293,8 @@ function renderDashboard() {
   const work = state.records.filter((record) => isWorkRecord(record) && isActiveRecord(record));
   const myWork = work.filter((record) => record.ownerId === state.me.id);
   const attention = myWork.filter((record) => ['overdue', 'urgent'].includes(deadlineState(record).className) || ['high', 'critical'].includes(record.priority));
-  const teamAttention = work.filter((record) => ['overdue', 'urgent'].includes(deadlineState(record).className) || ['high', 'critical'].includes(record.priority)).sort(sortWorkRecords);
+  const capacityByUser = new Map((state.teamCapacity || []).map((item) => [item.user.id, item]));
+  const qualityIssues = state.qualityReport?.issues || [];
   const pendingRecordIDs = new Set(state.pendingQuestions.map((question) => question.recordId));
   const focusWork = myWork.filter((record) => record.type !== 'question_set' || !pendingRecordIDs.has(record.id)).slice().sort(sortWorkRecords).slice(0, 4);
   const focusItems = [
@@ -1282,17 +1314,59 @@ function renderDashboard() {
     </section>
     <section class="dashboard-grid">
       <div class="section-panel">
-        <div class="section-heading"><div><p class="eyebrow">Команда</p><h3>Распределение работы</h3></div><span class="panel-note">${minutesLabel(work.reduce((sum, item) => sum + item.estimateMinutes, 0))} в плане</span></div>
-        <div class="people-load">${state.users.map((user) => renderPersonLoad(user, work)).join('') || emptyState('Второй участник появится после регистрации.')}</div>
+        <div class="section-heading"><div><p class="eyebrow">Команда</p><h3>Недельная загрузка</h3></div><span class="panel-note">Только работа со сроком на эту неделю</span></div>
+        <div class="people-load">${state.users.map((user) => renderPersonLoad(user, work, capacityByUser.get(user.id))).join('') || emptyState('Второй участник появится после регистрации.')}</div>
       </div>
       <div class="section-panel">
-        <div class="section-heading"><div><p class="eyebrow">Требует внимания</p><h3>Риски команды</h3></div><button class="text-button" data-go="work">Открыть очередь</button></div>
-        <div class="compact-list">${teamAttention.slice(0, 7).map(renderCompactRecord).join('') || `<div class="dashboard-clear">${icon('check')}<span><strong>Срочных рисков нет</strong><small>Высокие приоритеты и приближающиеся сроки появятся здесь автоматически.</small></span></div>`}</div>
+        <div class="section-heading"><div><p class="eyebrow">Память проекта</p><h3>Качество базы</h3></div><button class="text-button" data-go="quality">Проверить всё</button></div>
+        <div class="compact-list quality-compact-list">${state.dashboardInsightsLoading && !state.qualityReport ? `<div class="dashboard-clear"><span class="spinner"></span><span><strong>Проверяем связи и результаты</strong><small>Ищем забытые и противоречивые записи.</small></span></div>` : qualityIssues.slice(0, 6).map(renderQualityCompact).join('') || `<div class="dashboard-clear">${icon('check')}<span><strong>Критичных пробелов нет</strong><small>Связи, результаты и актуальность знаний проверены.</small></span></div>`}</div>
       </div>
     </section>`;
   bindOpenRecords();
   $$('[data-quick-create]').forEach((button) => button.addEventListener('click', () => openCreateDialog(button.dataset.quickCreate)));
   $$('[data-go]').forEach((button) => button.addEventListener('click', () => { navigateToView(button.dataset.go); }));
+  loadDashboardInsights();
+}
+
+async function loadDashboardInsights(force = false) {
+  if (state.dashboardInsightsLoading || (!force && state.qualityReport && state.teamCapacity)) return;
+  state.dashboardInsightsLoading = true;
+  try {
+    const [qualityReport, teamCapacity] = await Promise.all([api('/api/quality'), api('/api/team/capacity')]);
+    state.qualityReport = qualityReport;
+    state.teamCapacity = teamCapacity;
+  } catch (error) {
+    if (state.view === 'dashboard' || state.view === 'quality') toast(`Контроль проекта не обновлён: ${error.message}`, true);
+  } finally {
+    state.dashboardInsightsLoading = false;
+  }
+  if (state.view === 'dashboard') renderDashboard();
+  else if (state.view === 'quality') renderQuality();
+}
+
+const qualityIssueLabels = {
+  orphan: 'Нет места в проекте', missing_result: 'Нет результата', overdue_review: 'Знание устарело',
+  stale: 'Давно без движения', missing_source: 'Не указан источник', duplicate: 'Возможный дубль', cycle: 'Цикл иерархии',
+};
+
+function renderQualityCompact(issue) {
+  const meta = typeMeta[issue.recordType] || typeMeta.document;
+  return `<button type="button" class="compact-record quality-issue severity-${issue.severity}" data-open-record="${issue.recordId}"><span class="type-icon type-${issue.recordType}">${icon(meta.icon)}</span><span><strong>${escapeHTML(issue.title)}</strong><small>${escapeHTML(qualityIssueLabels[issue.code] || issue.message)} · ${escapeHTML(issue.message)}</small></span><em>${issue.severity === 'critical' ? 'Важно' : issue.severity === 'warning' ? 'Проверить' : 'Позже'}</em>${icon('chevronRight', 'row-chevron')}</button>`;
+}
+
+function renderQuality() {
+  if (!state.qualityReport) {
+    $('#main-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">Контроль памяти</p><h1>Качество базы</h1><p>Проверяем, можно ли восстановить происхождение, решение и результат каждой цепочки.</p></div></div><div class="quality-loading"><span class="spinner"></span><strong>Проверяем проект</strong><p>Анализируем связи, результаты, актуальность и возможные дубли.</p></div>`;
+    loadDashboardInsights(true);
+    return;
+  }
+  const report = state.qualityReport;
+  const filters = [['all', 'Все'], ['critical', 'Критично'], ['warning', 'Проверить'], ['info', 'Позже']];
+  const issues = state.qualityFilter === 'all' ? report.issues : report.issues.filter((issue) => issue.severity === state.qualityFilter);
+  $('#main-content').innerHTML = `<div class="page-heading quality-heading"><div><p class="eyebrow">Контроль памяти</p><h1>Качество базы</h1><p>Здесь нет автоматического удаления. Каждый сигнал ведёт к исходной карточке и исправляется вручную.</p></div><button type="button" class="secondary" id="refresh-quality">${icon('rotate')} Проверить снова</button></div><section class="quality-summary"><article><span>Критично</span><strong>${report.counts.critical || 0}</strong><small>мешает восстановить результат</small></article><article><span>Проверить</span><strong>${report.counts.warning || 0}</strong><small>ослабляет связи и основания</small></article><article><span>Позже</span><strong>${report.counts.info || 0}</strong><small>забытые черновики и планы</small></article></section><div class="segmented quality-filters">${filters.map(([value, label]) => `<button type="button" class="segment ${state.qualityFilter === value ? 'active' : ''}" data-quality-filter="${value}">${label}<b>${value === 'all' ? report.counts.total || 0 : report.counts[value] || 0}</b></button>`).join('')}</div><section class="quality-list">${issues.map((issue) => `<button type="button" class="quality-row severity-${issue.severity}" data-open-record="${issue.recordId}"><span class="quality-severity">${icon(issue.severity === 'critical' ? 'alertTriangle' : issue.severity === 'warning' ? 'shield' : 'clock')}</span><span><small>${escapeHTML(qualityIssueLabels[issue.code] || 'Проверка')}</small><strong>${escapeHTML(issue.title)}</strong><p>${escapeHTML(issue.message)}</p><em>${escapeHTML((typeMeta[issue.recordType] || typeMeta.document).singular)}</em></span>${icon('chevronRight')}</button>`).join('') || `<div class="guided-empty quality-empty">${icon('check')}<h3>В этом представлении пробелов нет</h3><p>Система не нашла карточек, требующих такого уровня внимания.</p></div>`}</section>`;
+  $$('[data-quality-filter]').forEach((button) => button.addEventListener('click', () => { state.qualityFilter = button.dataset.qualityFilter; renderQuality(); }));
+  $('#refresh-quality').addEventListener('click', () => { state.qualityReport = null; loadDashboardInsights(true); renderQuality(); });
+  bindOpenRecords();
 }
 
 function navigateToView(view, options = {}) {
@@ -1324,11 +1398,14 @@ function renderFocusQuestion(question, primary = false) {
   return `<button type="button" class="focus-record focus-question ${primary ? 'primary-focus' : ''}" data-open-record="${question.recordId}"><span class="focus-marker">${icon('messages')}</span><span class="focus-copy"><small>Ждёт вашего ответа · ${escapeHTML(question.recordTitle)}</small><strong>${escapeHTML(question.body)}</strong><em class="deadline normal">${escapeHTML(deadline)}</em></span><span class="focus-progress"><b>Ответить</b><progress class="focus-meter" max="100" value="0"></progress></span>${icon('chevronRight', 'row-chevron')}</button>`;
 }
 
-function renderPersonLoad(user, tasks) {
+function renderPersonLoad(user, tasks, capacity = null) {
   const owned = tasks.filter((task) => task.ownerId === user.id);
-  const minutes = owned.reduce((sum, task) => sum + task.estimateMinutes, 0);
-  const progress = owned.length ? Math.round(owned.reduce((sum, task) => sum + task.progress, 0) / owned.length) : 0;
-  return `<button type="button" class="person-load" data-user-profile="${user.id}"><span class="avatar">${escapeHTML(user.username.slice(0, 2).toUpperCase())}</span><span class="person-main"><strong>${escapeHTML(user.username)}</strong><small>${recordsCountLabel(owned.length)} · ${minutesLabel(minutes)}</small><progress class="progress-track" max="100" value="${progress}"></progress></span><b>${progress}%</b></button>`;
+  const planned = capacity?.scheduledMinutes || 0;
+  const available = capacity?.weeklyCapacityMinutes || 0;
+  const utilization = capacity?.utilizationPercent || 0;
+  const tone = !available ? 'unset' : utilization > 100 ? 'overload' : utilization >= 80 ? 'tight' : 'normal';
+  const note = available ? `${minutesLabel(planned)} из ${minutesLabel(available)}${capacity.unscheduledRecords ? ` · ${capacity.unscheduledRecords} без недели` : ''}` : `${recordsCountLabel(owned.length)} · укажите доступное время`;
+  return `<button type="button" class="person-load capacity-${tone}" data-user-profile="${user.id}"><span class="avatar">${escapeHTML(user.username.slice(0, 2).toUpperCase())}</span><span class="person-main"><strong>${escapeHTML(user.username)}</strong><small>${note}</small><progress class="progress-track" max="100" value="${Math.min(100, utilization)}"></progress></span><b>${available ? `${utilization}%` : '—'}</b></button>`;
 }
 
 function renderPrinciples() {
@@ -1492,7 +1569,7 @@ async function moveBoardRecord(recordID, targetStatus, rerender) {
 	if (!reason) return rerender();
 	try {
 		await api(`/api/records/${record.id}`, { method: 'PATCH', body: JSON.stringify({ status: targetStatus, reason, expectedUpdatedAt: record.updatedAt }) });
-		await loadData(true); rerender(); toast('Этап карточки изменён');
+		await syncProjectChanges(); rerender(); toast('Этап карточки изменён');
 	} catch (error) { toast(error.message, true); rerender(); }
 }
 
@@ -3985,7 +4062,7 @@ function bindRecordDialogEvents() {
   $('#notify-partners')?.addEventListener('click', async () => {
     const message = await askText({ title: 'Уведомить партнёра', label: 'Сообщение', defaultValue: `Посмотри карточку «${record.title}»`, required: true });
     if (message === null) return;
-    try { await api(`/api/records/${record.id}/notify`, { method: 'POST', body: JSON.stringify({ message }) }); toast('Уведомление отправлено'); await loadData(true); } catch (error) { toast(error.message, true); }
+    try { await api(`/api/records/${record.id}/notify`, { method: 'POST', body: JSON.stringify({ message }) }); toast('Уведомление отправлено'); await syncProjectChanges(); } catch (error) { toast(error.message, true); }
   });
   $('#archive-record')?.addEventListener('click', async () => {
     const reason = await askText({ title: 'Перенести в архив', label: 'Почему карточка больше не активна?', required: true });
@@ -4333,7 +4410,7 @@ async function loadRecordWorkflow(recordID) {
 
 async function refreshActiveRecordWorkflow(recordID) {
   state.detailCache.delete(recordID);
-  const [detail, workflow] = await Promise.all([fetchRecordDetail(recordID, true), api(`/api/records/${recordID}/workflow`), loadData(true)]);
+  const [detail, workflow] = await Promise.all([fetchRecordDetail(recordID, true), api(`/api/records/${recordID}/workflow`), syncProjectChanges()]);
   if (!state.activeDetail || state.activeDetail.record.id !== recordID) return;
   state.activeDetail = { ...detail, workflow, workflowLoaded: true };
   state.detailCache.set(recordID, state.activeDetail);
@@ -4368,7 +4445,7 @@ function openQuestionOutputDialog(sourceRecord, question, kind, defaultTitle, pr
       clearWorkingDraft(draftScope);
       $('#create-dialog').close();
       state.detailCache.delete(sourceRecord.id);
-      await loadData(true);
+      await syncProjectChanges();
       toast('Результат создан и связан');
       await openRecord(output.id, { workspace: true });
     } catch (error) { toast(error.message, true); }
@@ -4383,7 +4460,7 @@ async function mutateDetail(path, options) {
     const recordID = state.activeDetail.record.id;
     await api(path, options);
     state.detailCache.delete(recordID);
-    const [detail] = await Promise.all([fetchRecordDetail(recordID, true), loadData(true)]);
+    const [detail] = await Promise.all([fetchRecordDetail(recordID, true), syncProjectChanges()]);
     state.activeDetail = detail;
     if (state.activeRecordTab === 'relations') {
       const relations = await api(`/api/records/${recordID}/relations`);
@@ -4404,7 +4481,7 @@ async function mutateRecord(path, options, close = false, clearDraftOnSuccess = 
     if (clearDraftOnSuccess) state.recordEditMode = false;
     state.aiAnalyses.delete(recordID);
     state.detailCache.delete(recordID);
-    const [detail] = await Promise.all([close ? Promise.resolve(null) : fetchRecordDetail(recordID, true), loadData(true)]);
+    const [detail] = await Promise.all([close ? Promise.resolve(null) : fetchRecordDetail(recordID, true), syncProjectChanges()]);
     if (close) $('#record-dialog').close();
     else { state.activeDetail = detail; renderRecordDialog(); }
     toast('Сохранено');
@@ -4496,7 +4573,7 @@ function openCreateDialog(initialType = 'idea', preset = {}) {
         }
       }
       clearWorkingDraft(draftScope);
-      $('#create-dialog').close(); await loadData(true); toast(linkError || 'Карточка создана', Boolean(linkError)); await openRecord(record.id, { workspace: Boolean(preset.sourceRecordId), edit: true, tab: preset.comparisonMode ? 'content' : undefined });
+      $('#create-dialog').close(); await syncProjectChanges(); toast(linkError || 'Карточка создана', Boolean(linkError)); await openRecord(record.id, { workspace: Boolean(preset.sourceRecordId), edit: true, tab: preset.comparisonMode ? 'content' : undefined });
     } catch (error) { toast(error.message, true); }
   });
   openModal($('#create-dialog'));
@@ -4543,7 +4620,7 @@ function bindCreateSuggestion(form, recordType) {
 }
 
 function actionLabel(action) {
-  return ({ created: 'создал карточку', profile_updated: 'изменил профиль', updated: 'изменил карточку', triaged: 'разобрал входящее', business_details_updated: 'обновил контрольные поля', change_undone: 'отменил ошибочное изменение', reordered: 'изменил порядок блоков', converted_to_questions: 'преобразовал в карточку вопросов', archived: 'перенёс в архив', section_updated: 'обновил раздел', link_created: 'создал связь', link_removed: 'убрал связь', criterion_scored: 'оценил по критерию', proof_added: 'добавил доказательство', completed: 'завершил задачу', partners_notified: 'уведомил партнёра', questions_added: 'добавил вопросы', question_answered: 'ответил на вопрос', question_decided: 'зафиксировал совместное решение', question_archived: 'архивировал вопрос', output_created: 'превратил вывод в рабочую карточку', created_from_question: 'создал карточку из совместного вывода', research_option_created: 'добавил вариант исследования', research_option_updated: 'обновил вариант исследования', research_option_archived: 'архивировал вариант исследования', research_field_created: 'добавил поле сравнения', research_field_archived: 'архивировал поле сравнения', comment_added: 'добавил комментарий', checklist_added: 'добавил шаг', checklist_updated: 'обновил шаг', review_submitted: 'отправил результат на проверку', review_accepted: 'принял результат', review_rework: 'вернул задачу на доработку', attachment_added: 'приложил файл', recurrence_created: 'создал следующее повторение', recurrence_updated: 'изменил повторение' }[action] || action);
+  return ({ created: 'создал карточку', profile_updated: 'изменил профиль', capacity_updated: 'изменил доступное время', updated: 'изменил карточку', triaged: 'разобрал входящее', business_details_updated: 'обновил контрольные поля', change_undone: 'отменил ошибочное изменение', reordered: 'изменил порядок блоков', converted_to_questions: 'преобразовал в карточку вопросов', archived: 'перенёс в архив', section_updated: 'обновил раздел', link_created: 'создал связь', link_removed: 'убрал связь', criterion_scored: 'оценил по критерию', proof_added: 'добавил доказательство', completed: 'завершил задачу', partners_notified: 'уведомил партнёра', questions_added: 'добавил вопросы', question_answered: 'ответил на вопрос', question_decided: 'зафиксировал совместное решение', question_archived: 'архивировал вопрос', output_created: 'превратил вывод в рабочую карточку', created_from_question: 'создал карточку из совместного вывода', research_option_created: 'добавил вариант исследования', research_option_updated: 'обновил вариант исследования', research_option_archived: 'архивировал вариант исследования', research_field_created: 'добавил поле сравнения', research_field_archived: 'архивировал поле сравнения', comment_added: 'добавил комментарий', checklist_added: 'добавил шаг', checklist_updated: 'обновил шаг', review_submitted: 'отправил результат на проверку', review_accepted: 'принял результат', review_rework: 'вернул задачу на доработку', attachment_added: 'приложил файл', recurrence_created: 'создал следующее повторение', recurrence_updated: 'изменил повторение' }[action] || action);
 }
 
 function activityActionLabel(item) {
@@ -4616,12 +4693,14 @@ function activityDetails(item) {
   }
   if (item.action === 'question_answered') rows.push(['Результат', 'Личная позиция сохранена в исходной карточке вопроса']);
   if (item.action === 'question_decided') rows.push(['Результат', 'Совместный итог сохранён и доступен для создания следующей сущности']);
+  if (item.action === 'capacity_updated') rows.push(['Доступно в неделю', minutesLabel(Number(details.weeklyMinutes || 0))]);
   if (!rows.length) rows.push(['Событие', activityContext(item)]);
   return `<dl class="event-details">${rows.map(([label, value]) => `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(String(value))}</dd></div>`).join('')}</dl>`;
 }
 
 function activityContext(item) {
   const details = item.details || {};
+  if (item.action === 'capacity_updated') return `${minutesLabel(Number(details.weeklyMinutes || 0))} доступно в неделю`;
   if (item.action === 'questions_added' && details.count) return questionsCountLabel(Number(details.count));
   if (item.action === 'question_answered') return 'Личная позиция сохранена';
   if (item.action === 'question_decided') return 'Совместный итог зафиксирован';
@@ -4678,7 +4757,9 @@ async function openProfile(userId) {
     const maxSeconds = Math.max(1, ...profile.activity.map((day) => day.activeSeconds));
     const accuracy = profile.estimateMinutes > 0 && profile.actualMinutes > 0 ? Math.round(profile.actualMinutes * 100 / profile.estimateMinutes) : 0;
     const insight = estimateInsight(accuracy, profile.completedRecords);
-    $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Участник проекта</span><h2>${escapeHTML(profile.user.username)}</h2><p>На платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body"><section class="profile-summary"><span class="avatar profile-avatar">${escapeHTML(profile.user.username.slice(0, 2).toUpperCase())}</span><div><h3>${escapeHTML(profile.user.username)}</h3><p>${profile.user.id === state.me.id ? 'Ваш профиль активности' : 'Активность сооснователя'}</p></div>${profile.user.id === state.me.id ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить логин</button>` : ''}</section>${profile.user.id === state.me.id ? `<section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Проверяем AI</strong><p>Локальный анализ доступен всегда.</p></div></section>` : ''}<div class="profile-metrics"><article><span>Активное время · 30 дней</span><strong>${durationLabel(profile.activeSeconds30Days)}</strong><small>Только взаимодействие с интерфейсом</small></article><article><span>Действия · 30 дней</span><strong>${profile.actions30Days}</strong><small>${interactionsCountLabel(profile.interactions30Days)} с UI</small></article><article><span>Завершено</span><strong>${profile.completedRecords}</strong><small>карточек с результатом</small></article><article><span>Факт к оценке</span><strong>${accuracy ? `${accuracy}%` : 'Нет данных'}</strong><small>${minutesLabel(profile.actualMinutes)} факт · ${minutesLabel(profile.estimateMinutes)} план</small></article></div><section class="estimate-insight ${insight.tone}">${icon('clock')}<div><strong>${escapeHTML(insight.title)}</strong><p>${escapeHTML(insight.text)}</p></div></section><section class="activity-chart"><header><h3>Активность по дням</h3><span>Последние 30 дней</span></header><div>${profile.activity.length ? profile.activity.slice().reverse().map((day) => `<span title="${escapeHTML(day.date)} · ${durationLabel(day.activeSeconds)} · ${interactionsCountLabel(day.interactions)}"><i data-level="${Math.max(1, Math.ceil(day.activeSeconds * 5 / maxSeconds))}"></i><small>${day.date.slice(8)}</small></span>`).join('') : `<p>Активность начнёт накапливаться после взаимодействия с новой версией.</p>`}</div></section><section class="profile-actions"><header><h3>Последние действия</h3><span>${profile.recentActions.length}</span></header><div class="activity-list">${profile.recentActions.map(renderActivityItem).join('') || emptyState('Действий пока нет.')}</div></section></div>`;
+    const capacityHours = profile.weeklyCapacityMinutes ? Number((profile.weeklyCapacityMinutes / 60).toFixed(1)) : 0;
+    const capacityTone = !profile.weeklyCapacityMinutes ? 'unset' : profile.utilizationPercent > 100 ? 'overload' : profile.utilizationPercent >= 80 ? 'tight' : 'normal';
+    $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Участник проекта</span><h2>${escapeHTML(profile.user.username)}</h2><p>На платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body"><section class="profile-summary"><span class="avatar profile-avatar">${escapeHTML(profile.user.username.slice(0, 2).toUpperCase())}</span><div><h3>${escapeHTML(profile.user.username)}</h3><p>${profile.user.id === state.me.id ? 'Ваш профиль активности' : 'Активность сооснователя'}</p></div>${profile.user.id === state.me.id ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить логин</button>` : ''}</section>${profile.user.id === state.me.id ? `<section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Проверяем AI</strong><p>Локальный анализ доступен всегда.</p></div></section>` : ''}<div class="profile-metrics"><article><span>Активное время · 30 дней</span><strong>${durationLabel(profile.activeSeconds30Days)}</strong><small>Только взаимодействие с интерфейсом</small></article><article><span>Действия · 30 дней</span><strong>${profile.actions30Days}</strong><small>${interactionsCountLabel(profile.interactions30Days)} с UI</small></article><article><span>Завершено</span><strong>${profile.completedRecords}</strong><small>карточек с результатом</small></article><article><span>Факт к оценке</span><strong>${accuracy ? `${accuracy}%` : 'Нет данных'}</strong><small>${minutesLabel(profile.actualMinutes)} факт · ${minutesLabel(profile.estimateMinutes)} план</small></article></div><section class="estimate-insight ${insight.tone}">${icon('clock')}<div><strong>${escapeHTML(insight.title)}</strong><p>${escapeHTML(insight.text)}</p></div></section><section class="weekly-capacity capacity-${capacityTone}"><header><div><span>Рабочая неделя</span><h3>${profile.weeklyCapacityMinutes ? `${profile.utilizationPercent}% запланировано` : 'Ёмкость пока не задана'}</h3><p>${minutesLabel(profile.scheduledMinutes)} со сроком на этой неделе${profile.unscheduledMinutes ? ` · ${minutesLabel(profile.unscheduledMinutes)} без недельного слота` : ''}</p></div><strong>${profile.weeklyCapacityMinutes ? minutesLabel(profile.weeklyCapacityMinutes) : '—'}</strong></header><progress max="100" value="${Math.min(100, profile.utilizationPercent || 0)}"></progress>${profile.user.id === state.me.id ? `<form id="capacity-form"><label>Доступно в неделю, часов<input name="hours" type="number" min="0" max="168" step="0.5" value="${capacityHours}"></label><button type="submit" class="secondary">Сохранить ёмкость</button></form>` : '<small>Ёмкость задаёт сам участник в своём профиле.</small>'}</section><section class="activity-chart"><header><h3>Активность по дням</h3><span>Последние 30 дней</span></header><div>${profile.activity.length ? profile.activity.slice().reverse().map((day) => `<span title="${escapeHTML(day.date)} · ${durationLabel(day.activeSeconds)} · ${interactionsCountLabel(day.interactions)}"><i data-level="${Math.max(1, Math.ceil(day.activeSeconds * 5 / maxSeconds))}"></i><small>${day.date.slice(8)}</small></span>`).join('') : `<p>Активность начнёт накапливаться после взаимодействия с новой версией.</p>`}</div></section><section class="profile-actions"><header><h3>Последние действия</h3><span>${profile.recentActions.length}</span></header><div class="activity-list">${profile.recentActions.map(renderActivityItem).join('') || emptyState('Действий пока нет.')}</div></section></div>`;
     $$('[data-close-profile]').forEach((button) => button.addEventListener('click', () => dialog.close()));
     $('[data-edit-profile]')?.addEventListener('click', async () => {
       const username = await askText({ title: 'Изменить логин', label: 'Новый логин', defaultValue: state.me.username, required: true });
@@ -4687,6 +4768,15 @@ async function openProfile(userId) {
         state.me = await api('/api/me', { method: 'PATCH', body: JSON.stringify({ username }) });
         $('#user-name').textContent = state.me.username; $('#user-avatar').textContent = state.me.username.slice(0, 2).toUpperCase();
         await loadData(true); await openProfile(state.me.id); toast('Логин изменён');
+      } catch (error) { toast(error.message, true); }
+    });
+    $('#capacity-form')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const hours = Number(new FormData(event.currentTarget).get('hours') || 0);
+      try {
+        state.teamCapacity = await api(`/api/users/${profile.user.id}/capacity`, { method: 'PUT', body: JSON.stringify({ weeklyMinutes: Math.round(hours * 60) }) });
+        await openProfile(profile.user.id);
+        toast('Недельная ёмкость сохранена');
       } catch (error) { toast(error.message, true); }
     });
     const recentActions = new Map(profile.recentActions.map((item) => [item.id, item]));
@@ -4722,7 +4812,7 @@ function openActivity(id, suppliedItem = null) {
     if (confirmed !== 'undo') return;
     try {
       await api(`/api/activity/${event.currentTarget.dataset.undoActivity}/undo`, { method: 'POST', body: '{}' });
-      $('#event-dialog').close(); await loadData(true); render(); toast('Действие отменено, запись сохранена в истории');
+      $('#event-dialog').close(); await syncProjectChanges(); render(); toast('Действие отменено, запись сохранена в истории');
     } catch (error) { toast(error.message, true); }
   });
   openModal($('#event-dialog'));
@@ -4891,8 +4981,8 @@ function bindTemplateDrag(scopeType) {
 
 function renderNotifications() {
   $('#main-content').innerHTML = `<div class="list-toolbar"><div><p class="eyebrow">Личный кабинет</p><h3>Уведомления</h3></div><button type="button" class="secondary" id="read-all" ${state.notifications.some((item) => !item.readAt) ? '' : 'disabled'}>Прочитать все</button></div><section class="section-panel"><div class="notification-list">${state.notifications.map((item) => `<button type="button" class="notification ${item.readAt ? '' : 'unread'}" data-notification-id="${item.id}" data-entity-id="${escapeHTML(item.entityId || '')}"><i></i><span><strong>${escapeHTML(item.title)}</strong><p>${escapeHTML(item.body)}</p><small>${formatDate(item.createdAt, true)}</small></span></button>`).join('') || emptyState('Уведомлений пока нет.')}</div></section>`;
-  $('#read-all').addEventListener('click', async () => { await api('/api/notifications/read-all', { method: 'POST' }); await loadData(true); });
-  $$('[data-notification-id]').forEach((button) => button.addEventListener('click', async () => { await api(`/api/notifications/${button.dataset.notificationId}/read`, { method: 'POST' }); if (button.dataset.entityId) await openRecord(button.dataset.entityId); await loadData(true); }));
+  $('#read-all').addEventListener('click', async () => { await api('/api/notifications/read-all', { method: 'POST' }); await syncProjectChanges({ renderCurrent: true }); });
+  $$('[data-notification-id]').forEach((button) => button.addEventListener('click', async () => { await api(`/api/notifications/${button.dataset.notificationId}/read`, { method: 'POST' }); if (button.dataset.entityId) await openRecord(button.dataset.entityId); await syncProjectChanges(); }));
 }
 
 const onboardingSteps = [

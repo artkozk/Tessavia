@@ -23,15 +23,19 @@ type UserActivityDay struct {
 }
 
 type UserProfile struct {
-	User                User              `json:"user"`
-	ActiveSeconds30Days int               `json:"activeSeconds30Days"`
-	Interactions30Days  int               `json:"interactions30Days"`
-	Actions30Days       int               `json:"actions30Days"`
-	CompletedRecords    int               `json:"completedRecords"`
-	EstimateMinutes     int               `json:"estimateMinutes"`
-	ActualMinutes       int               `json:"actualMinutes"`
-	Activity            []UserActivityDay `json:"activity"`
-	RecentActions       []Activity        `json:"recentActions"`
+	User                  User              `json:"user"`
+	ActiveSeconds30Days   int               `json:"activeSeconds30Days"`
+	Interactions30Days    int               `json:"interactions30Days"`
+	Actions30Days         int               `json:"actions30Days"`
+	CompletedRecords      int               `json:"completedRecords"`
+	EstimateMinutes       int               `json:"estimateMinutes"`
+	ActualMinutes         int               `json:"actualMinutes"`
+	WeeklyCapacityMinutes int               `json:"weeklyCapacityMinutes"`
+	ScheduledMinutes      int               `json:"scheduledMinutes"`
+	UnscheduledMinutes    int               `json:"unscheduledMinutes"`
+	UtilizationPercent    int               `json:"utilizationPercent"`
+	Activity              []UserActivityDay `json:"activity"`
+	RecentActions         []Activity        `json:"recentActions"`
 }
 
 func (s *Server) handlePresence(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +98,17 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM activity WHERE actor_id = ? AND created_at >= ?`, userID, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339Nano)).Scan(&profile.Actions30Days)
 	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*), COALESCE(SUM(estimate_minutes), 0), COALESCE(SUM(actual_minutes), 0) FROM records WHERE owner_id = ? AND status = 'completed'`, userID).
 		Scan(&profile.CompletedRecords, &profile.EstimateMinutes, &profile.ActualMinutes)
+	if capacity, capacityErr := s.listTeamCapacity(r); capacityErr == nil {
+		for _, item := range capacity {
+			if item.User.ID == userID {
+				profile.WeeklyCapacityMinutes = item.WeeklyCapacityMinutes
+				profile.ScheduledMinutes = item.ScheduledMinutes
+				profile.UnscheduledMinutes = item.UnscheduledMinutes
+				profile.UtilizationPercent = item.UtilizationPercent
+				break
+			}
+		}
+	}
 
 	profile.Activity = make([]UserActivityDay, 0)
 	rows, err := s.store.db.QueryContext(r.Context(), `SELECT activity_date, active_seconds, interactions, last_seen_at FROM user_activity_daily WHERE user_id = ? ORDER BY activity_date DESC LIMIT 30`, userID)

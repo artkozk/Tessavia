@@ -199,8 +199,41 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260825-blockers-provenance-1")) {
-		t.Fatal("blockers and provenance release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	if !bytes.Contains(index, []byte("20260826-quality-capacity-sync-1")) {
+		t.Fatal("quality, capacity and sync release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	}
+}
+
+func TestQualityCapacityAndSyncAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("['quality', 'Качество базы'"),
+		[]byte("function syncProjectChanges"),
+		[]byte("/api/sync?"),
+		[]byte("function renderQuality"),
+		[]byte("Недельная загрузка"),
+		[]byte("id=\"capacity-form\""),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain productivity marker %q", marker)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte(".quality-summary"),
+		[]byte(".quality-row"),
+		[]byte(".weekly-capacity"),
+		[]byte(".person-load.capacity-overload"),
+	} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain productivity marker %q", marker)
+		}
 	}
 }
 
