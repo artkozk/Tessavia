@@ -179,7 +179,8 @@ const state = {
   chatSending: false, chatDraftNonce: '', chatDraftText: '', chatEmojiTarget: '', chatRecentEmojis: [], outcomeFilter: 'all',
   validationFilter: 'all',
   chatPollTimer: null, chatRecording: null, chatCall: null, chatIncomingCall: null, chatICEServers: null,
-  savedViews: [], workingDraftTimers: new Map(), sidebarReturnFocus: null, liveRefreshRunning: false,
+  savedViews: [], workingDraftTimers: new Map(), workingDraftPersistors: new WeakMap(), sidebarReturnFocus: null, liveRefreshRunning: false,
+  dialogClosePending: new WeakSet(), lastDialogBackdropNotice: 0,
   syncRecordsSince: '1970-01-01T00:00:00Z', syncActivitySince: '1970-01-01T00:00:00Z',
   qualityReport: null, qualityFilter: 'all', teamCapacity: null, dashboardInsightsLoading: false,
 };
@@ -277,11 +278,14 @@ function openNotebook({ title, value = '', onSave = null }) {
   const dialog = $('#notebook-dialog');
   const content = $('#notebook-dialog-content');
   content.innerHTML = `<div class="notebook-shell"><header><div><p class="eyebrow">Расширенный редактор</p><h2>${escapeHTML(title)}</h2></div><button type="button" class="icon-button" data-close-notebook aria-label="Закрыть">${icon('x')}</button></header><div class="notebook-body editor-only">${markdownEditor('notebookValue', 'Содержание', value, 22, 'Фиксируйте структуру, аргументы и выводы', 'fullscreen')}</div><footer><span>Ctrl+Enter — применить изменения</span><div><button type="button" class="secondary" data-close-notebook>Отмена</button><button type="button" class="primary" data-save-notebook>${icon('check')} Применить</button></div></footer></div>`;
-  $$('[data-close-notebook]', dialog).forEach((button) => button.addEventListener('click', () => dialog.close()));
+  dialog.dataset.notebookDirty = 'false';
+  $$('[data-close-notebook]', dialog).forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
   bindMarkdownEditors(dialog);
   const textarea = $('textarea[name="notebookValue"]', dialog);
   const richEditor = $('.markdown-rich-editor', dialog);
-  const save = () => { onSave?.(textarea.value); dialog.close(); };
+  const initialValue = textarea.value;
+  textarea.addEventListener('input', () => { dialog.dataset.notebookDirty = String(textarea.value !== initialValue); });
+  const save = () => { onSave?.(textarea.value); dialog.dataset.notebookDirty = 'false'; closeDialogImmediately(dialog); };
   $('[data-save-notebook]', dialog).addEventListener('click', save);
   richEditor.addEventListener('keydown', (event) => { if ((event.ctrlKey || event.metaKey) && event.code === 'Enter') { event.preventDefault(); save(); } });
   openModal(dialog);
@@ -565,6 +569,8 @@ function enhanceSelect(select) {
       const next = event.key === 'ArrowDown' ? Math.min(options.length - 1, index + 1) : Math.max(0, index - 1);
       options[next]?.focus();
     } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
       closeCustomSelects();
       trigger.focus();
     }
@@ -715,6 +721,7 @@ function clearWorkingDraft(scope) {
 
 function clearWorkingDraftFor(root) {
   if (root?.dataset?.workingDraftScope) clearWorkingDraft(root.dataset.workingDraftScope);
+  root?.classList.remove('has-unsaved-draft');
 }
 
 function applyWorkingDraft(root, values = {}) {
@@ -737,21 +744,29 @@ function bindWorkingDraft(root, scope) {
   const draft = loadWorkingDraft(scope);
   if (draft?.values && JSON.stringify(draft.values) !== JSON.stringify(baseline)) {
     applyWorkingDraft(root, draft.values);
+    root.classList.add('has-unsaved-draft');
     const note = document.createElement('p');
     note.className = 'working-draft-note';
     note.textContent = 'Восстановлен несохранённый текст';
     root.prepend(note);
   }
-  const persist = () => {
+  const persistNow = () => {
     clearTimeout(state.workingDraftTimers.get(scope));
-    state.workingDraftTimers.set(scope, setTimeout(() => {
-      const values = workingDraftValues(root);
-      try {
-        if (JSON.stringify(values) === JSON.stringify(baseline)) localStorage.removeItem(workingDraftKey(scope));
-        else localStorage.setItem(workingDraftKey(scope), JSON.stringify({ values, savedAt: new Date().toISOString() }));
-      } catch (_) {}
-    }, 220));
+    state.workingDraftTimers.delete(scope);
+    const values = workingDraftValues(root);
+    const dirty = JSON.stringify(values) !== JSON.stringify(baseline);
+    root.classList.toggle('has-unsaved-draft', dirty);
+    try {
+      if (!dirty) localStorage.removeItem(workingDraftKey(scope));
+      else localStorage.setItem(workingDraftKey(scope), JSON.stringify({ values, savedAt: new Date().toISOString() }));
+    } catch (_) {}
   };
+  const persist = () => {
+    root.classList.toggle('has-unsaved-draft', JSON.stringify(workingDraftValues(root)) !== JSON.stringify(baseline));
+    clearTimeout(state.workingDraftTimers.get(scope));
+    state.workingDraftTimers.set(scope, setTimeout(persistNow, 220));
+  };
+  state.workingDraftPersistors.set(root, persistNow);
   root.addEventListener('input', persist);
   root.addEventListener('change', persist);
 }
@@ -1000,6 +1015,8 @@ function bindGlobalEvents() {
       event.preventDefault(); globalSearchInput.focus(); globalSearchInput.select();
     }
     if (event.key === 'Escape') {
+      const transientOpen = Boolean(document.querySelector('.custom-select.open, .work-filter-menu[open], .work-create-menu[open], .record-more-actions[open], .chat-header-more[open], .chat-composer-more[open]'));
+      const searchOpen = $('#global-search').classList.contains('search-open') || !$('#global-search-results').hidden;
       closeCustomSelects();
       if ($('#global-search').classList.contains('search-open')) {
         event.preventDefault();
@@ -1010,6 +1027,17 @@ function bindGlobalEvents() {
       $('.record-more-actions[open]')?.removeAttribute('open');
       $('.chat-header-more[open]')?.removeAttribute('open');
       $('.chat-composer-more[open]')?.removeAttribute('open');
+      if (transientOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+      } else if (!searchOpen) {
+        const dialog = [...$$('dialog[open]')].pop();
+        if (dialog && protectedWorkspaceDialogs.has(dialog.id)) {
+          event.preventDefault();
+          event.stopPropagation();
+          requestDialogClose(dialog);
+        }
+      }
     }
   });
   document.addEventListener('click', (event) => {
@@ -1034,13 +1062,7 @@ function bindGlobalEvents() {
     setTimeout(() => setSidebarOpen(false), 0);
   });
   bindSidebarSwipe();
-  $('#record-dialog').addEventListener('click', (event) => { if (event.target === $('#record-dialog')) $('#record-dialog').close(); });
-  $('#event-dialog').addEventListener('click', (event) => { if (event.target === $('#event-dialog')) $('#event-dialog').close(); });
-  $('#create-dialog').addEventListener('click', (event) => { if (event.target === $('#create-dialog')) $('#create-dialog').close(); });
-  $('#reason-dialog').addEventListener('click', (event) => { if (event.target === $('#reason-dialog')) $('#reason-dialog').close('cancel'); });
-  $('#onboarding-dialog').addEventListener('click', (event) => { if (event.target === $('#onboarding-dialog')) finishOnboarding(); });
-  $('#profile-dialog').addEventListener('click', (event) => { if (event.target === $('#profile-dialog')) $('#profile-dialog').close(); });
-  $('#notebook-dialog').addEventListener('click', (event) => { if (event.target === $('#notebook-dialog')) $('#notebook-dialog').close(); });
+  bindDialogDismissalEvents();
   $$('dialog').forEach((dialog) => dialog.addEventListener('close', () => {
     if (dialog.dataset.historyState === 'true' && history.state?.businessControlOverlay === dialog.id) {
       dialog.dataset.historyState = 'false';
@@ -1051,8 +1073,31 @@ function bindGlobalEvents() {
   window.addEventListener('popstate', () => {
     if (state.suppressOverlayPop) { state.suppressOverlayPop = false; return; }
     const dialog = [...$$('dialog[open]')].pop();
-    if (dialog) { dialog.dataset.historyState = 'false'; dialog.close(); return; }
+    if (dialog) {
+      flushDialogDrafts(dialog);
+      if (dialogHasUnsavedChanges(dialog)) {
+        history.pushState({ businessControlOverlay: dialog.id }, '');
+        dialog.dataset.historyState = 'true';
+        signalProtectedDialog(dialog, 'Есть несохранённые изменения. Сохраните их или закройте окно кнопкой ×.');
+        return;
+      }
+      dialog.dataset.historyState = 'false';
+      closeDialogImmediately(dialog);
+      return;
+    }
     if ($('.sidebar').classList.contains('open')) setSidebarOpen(false);
+  });
+  window.addEventListener('beforeunload', (event) => {
+    const dialog = [...$$('dialog[open]')].pop();
+    if (!dialog) return;
+    flushDialogDrafts(dialog);
+    if (!dialogHasUnsavedChanges(dialog)) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    $$('dialog[open]').forEach(flushDialogDrafts);
   });
   window.addEventListener('resize', () => {
     setSidebarOpen($('.sidebar').classList.contains('open'));
@@ -1104,6 +1149,126 @@ function openModal(dialog) {
   dialog.showModal();
   history.pushState({ businessControlOverlay: dialog.id }, '');
   dialog.dataset.historyState = 'true';
+}
+
+const protectedWorkspaceDialogs = new Set(['record-dialog', 'create-dialog', 'notebook-dialog']);
+
+function pointerIsOutsideDialog(event, dialog) {
+  const rect = dialog.getBoundingClientRect();
+  return event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
+}
+
+function bindDialogBackdrop(dialog, onBackdrop) {
+  let press = null;
+  dialog.addEventListener('pointerdown', (event) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    press = { pointerId: event.pointerId, outside: pointerIsOutsideDialog(event, dialog) };
+  });
+  dialog.addEventListener('pointerup', (event) => {
+    const shouldHandle = press?.pointerId === event.pointerId && press.outside && pointerIsOutsideDialog(event, dialog);
+    press = null;
+    if (shouldHandle) onBackdrop();
+  });
+  dialog.addEventListener('pointercancel', () => { press = null; });
+}
+
+function flushDialogDrafts(dialog) {
+  $$('[data-working-draft-scope]', dialog).forEach((root) => state.workingDraftPersistors.get(root)?.());
+  const editForm = $('#record-edit-form', dialog);
+  if (editForm && state.activeDetail?.record) updateRecordFormState(editForm, state.activeDetail.record, true);
+}
+
+function dialogHasUnsavedChanges(dialog) {
+  if (!dialog?.open) return false;
+  if ($('#record-edit-form.dirty', dialog)) return true;
+  if ($('.has-unsaved-draft', dialog)) return true;
+  return dialog.dataset.notebookDirty === 'true';
+}
+
+function signalProtectedDialog(dialog, message = 'Рабочее окно закрывается кнопкой × или клавишей Escape.') {
+  dialog.classList.remove('dismiss-attention');
+  requestAnimationFrame(() => dialog.classList.add('dismiss-attention'));
+  setTimeout(() => dialog.classList.remove('dismiss-attention'), 320);
+  if (Date.now() - state.lastDialogBackdropNotice > 1800) {
+    state.lastDialogBackdropNotice = Date.now();
+    toast(message);
+  }
+}
+
+function confirmUnsavedDialog(dialog) {
+  return new Promise((resolve) => {
+    const previousFocus = document.activeElement;
+    const titleID = `${dialog.id}-close-title`;
+    const notebook = dialog.id === 'notebook-dialog';
+    const message = notebook
+      ? 'Текст в расширенном редакторе ещё не применён. При закрытии изменения внутри этого окна будут отброшены.'
+      : 'Изменения ещё не отправлены команде. Черновик сохранён на этом устройстве и восстановится при следующем открытии.';
+    const leaveLabel = notebook ? 'Закрыть без применения' : 'Закрыть и оставить черновик';
+    const guard = document.createElement('div');
+    guard.className = 'dialog-close-guard';
+    guard.innerHTML = `<section role="alertdialog" aria-modal="true" aria-labelledby="${titleID}"><span>${icon('edit')}</span><h3 id="${titleID}">Закрыть рабочее окно?</h3><p>${escapeHTML(message)}</p><div><button type="button" class="primary" data-keep-working>Продолжить работу</button><button type="button" class="secondary" data-leave-dialog>${escapeHTML(leaveLabel)}</button></div></section>`;
+    const contentNodes = [...dialog.children];
+    contentNodes.forEach((node) => { node.inert = true; });
+    dialog.append(guard);
+    const finish = (leave) => {
+      guard.remove();
+      contentNodes.forEach((node) => { node.inert = false; });
+      if (!leave && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+      resolve(leave);
+    };
+    $('[data-keep-working]', guard).addEventListener('click', () => finish(false));
+    $('[data-leave-dialog]', guard).addEventListener('click', () => finish(true));
+    guard.addEventListener('pointerdown', (event) => { if (event.target === guard) finish(false); });
+    guard.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); } });
+    $('[data-keep-working]', guard).focus({ preventScroll: true });
+  });
+}
+
+async function confirmDialogTransition(dialog) {
+  flushDialogDrafts(dialog);
+  if (!dialogHasUnsavedChanges(dialog)) return true;
+  if (state.dialogClosePending.has(dialog)) return false;
+  state.dialogClosePending.add(dialog);
+  try { return await confirmUnsavedDialog(dialog); }
+  finally { state.dialogClosePending.delete(dialog); }
+}
+
+function closeDialogImmediately(dialog, returnValue = '') {
+  if (!dialog?.open) return;
+  dialog.dataset.notebookDirty = 'false';
+  dialog.close(returnValue);
+}
+
+async function requestDialogClose(dialog, { returnValue = '' } = {}) {
+  if (!dialog?.open) return true;
+  const hadUnsavedChanges = dialogHasUnsavedChanges(dialog);
+  if (!await confirmDialogTransition(dialog)) return false;
+  if (hadUnsavedChanges) toast(dialog.id === 'notebook-dialog' ? 'Расширенный редактор закрыт без применения изменений.' : 'Окно закрыто. Несохранённый черновик оставлен на этом устройстве.');
+  closeDialogImmediately(dialog, returnValue);
+  return true;
+}
+
+function preventImplicitWorkspaceSubmit(form) {
+  form?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (!event.target.matches('input:not([type="submit"]):not([type="button"]), select')) return;
+    event.preventDefault();
+  });
+}
+
+function bindDialogDismissalEvents() {
+  $$('dialog').forEach((dialog) => {
+    bindDialogBackdrop(dialog, () => {
+      if (protectedWorkspaceDialogs.has(dialog.id)) signalProtectedDialog(dialog);
+      else if (dialog.id === 'onboarding-dialog') finishOnboarding();
+      else requestDialogClose(dialog, { returnValue: dialog.id === 'reason-dialog' ? 'cancel' : '' });
+    });
+    dialog.addEventListener('cancel', (event) => {
+      if (!protectedWorkspaceDialogs.has(dialog.id)) return;
+      event.preventDefault();
+      requestDialogClose(dialog);
+    });
+  });
 }
 
 function bindSidebarSwipe() {
@@ -2970,8 +3135,9 @@ function openGraphNode(node) {
   openRecord(node.recordId, { tab: node.researchOptionId ? 'content' : node.questionId ? 'questions' : 'overview', questionId: node.questionId, workspace: false });
 }
 
-function openGraphForRecord(recordId) {
-  $('#record-dialog').close();
+async function openGraphForRecord(recordId) {
+  if (!await confirmDialogTransition($('#record-dialog'))) return;
+  closeDialogImmediately($('#record-dialog'));
   state.graphFocusRecordId = recordId; state.graphBranchRootId = ''; state.graphSelectedId = `record:${recordId}`; state.graphDepth = 2; state.view = 'graph'; render();
 }
 
@@ -3155,6 +3321,10 @@ function addRecordWorkspaceItem(id, summary, preserve) {
 }
 
 async function openRecord(id, options = {}) {
+  const recordDialog = $('#record-dialog');
+  if (recordDialog.open && state.activeWorkspaceRecordId && state.activeWorkspaceRecordId !== id) {
+    if (!await confirmDialogTransition(recordDialog)) return false;
+  }
   const requestID = ++state.activeRecordRequest;
   if (state.activeWorkspaceRecordId !== id) state.editingQuestionAnswerId = '';
   if (state.activeWorkspaceRecordId !== id || options.edit !== true) {
@@ -3184,6 +3354,7 @@ async function openRecord(id, options = {}) {
   } catch (error) {
     if (requestID === state.activeRecordRequest) renderRecordLoadError(id, error.message);
   }
+  return true;
 }
 
 function renderRecordWorkspace() {
@@ -3196,11 +3367,12 @@ function bindRecordWorkspace() {
   $$('[data-close-workspace]').forEach((button) => button.addEventListener('click', async (event) => {
     event.stopPropagation();
     const id = button.dataset.closeWorkspace;
+    if (id === state.activeWorkspaceRecordId && !await confirmDialogTransition($('#record-dialog'))) return;
     const index = state.recordWorkspace.findIndex((item) => item.id === id);
     state.recordWorkspace = state.recordWorkspace.filter((item) => item.id !== id);
     if (id !== state.activeWorkspaceRecordId) { renderRecordDialog(); return; }
     const next = state.recordWorkspace[Math.max(0, index - 1)];
-    if (!next) { $('#record-dialog').close(); return; }
+    if (!next) { closeDialogImmediately($('#record-dialog')); return; }
     await openRecord(next.id, { workspace: true });
   }));
 }
@@ -3208,14 +3380,14 @@ function bindRecordWorkspace() {
 function renderRecordLoading(summary) {
   const meta = typeMeta[summary?.type] || { singular: 'Карточка', icon: 'fileText' };
   $('#record-dialog-content').innerHTML = `<div class="record-shell record-type-${summary?.type || 'document'} loading-shell ${state.recordWorkspace.length > 1 ? 'has-workspace' : ''}">${renderRecordWorkspace()}<div class="dialog-header record-dialog-header"><div><span class="record-kind">${icon(meta.icon)} ${escapeHTML(meta.singular)}</span><h2>${escapeHTML(summary?.title || 'Загружаем карточку')}</h2><p>Основные данные появятся сразу после ответа сервера</p></div><button type="button" class="close-button icon-button" data-close-dialog aria-label="Закрыть">${icon('x')}</button></div><div class="loading-tabs"><i></i><i></i><i></i></div><div class="dialog-layout"><div class="dialog-main"><div class="record-skeleton"><span class="skeleton-line wide"></span><span class="skeleton-line medium"></span><span class="skeleton-block"></span><div><span class="skeleton-line"></span><span class="skeleton-line short"></span></div></div></div><aside class="dialog-aside"><span class="skeleton-line"></span><span class="skeleton-line short"></span><span class="skeleton-line"></span></aside></div></div>`;
-  $('[data-close-dialog]').addEventListener('click', () => $('#record-dialog').close());
+  $('[data-close-dialog]').addEventListener('click', () => requestDialogClose($('#record-dialog')));
   bindRecordWorkspace();
 }
 
 function renderRecordLoadError(id, message) {
   $('#record-dialog-content').innerHTML = `<div class="record-load-error">${icon('help')}<h2>Карточка не загрузилась</h2><p>${escapeHTML(message)}</p><div><button type="button" class="primary" data-retry-record="${id}">Повторить</button><button type="button" class="secondary" data-close-dialog>Закрыть</button></div></div>`;
   $('[data-retry-record]').addEventListener('click', () => openRecord(id));
-  $('[data-close-dialog]').addEventListener('click', () => $('#record-dialog').close());
+  $('[data-close-dialog]').addEventListener('click', () => requestDialogClose($('#record-dialog')));
 }
 
 function recordTabs(record, detail, activity) {
@@ -3916,7 +4088,7 @@ function updateRecordFormState(form, record, persist = false) {
 function bindRecordDialogEvents() {
   const detail = state.activeDetail;
   const record = detail.record;
-  $('[data-close-dialog]').addEventListener('click', () => $('#record-dialog').close());
+  $('[data-close-dialog]').addEventListener('click', () => requestDialogClose($('#record-dialog')));
   $$('[data-record-tab]').forEach((button) => button.addEventListener('click', async () => {
     state.activeRecordTab = button.dataset.recordTab;
     $$('.record-tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.recordTab === state.activeRecordTab));
@@ -3987,7 +4159,11 @@ function bindRecordDialogEvents() {
       $('[data-restore-draft]').closest('.draft-banner').remove();
       toast('Черновик восстановлен');
     });
-    $('[data-cancel-record-edit]')?.addEventListener('click', () => { state.recordEditMode = false; renderRecordDialog(); });
+    $('[data-cancel-record-edit]')?.addEventListener('click', async () => {
+      if (!await confirmDialogTransition($('#record-dialog'))) return;
+      state.recordEditMode = false;
+      renderRecordDialog();
+    });
     editForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const { body, substantiveKeys, reasonRequired } = buildRecordUpdate(event.currentTarget, record);
@@ -4435,7 +4611,7 @@ function openQuestionOutputDialog(sourceRecord, question, kind, defaultTitle, pr
   const planned = ['task', 'goal', 'research'].includes(kind);
   const draftScope = `question-output:${sourceRecord.id}:${question.id}:${kind}`;
   $('#create-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon('link')} Результат совместного вывода</span><h2>${labels[kind]}</h2><p>Источник сохранится автоматически: группа вопросов → вопрос → совместный итог → новая карточка.</p></div><button type="button" class="close-button icon-button" data-close-create aria-label="Закрыть">${icon('x')}</button></div><form id="question-output-form" class="card-form dialog-form"><div class="source-context"><span>Вопрос</span><strong>${escapeHTML(question.body)}</strong>${markdownView(question.decision.content, '', 'Исходный совместный итог')}</div><label>Название<input name="title" required maxlength="240" value="${escapeHTML(preset.title || defaultTitle)}"></label>${markdownEditor('description', 'Как применять', preset.description || question.decision.content, 6, 'Область действия и следующий шаг', 'question-output')}${planned ? `<div class="form-grid two"><label>Ответственный<select name="ownerId">${userOptions(state.me.id)}</select></label><label>Срок<input name="dueAt" type="datetime-local"></label></div>` : `<input type="hidden" name="ownerId" value="${state.me.id}">`}<div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать и связать</button><button type="button" class="secondary" data-close-create>Отмена</button></div></form>`;
-  $$('[data-close-create]').forEach((button) => button.addEventListener('click', () => $('#create-dialog').close()));
+  $$('[data-close-create]').forEach((button) => button.addEventListener('click', () => requestDialogClose($('#create-dialog'))));
   $('#question-output-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -4443,15 +4619,16 @@ function openQuestionOutputDialog(sourceRecord, question, kind, defaultTitle, pr
     try {
       const output = await api(`/api/records/${sourceRecord.id}/questions/${question.id}/outputs`, { method: 'POST', body: JSON.stringify({ kind, title: form.get('title'), description: form.get('description'), ownerId: Number(form.get('ownerId')), dueAt: due ? new Date(due).toISOString() : '' }) });
       clearWorkingDraft(draftScope);
-      $('#create-dialog').close();
+      closeDialogImmediately($('#create-dialog'));
       state.detailCache.delete(sourceRecord.id);
       await syncProjectChanges();
       toast('Результат создан и связан');
       await openRecord(output.id, { workspace: true });
     } catch (error) { toast(error.message, true); }
   });
-	bindMarkdownEditors($('#create-dialog'));
+  bindMarkdownEditors($('#create-dialog'));
   bindWorkingDraft($('#question-output-form'), draftScope);
+  preventImplicitWorkspaceSubmit($('#question-output-form'));
   openModal($('#create-dialog'));
 }
 
@@ -4482,7 +4659,7 @@ async function mutateRecord(path, options, close = false, clearDraftOnSuccess = 
     state.aiAnalyses.delete(recordID);
     state.detailCache.delete(recordID);
     const [detail] = await Promise.all([close ? Promise.resolve(null) : fetchRecordDetail(recordID, true), syncProjectChanges()]);
-    if (close) $('#record-dialog').close();
+    if (close) closeDialogImmediately($('#record-dialog'));
     else { state.activeDetail = detail; renderRecordDialog(); }
     toast('Сохранено');
     return true;
@@ -4549,11 +4726,12 @@ function openCreateDialog(initialType = 'idea', preset = {}) {
   const parentOptions = state.records.filter((record) => record.status !== 'archived').map((record) => `<option value="${record.id}" ${defaultParentID === record.id ? 'selected' : ''}>${escapeHTML(typeMeta[record.type]?.singular || 'Карточка')}: ${escapeHTML(record.title)}</option>`).join('');
   const planned = ['task', 'goal', 'research', 'question_set', 'meeting', 'disagreement', 'risk', 'hypothesis', 'experiment'].includes(initialType);
   $('#create-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon(initialMeta.icon)} Новая запись</span><h2>${escapeHTML(displayName)}</h2></div><button type="button" class="close-button icon-button" data-close-create aria-label="Закрыть">${icon('x')}</button></div><form id="create-record-form" class="card-form dialog-form"><label>${titleLabel}<input name="title" required maxlength="240" autofocus value="${escapeHTML(preset.title || '')}" placeholder="${preset.comparisonMode ? 'Например: Выбор сервера' : initialType === 'question_set' ? 'Например: Договорённости основателей' : initialType === 'inbox' ? 'Короткая мысль или наблюдение' : ''}"></label>${markdownEditor('description', descriptionLabel, preset.description || '', initialType === 'inbox' ? 4 : 7, 'Факты, контекст и ожидаемый результат', 'create-record')}<input type="hidden" name="type" value="${initialType}"><input type="hidden" name="kind" value="${escapeHTML(preset.kind || '')}">${renderBusinessDetailsFields(initialType)}${planned ? `<div class="form-grid two"><label>${initialType === 'question_set' ? 'Координатор' : initialType === 'meeting' ? 'Организатор' : 'Ответственный'}<select name="ownerId">${userOptions(state.me.id)}</select></label><label>${initialType === 'meeting' ? 'Дата и время' : 'Срок'}<input name="dueAt" type="datetime-local"></label></div><div class="form-grid two"><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === (preset.priority || 'normal') ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Оценка времени, минут<input name="estimateMinutes" type="number" min="0" value="${Number(preset.estimateMinutes || 0)}"></label></div>` : `<input type="hidden" name="ownerId" value="${state.me.id}"><input type="hidden" name="priority" value="${escapeHTML(preset.priority || 'normal')}"><input type="hidden" name="estimateMinutes" value="${Number(preset.estimateMinutes || 0)}">`}<details class="form-more create-organization" ${sourceRecord ? 'open' : ''}><summary>Место в проекте и доступ</summary><div class="form-more-body"><div class="form-grid three"><label>Направление<select name="workstream">${Object.entries(workstreamLabels).map(([value, label]) => `<option value="${value}" ${defaultWorkstream === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Доступ к изменениям<select name="editPolicy">${Object.entries(editPolicyLabels).map(([value, label]) => `<option value="${value}" ${defaultEditPolicy === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Родитель<select name="parentId"><option value="">Без родителя</option>${parentOptions}</select></label></div><label class="root-toggle"><input name="isRoot" type="checkbox" ${preset.isRoot ? 'checked' : ''}> <span><strong>Новый корень</strong><small>Начать самостоятельную крупную ветку вместо продолжения текущей цепочки.</small></span></label></div></details><div class="ai-suggestion"><span class="ai-suggestion-icon">${icon('sparkles')}</span><span><strong>AI-структура</strong><small id="ai-suggestion-status">После названия система предложит приоритет, оценку времени, направление и место в иерархии.</small></span><button type="button" class="secondary" data-ai-suggest>Предложить</button></div><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать</button><button type="button" class="secondary" data-close-create>Отмена</button></div></form>`;
-  $$('[data-close-create]').forEach((button) => button.addEventListener('click', () => $('#create-dialog').close()));
+  $$('[data-close-create]').forEach((button) => button.addEventListener('click', () => requestDialogClose($('#create-dialog'))));
   const createForm = $('#create-record-form');
 	if (initialType === 'inbox') createForm.querySelector('.ai-suggestion')?.remove();
 	bindMarkdownEditors($('#create-dialog'));
   bindWorkingDraft(createForm, draftScope);
+  preventImplicitWorkspaceSubmit(createForm);
   if (initialType !== 'inbox') bindCreateSuggestion(createForm, initialType);
   $('#create-record-form').addEventListener('submit', async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget); const due = form.get('dueAt');
@@ -4573,7 +4751,7 @@ function openCreateDialog(initialType = 'idea', preset = {}) {
         }
       }
       clearWorkingDraft(draftScope);
-      $('#create-dialog').close(); await syncProjectChanges(); toast(linkError || 'Карточка создана', Boolean(linkError)); await openRecord(record.id, { workspace: Boolean(preset.sourceRecordId), edit: true, tab: preset.comparisonMode ? 'content' : undefined });
+      closeDialogImmediately($('#create-dialog')); await syncProjectChanges(); toast(linkError || 'Карточка создана', Boolean(linkError)); await openRecord(record.id, { workspace: Boolean(preset.sourceRecordId), edit: true, tab: preset.comparisonMode ? 'content' : undefined });
     } catch (error) { toast(error.message, true); }
   });
   openModal($('#create-dialog'));
@@ -4760,7 +4938,7 @@ async function openProfile(userId) {
     const capacityHours = profile.weeklyCapacityMinutes ? Number((profile.weeklyCapacityMinutes / 60).toFixed(1)) : 0;
     const capacityTone = !profile.weeklyCapacityMinutes ? 'unset' : profile.utilizationPercent > 100 ? 'overload' : profile.utilizationPercent >= 80 ? 'tight' : 'normal';
     $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Участник проекта</span><h2>${escapeHTML(profile.user.username)}</h2><p>На платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body"><section class="profile-summary"><span class="avatar profile-avatar">${escapeHTML(profile.user.username.slice(0, 2).toUpperCase())}</span><div><h3>${escapeHTML(profile.user.username)}</h3><p>${profile.user.id === state.me.id ? 'Ваш профиль активности' : 'Активность сооснователя'}</p></div>${profile.user.id === state.me.id ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить логин</button>` : ''}</section>${profile.user.id === state.me.id ? `<section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Проверяем AI</strong><p>Локальный анализ доступен всегда.</p></div></section>` : ''}<div class="profile-metrics"><article><span>Активное время · 30 дней</span><strong>${durationLabel(profile.activeSeconds30Days)}</strong><small>Только взаимодействие с интерфейсом</small></article><article><span>Действия · 30 дней</span><strong>${profile.actions30Days}</strong><small>${interactionsCountLabel(profile.interactions30Days)} с UI</small></article><article><span>Завершено</span><strong>${profile.completedRecords}</strong><small>карточек с результатом</small></article><article><span>Факт к оценке</span><strong>${accuracy ? `${accuracy}%` : 'Нет данных'}</strong><small>${minutesLabel(profile.actualMinutes)} факт · ${minutesLabel(profile.estimateMinutes)} план</small></article></div><section class="estimate-insight ${insight.tone}">${icon('clock')}<div><strong>${escapeHTML(insight.title)}</strong><p>${escapeHTML(insight.text)}</p></div></section><section class="weekly-capacity capacity-${capacityTone}"><header><div><span>Рабочая неделя</span><h3>${profile.weeklyCapacityMinutes ? `${profile.utilizationPercent}% запланировано` : 'Ёмкость пока не задана'}</h3><p>${minutesLabel(profile.scheduledMinutes)} со сроком на этой неделе${profile.unscheduledMinutes ? ` · ${minutesLabel(profile.unscheduledMinutes)} без недельного слота` : ''}</p></div><strong>${profile.weeklyCapacityMinutes ? minutesLabel(profile.weeklyCapacityMinutes) : '—'}</strong></header><progress max="100" value="${Math.min(100, profile.utilizationPercent || 0)}"></progress>${profile.user.id === state.me.id ? `<form id="capacity-form"><label>Доступно в неделю, часов<input name="hours" type="number" min="0" max="168" step="0.5" value="${capacityHours}"></label><button type="submit" class="secondary">Сохранить ёмкость</button></form>` : '<small>Ёмкость задаёт сам участник в своём профиле.</small>'}</section><section class="activity-chart"><header><h3>Активность по дням</h3><span>Последние 30 дней</span></header><div>${profile.activity.length ? profile.activity.slice().reverse().map((day) => `<span title="${escapeHTML(day.date)} · ${durationLabel(day.activeSeconds)} · ${interactionsCountLabel(day.interactions)}"><i data-level="${Math.max(1, Math.ceil(day.activeSeconds * 5 / maxSeconds))}"></i><small>${day.date.slice(8)}</small></span>`).join('') : `<p>Активность начнёт накапливаться после взаимодействия с новой версией.</p>`}</div></section><section class="profile-actions"><header><h3>Последние действия</h3><span>${profile.recentActions.length}</span></header><div class="activity-list">${profile.recentActions.map(renderActivityItem).join('') || emptyState('Действий пока нет.')}</div></section></div>`;
-    $$('[data-close-profile]').forEach((button) => button.addEventListener('click', () => dialog.close()));
+    $$('[data-close-profile]').forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
     $('[data-edit-profile]')?.addEventListener('click', async () => {
       const username = await askText({ title: 'Изменить логин', label: 'Новый логин', defaultValue: state.me.username, required: true });
       if (!username || username === state.me.username) return;
@@ -4794,7 +4972,7 @@ async function openProfile(userId) {
 		}).catch(() => {});
   } catch (error) {
     $('#profile-dialog-content').innerHTML = `<div class="record-load-error">${icon('help')}<h2>Профиль не загрузился</h2><p>${escapeHTML(error.message)}</p><button type="button" class="secondary" data-close-profile>Закрыть</button></div>`;
-    $('[data-close-profile]').addEventListener('click', () => dialog.close());
+    $('[data-close-profile]').addEventListener('click', () => requestDialogClose(dialog));
   }
 }
 
@@ -4805,14 +4983,14 @@ function openActivity(id, suppliedItem = null) {
   const record = state.records.find((candidate) => candidate.id === item.entityId);
   const undoable = activityIsSafelyUndoable(item);
   $('#event-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${formatDate(item.createdAt, true)} · ${escapeHTML(item.actorUsername)}</span><h2>${escapeHTML(activityActionLabel(item))}</h2><p>${escapeHTML(recordTitleByActivity(item))}</p></div><button type="button" class="close-button icon-button" data-close-event aria-label="Закрыть">${icon('x')}</button></div><div class="event-body">${item.reason ? `<section class="event-reason-block"><span>Почему</span><p>${escapeHTML(item.reason)}</p></section>` : ''}${activityChanges(item, true) ? `<section class="event-section"><h3>Что изменилось</h3><div class="event-change-list">${activityChanges(item, true)}</div></section>` : ''}${activityDetails(item) ? `<section class="event-section"><h3>Содержание события</h3>${activityDetails(item)}</section>` : ''}${undoable ? `<aside class="undo-note">${icon('undo')}<span><strong>Ошибочное действие?</strong><small>Отмена сработает, только если карточка или связь после этого не менялась.</small></span></aside>` : ''}<div class="form-actions">${record ? `<button type="button" class="primary" data-event-record="${record.id}">Открыть карточку</button>` : ''}${undoable ? `<button type="button" class="secondary" data-undo-activity="${item.id}">${icon('undo')} Отменить действие</button>` : ''}<button type="button" class="secondary" data-close-event>Закрыть</button></div></div>`;
-  $$('[data-close-event]', $('#event-dialog')).forEach((button) => button.addEventListener('click', () => $('#event-dialog').close()));
-  $('[data-event-record]')?.addEventListener('click', async (event) => { $('#event-dialog').close(); await openRecord(event.currentTarget.dataset.eventRecord); });
+  $$('[data-close-event]', $('#event-dialog')).forEach((button) => button.addEventListener('click', () => requestDialogClose($('#event-dialog'))));
+  $('[data-event-record]')?.addEventListener('click', async (event) => { closeDialogImmediately($('#event-dialog')); await openRecord(event.currentTarget.dataset.eventRecord); });
   $('[data-undo-activity]')?.addEventListener('click', async (event) => {
     const confirmed = await askChoice({ title: 'Отменить действие?', label: 'Изменение вернётся к предыдущему значению, а сама отмена останется в истории.', choices: [{ value: 'undo', label: 'Да, отменить действие' }] });
     if (confirmed !== 'undo') return;
     try {
       await api(`/api/activity/${event.currentTarget.dataset.undoActivity}/undo`, { method: 'POST', body: '{}' });
-      $('#event-dialog').close(); await syncProjectChanges(); render(); toast('Действие отменено, запись сохранена в истории');
+      closeDialogImmediately($('#event-dialog')); await syncProjectChanges(); render(); toast('Действие отменено, запись сохранена в истории');
     } catch (error) { toast(error.message, true); }
   });
   openModal($('#event-dialog'));
@@ -5014,7 +5192,7 @@ function openOnboarding(step = 0) {
 
 function finishOnboarding() {
   try { localStorage.setItem(onboardingKey(), new Date().toISOString()); } catch (_) {}
-  if ($('#onboarding-dialog').open) $('#onboarding-dialog').close();
+  if ($('#onboarding-dialog').open) closeDialogImmediately($('#onboarding-dialog'));
 }
 
 bootstrap();

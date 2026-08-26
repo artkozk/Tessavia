@@ -296,6 +296,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 dialog { max-width: none; padding: 0; overflow-y: auto; border: 0; border-radius: 8px; box-shadow: var(--shadow); scrollbar-gutter: stable; }
 dialog::backdrop { background: rgba(24, 27, 50, .48); backdrop-filter: blur(3px); }
+dialog.dismiss-attention { animation: dialog-dismiss-attention .3s ease; }
+.dialog-close-guard { position: fixed; inset: 0; z-index: 240; display: grid; place-items: center; padding: 20px; background: rgba(25,31,28,.28); backdrop-filter: blur(3px); }
+.dialog-close-guard > section { width: min(440px, calc(100vw - 32px)); padding: 24px; border: 1px solid #d2d7d1; border-radius: 8px; background: var(--surface); box-shadow: 0 24px 70px rgba(24,32,28,.2); }
+.dialog-close-guard > section > span { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 18px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); }
+.dialog-close-guard h3 { margin: 0 0 8px; font-size: 20px; }
+.dialog-close-guard p { margin: 0; color: var(--muted); line-height: 1.55; }
+.dialog-close-guard section > div { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+@keyframes dialog-dismiss-attention { 50% { box-shadow: 0 0 0 3px rgba(18,106,85,.2), 0 24px 70px rgba(24,32,28,.2); } }
 .record-dialog { width: min(1280px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
 .event-dialog { width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
 .create-dialog { width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: 16px auto auto; }

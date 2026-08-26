@@ -199,8 +199,48 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260826-quality-capacity-sync-1")) {
+	if !bytes.Contains(index, []byte("20260827-dialog-stability-2")) {
 		t.Fatal("quality, capacity and sync release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	}
+}
+
+func TestWorkspaceDialogsProtectDraftsAndScrollbars(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("function pointerIsOutsideDialog"),
+		[]byte("function bindDialogBackdrop"),
+		[]byte("function flushDialogDrafts"),
+		[]byte("function dialogHasUnsavedChanges"),
+		[]byte("function confirmUnsavedDialog"),
+		[]byte("function requestDialogClose"),
+		[]byte("function preventImplicitWorkspaceSubmit"),
+		[]byte("window.addEventListener('beforeunload'"),
+		[]byte("event.stopPropagation();\n      closeCustomSelects();"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain dialog stability marker %q", marker)
+		}
+	}
+	for _, unsafe := range [][]byte{
+		[]byte("event.target === $('#record-dialog')"),
+		[]byte("event.target === $('#create-dialog')"),
+		[]byte("event.target === $('#notebook-dialog')"),
+	} {
+		if bytes.Contains(app, unsafe) {
+			t.Fatalf("working dialogs must not close from ambiguous dialog-surface clicks: %q", unsafe)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{[]byte(".dialog-close-guard"), []byte("dialog.dismiss-attention")} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain dialog protection marker %q", marker)
+		}
 	}
 }
 
