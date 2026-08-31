@@ -121,7 +121,7 @@
 Требуется Go 1.24 или новее.
 
 ```powershell
-cd C:\prog\Comercial\LeonovCarePlatform\business-control
+cd C:\prog\Progects\BizFlow
 $env:BUSINESS_ADDRESS = "127.0.0.1:8522"
 $env:BUSINESS_DATABASE_PATH = ".\data\business-control.db"
 go run ./cmd/server
@@ -143,7 +143,7 @@ go run ./cmd/server
 ## Проверки
 
 ```powershell
-cd C:\prog\Comercial\LeonovCarePlatform\business-control
+cd C:\prog\Progects\BizFlow
 gofmt -w cmd\server\main.go internal\app\*.go web\assets.go
 go test ./...
 go vet ./...
