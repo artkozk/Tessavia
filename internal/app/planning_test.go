@@ -25,12 +25,12 @@ func TestPlanningCycleLifecycleAndAudit(t *testing.T) {
 		t.Fatalf("new project planning cycles = %#v", response)
 	}
 	requestJSON(t, client, http.MethodPost, server.URL+"/api/planning/cycles", map[string]any{
-		"title": "Осенний цикл", "startDate": "2026-09-01",
+		"title": "Осенний цикл", "startDate": "2026-09-31",
 	}, http.StatusBadRequest, nil)
 	requestJSON(t, client, http.MethodPost, server.URL+"/api/planning/cycles", map[string]any{
-		"title": "Осенний цикл", "startDate": "2026-08-31",
+		"title": "Осенний цикл", "startDate": "2026-09-01",
 	}, http.StatusCreated, &response)
-	if response.Active == nil || response.Active.StartDate != "2026-08-31" || response.Active.EndDate != "2026-11-22" || response.Active.ReviewWeekStart != "2026-11-23" {
+	if response.Active == nil || response.Active.StartDate != "2026-09-01" || response.Active.EndDate != "2026-11-23" || response.Active.ReviewWeekStart != "2026-11-24" {
 		t.Fatalf("created planning cycle = %#v", response.Active)
 	}
 	first := *response.Active
@@ -44,7 +44,7 @@ func TestPlanningCycleLifecycleAndAudit(t *testing.T) {
 		t.Fatalf("renamed planning cycle = %#v", response.Active)
 	}
 	requestJSON(t, client, http.MethodPost, server.URL+"/api/planning/cycles", map[string]any{
-		"title": "Следующий цикл", "startDate": "2026-11-23", "reason": "Первый цикл закрыт",
+		"title": "Следующий цикл", "startDate": "2026-12-01", "reason": "Первый цикл закрыт",
 	}, http.StatusCreated, &response)
 	if response.Active == nil || response.Active.Title != "Следующий цикл" || len(response.Cycles) != 2 || response.Cycles[1].Status != "archived" {
 		t.Fatalf("replaced planning cycles = %#v", response)
@@ -58,11 +58,14 @@ func TestPlanningCycleLifecycleAndAudit(t *testing.T) {
 	}
 }
 
-func TestPlanningStartMustBeMonday(t *testing.T) {
+func TestPlanningStartAcceptsChosenCalendarDate(t *testing.T) {
 	if _, err := parsePlanningStart("2026-08-31"); err != nil {
-		t.Fatalf("valid Monday rejected: %v", err)
+		t.Fatalf("valid date rejected: %v", err)
 	}
-	if _, err := parsePlanningStart("2026-09-01"); err == nil {
-		t.Fatal("Tuesday must not start a 12-week cycle")
+	if _, err := parsePlanningStart("2026-09-01"); err != nil {
+		t.Fatalf("chosen Tuesday rejected: %v", err)
+	}
+	if _, err := parsePlanningStart("2026-09-31"); err == nil {
+		t.Fatal("nonexistent calendar date must be rejected")
 	}
 }

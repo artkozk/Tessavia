@@ -1835,13 +1835,6 @@ function addCalendarDays(value, amount) {
   return date;
 }
 
-function mondayKey(value = new Date()) {
-  const date = new Date(value);
-  date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
-  return localDateKey(date);
-}
-
 function calendarRecordPool() {
   let records = state.records.filter((record) => isWorkRecord(record));
   if (state.ownerFilter) records = records.filter((record) => String(record.ownerId) === state.ownerFilter);
@@ -1893,9 +1886,9 @@ function calendarModeToolbar() {
 }
 
 function renderCycleSetup() {
-  const start = mondayKey();
+  const start = localDateKey(new Date());
   const month = dateFromKey(start).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-  return `<section class="cycle-empty"><span>${icon('calendar')}</span><div><p class="eyebrow">Первый цикл</p><h2>Соберите ближайшие 12 недель в один план</h2><p>Выберите понедельник старта. Сроки существующих карточек автоматически попадут в соответствующие недели.</p></div><form data-cycle-create class="cycle-form"><label>Название<input name="title" maxlength="120" required value="12 недель · ${escapeHTML(month)}"></label><label>Первый день<input name="startDate" type="date" required value="${start}"><small>Начало цикла должно приходиться на понедельник.</small></label><button type="submit" class="primary">${icon('plus')} Начать цикл</button></form></section>`;
+  return `<section class="cycle-empty"><span>${icon('calendar')}</span><div><p class="eyebrow">Первый цикл</p><h2>Соберите ближайшие 12 недель в один план</h2><p>Выберите фактический первый день. Сроки существующих карточек автоматически попадут в соответствующие недели.</p></div><form data-cycle-create class="cycle-form"><label>Название<input name="title" maxlength="120" required value="12 недель · ${escapeHTML(month)}"></label><label>Первый день<input name="startDate" type="date" required value="${start}"><small>Недели будут отсчитываться от выбранной даты.</small></label><button type="submit" class="primary">${icon('plus')} Начать цикл</button></form></section>`;
 }
 
 function renderCycleSummary(cycle, records) {
@@ -1905,7 +1898,7 @@ function renderCycleSummary(cycle, records) {
   const end = dateFromKey(cycle.endDate);
   const daysLeft = Math.max(0, Math.ceil((end - dateFromKey(todayKey)) / 86400000) + 1);
   const currentWeek = todayKey < cycle.startDate ? 0 : todayKey > cycle.endDate ? 12 : Math.floor((dateFromKey(todayKey) - start) / 604800000) + 1;
-  return `<section class="cycle-summary"><div><p class="eyebrow">Активный 12-недельный год</p><h2>${escapeHTML(cycle.title)}</h2><p>${escapeHTML(start.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))} — ${escapeHTML(end.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))} · ${currentWeek ? `неделя ${currentWeek} из 12` : 'старт ещё впереди'}</p></div><div class="cycle-metrics"><span><strong>${daysLeft}</strong><small>дней осталось</small></span><span class="score-${score.planned && score.percent >= 80 ? 'good' : 'attention'}"><strong>${score.planned ? `${score.percent}%` : '—'}</strong><small>${score.completed} из ${score.planned} выполнено</small></span></div><details class="cycle-settings"><summary class="secondary">${icon('settings')} Настроить</summary><div><form data-cycle-update data-cycle-id="${cycle.id}"><label>Название<input name="title" maxlength="120" required value="${escapeHTML(cycle.title)}"></label><label>Первый понедельник<input name="startDate" type="date" required value="${cycle.startDate}"></label><label>Причина изменения<input name="reason" placeholder="Нужна, если меняются даты"></label><button type="submit" class="secondary">Сохранить</button></form><button type="button" class="text-button danger" data-cycle-complete="${cycle.id}">Завершить цикл</button><hr><form data-cycle-create><strong>Начать новый цикл после недели анализа</strong><label>Название<input name="title" maxlength="120" required value="Следующие 12 недель"></label><label>Первый понедельник<input name="startDate" type="date" required value="${mondayKey(addCalendarDays(cycle.reviewWeekStart, 7))}"></label><label>Почему меняем цикл<input name="reason" value="Текущий цикл завершён и проанализирован, начинается следующий"></label><button type="submit" class="primary">Начать новый</button></form></div></details></section>`;
+  return `<section class="cycle-summary"><div><p class="eyebrow">Активный 12-недельный год</p><h2>${escapeHTML(cycle.title)}</h2><p>${escapeHTML(start.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))} — ${escapeHTML(end.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))} · ${currentWeek ? `неделя ${currentWeek} из 12` : 'старт ещё впереди'}</p></div><div class="cycle-metrics"><span><strong>${daysLeft}</strong><small>дней осталось</small></span><span class="score-${score.planned && score.percent >= 80 ? 'good' : 'attention'}"><strong>${score.planned ? `${score.percent}%` : '—'}</strong><small>${score.completed} из ${score.planned} выполнено</small></span></div><details class="cycle-settings"><summary class="secondary">${icon('settings')} Настроить</summary><div><form data-cycle-update data-cycle-id="${cycle.id}"><label>Название<input name="title" maxlength="120" required value="${escapeHTML(cycle.title)}"></label><label>Первый день<input name="startDate" type="date" required value="${cycle.startDate}"></label><label>Причина изменения<input name="reason" placeholder="Нужна, если меняются даты"></label><button type="submit" class="secondary">Сохранить</button></form><button type="button" class="text-button danger" data-cycle-complete="${cycle.id}">Завершить цикл</button><hr><form data-cycle-create><strong>Начать новый цикл после недели анализа</strong><label>Название<input name="title" maxlength="120" required value="Следующие 12 недель"></label><label>Первый день<input name="startDate" type="date" required value="${localDateKey(addCalendarDays(cycle.reviewWeekStart, 7))}"></label><label>Почему меняем цикл<input name="reason" value="Текущий цикл завершён и проанализирован, начинается следующий"></label><button type="submit" class="primary">Начать новый</button></form></div></details></section>`;
 }
 
 function renderTwelveWeekCalendar(records, dueMap) {
@@ -1978,8 +1971,9 @@ function renderWorkCalendar() {
   return `<section class="work-calendar"><header class="calendar-commandbar">${calendarModeToolbar()}<p>${state.calendarMode === 'cycle' ? 'Недельный план и исполнение' : state.calendarMode === 'year' ? 'Весь год по кварталам' : 'Точные сроки по дням'}</p></header>${renderUnscheduledWork(records)}${body}</section>`;
 }
 
-function validCycleMonday(value) {
-  return value && dateFromKey(value).getDay() === 1;
+function validCycleDate(value) {
+  const date = dateFromKey(value);
+  return Boolean(value) && !Number.isNaN(date.getTime()) && localDateKey(date) === value;
 }
 
 async function refreshPlanningCycles(payload = null) {
@@ -1991,8 +1985,8 @@ async function refreshPlanningCycles(payload = null) {
 async function submitPlanningCycle(form, cycleID = '') {
   const data = new FormData(form);
   const startDate = String(data.get('startDate') || '');
-  if (!validCycleMonday(startDate)) {
-    toast('Выберите понедельник как первый день цикла', true);
+  if (!validCycleDate(startDate)) {
+    toast('Выберите существующую дату начала цикла', true);
     form.elements.startDate?.focus();
     return;
   }

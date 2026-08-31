@@ -33,9 +33,6 @@ func parsePlanningStart(value string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, errors.New("Дата начала должна быть указана в формате ГГГГ-ММ-ДД")
 	}
-	if date.Weekday() != time.Monday {
-		return time.Time{}, errors.New("12-недельный цикл должен начинаться в понедельник")
-	}
 	return date, nil
 }
 

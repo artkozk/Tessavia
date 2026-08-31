@@ -199,7 +199,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260831-twelve-week-calendar-1")) {
+	if !bytes.Contains(index, []byte("20260831-flexible-cycle-start-2")) {
 		t.Fatal("12-week calendar release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }
@@ -216,7 +216,7 @@ func TestTwelveWeekPlanningCalendarAssetsAreEmbedded(t *testing.T) {
 		[]byte("/api/planning/cycles"),
 		[]byte("цель 80%"),
 		[]byte("Прошедшие дни зачёркнуты"),
-		[]byte("addCalendarDays(cycle.reviewWeekStart, 7)"),
+		[]byte("localDateKey(addCalendarDays(cycle.reviewWeekStart, 7))"),
 	} {
 		if !bytes.Contains(app, marker) {
 			t.Fatalf("app.js does not contain 12-week planning marker %q", marker)
