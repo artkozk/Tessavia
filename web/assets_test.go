@@ -199,8 +199,53 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260827-dialog-stability-2")) {
-		t.Fatal("quality, capacity and sync release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	if !bytes.Contains(index, []byte("20260831-twelve-week-calendar-1")) {
+		t.Fatal("12-week calendar release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	}
+}
+
+func TestTwelveWeekPlanningCalendarAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("function renderTwelveWeekCalendar"),
+		[]byte("function renderYearCalendar"),
+		[]byte("function bindCalendarDnD"),
+		[]byte("/api/planning/cycles"),
+		[]byte("цель 80%"),
+		[]byte("Прошедшие дни зачёркнуты"),
+		[]byte("addCalendarDays(cycle.reviewWeekStart, 7)"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain 12-week planning marker %q", marker)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{[]byte(".twelve-week-grid"), []byte(".year-calendar"), []byte(".quarter-4"), []byte(".calendar-day.drop-target")} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain planning visual marker %q", marker)
+		}
+	}
+}
+
+func TestProtectedWorkspaceCannotCloseThroughIncidentalNavigation(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("Рабочее окно не закрыто. Используйте кнопку ×"),
+		[]byte("protectedWorkspaceDialogs.has(dialog.id)"),
+		[]byte("Рабочее окно осталось открытым. Закройте его явной кнопкой ×."),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("protected workspace close guard marker %q is missing", marker)
+		}
 	}
 }
 

@@ -155,7 +155,7 @@ const state = {
   view: 'dashboard', search: '', statusFilter: '', ownerFilter: '', authMode: 'login', activeDetail: null,
   activeRecordTab: 'overview', activeActivity: null, historyMode: 'feed', activeRecordRequest: 0,
   workScope: 'all', workType: 'all', workStatus: 'active', workstreamFilter: 'all',
-  workOrder: 'priority', workViewMode: 'list', ideaViewMode: 'board', workCalendarMonth: '', workSearchTimer: null, historyScope: 'project', historyActor: 'all', historyType: 'all',
+  workOrder: 'priority', workViewMode: 'list', ideaViewMode: 'board', workCalendarMonth: '', calendarMode: 'cycle', calendarYear: new Date().getFullYear(), planningCycles: [], activePlanningCycle: null, workSearchTimer: null, historyScope: 'project', historyActor: 'all', historyType: 'all',
   recordSearchTimer: null,
   graphResizeTimer: null,
   historyLoadedAll: false,
@@ -922,17 +922,17 @@ async function bootstrap() {
 }
 
 async function loadData(silent = false) {
-  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads] = await Promise.all([
+  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads, planning] = await Promise.all([
     api('/api/users'), api('/api/records?includeArchived=true'), api('/api/notifications'),
-    api('/api/activity?limit=200'), api('/api/section-definitions'), api('/api/questions/pending'), api('/api/saved-views'), api('/api/chat/threads'),
+    api('/api/activity?limit=200'), api('/api/section-definitions'), api('/api/questions/pending'), api('/api/saved-views'), api('/api/chat/threads'), api('/api/planning/cycles'),
   ]);
-  const projectActivity = activity.filter((item) => typeMeta[item.entityType] || item.entityType === 'section_definition');
+  const projectActivity = activity.filter((item) => typeMeta[item.entityType] || ['section_definition', 'planning_cycle'].includes(item.entityType));
   const recordsByID = new Map(records.map((record) => [record.id, record]));
   state.detailCache.forEach((detail, id) => {
     const current = recordsByID.get(id);
     if (!current || current.updatedAt !== detail.record.updatedAt) state.detailCache.delete(id);
   });
-  Object.assign(state, { users, records, notifications, activity: projectActivity, definitions, pendingQuestions, savedViews, chatThreads });
+  Object.assign(state, { users, records, notifications, activity: projectActivity, definitions, pendingQuestions, savedViews, chatThreads, planningCycles: planning.cycles || [], activePlanningCycle: planning.active || null });
   state.syncRecordsSince = latestTimestamp(records, 'updatedAt', state.syncRecordsSince);
   state.syncActivitySince = latestTimestamp(projectActivity, 'createdAt', state.syncActivitySince);
   state.qualityReport = null;
@@ -963,7 +963,7 @@ async function syncProjectChanges({ renderCurrent = false, includeCompanions = t
   });
   state.records = [...recordsByID.values()];
   const knownActivity = new Set(state.activity.map((item) => item.id));
-  const newActivity = (changes.activity || []).filter((item) => !knownActivity.has(item.id) && (typeMeta[item.entityType] || item.entityType === 'section_definition'));
+  const newActivity = (changes.activity || []).filter((item) => !knownActivity.has(item.id) && (typeMeta[item.entityType] || ['section_definition', 'planning_cycle'].includes(item.entityType)));
   if (newActivity.length) state.activity = [...newActivity.slice().reverse(), ...state.activity].slice(0, 500);
   state.syncRecordsSince = latestTimestamp(changes.records || [], 'updatedAt', state.syncRecordsSince);
   state.syncActivitySince = latestTimestamp(changes.activity || [], 'createdAt', state.syncActivitySince);
@@ -1035,7 +1035,7 @@ function bindGlobalEvents() {
         if (dialog && protectedWorkspaceDialogs.has(dialog.id)) {
           event.preventDefault();
           event.stopPropagation();
-          requestDialogClose(dialog);
+          signalProtectedDialog(dialog, 'Рабочее окно не закрыто. Используйте кнопку ×, чтобы завершить работу с ним.');
         }
       }
     }
@@ -1075,10 +1075,12 @@ function bindGlobalEvents() {
     const dialog = [...$$('dialog[open]')].pop();
     if (dialog) {
       flushDialogDrafts(dialog);
-      if (dialogHasUnsavedChanges(dialog)) {
+      if (protectedWorkspaceDialogs.has(dialog.id)) {
         history.pushState({ businessControlOverlay: dialog.id }, '');
         dialog.dataset.historyState = 'true';
-        signalProtectedDialog(dialog, 'Есть несохранённые изменения. Сохраните их или закройте окно кнопкой ×.');
+        signalProtectedDialog(dialog, dialogHasUnsavedChanges(dialog)
+          ? 'Есть несохранённые изменения. Сохраните их или закройте окно кнопкой ×.'
+          : 'Рабочее окно осталось открытым. Закройте его явной кнопкой ×.');
         return;
       }
       dialog.dataset.historyState = 'false';
@@ -1325,9 +1327,12 @@ async function refreshLiveData() {
   if (!state.me || document.hidden || state.liveRefreshRunning) return;
   state.liveRefreshRunning = true;
   try {
+    const previousCycleUpdate = state.activePlanningCycle?.updatedAt || '';
     const result = await syncProjectChanges();
+    if (state.view === 'work' && state.workViewMode === 'calendar') await refreshPlanningCycles();
+    const cycleChanged = previousCycleUpdate !== (state.activePlanningCycle?.updatedAt || '');
     const overlayOpen = Boolean(document.querySelector('dialog[open]')) || $('.sidebar').classList.contains('open');
-    if (!workspaceHasActiveInput() && !overlayOpen && state.view !== 'graph' && (result.changed || result.activityChanged || state.view === 'notifications')) renderContent();
+    if (!workspaceHasActiveInput() && !overlayOpen && state.view !== 'graph' && (result.changed || result.activityChanged || cycleChanged || state.view === 'notifications')) renderContent();
   } catch (_) {
     // A background refresh must not interrupt active work. Foreground API actions report their errors explicitly.
   } finally {
@@ -1820,33 +1825,243 @@ function localDateKey(value) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function renderWorkCalendar(records) {
-  const month = state.workCalendarMonth ? new Date(`${state.workCalendarMonth}T12:00:00`) : new Date();
-  month.setDate(1);
-  state.workCalendarMonth = localDateKey(month);
-  const start = new Date(month);
-  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+function dateFromKey(key) {
+  return new Date(`${key}T12:00:00`);
+}
+
+function addCalendarDays(value, amount) {
+  const date = value instanceof Date ? new Date(value) : dateFromKey(value);
+  date.setDate(date.getDate() + amount);
+  return date;
+}
+
+function mondayKey(value = new Date()) {
+  const date = new Date(value);
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  return localDateKey(date);
+}
+
+function calendarRecordPool() {
+  let records = state.records.filter((record) => isWorkRecord(record));
+  if (state.ownerFilter) records = records.filter((record) => String(record.ownerId) === state.ownerFilter);
+  else if (state.workScope === 'mine') records = records.filter((record) => record.ownerId === state.me.id);
+  else if (state.workScope === 'partner') records = records.filter((record) => record.ownerId !== state.me.id);
+  if (state.workType !== 'all') records = records.filter((record) => record.type === state.workType);
+  if (state.workstreamFilter !== 'all') records = records.filter((record) => record.workstream === state.workstreamFilter);
+  if (state.workStatus === 'active') records = records.filter((record) => isActiveRecord(record) || record.status === 'completed');
+  if (state.workStatus === 'overdue') records = records.filter((record) => isActiveRecord(record) && deadlineState(record).className === 'overdue');
+  if (state.workStatus === 'completed') records = records.filter((record) => record.status === 'completed');
+  if (state.workStatus === 'archived') records = records.filter((record) => record.status === 'archived');
+  if (state.workStatus === 'all') records = records.filter((record) => !['cancelled', 'rejected'].includes(record.status));
+  if (state.search) {
+    const query = state.search.toLowerCase();
+    records = records.filter((record) => `${record.title} ${record.description} ${record.ownerUsername}`.toLowerCase().includes(query));
+  }
+  return records;
+}
+
+function recordsByDueDate(records) {
   const dueMap = new Map();
   records.filter((record) => record.dueAt).forEach((record) => {
     const key = localDateKey(record.dueAt);
     if (!dueMap.has(key)) dueMap.set(key, []);
     dueMap.get(key).push(record);
   });
-  const days = Array.from({ length: 42 }, (_, index) => { const day = new Date(start); day.setDate(start.getDate() + index); return day; });
-  const agendaGroups = [...dueMap.entries()]
-    .filter(([key]) => {
-      const day = new Date(`${key}T12:00:00`);
-      return day.getMonth() === month.getMonth() && day.getFullYear() === month.getFullYear();
-    })
-    .sort(([left], [right]) => left.localeCompare(right));
-  return `<section class="work-calendar"><header><button type="button" class="icon-button" data-calendar-shift="-1" aria-label="Предыдущий месяц">‹</button><h2>${month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</h2><button type="button" class="icon-button" data-calendar-shift="1" aria-label="Следующий месяц">›</button></header><div class="calendar-weekdays">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map((day) => `<span>${day}</span>`).join('')}</div><div class="calendar-grid">${days.map((day) => {
-    const key = localDateKey(day); const items = dueMap.get(key) || []; const outside = day.getMonth() !== month.getMonth(); const today = key === localDateKey(new Date());
-    return `<div class="calendar-day ${outside ? 'outside' : ''} ${today ? 'today' : ''}"><span>${day.getDate()}</span><div>${items.slice(0, 4).map((record) => `<button type="button" data-open-record="${record.id}" class="calendar-item priority-${record.priority || 'normal'}"><i>${escapeHTML(typeMeta[record.type].singular)}</i><strong>${escapeHTML(record.title)}</strong></button>`).join('')}${items.length > 4 ? `<small>+ ещё ${items.length - 4}</small>` : ''}</div></div>`;
+  dueMap.forEach((items) => items.sort(sortWorkRecords));
+  return dueMap;
+}
+
+function calendarScore(records, startKey, endKey) {
+  const planned = records.filter((record) => record.dueAt && localDateKey(record.dueAt) >= startKey && localDateKey(record.dueAt) <= endKey);
+  const completed = planned.filter((record) => record.status === 'completed' || Number(record.progress) >= 100);
+  return { planned: planned.length, completed: completed.length, percent: planned.length ? Math.round(completed.length * 100 / planned.length) : 0 };
+}
+
+function quarterClass(date) {
+  return `quarter-${Math.floor(date.getMonth() / 3) + 1}`;
+}
+
+function calendarTaskChip(record, compact = false) {
+  const completed = record.status === 'completed' || Number(record.progress) >= 100;
+  const draggable = isActiveRecord(record);
+  return `<button type="button" data-open-record="${record.id}" data-calendar-record="${record.id}" draggable="${draggable}" class="calendar-item priority-${record.priority || 'normal'} ${completed ? 'completed' : ''} ${compact ? 'compact' : ''}" title="${escapeHTML(record.title)}${draggable ? ' · перетащите, чтобы изменить срок' : ''}"><i>${escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(record.ownerUsername)}</i><strong>${escapeHTML(record.title)}</strong></button>`;
+}
+
+function calendarModeToolbar() {
+  return `<div class="calendar-mode segmented compact" aria-label="Масштаб календаря">${[['cycle', '12 недель'], ['year', 'Год'], ['month', 'Месяц']].map(([value, label]) => `<button type="button" class="segment ${state.calendarMode === value ? 'active' : ''}" data-calendar-mode="${value}">${label}</button>`).join('')}</div>`;
+}
+
+function renderCycleSetup() {
+  const start = mondayKey();
+  const month = dateFromKey(start).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  return `<section class="cycle-empty"><span>${icon('calendar')}</span><div><p class="eyebrow">Первый цикл</p><h2>Соберите ближайшие 12 недель в один план</h2><p>Выберите понедельник старта. Сроки существующих карточек автоматически попадут в соответствующие недели.</p></div><form data-cycle-create class="cycle-form"><label>Название<input name="title" maxlength="120" required value="12 недель · ${escapeHTML(month)}"></label><label>Первый день<input name="startDate" type="date" required value="${start}"><small>Начало цикла должно приходиться на понедельник.</small></label><button type="submit" class="primary">${icon('plus')} Начать цикл</button></form></section>`;
+}
+
+function renderCycleSummary(cycle, records) {
+  const todayKey = localDateKey(new Date());
+  const score = calendarScore(records, cycle.startDate, cycle.endDate);
+  const start = dateFromKey(cycle.startDate);
+  const end = dateFromKey(cycle.endDate);
+  const daysLeft = Math.max(0, Math.ceil((end - dateFromKey(todayKey)) / 86400000) + 1);
+  const currentWeek = todayKey < cycle.startDate ? 0 : todayKey > cycle.endDate ? 12 : Math.floor((dateFromKey(todayKey) - start) / 604800000) + 1;
+  return `<section class="cycle-summary"><div><p class="eyebrow">Активный 12-недельный год</p><h2>${escapeHTML(cycle.title)}</h2><p>${escapeHTML(start.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))} — ${escapeHTML(end.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))} · ${currentWeek ? `неделя ${currentWeek} из 12` : 'старт ещё впереди'}</p></div><div class="cycle-metrics"><span><strong>${daysLeft}</strong><small>дней осталось</small></span><span class="score-${score.planned && score.percent >= 80 ? 'good' : 'attention'}"><strong>${score.planned ? `${score.percent}%` : '—'}</strong><small>${score.completed} из ${score.planned} выполнено</small></span></div><details class="cycle-settings"><summary class="secondary">${icon('settings')} Настроить</summary><div><form data-cycle-update data-cycle-id="${cycle.id}"><label>Название<input name="title" maxlength="120" required value="${escapeHTML(cycle.title)}"></label><label>Первый понедельник<input name="startDate" type="date" required value="${cycle.startDate}"></label><label>Причина изменения<input name="reason" placeholder="Нужна, если меняются даты"></label><button type="submit" class="secondary">Сохранить</button></form><button type="button" class="text-button danger" data-cycle-complete="${cycle.id}">Завершить цикл</button><hr><form data-cycle-create><strong>Начать новый цикл после недели анализа</strong><label>Название<input name="title" maxlength="120" required value="Следующие 12 недель"></label><label>Первый понедельник<input name="startDate" type="date" required value="${mondayKey(addCalendarDays(cycle.reviewWeekStart, 7))}"></label><label>Почему меняем цикл<input name="reason" value="Текущий цикл завершён и проанализирован, начинается следующий"></label><button type="submit" class="primary">Начать новый</button></form></div></details></section>`;
+}
+
+function renderTwelveWeekCalendar(records, dueMap) {
+  const cycle = state.activePlanningCycle;
+  if (!cycle) return renderCycleSetup();
+  const start = dateFromKey(cycle.startDate);
+  const todayKey = localDateKey(new Date());
+  const weeks = Array.from({ length: 12 }, (_, weekIndex) => {
+    const weekStart = addCalendarDays(start, weekIndex * 7);
+    const weekEnd = addCalendarDays(weekStart, 6);
+    const startKey = localDateKey(weekStart);
+    const endKey = localDateKey(weekEnd);
+    const score = calendarScore(records, startKey, endKey);
+    const current = todayKey >= startKey && todayKey <= endKey;
+    const phase = Math.floor(weekIndex / 3) + 1;
+    const days = Array.from({ length: 7 }, (_, dayIndex) => addCalendarDays(weekStart, dayIndex));
+    return `<section class="cycle-week quarter-${phase} ${current ? 'current' : ''}"><header><div><span>Неделя ${weekIndex + 1}</span><strong>${weekStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} — ${weekEnd.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</strong></div><div class="week-score score-${score.planned && score.percent >= 80 ? 'good' : 'attention'}"><strong>${score.planned ? `${score.percent}%` : 'Без плана'}</strong><small>${score.completed}/${score.planned} · цель 80%</small></div></header><div class="cycle-days">${days.map((day) => {
+      const key = localDateKey(day); const items = dueMap.get(key) || []; const past = key < todayKey; const today = key === todayKey;
+      return `<div class="cycle-day ${past ? 'past' : ''} ${today ? 'today' : ''}" data-calendar-drop-date="${key}"><header><span>${day.toLocaleDateString('ru-RU', { weekday: 'short' })}</span><strong>${day.getDate()}</strong><button type="button" data-calendar-create="${key}" aria-label="Создать задачу на этот день">${icon('plus')}</button></header><div>${items.slice(0, 4).map((record) => calendarTaskChip(record, true)).join('')}${items.length > 4 ? `<small>Ещё ${items.length - 4}</small>` : ''}</div></div>`;
+    }).join('')}</div></section>`;
+  });
+  return `${renderCycleSummary(cycle, records)}<div class="cycle-legend"><span><i></i>Прошедшие дни зачёркнуты</span><span>Перетащите активную карточку на другой день, чтобы изменить срок</span></div><div class="twelve-week-grid">${weeks.join('')}</div><div class="review-week"><span>${icon('history')}</span><div><strong>Неделя 13 · обзор и восстановление</strong><p>С ${dateFromKey(cycle.reviewWeekStart).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}: подведите итоги, перенесите только осознанно выбранную работу и сформируйте следующий цикл.</p></div></div>`;
+}
+
+function renderYearCalendar(records, dueMap) {
+  const year = Number(state.calendarYear) || new Date().getFullYear();
+  const todayKey = localDateKey(new Date());
+  const months = Array.from({ length: 12 }, (_, monthIndex) => {
+    const month = new Date(year, monthIndex, 1, 12);
+    const offset = (month.getDay() + 6) % 7;
+    const count = new Date(year, monthIndex + 1, 0).getDate();
+    const cells = Array.from({ length: offset }, () => '<span class="year-day empty"></span>');
+    for (let dayNumber = 1; dayNumber <= count; dayNumber += 1) {
+      const day = new Date(year, monthIndex, dayNumber, 12); const key = localDateKey(day); const items = dueMap.get(key) || [];
+      cells.push(`<button type="button" class="year-day ${key < todayKey ? 'past' : ''} ${key === todayKey ? 'today' : ''} ${items.length ? 'has-work' : ''}" data-calendar-day="${key}" title="${items.length ? `${items.length} ${recordsCountLabel(items.length).replace(/^\d+\s*/, '')}` : 'Открыть месяц'}"><span>${dayNumber}</span>${items.length ? `<i>${items.length}</i>` : ''}</button>`);
+    }
+    return `<section class="year-month ${quarterClass(month)}"><header><strong>${month.toLocaleDateString('ru-RU', { month: 'long' })}</strong><span>${[...dueMap.entries()].filter(([key]) => key.startsWith(`${year}-${String(monthIndex + 1).padStart(2, '0')}`)).reduce((sum, [, items]) => sum + items.length, 0)}</span></header><div class="year-weekdays">${['П','В','С','Ч','П','С','В'].map((day) => `<span>${day}</span>`).join('')}</div><div class="year-days">${cells.join('')}</div></section>`;
+  });
+  return `<div class="calendar-period-nav"><button type="button" class="icon-button" data-calendar-shift="-1" aria-label="Предыдущий год">‹</button><h2>${year} год</h2><button type="button" class="icon-button" data-calendar-shift="1" aria-label="Следующий год">›</button></div><div class="year-quarter-legend"><span class="quarter-1">Январь — март</span><span class="quarter-2">Апрель — июнь</span><span class="quarter-3">Июль — сентябрь</span><span class="quarter-4">Октябрь — декабрь</span></div><div class="year-calendar">${months.join('')}</div>`;
+}
+
+function renderMonthCalendar(records, dueMap) {
+  const month = state.workCalendarMonth ? dateFromKey(state.workCalendarMonth) : new Date();
+  month.setDate(1);
+  state.workCalendarMonth = localDateKey(month);
+  const start = new Date(month);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  const todayKey = localDateKey(new Date());
+  const days = Array.from({ length: 42 }, (_, index) => addCalendarDays(start, index));
+  const agendaGroups = [...dueMap.entries()].filter(([key]) => { const day = dateFromKey(key); return day.getMonth() === month.getMonth() && day.getFullYear() === month.getFullYear(); }).sort(([left], [right]) => left.localeCompare(right));
+  return `<div class="calendar-period-nav"><button type="button" class="icon-button" data-calendar-shift="-1" aria-label="Предыдущий месяц">‹</button><h2>${month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</h2><button type="button" class="icon-button" data-calendar-shift="1" aria-label="Следующий месяц">›</button></div><div class="calendar-weekdays">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map((day) => `<span>${day}</span>`).join('')}</div><div class="calendar-grid">${days.map((day) => {
+    const key = localDateKey(day); const items = dueMap.get(key) || []; const outside = day.getMonth() !== month.getMonth();
+    return `<div class="calendar-day ${outside ? 'outside' : ''} ${key < todayKey ? 'past' : ''} ${key === todayKey ? 'today' : ''} ${quarterClass(day)}" data-calendar-drop-date="${key}"><header><span>${day.getDate()}</span><button type="button" data-calendar-create="${key}" aria-label="Создать задачу на этот день">${icon('plus')}</button></header><div>${items.slice(0, 4).map((record) => calendarTaskChip(record)).join('')}${items.length > 4 ? `<small>+ ещё ${items.length - 4}</small>` : ''}</div></div>`;
   }).join('')}</div><div class="calendar-agenda">${agendaGroups.length ? agendaGroups.map(([key, items]) => {
-    const day = new Date(`${key}T12:00:00`);
-    const today = key === localDateKey(new Date());
-    return `<section class="calendar-agenda-day"><header><strong>${today ? 'Сегодня' : escapeHTML(day.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }))}</strong><span>${items.length}</span></header><div>${items.sort((left, right) => new Date(left.dueAt) - new Date(right.dueAt)).map((record) => `<button type="button" data-open-record="${record.id}" class="calendar-agenda-item priority-${record.priority || 'normal'}"><span class="type-icon type-${record.type}">${icon(typeMeta[record.type].icon)}</span><span><small>${escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(new Date(record.dueAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }))}</small><strong>${escapeHTML(record.title)}</strong><em>${escapeHTML(record.ownerUsername)}</em></span>${icon('chevronRight')}</button>`).join('')}</div></section>`;
-  }).join('') : `<div class="guided-empty calendar-agenda-empty">${icon('calendar')}<h3>В этом месяце сроков нет</h3><p>Работа с назначенной датой появится здесь по порядку.</p></div>`}</div></section>`;
+    const day = dateFromKey(key);
+    return `<section class="calendar-agenda-day"><header><strong>${key === todayKey ? 'Сегодня' : escapeHTML(day.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }))}</strong><span>${items.length}</span></header><div>${items.map((record) => `<button type="button" data-open-record="${record.id}" class="calendar-agenda-item priority-${record.priority || 'normal'}"><span class="type-icon type-${record.type}">${icon(typeMeta[record.type].icon)}</span><span><small>${escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(new Date(record.dueAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }))}</small><strong>${escapeHTML(record.title)}</strong><em>${escapeHTML(record.ownerUsername)}</em></span>${icon('chevronRight')}</button>`).join('')}</div></section>`;
+  }).join('') : `<div class="guided-empty calendar-agenda-empty">${icon('calendar')}<h3>В этом месяце сроков нет</h3><p>Создайте работу на нужный день или назначьте срок существующей карточке.</p></div>`}</div>`;
+}
+
+function renderUnscheduledWork(records) {
+  const unscheduled = records.filter((record) => !record.dueAt && isActiveRecord(record)).sort(sortWorkRecords);
+  if (!unscheduled.length) return '';
+  return `<details class="calendar-unscheduled"><summary><span>${icon('inbox')} Без срока</span><b>${unscheduled.length}</b><small>Перетащите карточку на день</small></summary><div>${unscheduled.slice(0, 12).map((record) => calendarTaskChip(record, true)).join('')}${unscheduled.length > 12 ? `<p>Ещё ${unscheduled.length - 12} — уточните фильтр очереди.</p>` : ''}</div></details>`;
+}
+
+function renderWorkCalendar() {
+  const records = calendarRecordPool();
+  const dueMap = recordsByDueDate(records);
+  const body = state.calendarMode === 'year' ? renderYearCalendar(records, dueMap) : state.calendarMode === 'month' ? renderMonthCalendar(records, dueMap) : renderTwelveWeekCalendar(records, dueMap);
+  return `<section class="work-calendar"><header class="calendar-commandbar">${calendarModeToolbar()}<p>${state.calendarMode === 'cycle' ? 'Недельный план и исполнение' : state.calendarMode === 'year' ? 'Весь год по кварталам' : 'Точные сроки по дням'}</p></header>${renderUnscheduledWork(records)}${body}</section>`;
+}
+
+function validCycleMonday(value) {
+  return value && dateFromKey(value).getDay() === 1;
+}
+
+async function refreshPlanningCycles(payload = null) {
+  const planning = payload || await api('/api/planning/cycles');
+  state.planningCycles = planning.cycles || [];
+  state.activePlanningCycle = planning.active || null;
+}
+
+async function submitPlanningCycle(form, cycleID = '') {
+  const data = new FormData(form);
+  const startDate = String(data.get('startDate') || '');
+  if (!validCycleMonday(startDate)) {
+    toast('Выберите понедельник как первый день цикла', true);
+    form.elements.startDate?.focus();
+    return;
+  }
+  const body = { title: String(data.get('title') || '').trim(), startDate, reason: String(data.get('reason') || '').trim() };
+  if (cycleID) body.expectedUpdatedAt = state.planningCycles.find((cycle) => cycle.id === cycleID)?.updatedAt || '';
+  try {
+    const planning = await api(cycleID ? `/api/planning/cycles/${cycleID}` : '/api/planning/cycles', { method: cycleID ? 'PATCH' : 'POST', body: JSON.stringify(body) });
+    await refreshPlanningCycles(planning);
+    renderWorkList();
+    toast(cycleID ? 'Настройки цикла сохранены' : 'Новый 12-недельный цикл начат');
+  } catch (error) { toast(error.message, true); }
+}
+
+async function rescheduleCalendarRecord(recordID, dateKey) {
+  const record = state.records.find((item) => item.id === recordID);
+  if (!record || !isActiveRecord(record)) return;
+  if (record.dueAt && localDateKey(record.dueAt) === dateKey) return;
+  const previous = record.dueAt ? new Date(record.dueAt) : null;
+  const due = dateFromKey(dateKey);
+  due.setHours(previous ? previous.getHours() : 18, previous ? previous.getMinutes() : 0, 0, 0);
+  try {
+    await api(`/api/records/${record.id}`, { method: 'PATCH', body: JSON.stringify({ dueAt: due.toISOString(), reason: `Срок перенесён в календаре на ${due.toLocaleDateString('ru-RU')}`, expectedUpdatedAt: record.updatedAt }) });
+    await syncProjectChanges();
+    renderWorkList();
+    toast(`Срок «${record.title}» перенесён на ${due.toLocaleDateString('ru-RU')}`);
+  } catch (error) { toast(error.message, true); }
+}
+
+function bindCalendarDnD() {
+  let recordID = '';
+  $$('[data-calendar-record]').forEach((item) => {
+    item.addEventListener('dragstart', (event) => {
+      if (item.getAttribute('draggable') !== 'true') { event.preventDefault(); return; }
+      recordID = item.dataset.calendarRecord;
+      item.classList.add('dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', recordID);
+    });
+    item.addEventListener('dragend', () => { item.classList.remove('dragging'); $$('[data-calendar-drop-date]').forEach((day) => day.classList.remove('drop-target')); recordID = ''; });
+  });
+  $$('[data-calendar-drop-date]').forEach((day) => {
+    day.addEventListener('dragover', (event) => { if (!recordID) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; day.classList.add('drop-target'); });
+    day.addEventListener('dragleave', () => day.classList.remove('drop-target'));
+    day.addEventListener('drop', (event) => { event.preventDefault(); day.classList.remove('drop-target'); const id = recordID || event.dataTransfer.getData('text/plain'); if (id) rescheduleCalendarRecord(id, day.dataset.calendarDropDate); });
+  });
+}
+
+function bindCalendarControls() {
+  $$('[data-calendar-mode]').forEach((button) => button.addEventListener('click', () => { state.calendarMode = button.dataset.calendarMode; renderWorkList(); }));
+  $$('[data-calendar-shift]').forEach((button) => button.addEventListener('click', () => {
+    const shift = Number(button.dataset.calendarShift);
+    if (state.calendarMode === 'year') state.calendarYear += shift;
+    else { const month = state.workCalendarMonth ? dateFromKey(state.workCalendarMonth) : new Date(); month.setMonth(month.getMonth() + shift); state.workCalendarMonth = localDateKey(month); }
+    renderWorkList();
+  }));
+  $$('[data-calendar-day]').forEach((button) => button.addEventListener('click', () => { state.workCalendarMonth = button.dataset.calendarDay; state.calendarMode = 'month'; renderWorkList(); }));
+  $$('[data-calendar-create]').forEach((button) => button.addEventListener('click', (event) => { event.stopPropagation(); openCreateDialog('task', { dueAt: `${button.dataset.calendarCreate}T18:00` }); }));
+  $$('[data-cycle-create]').forEach((form) => form.addEventListener('submit', (event) => { event.preventDefault(); submitPlanningCycle(form); }));
+  $$('[data-cycle-update]').forEach((form) => form.addEventListener('submit', (event) => { event.preventDefault(); submitPlanningCycle(form, form.dataset.cycleId); }));
+  $$('[data-cycle-complete]').forEach((button) => button.addEventListener('click', async () => {
+    const cycle = state.planningCycles.find((item) => item.id === button.dataset.cycleComplete); if (!cycle) return;
+    const reason = await askText({ title: 'Завершить 12-недельный цикл', label: 'Каким итогом завершается цикл?', defaultValue: '12 недель завершены, результаты зафиксированы', required: true });
+    if (!reason) return;
+    try {
+      const planning = await api(`/api/planning/cycles/${cycle.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed', reason, expectedUpdatedAt: cycle.updatedAt }) });
+      await refreshPlanningCycles(planning); renderWorkList(); toast('Цикл завершён и сохранён в истории');
+    } catch (error) { toast(error.message, true); }
+  }));
+  bindCalendarDnD();
 }
 
 function renderWorkBody(records) {
@@ -1863,7 +2078,7 @@ function currentWorkViewPayload() {
 }
 
 function renderWorkList() {
-  const records = filteredWorkRecords();
+  const records = state.workViewMode === 'calendar' ? calendarRecordPool() : filteredWorkRecords();
   const activeFilters = workFilterCount();
   $('#main-content').innerHTML = `
     <div class="work-title-row"><div><p class="eyebrow">Единая очередь</p><h1>Работа команды</h1><p><strong>${records.length}</strong> ${recordsCountLabel(records.length).replace(/^\d+\s*/, '')} в текущем представлении</p></div><details class="work-create-menu"><summary class="primary">${icon('plus')} Создать работу</summary><div>${[['inbox', 'Входящее'], ['task', 'Задача'], ['question_set', 'Вопросы'], ['meeting', 'Встреча'], ['research', 'Сравнение вариантов'], ['experiment', 'Эксперимент']].map(([type, label]) => `<button type="button" data-work-create="${type}" ${type === 'research' ? 'data-work-mode="comparison"' : ''}>${icon(typeMeta[type].icon)}<span>${label}</span></button>`).join('')}</div></details></div>
@@ -1897,7 +2112,6 @@ function renderWorkList() {
   $('#workstream-select').addEventListener('change', (event) => { state.workstreamFilter = event.target.value; renderWorkList(); });
   $$('[data-work-order]').forEach((button) => button.addEventListener('click', () => { state.workOrder = button.dataset.workOrder; renderWorkList(); }));
 	$$('[data-work-view]').forEach((button) => button.addEventListener('click', () => { state.workViewMode = button.dataset.workView; renderWorkList(); }));
-	$$('[data-calendar-shift]').forEach((button) => button.addEventListener('click', () => { const month = new Date(`${state.workCalendarMonth}T12:00:00`); month.setMonth(month.getMonth() + Number(button.dataset.calendarShift)); state.workCalendarMonth = localDateKey(month); renderWorkList(); }));
   $$('[data-close-work-filters]').forEach((button) => button.addEventListener('click', () => $('.work-filter-menu').removeAttribute('open')));
   $('[data-reset-work-filters]')?.addEventListener('click', () => { state.workType = 'all'; state.workstreamFilter = 'all'; state.workStatus = 'active'; state.workOrder = 'priority'; renderWorkList(); });
   $$('[data-work-create]').forEach((button) => button.addEventListener('click', () => openCreateDialog(button.dataset.workCreate, { comparisonMode: button.dataset.workMode === 'comparison' })));
@@ -1915,6 +2129,7 @@ function renderWorkList() {
 	}));
 	$$('[data-delete-saved-view]').forEach((button) => button.addEventListener('click', async () => { try { await api(`/api/saved-views/${button.dataset.deleteSavedView}`, { method: 'DELETE' }); state.savedViews = state.savedViews.filter((item) => item.id !== button.dataset.deleteSavedView); renderWorkList(); toast('Представление удалено'); } catch (error) { toast(error.message, true); } }));
 	if (state.workViewMode === 'kanban') bindBoardDnD(renderWorkList);
+  if (state.workViewMode === 'calendar') bindCalendarControls();
   bindOpenRecords();
 }
 
@@ -4725,7 +4940,7 @@ function openCreateDialog(initialType = 'idea', preset = {}) {
   const draftScope = `create:${initialType}:${preset.kind || 'default'}:${preset.comparisonMode ? 'comparison' : 'record'}:${preset.sourceRecordId || 'root'}`;
   const parentOptions = state.records.filter((record) => record.status !== 'archived').map((record) => `<option value="${record.id}" ${defaultParentID === record.id ? 'selected' : ''}>${escapeHTML(typeMeta[record.type]?.singular || 'Карточка')}: ${escapeHTML(record.title)}</option>`).join('');
   const planned = ['task', 'goal', 'research', 'question_set', 'meeting', 'disagreement', 'risk', 'hypothesis', 'experiment'].includes(initialType);
-  $('#create-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon(initialMeta.icon)} Новая запись</span><h2>${escapeHTML(displayName)}</h2></div><button type="button" class="close-button icon-button" data-close-create aria-label="Закрыть">${icon('x')}</button></div><form id="create-record-form" class="card-form dialog-form"><label>${titleLabel}<input name="title" required maxlength="240" autofocus value="${escapeHTML(preset.title || '')}" placeholder="${preset.comparisonMode ? 'Например: Выбор сервера' : initialType === 'question_set' ? 'Например: Договорённости основателей' : initialType === 'inbox' ? 'Короткая мысль или наблюдение' : ''}"></label>${markdownEditor('description', descriptionLabel, preset.description || '', initialType === 'inbox' ? 4 : 7, 'Факты, контекст и ожидаемый результат', 'create-record')}<input type="hidden" name="type" value="${initialType}"><input type="hidden" name="kind" value="${escapeHTML(preset.kind || '')}">${renderBusinessDetailsFields(initialType)}${planned ? `<div class="form-grid two"><label>${initialType === 'question_set' ? 'Координатор' : initialType === 'meeting' ? 'Организатор' : 'Ответственный'}<select name="ownerId">${userOptions(state.me.id)}</select></label><label>${initialType === 'meeting' ? 'Дата и время' : 'Срок'}<input name="dueAt" type="datetime-local"></label></div><div class="form-grid two"><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === (preset.priority || 'normal') ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Оценка времени, минут<input name="estimateMinutes" type="number" min="0" value="${Number(preset.estimateMinutes || 0)}"></label></div>` : `<input type="hidden" name="ownerId" value="${state.me.id}"><input type="hidden" name="priority" value="${escapeHTML(preset.priority || 'normal')}"><input type="hidden" name="estimateMinutes" value="${Number(preset.estimateMinutes || 0)}">`}<details class="form-more create-organization" ${sourceRecord ? 'open' : ''}><summary>Место в проекте и доступ</summary><div class="form-more-body"><div class="form-grid three"><label>Направление<select name="workstream">${Object.entries(workstreamLabels).map(([value, label]) => `<option value="${value}" ${defaultWorkstream === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Доступ к изменениям<select name="editPolicy">${Object.entries(editPolicyLabels).map(([value, label]) => `<option value="${value}" ${defaultEditPolicy === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Родитель<select name="parentId"><option value="">Без родителя</option>${parentOptions}</select></label></div><label class="root-toggle"><input name="isRoot" type="checkbox" ${preset.isRoot ? 'checked' : ''}> <span><strong>Новый корень</strong><small>Начать самостоятельную крупную ветку вместо продолжения текущей цепочки.</small></span></label></div></details><div class="ai-suggestion"><span class="ai-suggestion-icon">${icon('sparkles')}</span><span><strong>AI-структура</strong><small id="ai-suggestion-status">После названия система предложит приоритет, оценку времени, направление и место в иерархии.</small></span><button type="button" class="secondary" data-ai-suggest>Предложить</button></div><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать</button><button type="button" class="secondary" data-close-create>Отмена</button></div></form>`;
+  $('#create-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon(initialMeta.icon)} Новая запись</span><h2>${escapeHTML(displayName)}</h2></div><button type="button" class="close-button icon-button" data-close-create aria-label="Закрыть">${icon('x')}</button></div><form id="create-record-form" class="card-form dialog-form"><label>${titleLabel}<input name="title" required maxlength="240" autofocus value="${escapeHTML(preset.title || '')}" placeholder="${preset.comparisonMode ? 'Например: Выбор сервера' : initialType === 'question_set' ? 'Например: Договорённости основателей' : initialType === 'inbox' ? 'Короткая мысль или наблюдение' : ''}"></label>${markdownEditor('description', descriptionLabel, preset.description || '', initialType === 'inbox' ? 4 : 7, 'Факты, контекст и ожидаемый результат', 'create-record')}<input type="hidden" name="type" value="${initialType}"><input type="hidden" name="kind" value="${escapeHTML(preset.kind || '')}">${renderBusinessDetailsFields(initialType)}${planned ? `<div class="form-grid two"><label>${initialType === 'question_set' ? 'Координатор' : initialType === 'meeting' ? 'Организатор' : 'Ответственный'}<select name="ownerId">${userOptions(state.me.id)}</select></label><label>${initialType === 'meeting' ? 'Дата и время' : 'Срок'}<input name="dueAt" type="datetime-local" value="${escapeHTML(preset.dueAt || '')}"></label></div><div class="form-grid two"><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === (preset.priority || 'normal') ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Оценка времени, минут<input name="estimateMinutes" type="number" min="0" value="${Number(preset.estimateMinutes || 0)}"></label></div>` : `<input type="hidden" name="ownerId" value="${state.me.id}"><input type="hidden" name="priority" value="${escapeHTML(preset.priority || 'normal')}"><input type="hidden" name="estimateMinutes" value="${Number(preset.estimateMinutes || 0)}">`}<details class="form-more create-organization" ${sourceRecord ? 'open' : ''}><summary>Место в проекте и доступ</summary><div class="form-more-body"><div class="form-grid three"><label>Направление<select name="workstream">${Object.entries(workstreamLabels).map(([value, label]) => `<option value="${value}" ${defaultWorkstream === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Доступ к изменениям<select name="editPolicy">${Object.entries(editPolicyLabels).map(([value, label]) => `<option value="${value}" ${defaultEditPolicy === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Родитель<select name="parentId"><option value="">Без родителя</option>${parentOptions}</select></label></div><label class="root-toggle"><input name="isRoot" type="checkbox" ${preset.isRoot ? 'checked' : ''}> <span><strong>Новый корень</strong><small>Начать самостоятельную крупную ветку вместо продолжения текущей цепочки.</small></span></label></div></details><div class="ai-suggestion"><span class="ai-suggestion-icon">${icon('sparkles')}</span><span><strong>AI-структура</strong><small id="ai-suggestion-status">После названия система предложит приоритет, оценку времени, направление и место в иерархии.</small></span><button type="button" class="secondary" data-ai-suggest>Предложить</button></div><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать</button><button type="button" class="secondary" data-close-create>Отмена</button></div></form>`;
   $$('[data-close-create]').forEach((button) => button.addEventListener('click', () => requestDialogClose($('#create-dialog'))));
   const createForm = $('#create-record-form');
 	if (initialType === 'inbox') createForm.querySelector('.ai-suggestion')?.remove();
@@ -4798,7 +5013,7 @@ function bindCreateSuggestion(form, recordType) {
 }
 
 function actionLabel(action) {
-  return ({ created: 'создал карточку', profile_updated: 'изменил профиль', capacity_updated: 'изменил доступное время', updated: 'изменил карточку', triaged: 'разобрал входящее', business_details_updated: 'обновил контрольные поля', change_undone: 'отменил ошибочное изменение', reordered: 'изменил порядок блоков', converted_to_questions: 'преобразовал в карточку вопросов', archived: 'перенёс в архив', section_updated: 'обновил раздел', link_created: 'создал связь', link_removed: 'убрал связь', criterion_scored: 'оценил по критерию', proof_added: 'добавил доказательство', completed: 'завершил задачу', partners_notified: 'уведомил партнёра', questions_added: 'добавил вопросы', question_answered: 'ответил на вопрос', question_decided: 'зафиксировал совместное решение', question_archived: 'архивировал вопрос', output_created: 'превратил вывод в рабочую карточку', created_from_question: 'создал карточку из совместного вывода', research_option_created: 'добавил вариант исследования', research_option_updated: 'обновил вариант исследования', research_option_archived: 'архивировал вариант исследования', research_field_created: 'добавил поле сравнения', research_field_archived: 'архивировал поле сравнения', comment_added: 'добавил комментарий', checklist_added: 'добавил шаг', checklist_updated: 'обновил шаг', review_submitted: 'отправил результат на проверку', review_accepted: 'принял результат', review_rework: 'вернул задачу на доработку', attachment_added: 'приложил файл', recurrence_created: 'создал следующее повторение', recurrence_updated: 'изменил повторение' }[action] || action);
+  return ({ created: 'создал карточку', profile_updated: 'изменил профиль', capacity_updated: 'изменил доступное время', planning_cycle_created: 'начал 12-недельный цикл', planning_cycle_updated: 'изменил 12-недельный цикл', planning_cycle_replaced: 'заменил 12-недельный цикл', updated: 'изменил карточку', triaged: 'разобрал входящее', business_details_updated: 'обновил контрольные поля', change_undone: 'отменил ошибочное изменение', reordered: 'изменил порядок блоков', converted_to_questions: 'преобразовал в карточку вопросов', archived: 'перенёс в архив', section_updated: 'обновил раздел', link_created: 'создал связь', link_removed: 'убрал связь', criterion_scored: 'оценил по критерию', proof_added: 'добавил доказательство', completed: 'завершил задачу', partners_notified: 'уведомил партнёра', questions_added: 'добавил вопросы', question_answered: 'ответил на вопрос', question_decided: 'зафиксировал совместное решение', question_archived: 'архивировал вопрос', output_created: 'превратил вывод в рабочую карточку', created_from_question: 'создал карточку из совместного вывода', research_option_created: 'добавил вариант исследования', research_option_updated: 'обновил вариант исследования', research_option_archived: 'архивировал вариант исследования', research_field_created: 'добавил поле сравнения', research_field_archived: 'архивировал поле сравнения', comment_added: 'добавил комментарий', checklist_added: 'добавил шаг', checklist_updated: 'обновил шаг', review_submitted: 'отправил результат на проверку', review_accepted: 'принял результат', review_rework: 'вернул задачу на доработку', attachment_added: 'приложил файл', recurrence_created: 'создал следующее повторение', recurrence_updated: 'изменил повторение' }[action] || action);
 }
 
 function activityActionLabel(item) {
@@ -4903,11 +5118,11 @@ function activityContext(item) {
 
 function recordTitleByActivity(item) {
   if (item.entityType === 'user') return item.details?.username || 'Участник проекта';
-  return state.records.find((record) => record.id === item.entityId)?.title || item.details?.title || (item.entityType === 'section_definition' ? 'Шаблон карточки' : typeMeta[item.entityType]?.singular || 'Запись недоступна');
+  return state.records.find((record) => record.id === item.entityId)?.title || item.details?.title || (item.entityType === 'section_definition' ? 'Шаблон карточки' : item.entityType === 'planning_cycle' ? '12-недельный цикл' : typeMeta[item.entityType]?.singular || 'Запись недоступна');
 }
 
 function renderActivityItem(item) {
-  return `<button type="button" class="activity-item" data-open-event="${item.id}"><span class="history-marker">${icon(typeMeta[item.entityType]?.icon || 'history')}</span><span><strong>${escapeHTML(item.actorUsername)} ${escapeHTML(activityActionLabel(item))}</strong><small>${escapeHTML(activityContext(item))}</small></span><time>${formatDate(item.createdAt, true)}</time>${icon('chevronRight', 'activity-arrow')}</button>`;
+  return `<button type="button" class="activity-item" data-open-event="${item.id}"><span class="history-marker">${icon(item.entityType === 'planning_cycle' ? 'calendar' : typeMeta[item.entityType]?.icon || 'history')}</span><span><strong>${escapeHTML(item.actorUsername)} ${escapeHTML(activityActionLabel(item))}</strong><small>${escapeHTML(activityContext(item))}</small></span><time>${formatDate(item.createdAt, true)}</time>${icon('chevronRight', 'activity-arrow')}</button>`;
 }
 
 function durationLabel(seconds) {
@@ -5019,8 +5234,8 @@ function renderHistory() {
     if (!groups.has(day)) groups.set(day, []);
     groups.get(day).push(item);
   });
-  const availableTypes = [...new Set(state.activity.map((item) => item.entityType))].filter((type) => typeMeta[type]).sort((a, b) => typeMeta[a].singular.localeCompare(typeMeta[b].singular, 'ru'));
-  $('#main-content').innerHTML = `<div class="history-title"><div><p class="eyebrow">Память проекта</p><h1>История</h1><p>Решения и изменения в человеческом виде, с переходом к исходной карточке.</p></div><span>${activity.length} событий</span></div><section class="history-controls" aria-label="Фильтры истории"><div class="segmented compact"><button type="button" class="segment ${state.historyScope === 'project' ? 'active' : ''}" data-history-scope="project">Работа проекта</button><button type="button" class="segment ${state.historyScope === 'all' ? 'active' : ''}" data-history-scope="all">Включая настройки</button></div><label>Автор<select id="history-actor"><option value="all">Вся команда</option>${state.users.map((user) => `<option value="${user.id}" ${state.historyActor === String(user.id) ? 'selected' : ''}>${escapeHTML(user.username)}</option>`).join('')}</select></label><label>Объект<select id="history-type"><option value="all">Все карточки</option>${availableTypes.map((type) => `<option value="${type}" ${state.historyType === type ? 'selected' : ''}>${escapeHTML(typeMeta[type].singular)}</option>`).join('')}</select></label></section><section class="history-feed">${[...groups.entries()].map(([day, items]) => `<div class="history-day"><time>${escapeHTML(day)}</time><div class="activity-list">${items.map(renderActivityItem).join('')}</div></div>`).join('') || `<div class="guided-empty history-empty">${icon('history')}<h3>Событий в этом представлении нет</h3><p>Сбросьте фильтры или продолжите работу с карточками.</p></div>`}</section>${state.historyLoadedAll ? '' : `<div class="history-more"><button type="button" class="secondary" id="load-older-history">${icon('history')} Загрузить более ранние события</button></div>`}`;
+  const availableTypes = [...new Set(state.activity.map((item) => item.entityType))].filter((type) => typeMeta[type] || type === 'planning_cycle').sort((a, b) => (typeMeta[a]?.singular || '12-недельный цикл').localeCompare(typeMeta[b]?.singular || '12-недельный цикл', 'ru'));
+  $('#main-content').innerHTML = `<div class="history-title"><div><p class="eyebrow">Память проекта</p><h1>История</h1><p>Решения и изменения в человеческом виде, с переходом к исходной карточке.</p></div><span>${activity.length} событий</span></div><section class="history-controls" aria-label="Фильтры истории"><div class="segmented compact"><button type="button" class="segment ${state.historyScope === 'project' ? 'active' : ''}" data-history-scope="project">Работа проекта</button><button type="button" class="segment ${state.historyScope === 'all' ? 'active' : ''}" data-history-scope="all">Включая настройки</button></div><label>Автор<select id="history-actor"><option value="all">Вся команда</option>${state.users.map((user) => `<option value="${user.id}" ${state.historyActor === String(user.id) ? 'selected' : ''}>${escapeHTML(user.username)}</option>`).join('')}</select></label><label>Объект<select id="history-type"><option value="all">Все карточки</option>${availableTypes.map((type) => `<option value="${type}" ${state.historyType === type ? 'selected' : ''}>${escapeHTML(typeMeta[type]?.singular || '12-недельный цикл')}</option>`).join('')}</select></label></section><section class="history-feed">${[...groups.entries()].map(([day, items]) => `<div class="history-day"><time>${escapeHTML(day)}</time><div class="activity-list">${items.map(renderActivityItem).join('')}</div></div>`).join('') || `<div class="guided-empty history-empty">${icon('history')}<h3>Событий в этом представлении нет</h3><p>Сбросьте фильтры или продолжите работу с карточками.</p></div>`}</section>${state.historyLoadedAll ? '' : `<div class="history-more"><button type="button" class="secondary" id="load-older-history">${icon('history')} Загрузить более ранние события</button></div>`}`;
   $$('[data-history-scope]').forEach((button) => button.addEventListener('click', () => { state.historyScope = button.dataset.historyScope; renderHistory(); }));
   $('#history-actor').addEventListener('change', (event) => { state.historyActor = event.target.value; renderHistory(); });
   $('#history-type').addEventListener('change', (event) => { state.historyType = event.target.value; renderHistory(); });
@@ -5034,7 +5249,7 @@ async function loadOlderHistory() {
   try {
     const next = await api(`/api/activity?limit=200&offset=${state.activity.length}`);
     const known = new Set(state.activity.map((item) => item.id));
-    state.activity.push(...next.filter((item) => !known.has(item.id) && (typeMeta[item.entityType] || item.entityType === 'section_definition')));
+    state.activity.push(...next.filter((item) => !known.has(item.id) && (typeMeta[item.entityType] || ['section_definition', 'planning_cycle'].includes(item.entityType))));
     state.historyLoadedAll = next.length < 200;
     renderHistory();
   } catch (error) {
