@@ -437,3 +437,4 @@ Gemini теперь настроен как Google Vertex AI Express Mode с м�
 179. Desktop и mobile проверены в реальном браузере: фильтры, смена этапа, формы и настройки не расширяют мобильную страницу; ошибок консоли нет.
 
 Полное продуктовое описание находится в `docs/product/BIZFLOW_CONFIGURABLE_CRM_RELEASE_2026_09_02.md`, серверный контракт — в `docs/architecture/WORKSPACE_CRM_CONSTRUCTOR_CONTRACT_2026_09_02.md`. Фактический отчёт о production-деплое добавляется только после успешного переключения и smoke-проверки.
+180. Фактические backup, dry-run, production-переключение, авторизованный smoke и ограничение rollback после импорта описаны в `docs/operations/BIZFLOW_CONFIGURABLE_CRM_DEPLOY_2026_09_02.md`.
