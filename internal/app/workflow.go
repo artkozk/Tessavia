@@ -299,7 +299,7 @@ func (s *Server) handleAddChecklistItem(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "Шаг обязателен и не длиннее 300 символов")
 		return
 	}
-	if input.OwnerID != nil && !s.userExists(r.Context(), *input.OwnerID) {
+	if input.OwnerID != nil && !s.workspaceHasMember(r.Context(), record.WorkspaceID, *input.OwnerID) {
 		writeError(w, http.StatusBadRequest, "Исполнитель не найден")
 		return
 	}
@@ -390,7 +390,7 @@ func (s *Server) handleUpdateChecklistItem(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	if input.OwnerID != nil {
-		if !s.userExists(r.Context(), *input.OwnerID) {
+		if !s.workspaceHasMember(r.Context(), record.WorkspaceID, *input.OwnerID) {
 			writeError(w, http.StatusBadRequest, "Исполнитель не найден")
 			return
 		}
@@ -943,11 +943,15 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleDownloadAttachment(w http.ResponseWriter, r *http.Request) {
-	var stored, original, contentType string
+	var recordID, stored, original, contentType string
 	var size int64
-	err := s.store.db.QueryRowContext(r.Context(), `SELECT stored_name, original_name, content_type, size_bytes FROM record_attachments WHERE id = ?`, r.PathValue("id")).Scan(&stored, &original, &contentType, &size)
+	err := s.store.db.QueryRowContext(r.Context(), `SELECT record_id, stored_name, original_name, content_type, size_bytes FROM record_attachments WHERE id = ?`, r.PathValue("id")).Scan(&recordID, &stored, &original, &contentType, &size)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "Файл не найден")
+		return
+	}
+	if _, err = s.getRecord(r.Context(), recordID); err != nil {
+		writeError(w, http.StatusNotFound, "Файл не найден в этой команде")
 		return
 	}
 	path := filepath.Join(s.config.UploadPath, stored)
@@ -1042,7 +1046,7 @@ func validViewMode(value string) bool {
 }
 
 func (s *Server) handleListSavedViews(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, name, view_mode, filters_json, created_at, updated_at FROM saved_views WHERE user_id = ? ORDER BY name`, currentUser(r).ID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, name, view_mode, filters_json, created_at, updated_at FROM saved_views WHERE user_id = ? AND workspace_id = ? ORDER BY name`, currentUser(r).ID, currentWorkspace(r).ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить представления")
 		return
@@ -1076,7 +1080,7 @@ func (s *Server) handleCreateSavedView(w http.ResponseWriter, r *http.Request) {
 	}
 	id, _ := newID()
 	now := nowText()
-	_, err := s.store.db.ExecContext(r.Context(), `INSERT INTO saved_views(id, user_id, name, view_mode, filters_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, name) DO UPDATE SET view_mode = excluded.view_mode, filters_json = excluded.filters_json, updated_at = excluded.updated_at`, id, currentUser(r).ID, input.Name, input.ViewMode, string(input.Filters), now, now)
+	_, err := s.store.db.ExecContext(r.Context(), `INSERT INTO saved_views(id, user_id, workspace_id, name, view_mode, filters_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, user_id, name) DO UPDATE SET view_mode = excluded.view_mode, filters_json = excluded.filters_json, updated_at = excluded.updated_at`, id, currentUser(r).ID, currentWorkspace(r).ID, input.Name, input.ViewMode, string(input.Filters), now, now)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить представление")
 		return
@@ -1085,12 +1089,12 @@ func (s *Server) handleCreateSavedView(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteSavedView(w http.ResponseWriter, r *http.Request) {
-	s.store.db.ExecContext(r.Context(), `DELETE FROM saved_views WHERE id = ? AND user_id = ?`, r.PathValue("id"), currentUser(r).ID)
+	s.store.db.ExecContext(r.Context(), `DELETE FROM saved_views WHERE id = ? AND user_id = ? AND workspace_id = ?`, r.PathValue("id"), currentUser(r).ID, currentWorkspace(r).ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func exportRows(ctx context.Context, db *sql.DB, query string) ([]map[string]any, error) {
-	rows, err := db.QueryContext(ctx, query)
+func exportRows(ctx context.Context, db *sql.DB, query string, args ...any) ([]map[string]any, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1120,6 +1124,7 @@ func exportRows(ctx context.Context, db *sql.DB, query string) ([]map[string]any
 }
 
 func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
+	workspaceID := currentWorkspace(r).ID
 	if r.URL.Query().Get("format") == "csv" {
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="bizflow-records.csv"`)
@@ -1127,7 +1132,7 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 		writer := csv.NewWriter(w)
 		defer writer.Flush()
 		_ = writer.Write([]string{"ID", "Тип", "Название", "Статус", "Ответственный", "Срок", "Приоритет", "Прогресс"})
-		rows, err := s.store.db.QueryContext(r.Context(), recordSelect+` WHERE r.status <> 'archived' ORDER BY r.updated_at DESC`)
+		rows, err := s.store.db.QueryContext(r.Context(), recordSelect+` WHERE r.workspace_id = ? AND r.status <> 'archived' ORDER BY r.updated_at DESC`, workspaceID)
 		if err != nil {
 			return
 		}
@@ -1145,13 +1150,43 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	tables := map[string]string{
-		"users": `SELECT id, email, username, created_at FROM users`, "userWorkCapacity": `SELECT * FROM user_work_capacity`, "records": `SELECT * FROM records`, "recordBusinessDetails": `SELECT * FROM record_business_details`, "sections": `SELECT * FROM record_sections`, "links": `SELECT * FROM record_links`, "criterionScores": `SELECT * FROM criterion_scores`, "proofs": `SELECT * FROM task_proofs`, "questions": `SELECT * FROM question_items`, "answers": `SELECT * FROM question_answers`, "questionDecisions": `SELECT * FROM question_decisions`, "derivations": `SELECT * FROM record_derivations`, "comments": `SELECT * FROM record_comments`, "checklist": `SELECT * FROM checklist_items`, "reviews": `SELECT * FROM task_review_events`, "attachments": `SELECT id, record_id, uploader_id, original_name, content_type, size_bytes, sha256, created_at FROM record_attachments`, "recurrence": `SELECT * FROM recurrence_rules`, "activity": `SELECT * FROM activity`, "activityUndos": `SELECT * FROM activity_undos`,
+	type exportQuery struct {
+		query string
+		args  []any
 	}
-	payload := map[string]any{"schemaVersion": 10, "exportedAt": nowText(), "exportedBy": currentUser(r).Username, "tables": map[string]any{}}
+	workspaceArg := []any{workspaceID}
+	tables := map[string]exportQuery{
+		"workspace":              {`SELECT id, name, slug, kind, owner_id, delete_policy, description, created_at, updated_at FROM workspaces WHERE id = ?`, workspaceArg},
+		"workspaceMembers":       {`SELECT * FROM workspace_members WHERE workspace_id = ?`, workspaceArg},
+		"users":                  {`SELECT u.id, u.email, u.username, u.created_at FROM users u JOIN workspace_members wm ON wm.user_id = u.id WHERE wm.workspace_id = ? AND wm.status = 'active'`, workspaceArg},
+		"userWorkCapacity":       {`SELECT c.* FROM user_work_capacity c JOIN workspace_members wm ON wm.user_id = c.user_id WHERE wm.workspace_id = ? AND wm.status = 'active'`, workspaceArg},
+		"collections":            {`SELECT * FROM workspace_collections WHERE workspace_id = ?`, workspaceArg},
+		"collectionStages":       {`SELECT s.* FROM collection_stages s JOIN workspace_collections c ON c.id = s.collection_id WHERE c.workspace_id = ?`, workspaceArg},
+		"collectionFields":       {`SELECT f.* FROM collection_fields f JOIN workspace_collections c ON c.id = f.collection_id WHERE c.workspace_id = ?`, workspaceArg},
+		"collectionFieldOptions": {`SELECT o.* FROM collection_field_options o JOIN collection_fields f ON f.id = o.field_id JOIN workspace_collections c ON c.id = f.collection_id WHERE c.workspace_id = ?`, workspaceArg},
+		"records":                {`SELECT * FROM records WHERE workspace_id = ?`, workspaceArg},
+		"recordFieldValues":      {`SELECT v.* FROM record_field_values v JOIN records r ON r.id = v.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"recordBusinessDetails":  {`SELECT d.* FROM record_business_details d JOIN records r ON r.id = d.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"sections":               {`SELECT s.* FROM record_sections s JOIN records r ON r.id = s.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"links":                  {`SELECT l.* FROM record_links l JOIN records r ON r.id = l.source_id WHERE r.workspace_id = ?`, workspaceArg},
+		"criterionScores":        {`SELECT s.* FROM criterion_scores s JOIN records r ON r.id = s.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"proofs":                 {`SELECT p.* FROM task_proofs p JOIN records r ON r.id = p.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"questions":              {`SELECT q.* FROM question_items q JOIN records r ON r.id = q.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"answers":                {`SELECT a.* FROM question_answers a JOIN question_items q ON q.id = a.question_id JOIN records r ON r.id = q.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"questionDecisions":      {`SELECT d.* FROM question_decisions d JOIN question_items q ON q.id = d.question_id JOIN records r ON r.id = q.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"derivations":            {`SELECT d.* FROM record_derivations d JOIN records r ON r.id = d.source_record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"comments":               {`SELECT c.* FROM record_comments c JOIN records r ON r.id = c.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"checklist":              {`SELECT c.* FROM checklist_items c JOIN records r ON r.id = c.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"reviews":                {`SELECT e.* FROM task_review_events e JOIN records r ON r.id = e.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"attachments":            {`SELECT a.id, a.record_id, a.uploader_id, a.original_name, a.content_type, a.size_bytes, a.sha256, a.created_at FROM record_attachments a JOIN records r ON r.id = a.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"recurrence":             {`SELECT rr.* FROM recurrence_rules rr JOIN records r ON r.id = rr.record_id WHERE r.workspace_id = ?`, workspaceArg},
+		"activity":               {`SELECT * FROM activity WHERE workspace_id = ?`, workspaceArg},
+		"activityUndos":          {`SELECT u.* FROM activity_undos u JOIN activity a ON a.id = u.activity_id WHERE a.workspace_id = ?`, workspaceArg},
+	}
+	payload := map[string]any{"schemaVersion": 11, "workspaceId": workspaceID, "exportedAt": nowText(), "exportedBy": currentUser(r).Username, "tables": map[string]any{}}
 	data := payload["tables"].(map[string]any)
-	for name, query := range tables {
-		rows, err := exportRows(r.Context(), s.store.db, query)
+	for name, item := range tables {
+		rows, err := exportRows(r.Context(), s.store.db, item.query, item.args...)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось подготовить экспорт")
 			return

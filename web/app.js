@@ -140,6 +140,7 @@ const graphSettingDefaults = {
 const navItems = [
   ['personal', 'Личное', 'lock', 'Личное'],
   ['dashboard', 'Обзор', 'dashboard', 'Работа'], ['work', 'Работа', 'checkSquare', 'Работа'],
+	['collections', 'Доски', 'network', 'Работа'],
 	['chat', 'Чат', 'messages', 'Работа'],
   ['principles', 'Правила и критерии', 'bookOpen', 'Основа'], ['goal', 'Цели', 'target', 'Основа'],
   ['idea', 'Идеи', 'lightbulb', 'Бизнес'], ['research', 'Исследования', 'flask', 'Бизнес'],
@@ -153,7 +154,7 @@ const navItems = [
 
 const state = {
   me: null, users: [], records: [], notifications: [], activity: [], definitions: [], pendingQuestions: [],
-  workspaces: [], personal: null, personalLoading: false, personalTab: 'today', personalSuggestionTimer: null,
+	workspaces: [], activeWorkspaceId: localStorage.getItem('bizflow-active-workspace') || '', collections: [], activeCollectionId: '', collectionSearch: '', collectionOwnerFilter: '', collectionFieldFilters: {}, personal: null, personalLoading: false, personalTab: 'today', personalSuggestionTimer: null,
   view: 'dashboard', search: '', statusFilter: '', ownerFilter: '', authMode: 'login', activeDetail: null,
   activeRecordTab: 'overview', activeActivity: null, historyMode: 'feed', activeRecordRequest: 0,
   workScope: 'all', workType: 'all', workStatus: 'active', workstreamFilter: 'all',
@@ -863,10 +864,11 @@ function sortWorkRecords(a, b) {
 
 async function api(path, options = {}) {
 	const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+	const workspaceHeader = state.activeWorkspaceId && !path.startsWith('/api/workspaces') ? { 'X-Workspace-ID': state.activeWorkspaceId } : {};
   const response = await fetch(path, {
     credentials: 'same-origin',
     ...options,
-		headers: { ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) },
+		headers: { ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}), ...workspaceHeader, ...(options.headers || {}) },
   });
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
@@ -897,6 +899,8 @@ function clearPrivateClientState() {
   state.personal = null;
   state.personalLoading = false;
   state.workspaces = [];
+	state.collections = [];
+	state.activeCollectionId = '';
   state.personalTab = 'today';
   ['personal-dialog', 'profile-dialog'].forEach((id) => {
     const dialog = document.getElementById(id);
@@ -936,9 +940,15 @@ async function bootstrap() {
 }
 
 async function loadData(silent = false) {
-  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads, planning, workspaces] = await Promise.all([
+	const workspaces = await api('/api/workspaces');
+	const teamWorkspaces = workspaces.filter((workspace) => workspace.kind === 'team');
+	if (!teamWorkspaces.some((workspace) => workspace.id === state.activeWorkspaceId)) {
+		state.activeWorkspaceId = teamWorkspaces.find((workspace) => workspace.id === 'bizflow-team')?.id || teamWorkspaces[0]?.id || workspaces[0]?.id || '';
+	}
+	if (state.activeWorkspaceId) localStorage.setItem('bizflow-active-workspace', state.activeWorkspaceId);
+  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads, planning, collections] = await Promise.all([
     api('/api/users'), api('/api/records?includeArchived=true'), api('/api/notifications'),
-    api('/api/activity?limit=200'), api('/api/section-definitions'), api('/api/questions/pending'), api('/api/saved-views'), api('/api/chat/threads'), api('/api/planning/cycles'), api('/api/workspaces'),
+		api('/api/activity?limit=200'), api('/api/section-definitions'), api('/api/questions/pending'), api('/api/saved-views'), api('/api/chat/threads'), api('/api/planning/cycles'), api('/api/collections'),
   ]);
   const projectActivity = activity.filter((item) => typeMeta[item.entityType] || ['section_definition', 'planning_cycle'].includes(item.entityType));
   const recordsByID = new Map(records.map((record) => [record.id, record]));
@@ -946,13 +956,34 @@ async function loadData(silent = false) {
     const current = recordsByID.get(id);
     if (!current || current.updatedAt !== detail.record.updatedAt) state.detailCache.delete(id);
   });
-  Object.assign(state, { users, records, notifications, activity: projectActivity, definitions, pendingQuestions, savedViews, chatThreads, workspaces, planningCycles: planning.cycles || [], activePlanningCycle: planning.active || null });
+	Object.assign(state, { users, records, notifications, activity: projectActivity, definitions, pendingQuestions, savedViews, chatThreads, workspaces, collections, planningCycles: planning.cycles || [], activePlanningCycle: planning.active || null });
+	if (!collections.some((collection) => collection.id === state.activeCollectionId)) state.activeCollectionId = collections[0]?.id || '';
   state.syncRecordsSince = latestTimestamp(records, 'updatedAt', state.syncRecordsSince);
   state.syncActivitySince = latestTimestamp(projectActivity, 'createdAt', state.syncActivitySince);
   state.qualityReport = null;
   state.teamCapacity = null;
   state.historyLoadedAll = activity.length < 200;
   render();
+}
+
+async function switchWorkspace(workspaceID) {
+	if (!workspaceID || workspaceID === state.activeWorkspaceId) return;
+	state.activeWorkspaceId = workspaceID;
+	localStorage.setItem('bizflow-active-workspace', workspaceID);
+	state.activeCollectionId = '';
+	state.collectionSearch = '';
+	state.collectionOwnerFilter = '';
+	state.collectionFieldFilters = {};
+	state.recordWorkspace = [];
+	state.activeWorkspaceRecordId = '';
+	state.activeDetail = null;
+	state.detailCache.clear();
+	state.researchComparisons.clear();
+	state.syncRecordsSince = '1970-01-01T00:00:00Z';
+	state.syncActivitySince = '1970-01-01T00:00:00Z';
+	state.view = 'dashboard';
+	setSidebarOpen(false);
+	await loadData();
 }
 
 function latestTimestamp(items, field, fallback = '1970-01-01T00:00:00Z') {
@@ -1424,9 +1455,54 @@ async function submitAuth(event) {
 }
 
 function render() {
+	renderWorkspaceControl();
   renderNav();
   renderNotificationBadge();
   renderContent();
+}
+
+function activeWorkspace() {
+	return state.workspaces.find((workspace) => workspace.id === state.activeWorkspaceId) || null;
+}
+
+function canConfigureWorkspace() {
+	return ['owner', 'admin'].includes(activeWorkspace()?.role);
+}
+
+function renderWorkspaceControl() {
+	const root = $('#workspace-control');
+	if (!root) return;
+	const teams = state.workspaces.filter((workspace) => workspace.kind === 'team');
+	const current = activeWorkspace();
+	root.innerHTML = `<details class="workspace-switcher"><summary title="Сменить команду"><span>${icon('users')}</span><span><strong>${escapeHTML(current?.name || 'Рабочее пространство')}</strong><small>${escapeHTML(current?.role === 'owner' ? 'Владелец' : current?.role === 'admin' ? 'Администратор' : 'Участник')}</small></span>${icon('chevronRight')}</summary><div>${teams.map((workspace) => `<button type="button" class="${workspace.id === state.activeWorkspaceId ? 'active' : ''}" data-switch-workspace="${workspace.id}"><span>${icon(workspace.id === state.activeWorkspaceId ? 'check' : 'users')}</span><span><strong>${escapeHTML(workspace.name)}</strong><small>${escapeHTML(workspace.description || 'Командное пространство')}</small></span></button>`).join('')}<button type="button" data-create-workspace>${icon('plus')}<span><strong>Новая команда</strong><small>Отдельные участники, доски и данные</small></span></button></div></details>`;
+	$$('[data-switch-workspace]', root).forEach((button) => button.addEventListener('click', () => switchWorkspace(button.dataset.switchWorkspace)));
+	$('[data-create-workspace]', root)?.addEventListener('click', () => openWorkspaceCreateDialog());
+}
+
+function closeWorkspaceDialog() {
+	closeDialogImmediately($('#workspace-dialog'));
+}
+
+function openWorkspaceCreateDialog() {
+	const dialog = $('#workspace-dialog');
+	const content = $('#workspace-dialog-content');
+	const others = state.users.filter((user) => user.id !== state.me.id);
+	content.innerHTML = `<div class="workspace-editor-shell"><header><div><p class="eyebrow">Новое рабочее пространство</p><h2>Создать команду</h2><p>Карточки, доски, чат и история этой команды не смешиваются с другими пространствами.</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="workspace-create-form" class="card-form"><label>Название команды<input name="name" required maxlength="100" placeholder="Например: CRM"></label><label>Описание<textarea name="description" rows="3" maxlength="800" placeholder="Для какого проекта или бизнеса создано пространство"></textarea></label>${others.length ? `<fieldset class="workspace-member-picker"><legend>Добавить участников</legend>${others.map((user) => `<label class="check"><input type="checkbox" name="memberId" value="${user.id}" checked><span>${avatarMarkup(user, 'small')}<strong>${escapeHTML(user.displayName || user.username)}</strong><small>@${escapeHTML(user.username)}</small></span></label>`).join('')}</fieldset>` : '<p class="muted">Других доступных участников пока нет. Их можно будет добавить после регистрации.</p>'}<div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать команду</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
+	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
+	$('#workspace-create-form', dialog).addEventListener('submit', async (event) => {
+		event.preventDefault();
+		const form = new FormData(event.currentTarget);
+		try {
+			const workspace = await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name: form.get('name'), description: form.get('description'), memberIds: form.getAll('memberId').map(Number) }) });
+			closeWorkspaceDialog();
+			state.activeWorkspaceId = workspace.id;
+			localStorage.setItem('bizflow-active-workspace', workspace.id);
+			state.view = 'collections';
+			await loadData();
+			toast('Команда создана. Добавьте первую доску');
+		} catch (error) { toast(error.message, true); }
+	});
+	openModal(dialog);
 }
 
 function renderNotificationBadge() {
@@ -1440,7 +1516,8 @@ function renderNav() {
   let group = '';
   $('#main-nav').innerHTML = navItems.map(([key, label, iconName, itemGroup]) => {
     const count = key === 'personal' ? ((state.personal?.plans || []).filter((plan) => plan.status === 'planned').length || '')
-      : key === 'work'
+		: key === 'collections' ? state.collections.length
+		: key === 'work'
       ? state.records.filter((record) => isWorkRecord(record) && isActiveRecord(record)).length
 			: key === 'chat' ? state.chatThreads.reduce((sum, thread) => sum + thread.unreadCount, 0)
       : key === 'validation' ? state.records.filter((record) => ['risk', 'hypothesis', 'experiment'].includes(record.type) && record.status !== 'archived').length
@@ -1465,6 +1542,7 @@ function renderContent() {
   if (state.view === 'personal') return renderPersonal();
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'work') return renderWorkList();
+	if (state.view === 'collections') return renderCollections();
 	if (state.view === 'chat') return renderChat();
   if (state.view === 'outcomes') return renderOutcomes();
   if (state.view === 'validation') return renderValidation();
@@ -2370,6 +2448,275 @@ function renderWorkList() {
 	if (state.workViewMode === 'kanban') bindBoardDnD(renderWorkList);
   if (state.workViewMode === 'calendar') bindCalendarControls();
   bindOpenRecords();
+}
+
+function activeCollection() {
+	return state.collections.find((collection) => collection.id === state.activeCollectionId) || null;
+}
+
+function collectionRecords(collectionID = state.activeCollectionId) {
+	const query = state.collectionSearch.trim().toLowerCase();
+	return state.records.filter((record) => {
+		if (record.collectionId !== collectionID || record.status === 'archived') return false;
+		if (query && !`${record.title} ${record.description} ${record.ownerUsername}`.toLowerCase().includes(query)) return false;
+		if (state.collectionOwnerFilter && String(record.ownerId) !== state.collectionOwnerFilter) return false;
+		return Object.entries(state.collectionFieldFilters).every(([fieldID, expected]) => {
+			if (!expected) return true;
+			const value = record.customFields?.[fieldID];
+			return Array.isArray(value) ? value.includes(expected) : String(value) === expected;
+		});
+	});
+}
+
+function fieldOption(field, id) {
+	return field.options?.find((option) => option.id === id) || null;
+}
+
+function collectionFieldDisplay(field, value) {
+	if (value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length)) return '';
+	if (field.fieldType === 'select') return fieldOption(field, value)?.name || '';
+	if (field.fieldType === 'multi_select') return value.map((id) => fieldOption(field, id)?.name).filter(Boolean).join(', ');
+	if (field.fieldType === 'user') return state.users.find((user) => user.id === Number(value))?.username || '';
+	if (field.fieldType === 'checkbox') return value ? 'Да' : 'Нет';
+	if (field.fieldType === 'money') return Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+	if (field.fieldType === 'date' || field.fieldType === 'datetime') return formatDate(String(value), field.fieldType === 'datetime');
+	if (field.fieldType === 'relation') return state.records.find((record) => record.id === value)?.title || 'Связанная карточка';
+	return String(value);
+}
+
+function renderCollectionCard(record, collection) {
+	const visibleFields = collection.fields.filter((field) => field.showOnCard).map((field) => ({ field, value: collectionFieldDisplay(field, record.customFields?.[field.id]) })).filter((item) => item.value);
+	return `<article class="collection-card priority-${record.priority || 'normal'}" draggable="true" data-collection-card="${record.id}"><button type="button" data-open-record="${record.id}"><header><span>${record.type === 'task' ? icon('checkSquare') : icon(typeMeta[record.type]?.icon || 'fileText')}<small>${escapeHTML(collection.cardLabel)}</small></span><strong>${escapeHTML(record.title)}</strong></header>${record.description ? `<p>${escapeHTML(markdownPlain(record.description).slice(0, 150))}</p>` : ''}${visibleFields.length ? `<div class="collection-card-fields">${visibleFields.slice(0, 4).map(({ field, value }) => `<span class="field-tone-${field.fieldType === 'select' ? fieldOption(field, record.customFields?.[field.id])?.colorKey || 'neutral' : 'neutral'}"><small>${escapeHTML(field.name)}</small><b>${escapeHTML(value)}</b></span>`).join('')}</div>` : ''}<footer>${avatarMarkup(state.users.find((user) => user.id === record.ownerId) || { username: record.ownerUsername }, 'tiny')}<span><strong>${escapeHTML(record.ownerUsername)}</strong><small>${record.dueAt ? formatDate(record.dueAt) : 'Без срока'}</small></span></footer></button><label class="collection-stage-select"><span>Этап</span><select data-collection-stage="${record.id}" aria-label="Этап карточки ${escapeHTML(record.title)}">${collection.stages.map((stage) => `<option value="${stage.id}" ${record.stageId === stage.id ? 'selected' : ''}>${escapeHTML(stage.name)}</option>`).join('')}</select></label></article>`;
+}
+
+function collectionFilterOptions(field) {
+	if (field.fieldType === 'select' || field.fieldType === 'multi_select') return field.options.map((option) => `<option value="${option.id}">${escapeHTML(option.name)}</option>`).join('');
+	if (field.fieldType === 'user') return state.users.map((user) => `<option value="${user.id}">${escapeHTML(user.displayName || user.username)}</option>`).join('');
+	if (field.fieldType === 'checkbox') return '<option value="true">Да</option><option value="false">Нет</option>';
+	return '';
+}
+
+function renderCollectionFilters(collection) {
+	const fields = collection.fields.filter((field) => ['select', 'multi_select', 'user', 'checkbox'].includes(field.fieldType));
+	const active = Boolean(state.collectionOwnerFilter || Object.values(state.collectionFieldFilters).some(Boolean));
+	return `<section class="collection-filters" aria-label="Фильтры доски"><span>${icon('sliders')} Фильтры</span><label><span>Ответственный</span><select data-collection-owner-filter><option value="">Все</option>${state.users.map((user) => `<option value="${user.id}" ${state.collectionOwnerFilter === String(user.id) ? 'selected' : ''}>${escapeHTML(user.displayName || user.username)}</option>`).join('')}</select></label>${fields.map((field) => `<label><span>${escapeHTML(field.name)}</span><select data-collection-field-filter="${field.id}"><option value="">Все</option>${collectionFilterOptions(field)}</select></label>`).join('')}${active ? `<button type="button" class="text-button" data-reset-collection-filters>${icon('x')} Сбросить</button>` : ''}</section>`;
+}
+
+function renderCollections() {
+	const workspace = activeWorkspace();
+	if (!state.collections.length) {
+		$('#main-content').innerHTML = `<div class="page-heading collection-page-heading"><div><p class="eyebrow">${escapeHTML(workspace?.name || 'Команда')}</p><h1>Доски и процессы</h1><p>Создайте первую доску, задайте этапы и поля. Карточки сохранят связи, файлы, обсуждения, историю и AI-контекст BizFlow.</p></div>${canConfigureWorkspace() ? `<button type="button" class="primary" data-create-collection>${icon('plus')} Создать доску</button>` : ''}</div><div class="guided-empty collection-empty">${icon('network')}<h2>Досок пока нет</h2><p>Администратор команды может собрать CRM, редакционный план, воронку найма или другой процесс без разработки.</p>${canConfigureWorkspace() ? '<button type="button" class="primary" data-create-collection>Создать первую доску</button>' : ''}</div>`;
+		$$('[data-create-collection]').forEach((button) => button.addEventListener('click', openCollectionCreateDialog));
+		return;
+	}
+	const collection = activeCollection() || state.collections[0];
+	state.activeCollectionId = collection.id;
+	const records = collectionRecords(collection.id);
+	$('#main-content').innerHTML = `<div class="page-heading collection-page-heading"><div><p class="eyebrow">${escapeHTML(workspace?.name || 'Команда')} · Конструктор процессов</p><h1>${escapeHTML(collection.name)}</h1><p>${escapeHTML(collection.description || `${collection.cardLabel}: настраиваемые этапы и поля`)}</p></div><div><button type="button" class="primary" data-create-collection-card>${icon('plus')} ${escapeHTML(collection.cardLabel)}</button>${canConfigureWorkspace() ? `<button type="button" class="secondary" data-configure-collection>${icon('settings')} Настроить</button>` : ''}</div></div><section class="collection-toolbar"><nav class="collection-tabs" aria-label="Доски">${state.collections.map((item) => `<button type="button" class="${item.id === collection.id ? 'active' : ''}" data-collection-tab="${item.id}"><span>${icon('network')}</span><strong>${escapeHTML(item.name)}</strong><small>${state.records.filter((record) => record.collectionId === item.id && record.status !== 'archived').length}</small></button>`).join('')}${canConfigureWorkspace() ? `<button type="button" class="collection-tab-add" data-create-collection title="Новая доска" aria-label="Новая доска">${icon('plus')}</button>` : ''}</nav><label class="collection-search">${icon('search')}<input type="search" value="${escapeHTML(state.collectionSearch)}" placeholder="Найти на доске" aria-label="Найти карточку на доске"></label></section>${renderCollectionFilters(collection)}<section class="collection-board" aria-label="Доска ${escapeHTML(collection.name)}">${collection.stages.map((stage) => { const items = records.filter((record) => record.stageId === stage.id || (!record.stageId && stage.id === collection.stages[0]?.id)); return `<section class="collection-column tone-${stage.colorKey}" data-collection-drop="${stage.id}"><header><div><i></i><strong>${escapeHTML(stage.name)}</strong></div><span>${items.length}</span></header><div>${items.map((record) => renderCollectionCard(record, collection)).join('') || '<p class="collection-column-empty">Перетащите карточку сюда</p>'}</div><button type="button" class="collection-add-card" data-create-at-stage="${stage.id}">${icon('plus')} Добавить</button></section>`; }).join('')}</section>`;
+	$$('[data-collection-tab]').forEach((button) => button.addEventListener('click', () => { state.activeCollectionId = button.dataset.collectionTab; state.collectionSearch = ''; state.collectionOwnerFilter = ''; state.collectionFieldFilters = {}; renderCollections(); }));
+	$$('[data-create-collection]').forEach((button) => button.addEventListener('click', openCollectionCreateDialog));
+	$('[data-configure-collection]')?.addEventListener('click', () => openCollectionSettingsDialog(collection));
+	$('[data-create-collection-card]')?.addEventListener('click', () => openCollectionCardDialog(collection));
+	$$('[data-create-at-stage]').forEach((button) => button.addEventListener('click', () => openCollectionCardDialog(collection, null, button.dataset.createAtStage)));
+	$('.collection-search input')?.addEventListener('input', (event) => { state.collectionSearch = event.currentTarget.value; renderCollections(); requestAnimationFrame(() => { const input = $('.collection-search input'); input?.focus(); input?.setSelectionRange(input.value.length, input.value.length); }); });
+	$('[data-collection-owner-filter]')?.addEventListener('change', (event) => { state.collectionOwnerFilter = event.currentTarget.value; renderCollections(); });
+	$$('[data-collection-field-filter]').forEach((select) => { select.value = state.collectionFieldFilters[select.dataset.collectionFieldFilter] || ''; select.addEventListener('change', () => { state.collectionFieldFilters[select.dataset.collectionFieldFilter] = select.value; renderCollections(); }); });
+	$('[data-reset-collection-filters]')?.addEventListener('click', () => { state.collectionOwnerFilter = ''; state.collectionFieldFilters = {}; renderCollections(); });
+	bindCollectionBoard(collection);
+}
+
+async function reloadCollections({ render = true } = {}) {
+	state.collections = await api('/api/collections');
+	if (!state.collections.some((collection) => collection.id === state.activeCollectionId)) state.activeCollectionId = state.collections[0]?.id || '';
+	if (render && state.view === 'collections') renderCollections();
+}
+
+function bindCollectionBoard(collection) {
+	bindOpenRecords();
+	$$('[data-collection-stage]').forEach((select) => select.addEventListener('change', async () => {
+		await moveCollectionRecord(select.dataset.collectionStage, select.value);
+	}));
+	let draggedID = '';
+	$$('[data-collection-card]').forEach((card) => {
+		card.addEventListener('dragstart', (event) => { draggedID = card.dataset.collectionCard; card.classList.add('dragging'); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', draggedID); });
+		card.addEventListener('dragend', () => { draggedID = ''; card.classList.remove('dragging'); $$('.collection-column').forEach((column) => column.classList.remove('drop-target')); });
+	});
+	$$('[data-collection-drop]').forEach((column) => {
+		column.addEventListener('dragover', (event) => { if (!draggedID) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; column.classList.add('drop-target'); });
+		column.addEventListener('dragleave', (event) => { if (!column.contains(event.relatedTarget)) column.classList.remove('drop-target'); });
+		column.addEventListener('drop', async (event) => { event.preventDefault(); column.classList.remove('drop-target'); const recordID = draggedID || event.dataTransfer.getData('text/plain'); if (recordID) await moveCollectionRecord(recordID, column.dataset.collectionDrop); });
+	});
+}
+
+async function moveCollectionRecord(recordID, stageID) {
+	const record = state.records.find((item) => item.id === recordID);
+	if (!record || record.stageId === stageID) return;
+	try {
+		const updated = await api(`/api/records/${recordID}/stage`, { method: 'PUT', body: JSON.stringify({ stageId: stageID }) });
+		state.records = state.records.map((item) => item.id === updated.id ? updated : item);
+		state.detailCache.delete(updated.id);
+		renderCollections();
+	} catch (error) { toast(error.message, true); renderCollections(); }
+}
+
+function collectionFieldInput(field, value) {
+	const name = `custom:${field.id}`;
+	const required = field.required ? 'required' : '';
+	const label = `${escapeHTML(field.name)}${field.required ? ' *' : ''}`;
+	if (field.fieldType === 'long_text') return `<label>${label}<textarea name="${name}" rows="4" ${required}>${escapeHTML(value || '')}</textarea></label>`;
+	if (field.fieldType === 'select') return `<label>${label}<select name="${name}" ${required}><option value="">Не выбрано</option>${field.options.map((option) => `<option value="${option.id}" ${value === option.id ? 'selected' : ''}>${escapeHTML(option.name)}</option>`).join('')}</select></label>`;
+	if (field.fieldType === 'multi_select') return `<label>${label}<select name="${name}" multiple data-native-select ${required}>${field.options.map((option) => `<option value="${option.id}" ${Array.isArray(value) && value.includes(option.id) ? 'selected' : ''}>${escapeHTML(option.name)}</option>`).join('')}</select><small>Ctrl или Cmd для выбора нескольких вариантов</small></label>`;
+	if (field.fieldType === 'user') return `<label>${label}<select name="${name}" ${required}><option value="">Не выбрано</option>${state.users.map((user) => `<option value="${user.id}" ${Number(value) === user.id ? 'selected' : ''}>${escapeHTML(user.username)}</option>`).join('')}</select></label>`;
+	if (field.fieldType === 'checkbox') return `<label class="check collection-checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}><span><strong>${label}</strong><small>Да или нет</small></span></label>`;
+	if (field.fieldType === 'relation') return `<label>${label}<select name="${name}" ${required}><option value="">Не выбрано</option>${state.records.filter((record) => record.status !== 'archived').map((record) => `<option value="${record.id}" ${value === record.id ? 'selected' : ''}>${escapeHTML(record.title)}</option>`).join('')}</select></label>`;
+	const type = ({ number: 'number', money: 'number', date: 'date', datetime: 'datetime-local', url: 'url', email: 'email', phone: 'tel' })[field.fieldType] || 'text';
+	const displayValue = field.fieldType === 'datetime' ? toLocalInput(value) : value ?? '';
+	return `<label>${label}<input name="${name}" type="${type}" ${field.fieldType === 'money' ? 'step="0.01"' : field.fieldType === 'number' ? 'step="any"' : ''} value="${escapeHTML(displayValue)}" ${required}></label>`;
+}
+
+function customFieldsFromForm(form, fields) {
+	const values = {};
+	fields.forEach((field) => {
+		const control = form.elements.namedItem(`custom:${field.id}`);
+		if (!control) return;
+		if (field.fieldType === 'checkbox') values[field.id] = control.checked;
+		else if (field.fieldType === 'multi_select') values[field.id] = [...control.selectedOptions].map((option) => option.value);
+		else if (field.fieldType === 'number' || field.fieldType === 'money') values[field.id] = control.value === '' ? null : Number(control.value);
+		else if (field.fieldType === 'user') values[field.id] = control.value === '' ? null : Number(control.value);
+		else if (field.fieldType === 'datetime') values[field.id] = control.value ? new Date(control.value).toISOString() : '';
+		else values[field.id] = control.value;
+	});
+	return values;
+}
+
+function openCollectionCardDialog(collection, record = null, stageID = '') {
+	const dialog = $('#workspace-dialog');
+	const fields = collection.fields || [];
+	const content = $('#workspace-dialog-content');
+	const editingFields = Boolean(record);
+	content.innerHTML = `<div class="workspace-editor-shell collection-card-editor"><header><div><p class="eyebrow">${escapeHTML(collection.name)}</p><h2>${editingFields ? 'Поля карточки' : `Новая ${collection.cardLabel.toLowerCase()}`}</h2><p>${editingFields ? escapeHTML(record.title) : 'Заполните только нужное сейчас. Остальные поля можно дополнить позже.'}</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="collection-card-form" class="card-form">${editingFields ? '' : `<label>Название<input name="title" required maxlength="240" placeholder="Что нужно сделать"></label><label>Описание<textarea name="description" rows="4" placeholder="Контекст, ожидаемый результат или детали"></textarea></label><div class="form-grid three"><label>Этап<select name="stageId">${collection.stages.map((stage) => `<option value="${stage.id}" ${(stageID || collection.stages[0]?.id) === stage.id ? 'selected' : ''}>${escapeHTML(stage.name)}</option>`).join('')}</select></label><label>Ответственный<select name="ownerId">${userOptions(state.me.id)}</select></label><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === 'normal' ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>`}<section class="collection-custom-fields"><header><strong>Поля доски</strong><small>${fields.length ? `${fields.length} настроено` : 'Поля пока не добавлены'}</small></header>${fields.length ? `<div class="form-grid two">${fields.map((field) => collectionFieldInput(field, record?.customFields?.[field.id])).join('')}</div>` : '<p class="muted">Карточка будет использовать основные поля BizFlow. Администратор может добавить тип, номер, канал, клиента, сумму или другие свойства в настройках доски.</p>'}</section><div class="form-actions"><button type="submit" class="primary">${icon('check')} ${editingFields ? 'Сохранить поля' : 'Создать карточку'}</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
+	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
+	enhanceSelects(dialog);
+	$('#collection-card-form', dialog).addEventListener('submit', async (event) => {
+		event.preventDefault();
+		const form = event.currentTarget;
+		const customFields = customFieldsFromForm(form, fields);
+		try {
+			let updated;
+			if (record) {
+				updated = await api(`/api/records/${record.id}/custom-fields`, { method: 'PUT', body: JSON.stringify({ values: customFields }) });
+			} else {
+				const values = new FormData(form);
+				updated = await api('/api/records', { method: 'POST', body: JSON.stringify({ type: collection.defaultRecordType, title: values.get('title'), description: values.get('description'), ownerId: Number(values.get('ownerId')), priority: values.get('priority'), workstream: 'business', editPolicy: 'shared', collectionId: collection.id, stageId: values.get('stageId'), customFields }) });
+			}
+			state.records = record ? state.records.map((item) => item.id === updated.id ? updated : item) : [updated, ...state.records];
+			state.detailCache.delete(updated.id);
+			closeWorkspaceDialog();
+			if ($('#record-dialog').open && state.activeDetail?.record.id === updated.id) await openRecord(updated.id, { force: true });
+			else renderCollections();
+			toast(record ? 'Поля сохранены' : 'Карточка создана');
+		} catch (error) { toast(error.message, true); }
+	});
+	openModal(dialog);
+}
+
+function openCollectionCreateDialog() {
+	const dialog = $('#workspace-dialog');
+	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Команда')}</p><h2>Новая доска</h2><p>Этапы и поля можно менять без разработки. Связи и история остаются общими для всей команды.</p></div><button type="button" class="icon-button" data-close-workspace-dialog>${icon('x')}</button></header><form id="collection-create-form" class="card-form"><label>Название доски<input name="name" required maxlength="100" placeholder="Например: CRM"></label><label>Описание<textarea name="description" rows="3" maxlength="800" placeholder="Какой процесс ведём на этой доске"></textarea></label><label>Как называть карточку<input name="cardLabel" maxlength="40" value="Задача" placeholder="Лид, сделка, кандидат, заявка"></label><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать доску</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
+	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
+	$('#collection-create-form', dialog).addEventListener('submit', async (event) => {
+		event.preventDefault(); const form = new FormData(event.currentTarget);
+		try { const created = await api('/api/collections', { method: 'POST', body: JSON.stringify({ name: form.get('name'), description: form.get('description'), cardLabel: form.get('cardLabel'), defaultRecordType: 'task' }) }); state.activeCollectionId = created.id; closeWorkspaceDialog(); await reloadCollections(); toast('Доска создана'); } catch (error) { toast(error.message, true); }
+	});
+	openModal(dialog);
+}
+
+function collectionSettingsStageRows(collection) {
+	const categoryLabels = { backlog: 'Ожидает начала', active: 'Активная работа', review: 'Проверка', done: 'Финальный этап' };
+	return collection.stages.map((stage) => `<div><i class="tone-${stage.colorKey}"></i><span><strong>${escapeHTML(stage.name)}</strong><small>${escapeHTML(categoryLabels[stage.category])}</small></span><button type="button" class="icon-button" data-edit-collection-stage="${stage.id}" aria-label="Переименовать этап" title="Переименовать этап">${icon('edit')}</button></div>`).join('');
+}
+
+function collectionSettingsFieldRows(collection, fieldTypes) {
+	return collection.fields.map((field) => `<div><span>${icon('sliders')}</span><span><strong>${escapeHTML(field.name)}</strong><small>${escapeHTML(fieldTypes.find(([value]) => value === field.fieldType)?.[1] || field.fieldType)}${field.required ? ' · обязательное' : ''}${field.showOnCard ? ' · на карточке' : ''}</small></span><button type="button" class="icon-button" data-edit-collection-field="${field.id}" aria-label="Переименовать поле" title="Переименовать поле">${icon('edit')}</button></div>`).join('') || '<p class="muted">Пользовательских полей пока нет.</p>';
+}
+
+function askCollectionConfiguration(collection) {
+	const dialog = $('#reason-dialog');
+	$('#reason-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Конструктор доски</span><h2>Параметры доски</h2></div><button type="button" class="close-button" data-cancel-collection-config aria-label="Закрыть">×</button></div><form id="collection-config-form" class="card-form dialog-form"><label>Название<input name="name" required maxlength="100" value="${escapeHTML(collection.name)}"></label><label>Описание<textarea name="description" rows="3" maxlength="800">${escapeHTML(collection.description)}</textarea></label><label>Название карточки<input name="cardLabel" required maxlength="40" value="${escapeHTML(collection.cardLabel)}" placeholder="Задача, лид, заявка"></label><div class="form-actions"><button type="submit" class="primary">Сохранить</button><button type="button" class="secondary" data-cancel-collection-config>Отмена</button></div></form>`;
+	return new Promise((resolve) => {
+		let closing = false; let result = null;
+		const finish = (value) => { if (closing) return; closing = true; result = value; dialog.close(); };
+		$$('[data-cancel-collection-config]', dialog).forEach((button) => button.addEventListener('click', () => finish(null)));
+		$('#collection-config-form', dialog).addEventListener('submit', (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); finish({ name: String(form.get('name')).trim(), description: String(form.get('description')).trim(), cardLabel: String(form.get('cardLabel')).trim() }); });
+		dialog.addEventListener('close', () => resolve(result), { once: true });
+		openModal(dialog);
+	});
+}
+
+function askCollectionStageConfiguration(stage) {
+	const dialog = $('#reason-dialog');
+	$('#reason-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Этап процесса</span><h2>Настроить колонку</h2></div><button type="button" class="close-button" data-cancel-stage-config aria-label="Закрыть">×</button></div><form id="stage-config-form" class="card-form dialog-form"><label>Название<input name="name" required maxlength="60" value="${escapeHTML(stage.name)}"></label><div class="form-grid two"><label>Состояние<select name="category"><option value="backlog" ${stage.category === 'backlog' ? 'selected' : ''}>Ожидает начала</option><option value="active" ${stage.category === 'active' ? 'selected' : ''}>Активная работа</option><option value="review" ${stage.category === 'review' ? 'selected' : ''}>Проверка</option><option value="done" ${stage.category === 'done' ? 'selected' : ''}>Финальный этап</option></select></label><label>Цвет<select name="colorKey"><option value="neutral" ${stage.colorKey === 'neutral' ? 'selected' : ''}>Нейтральный</option><option value="amber" ${stage.colorKey === 'amber' ? 'selected' : ''}>Жёлтый</option><option value="blue" ${stage.colorKey === 'blue' ? 'selected' : ''}>Синий</option><option value="green" ${stage.colorKey === 'green' ? 'selected' : ''}>Зелёный</option><option value="red" ${stage.colorKey === 'red' ? 'selected' : ''}>Красный</option><option value="violet" ${stage.colorKey === 'violet' ? 'selected' : ''}>Фиолетовый</option></select></label></div><div class="form-actions"><button type="submit" class="primary">Сохранить</button><button type="button" class="secondary" data-cancel-stage-config>Отмена</button></div></form>`;
+	return new Promise((resolve) => {
+		let closing = false; let result = null;
+		const finish = (value) => { if (closing) return; closing = true; result = value; dialog.close(); };
+		$$('[data-cancel-stage-config]', dialog).forEach((button) => button.addEventListener('click', () => finish(null)));
+		$('#stage-config-form', dialog).addEventListener('submit', (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); finish({ name: String(form.get('name')).trim(), category: form.get('category'), colorKey: form.get('colorKey') }); });
+		dialog.addEventListener('close', () => resolve(result), { once: true });
+		openModal(dialog); enhanceSelects(dialog);
+	});
+}
+
+function askCollectionFieldConfiguration(field) {
+	const dialog = $('#reason-dialog');
+	$('#reason-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Пользовательское поле</span><h2>Настроить поле</h2></div><button type="button" class="close-button" data-cancel-field-config aria-label="Закрыть">×</button></div><form id="field-config-form" class="card-form dialog-form"><label>Название<input name="name" required maxlength="80" value="${escapeHTML(field.name)}"></label><p class="muted">Тип поля не меняется после создания, чтобы уже заполненные данные оставались корректными.</p><label class="check"><input type="checkbox" name="required" ${field.required ? 'checked' : ''}> Обязательное поле</label><label class="check"><input type="checkbox" name="showOnCard" ${field.showOnCard ? 'checked' : ''}> Показывать значение на карточке</label><div class="form-actions"><button type="submit" class="primary">Сохранить</button><button type="button" class="secondary" data-cancel-field-config>Отмена</button></div></form>`;
+	return new Promise((resolve) => {
+		let closing = false; let result = null;
+		const finish = (value) => { if (closing) return; closing = true; result = value; dialog.close(); };
+		$$('[data-cancel-field-config]', dialog).forEach((button) => button.addEventListener('click', () => finish(null)));
+		$('#field-config-form', dialog).addEventListener('submit', (event) => { event.preventDefault(); const form = event.currentTarget; finish({ name: String(new FormData(form).get('name')).trim(), required: form.elements.required.checked, showOnCard: form.elements.showOnCard.checked }); });
+		dialog.addEventListener('close', () => resolve(result), { once: true });
+		openModal(dialog);
+	});
+}
+
+async function refreshCollectionSettingsDialog() {
+	await reloadCollections({ render: false });
+	if (state.view === 'collections') renderCollections();
+	closeWorkspaceDialog();
+	openCollectionSettingsDialog(activeCollection());
+}
+
+function openCollectionSettingsDialog(collection) {
+	const dialog = $('#workspace-dialog');
+	const fieldTypes = [['text','Короткий текст'],['long_text','Большой текст'],['number','Число'],['money','Сумма'],['date','Дата'],['datetime','Дата и время'],['select','Один вариант'],['multi_select','Несколько вариантов'],['user','Участник'],['checkbox','Да / нет'],['url','Ссылка'],['email','Почта'],['phone','Телефон'],['relation','Связанная карточка']];
+	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell collection-settings-shell"><header><div><p class="eyebrow">Конструктор доски</p><h2>${escapeHTML(collection.name)}</h2><p>Новые этапы и поля сразу доступны всем участникам этой команды.</p></div><div class="collection-settings-header-actions"><button type="button" class="icon-button" data-edit-collection aria-label="Переименовать доску" title="Переименовать доску">${icon('edit')}</button><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></div></header><div class="collection-settings-grid"><section><header><div><strong>Этапы</strong><small>Колонки доски и состояние процесса</small></div></header><div class="collection-settings-list">${collectionSettingsStageRows(collection)}</div><form id="collection-stage-form" class="compact-settings-form"><input name="name" required maxlength="60" placeholder="Название нового этапа"><select name="category"><option value="active">Активная работа</option><option value="backlog">Ожидает начала</option><option value="review">Проверка</option><option value="done">Финальный этап</option></select><select name="colorKey"><option value="neutral">Нейтральный</option><option value="amber">Жёлтый</option><option value="blue">Синий</option><option value="green">Зелёный</option><option value="red">Красный</option><option value="violet">Фиолетовый</option></select><button type="submit" class="secondary">${icon('plus')} Этап</button></form></section><section><header><div><strong>Поля карточки</strong><small>Типизированные свойства для фильтрации и учёта</small></div></header><div class="collection-settings-list">${collectionSettingsFieldRows(collection, fieldTypes)}</div><form id="collection-field-form" class="compact-settings-form field-form"><input name="name" required maxlength="80" placeholder="Название поля"><select name="fieldType">${fieldTypes.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select><input name="options" placeholder="Варианты через запятую" hidden><label class="check"><input type="checkbox" name="required"> Обязательное</label><label class="check"><input type="checkbox" name="showOnCard" checked> Показывать на карточке</label><button type="submit" class="secondary">${icon('plus')} Поле</button></form></section></div></div>`;
+	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
+	enhanceSelects(dialog);
+	const fieldForm = $('#collection-field-form', dialog);
+	const fieldType = fieldForm.elements.fieldType;
+	const options = fieldForm.elements.options;
+	const syncOptions = () => { options.hidden = !['select', 'multi_select'].includes(fieldType.value); options.required = !options.hidden; };
+	fieldType.addEventListener('change', syncOptions); syncOptions();
+	$('#collection-stage-form', dialog).addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { await api(`/api/collections/${collection.id}/stages`, { method: 'POST', body: JSON.stringify({ name: form.get('name'), category: form.get('category'), colorKey: form.get('colorKey') }) }); await refreshCollectionSettingsDialog(); toast('Этап добавлен'); } catch (error) { toast(error.message, true); } });
+	fieldForm.addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { await api(`/api/collections/${collection.id}/fields`, { method: 'POST', body: JSON.stringify({ name: form.get('name'), fieldType: form.get('fieldType'), required: event.currentTarget.elements.required.checked, showOnCard: event.currentTarget.elements.showOnCard.checked, options: String(form.get('options') || '').split(',').map((item) => item.trim()).filter(Boolean) }) }); await refreshCollectionSettingsDialog(); toast('Поле добавлено'); } catch (error) { toast(error.message, true); } });
+	$('[data-edit-collection]', dialog)?.addEventListener('click', async () => {
+		const values = await askCollectionConfiguration(collection);
+		if (!values) return;
+		try { await api(`/api/collections/${collection.id}`, { method: 'PATCH', body: JSON.stringify(values) }); await refreshCollectionSettingsDialog(); toast('Доска сохранена'); } catch (error) { toast(error.message, true); }
+	});
+	$$('[data-edit-collection-stage]', dialog).forEach((button) => button.addEventListener('click', async () => {
+		const stage = collection.stages.find((item) => item.id === button.dataset.editCollectionStage);
+		const values = await askCollectionStageConfiguration(stage);
+		if (!values) return;
+		try { await api(`/api/collections/${collection.id}/stages/${stage.id}`, { method: 'PATCH', body: JSON.stringify(values) }); await refreshCollectionSettingsDialog(); toast('Этап сохранён'); } catch (error) { toast(error.message, true); }
+	}));
+	$$('[data-edit-collection-field]', dialog).forEach((button) => button.addEventListener('click', async () => {
+		const field = collection.fields.find((item) => item.id === button.dataset.editCollectionField);
+		const values = await askCollectionFieldConfiguration(field);
+		if (!values) return;
+		try { await api(`/api/collections/${collection.id}/fields/${field.id}`, { method: 'PATCH', body: JSON.stringify(values) }); await refreshCollectionSettingsDialog(); toast('Поле сохранено'); } catch (error) { toast(error.message, true); }
+	}));
+	openModal(dialog);
 }
 
 function renderWorkRow(record) {
@@ -4036,6 +4383,13 @@ function renderBlockersPanel(record) {
 	return `<section class="active-blockers-panel"><header><span>${icon('lock')}</span><div><p class="eyebrow">Блокирующие зависимости</p><h3>Работа ждёт ${blockers.length === 1 ? 'одну карточку' : `${blockers.length} карточки`}</h3></div></header><p>Связь «зависит от» снимается из этого списка автоматически, когда блокирующая карточка завершена или отменена.</p><div>${blockers.map((blocker) => `<button type="button" data-related-record="${blocker.id}"><span class="type-icon type-${blocker.type}">${icon(typeMeta[blocker.type]?.icon || 'fileText')}</span><span><small>${escapeHTML(typeMeta[blocker.type]?.singular || 'Карточка')} · ${escapeHTML(blocker.ownerUsername)}</small><strong>${escapeHTML(blocker.title)}</strong></span>${icon('chevronRight')}</button>`).join('')}</div></section>`;
 }
 
+function renderRecordCustomFieldsRead(record, canEdit) {
+	if (!record.collectionId) return '';
+	const collection = state.collections.find((item) => item.id === record.collectionId);
+	if (!collection) return '';
+	return `<section class="dossier-section record-custom-fields"><header><div><p class="eyebrow">${escapeHTML(collection.name)}</p><h3>Поля карточки</h3></div>${canEdit ? `<button type="button" class="icon-button" data-edit-custom-fields aria-label="Изменить поля" title="Изменить поля">${icon('edit')}</button>` : ''}</header><div class="dossier-properties">${collection.fields.map((field) => dossierProperty(field.name, collectionFieldDisplay(field, record.customFields?.[field.id]) || 'Не указано', '', false)).join('') || '<p class="muted">На доске пока нет пользовательских полей.</p>'}</div></section>`;
+}
+
 function renderRecordReadOverview(record, options) {
   const { language, hasDeadline, hasDecisionMaker, hasPriority, hasEstimate, hasManualProgress, hasResult, hasExecution, dueLabel, canEdit } = options;
   const origin = state.activeDetail.derivation;
@@ -4051,6 +4405,7 @@ function renderRecordReadOverview(record, options) {
     <article class="record-dossier">
       <section class="dossier-section dossier-context"><header><div><p class="eyebrow">Содержание</p><h3>${escapeHTML(language.description)}</h3></div>${canEdit ? `<button type="button" class="icon-button" data-edit-field="description" aria-label="Изменить описание" title="Изменить описание">${icon('edit')}</button>` : ''}</header>${markdownView(record.description, 'Контекст пока не заполнен.', language.description)}</section>
       ${renderBusinessDetailsRead(record, canEdit)}
+			${renderRecordCustomFieldsRead(record, canEdit)}
       ${hasExecution ? `<section class="dossier-section"><header><div><p class="eyebrow">Контроль</p><h3>${record.type === 'question_set' ? 'Обсуждение и срок' : record.type === 'meeting' ? 'Организация встречи' : 'Исполнение'}</h3></div></header><div class="dossier-properties">
         ${dossierProperty(ownerLabel, record.ownerUsername, 'ownerId', canEdit)}
         ${dossierProperty('Статус', statusLabel(record), record.type === 'question_set' ? '' : 'status', canEdit)}
@@ -4599,6 +4954,10 @@ function bindRecordDialogEvents() {
   };
   $$('[data-open-record-edit]').forEach((button) => button.addEventListener('click', () => startEditing()));
   $$('[data-edit-field]').forEach((button) => button.addEventListener('click', () => startEditing(button.dataset.editField)));
+	$('[data-edit-custom-fields]')?.addEventListener('click', () => {
+		const collection = state.collections.find((item) => item.id === record.collectionId);
+		if (collection) openCollectionCardDialog(collection, record);
+	});
   $('[data-change-parent]')?.addEventListener('click', () => changeRecordParent(record));
   $$('[data-triage-inbox]').forEach((button) => button.addEventListener('click', async () => {
     const targetType = button.dataset.triageInbox;

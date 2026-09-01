@@ -80,6 +80,14 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/users/{id}/profile", s.requireAuth(http.HandlerFunc(s.handleUserProfile)))
 	s.mux.Handle("GET /api/users/{id}/avatar", s.requireAuth(http.HandlerFunc(s.handleAvatar)))
 	s.mux.Handle("GET /api/workspaces", s.requireAuth(http.HandlerFunc(s.handleListWorkspaces)))
+	s.mux.Handle("POST /api/workspaces", s.requireAuth(http.HandlerFunc(s.handleCreateWorkspace)))
+	s.mux.Handle("GET /api/collections", s.requireAuth(http.HandlerFunc(s.handleListCollections)))
+	s.mux.Handle("POST /api/collections", s.requireAuth(http.HandlerFunc(s.handleCreateCollection)))
+	s.mux.Handle("PATCH /api/collections/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollection)))
+	s.mux.Handle("POST /api/collections/{id}/stages", s.requireAuth(http.HandlerFunc(s.handleCreateCollectionStage)))
+	s.mux.Handle("PATCH /api/collections/{id}/stages/{stageId}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollectionStage)))
+	s.mux.Handle("POST /api/collections/{id}/fields", s.requireAuth(http.HandlerFunc(s.handleCreateCollectionField)))
+	s.mux.Handle("PATCH /api/collections/{id}/fields/{fieldId}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollectionField)))
 	s.mux.Handle("GET /api/personal/overview", s.requireAuth(http.HandlerFunc(s.handlePersonalOverview)))
 	s.mux.Handle("POST /api/personal/notes", s.requireAuth(http.HandlerFunc(s.handleCreatePersonalNote)))
 	s.mux.Handle("PATCH /api/personal/notes/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdatePersonalNote)))
@@ -114,6 +122,8 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/records/{id}", s.requireAuth(http.HandlerFunc(s.handleGetRecord)))
 	s.mux.Handle("GET /api/records/{id}/relations", s.requireAuth(http.HandlerFunc(s.handleGetRecordRelations)))
 	s.mux.Handle("PATCH /api/records/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdateRecord)))
+	s.mux.Handle("PUT /api/records/{id}/stage", s.requireAuth(http.HandlerFunc(s.handleMoveRecordStage)))
+	s.mux.Handle("PUT /api/records/{id}/custom-fields", s.requireAuth(http.HandlerFunc(s.handleUpdateRecordFields)))
 	s.mux.Handle("PUT /api/records/{id}/business-details", s.requireAuth(http.HandlerFunc(s.handleUpdateBusinessDetails)))
 	s.mux.Handle("POST /api/records/{id}/triage", s.requireAuth(http.HandlerFunc(s.handleTriageInbox)))
 	s.mux.Handle("POST /api/records/{id}/convert-to-questions", s.requireAuth(http.HandlerFunc(s.handleConvertToQuestions)))
@@ -228,7 +238,18 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			_, _ = s.store.db.ExecContext(r.Context(), `UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?`, nowText(), hashToken(cookie.Value))
 		}
 		setUserAvatar(&user, avatarStoredName, avatarUpdatedAt)
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey, user)))
+		ctx := context.WithValue(r.Context(), userContextKey, user)
+		workspace, workspaceErr := s.resolveWorkspaceAccess(ctx, user.ID, r.Header.Get("X-Workspace-ID"))
+		if errors.Is(workspaceErr, sql.ErrNoRows) {
+			writeError(w, http.StatusForbidden, "Рабочее пространство недоступно")
+			return
+		}
+		if workspaceErr != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось определить рабочее пространство")
+			return
+		}
+		ctx = context.WithValue(ctx, workspaceContextKey, workspace)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -520,17 +541,12 @@ func (s *Server) handleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
-	viewer := currentUser(r)
+	workspace := currentWorkspace(r)
 	rows, err := s.store.db.QueryContext(r.Context(), `
 		SELECT u.id, u.username, u.display_name, u.bio, u.created_at, u.avatar_stored_name, u.avatar_updated_at
-		FROM users u
-		WHERE u.id = ? OR EXISTS (
-			SELECT 1 FROM workspace_members viewer
-			JOIN workspace_members target ON target.workspace_id = viewer.workspace_id
-			WHERE viewer.user_id = ? AND viewer.status = 'active'
-				AND target.user_id = u.id AND target.status = 'active'
-		)
-		ORDER BY u.username`, viewer.ID, viewer.ID)
+		FROM workspace_members member JOIN users u ON u.id = member.user_id
+		WHERE member.workspace_id = ? AND member.status = 'active'
+		ORDER BY u.username`, workspace.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить участников")
 		return
@@ -553,7 +569,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 type recordScanner interface{ Scan(...any) error }
 
 const recordSelect = `
-	SELECT r.id, CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END, r.record_kind, r.title, r.description, r.status,
+	SELECT r.id, r.workspace_id, COALESCE(r.collection_id, ''), COALESCE(collection.name, ''), COALESCE(r.stage_id, ''), COALESCE(stage.name, ''), CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END, r.record_kind, r.title, r.description, r.status,
 		r.author_id, author.username, r.owner_id, owner.username,
 		r.decision_maker_id, decision_maker.username, r.due_at,
 		r.priority, r.workstream, r.edit_policy, r.parent_id, r.is_root,
@@ -583,6 +599,8 @@ const recordSelect = `
 		business.verdict, business.decision_state, business.effective_at, business.review_at, business.supersedes_id,
 		business.applicability, business.source_excerpt_md
 	FROM records r
+	LEFT JOIN workspace_collections collection ON collection.id = r.collection_id
+	LEFT JOIN collection_stages stage ON stage.id = r.stage_id
 	JOIN users author ON author.id = r.author_id
 	JOIN users owner ON owner.id = r.owner_id
 	LEFT JOIN users decision_maker ON decision_maker.id = r.decision_maker_id
@@ -595,7 +613,7 @@ func scanRecord(scanner recordScanner) (Record, error) {
 	var businessRecordID, mitigation, metric, threshold, method, verdict, decisionState, effectiveAt, reviewAt, supersedesID, applicability, sourceExcerpt sql.NullString
 	var probability, impact, occurred sql.NullInt64
 	var isRoot int
-	err := scanner.Scan(&record.ID, &record.Type, &record.Kind, &record.Title, &record.Description, &record.Status,
+	err := scanner.Scan(&record.ID, &record.WorkspaceID, &record.CollectionID, &record.CollectionName, &record.StageID, &record.StageName, &record.Type, &record.Kind, &record.Title, &record.Description, &record.Status,
 		&record.AuthorID, &record.AuthorUsername, &record.OwnerID, &record.OwnerUsername,
 		&decisionMakerID, &decisionMakerName, &dueAt, &record.Priority, &record.Workstream, &record.EditPolicy, &parentID, &isRoot,
 		&record.EstimateMinutes, &record.ActualMinutes, &record.Progress,
@@ -644,8 +662,20 @@ func (s *Server) getRecord(ctx context.Context, id string) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
+	if user, ok := ctx.Value(userContextKey).(User); ok {
+		workspaceID := workspaceIDFromContext(ctx)
+		if workspaceID != "" && record.WorkspaceID != workspaceID {
+			return Record{}, sql.ErrNoRows
+		}
+		if !s.workspaceHasMember(ctx, record.WorkspaceID, user.ID) {
+			return Record{}, sql.ErrNoRows
+		}
+	}
 	records := []Record{record}
 	if err := s.attachActiveBlockers(ctx, records); err != nil {
+		return Record{}, err
+	}
+	if err := s.attachCustomFields(ctx, records); err != nil {
 		return Record{}, err
 	}
 	return records[0], nil
@@ -694,8 +724,16 @@ func (s *Server) attachActiveBlockers(ctx context.Context, records []Record) err
 }
 
 func (s *Server) handleListRecords(w http.ResponseWriter, r *http.Request) {
-	where := []string{"1 = 1"}
-	args := make([]any, 0)
+	where := []string{"r.workspace_id = ?"}
+	args := []any{currentWorkspace(r).ID}
+	if collectionID := strings.TrimSpace(r.URL.Query().Get("collectionId")); collectionID != "" {
+		if !s.collectionBelongsToWorkspace(r.Context(), collectionID, currentWorkspace(r).ID) {
+			writeError(w, http.StatusNotFound, "Доска не найдена")
+			return
+		}
+		where = append(where, "r.collection_id = ?")
+		args = append(args, collectionID)
+	}
 	if recordType := strings.TrimSpace(r.URL.Query().Get("type")); recordType != "" {
 		if _, ok := recordTypes[recordType]; !ok {
 			writeError(w, http.StatusBadRequest, "Неизвестный тип карточки")
@@ -768,26 +806,34 @@ func (s *Server) handleListRecords(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить зависимости карточек")
 		return
 	}
+	if err := s.attachCustomFields(r.Context(), records); err != nil {
+		log.Printf("attach custom fields: %v", err)
+		writeError(w, http.StatusInternalServerError, "Не удалось загрузить пользовательские поля")
+		return
+	}
 	writeJSON(w, http.StatusOK, records)
 }
 
 type createRecordRequest struct {
-	Type            string                `json:"type"`
-	Title           string                `json:"title"`
-	Description     string                `json:"description"`
-	Status          string                `json:"status"`
-	OwnerID         int64                 `json:"ownerId"`
-	DecisionMakerID *int64                `json:"decisionMakerId"`
-	DueAt           string                `json:"dueAt"`
-	Priority        string                `json:"priority"`
-	Workstream      string                `json:"workstream"`
-	EditPolicy      string                `json:"editPolicy"`
-	ParentID        string                `json:"parentId"`
-	IsRoot          bool                  `json:"isRoot"`
-	EstimateMinutes int                   `json:"estimateMinutes"`
-	ActualMinutes   int                   `json:"actualMinutes"`
-	Kind            string                `json:"kind"`
-	BusinessDetails *businessDetailsInput `json:"businessDetails"`
+	Type            string                     `json:"type"`
+	Title           string                     `json:"title"`
+	Description     string                     `json:"description"`
+	Status          string                     `json:"status"`
+	OwnerID         int64                      `json:"ownerId"`
+	DecisionMakerID *int64                     `json:"decisionMakerId"`
+	DueAt           string                     `json:"dueAt"`
+	Priority        string                     `json:"priority"`
+	Workstream      string                     `json:"workstream"`
+	EditPolicy      string                     `json:"editPolicy"`
+	ParentID        string                     `json:"parentId"`
+	IsRoot          bool                       `json:"isRoot"`
+	EstimateMinutes int                        `json:"estimateMinutes"`
+	ActualMinutes   int                        `json:"actualMinutes"`
+	Kind            string                     `json:"kind"`
+	CollectionID    string                     `json:"collectionId"`
+	StageID         string                     `json:"stageId"`
+	CustomFields    map[string]json.RawMessage `json:"customFields"`
+	BusinessDetails *businessDetailsInput      `json:"businessDetails"`
 }
 
 func defaultStatus(recordType string) string {
@@ -873,6 +919,43 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	input.Type = strings.TrimSpace(input.Type)
 	input.Title = strings.TrimSpace(input.Title)
 	input.Description = strings.TrimSpace(input.Description)
+	input.CollectionID = strings.TrimSpace(input.CollectionID)
+	input.StageID = strings.TrimSpace(input.StageID)
+	workspaceID := currentWorkspace(r).ID
+	var collectionFields []CollectionField
+	if input.CollectionID != "" {
+		var defaultType string
+		if err := s.store.db.QueryRowContext(r.Context(), `SELECT default_record_type FROM workspace_collections WHERE id = ? AND workspace_id = ? AND archived_at IS NULL`, input.CollectionID, workspaceID).Scan(&defaultType); errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusBadRequest, "Доска не найдена")
+			return
+		} else if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось проверить доску")
+			return
+		}
+		if input.Type == "" {
+			input.Type = defaultType
+		}
+		var stageCategory string
+		stageQuery := `SELECT id, category FROM collection_stages WHERE collection_id = ? AND archived_at IS NULL`
+		stageArgs := []any{input.CollectionID}
+		if input.StageID != "" {
+			stageQuery += ` AND id = ?`
+			stageArgs = append(stageArgs, input.StageID)
+		} else {
+			stageQuery += ` ORDER BY sort_order, name LIMIT 1`
+		}
+		if err := s.store.db.QueryRowContext(r.Context(), stageQuery, stageArgs...).Scan(&input.StageID, &stageCategory); err != nil {
+			writeError(w, http.StatusBadRequest, "У доски нет доступного этапа")
+			return
+		}
+		input.Status = map[string]string{"backlog": "planned", "active": "in_progress", "review": "review", "done": "completed"}[stageCategory]
+		var err error
+		collectionFields, err = s.listCollectionFields(r.Context(), input.CollectionID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось загрузить поля доски")
+			return
+		}
+	}
 	if _, ok := recordTypes[input.Type]; !ok {
 		writeError(w, http.StatusBadRequest, "Неизвестный тип карточки")
 		return
@@ -888,7 +971,11 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	if input.Status == "" {
 		input.Status = defaultStatus(input.Type)
 	}
-	if !validStatusForType(input.Type, input.Status) || (input.Status == "completed" && input.Type != "decision") || input.Status == "archived" {
+	statusValid := validStatusForType(input.Type, input.Status)
+	if input.CollectionID != "" {
+		_, statusValid = recordStatuses[input.Status]
+	}
+	if !statusValid || (input.Status == "completed" && input.Type != "decision" && input.CollectionID == "") || input.Status == "archived" {
 		writeError(w, http.StatusBadRequest, "Некорректный начальный статус")
 		return
 	}
@@ -896,7 +983,7 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	if input.OwnerID == 0 {
 		input.OwnerID = user.ID
 	}
-	if !s.userExists(r.Context(), input.OwnerID) || (input.DecisionMakerID != nil && !s.userExists(r.Context(), *input.DecisionMakerID)) {
+	if !s.workspaceHasMember(r.Context(), workspaceID, input.OwnerID) || (input.DecisionMakerID != nil && !s.workspaceHasMember(r.Context(), workspaceID, *input.DecisionMakerID)) {
 		writeError(w, http.StatusBadRequest, "Указанный участник не найден")
 		return
 	}
@@ -953,6 +1040,43 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось создать идентификатор")
 		return
 	}
+	normalizedCustomFields := make(map[string]string)
+	if input.CollectionID != "" {
+		temporary := Record{ID: id, WorkspaceID: workspaceID, CollectionID: input.CollectionID}
+		knownFields := make(map[string]bool, len(collectionFields))
+		for _, field := range collectionFields {
+			knownFields[field.ID] = true
+		}
+		for fieldID := range input.CustomFields {
+			if !knownFields[fieldID] {
+				writeError(w, http.StatusBadRequest, "Одно из полей не относится к этой доске")
+				return
+			}
+		}
+		for _, field := range collectionFields {
+			raw, supplied := input.CustomFields[field.ID]
+			if !supplied {
+				if field.Required {
+					writeError(w, http.StatusBadRequest, fmt.Sprintf("Заполните обязательное поле «%s»", field.Name))
+					return
+				}
+				continue
+			}
+			normalized, empty, normalizeErr := s.normalizeCollectionFieldValue(r.Context(), temporary, field, raw)
+			if normalizeErr != nil {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("%s: %s", field.Name, normalizeErr.Error()))
+				return
+			}
+			if empty {
+				if field.Required {
+					writeError(w, http.StatusBadRequest, fmt.Sprintf("Заполните обязательное поле «%s»", field.Name))
+					return
+				}
+				continue
+			}
+			normalizedCustomFields[field.ID] = normalized
+		}
+	}
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось начать создание")
@@ -990,15 +1114,26 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	completedAt := any(nil)
 	progress := 0
-	if input.Type == "decision" {
+	if input.Type == "decision" || (input.CollectionID != "" && input.Status == "completed") {
 		completedAt = now
 		progress = 100
 	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, type, subtype, record_kind, business_kind, title, description, status, author_id, owner_id, decision_maker_id, due_at, priority, workstream, edit_policy, parent_id, is_root, estimate_minutes, actual_minutes, progress, completed_at, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, databaseType, subtype, recordKind, businessKind, input.Title, strings.TrimSpace(input.Description), input.Status, user.ID, input.OwnerID, input.DecisionMakerID, dueAt, input.Priority, input.Workstream, input.EditPolicy, parentID, input.IsRoot, input.EstimateMinutes, input.ActualMinutes, progress, completedAt, now, now)
+	var collectionID, stageID any
+	if input.CollectionID != "" {
+		collectionID = input.CollectionID
+		stageID = input.StageID
+	}
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, workspace_id, collection_id, stage_id, type, subtype, record_kind, business_kind, title, description, status, author_id, owner_id, decision_maker_id, due_at, priority, workstream, edit_policy, parent_id, is_root, estimate_minutes, actual_minutes, progress, completed_at, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, workspaceID, collectionID, stageID, databaseType, subtype, recordKind, businessKind, input.Title, strings.TrimSpace(input.Description), input.Status, user.ID, input.OwnerID, input.DecisionMakerID, dueAt, input.Priority, input.Workstream, input.EditPolicy, parentID, input.IsRoot, input.EstimateMinutes, input.ActualMinutes, progress, completedAt, now, now)
 	if err != nil {
 		log.Printf("create record: %v", err)
 		writeError(w, http.StatusInternalServerError, "Не удалось создать карточку")
 		return
+	}
+	for fieldID, valueJSON := range normalizedCustomFields {
+		if _, err = tx.ExecContext(r.Context(), `INSERT INTO record_field_values(record_id, field_id, value_json, updated_by, updated_at) VALUES(?, ?, ?, ?, ?)`, id, fieldID, valueJSON, user.ID, now); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось сохранить пользовательские поля")
+			return
+		}
 	}
 	if businessKind != "" || input.Type == "decision" || input.Type == "criterion" {
 		if err := saveBusinessDetails(r.Context(), tx, id, input.Type, input.BusinessDetails, user.ID, now); err != nil {
@@ -1230,7 +1365,7 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if input.OwnerID != nil {
-		if !s.userExists(r.Context(), *input.OwnerID) {
+		if !s.workspaceHasMember(r.Context(), before.WorkspaceID, *input.OwnerID) {
 			writeError(w, http.StatusBadRequest, "Ответственный не найден")
 			return
 		}
@@ -1240,7 +1375,7 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if input.DecisionMakerID != nil {
-		if !s.userExists(r.Context(), *input.DecisionMakerID) {
+		if !s.workspaceHasMember(r.Context(), before.WorkspaceID, *input.DecisionMakerID) {
 			writeError(w, http.StatusBadRequest, "Участник не найден")
 			return
 		}
@@ -2200,7 +2335,7 @@ func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) insertPartnerNotifications(ctx context.Context, tx *sql.Tx, actor User, record Record, title, body string) error {
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM users WHERE id <> ?`, actor.ID)
+	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM workspace_members WHERE workspace_id = ? AND status = 'active' AND user_id <> ?`, record.WorkspaceID, actor.ID)
 	if err != nil {
 		return err
 	}
@@ -2307,10 +2442,11 @@ func (s *Server) handlePendingQuestions(w http.ResponseWriter, r *http.Request) 
 		JOIN records r ON r.id = q.record_id
 		LEFT JOIN question_answers answer ON answer.question_id = q.id AND answer.author_id = ?
 		WHERE r.subtype = 'question_set'
+		  AND r.workspace_id = ?
 		  AND r.status NOT IN ('archived', 'cancelled')
 		  AND q.status = 'open'
 		  AND answer.id IS NULL
-		ORDER BY CASE WHEN r.due_at IS NULL THEN 1 ELSE 0 END, r.due_at, q.created_at`, user.ID)
+		ORDER BY CASE WHEN r.due_at IS NULL THEN 1 ELSE 0 END, r.due_at, q.created_at`, user.ID, currentWorkspace(r).ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить вопросы, ожидающие ответа")
 		return
@@ -2709,7 +2845,7 @@ func (s *Server) handleCreateQuestionOutput(w http.ResponseWriter, r *http.Reque
 	if input.OwnerID == 0 {
 		input.OwnerID = user.ID
 	}
-	if !s.userExists(r.Context(), input.OwnerID) {
+	if !s.workspaceHasMember(r.Context(), currentWorkspace(r).ID, input.OwnerID) {
 		writeError(w, http.StatusBadRequest, "Указанный участник не найден")
 		return
 	}
@@ -3116,8 +3252,8 @@ func (s *Server) handleReadAllNotifications(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
-	where := []string{"1 = 1"}
-	args := make([]any, 0)
+	where := []string{"a.workspace_id = ?"}
+	args := []any{currentWorkspace(r).ID}
 	limit := 200
 	if value, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && value > 0 {
 		limit = min(value, 500)

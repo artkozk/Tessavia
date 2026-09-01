@@ -15,6 +15,7 @@ type Workspace struct {
 	Kind         string `json:"kind"`
 	Role         string `json:"role"`
 	DeletePolicy string `json:"deletePolicy"`
+	Description  string `json:"description"`
 }
 
 type PersonalSettings struct {
@@ -95,7 +96,7 @@ type PersonalSuggestion struct {
 func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
 	rows, err := s.store.db.QueryContext(r.Context(), `
-		SELECT w.id, w.name, w.slug, w.kind, wm.role, w.delete_policy
+		SELECT w.id, w.name, w.slug, w.kind, wm.role, w.delete_policy, w.description
 		FROM workspaces w JOIN workspace_members wm ON wm.workspace_id = w.id
 		WHERE wm.user_id = ? AND wm.status = 'active'
 		ORDER BY CASE w.kind WHEN 'personal' THEN 0 ELSE 1 END, w.name`, user.ID)
@@ -107,7 +108,7 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	items := make([]Workspace, 0)
 	for rows.Next() {
 		var item Workspace
-		if err := rows.Scan(&item.ID, &item.Name, &item.Slug, &item.Kind, &item.Role, &item.DeletePolicy); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Slug, &item.Kind, &item.Role, &item.DeletePolicy, &item.Description); err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось прочитать пространства")
 			return
 		}
@@ -120,10 +121,10 @@ func (s *Server) handlePersonalOverview(w http.ResponseWriter, r *http.Request) 
 	user := currentUser(r)
 	var overview PersonalOverview
 	err := s.store.db.QueryRowContext(r.Context(), `
-		SELECT w.id, w.name, w.slug, w.kind, wm.role, w.delete_policy
+		SELECT w.id, w.name, w.slug, w.kind, wm.role, w.delete_policy, w.description
 		FROM workspaces w JOIN workspace_members wm ON wm.workspace_id = w.id
 		WHERE w.kind = 'personal' AND w.owner_id = ? AND wm.user_id = ? AND wm.status = 'active'`, user.ID, user.ID).
-		Scan(&overview.Workspace.ID, &overview.Workspace.Name, &overview.Workspace.Slug, &overview.Workspace.Kind, &overview.Workspace.Role, &overview.Workspace.DeletePolicy)
+		Scan(&overview.Workspace.ID, &overview.Workspace.Name, &overview.Workspace.Slug, &overview.Workspace.Kind, &overview.Workspace.Role, &overview.Workspace.DeletePolicy, &overview.Workspace.Description)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Личное пространство не настроено")
 		return

@@ -39,18 +39,18 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 				COALESCE(b.mitigation_md, '') || ' ' || COALESCE(b.metric, '') || ' ' ||
 				COALESCE(b.success_threshold, '') || ' ' || COALESCE(b.experiment_method_md, '') || ' ' ||
 				COALESCE(b.applicability, '') || ' ' || COALESCE(b.source_excerpt_md, '') AS context,
-				r.status AS status, r.updated_at AS updated_at, 1 AS rank
+				r.status AS status, r.updated_at AS updated_at, r.workspace_id AS workspace_id, 1 AS rank
 			FROM records r
 			LEFT JOIN record_business_details b ON b.record_id = r.id
 			WHERE r.status <> 'archived'
 			UNION ALL
 			SELECT 'question:' || q.id, 'question', q.record_id, q.id, '', 'questions', 'question', q.body,
-				'Вопрос в «' || r.title || '»', q.status, q.updated_at, 2
+				'Вопрос в «' || r.title || '»', q.status, q.updated_at, r.workspace_id, 2
 			FROM question_items q JOIN records r ON r.id = q.record_id
 			WHERE r.status <> 'archived' AND q.status <> 'archived'
 			UNION ALL
 			SELECT 'answer:' || a.id, 'answer', q.record_id, q.id, '', 'questions', 'answer', 'Ответ ' || u.username,
-				a.content, 'completed', a.updated_at, 3
+				a.content, 'completed', a.updated_at, r.workspace_id, 3
 			FROM question_answers a
 			JOIN question_items q ON q.id = a.question_id
 			JOIN records r ON r.id = q.record_id
@@ -58,7 +58,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			WHERE r.status <> 'archived' AND q.status <> 'archived'
 			UNION ALL
 			SELECT 'decision:' || d.id, 'joint_decision', q.record_id, q.id, '', 'questions', 'joint_decision', 'Совместный итог',
-				d.content, 'completed', d.updated_at, 4
+				d.content, 'completed', d.updated_at, r.workspace_id, 4
 			FROM question_decisions d
 			JOIN question_items q ON q.id = d.question_id
 			JOIN records r ON r.id = q.record_id
@@ -66,34 +66,34 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			UNION ALL
 			SELECT 'research-option:' || o.id, 'research_option', o.record_id, '', o.id, 'content', 'research', o.title,
 				o.summary_md || ' ' || o.pros_md || ' ' || o.cons_md || ' ' || o.notes_md || ' ' || COALESCE((SELECT GROUP_CONCAT(v.value, ' ') FROM research_option_values v WHERE v.option_id = o.id), ''),
-				'active', o.updated_at, 5
+				'active', o.updated_at, r.workspace_id, 5
 			FROM research_options o
 			JOIN records r ON r.id = o.record_id
 			WHERE r.status <> 'archived' AND o.status = 'active'
 			UNION ALL
 			SELECT 'section:' || s.id, 'section', s.record_id, '', '', 'content',
 				CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
-				s.title, s.content, r.status, s.updated_at, 6
+				s.title, s.content, r.status, s.updated_at, r.workspace_id, 6
 			FROM record_sections s
 			JOIN records r ON r.id = s.record_id
 			WHERE r.status <> 'archived'
 			UNION ALL
 			SELECT 'comment:' || c.id, 'comment', c.record_id, '', '', 'discussion',
 				CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
-				'Комментарий ' || u.username, c.body, r.status, c.created_at, 7
+				'Комментарий ' || u.username, c.body, r.status, c.created_at, r.workspace_id, 7
 			FROM record_comments c
 			JOIN records r ON r.id = c.record_id
 			JOIN users u ON u.id = c.author_id
 			WHERE r.status <> 'archived'
 			UNION ALL
 			SELECT 'checklist:' || i.id, 'checklist', i.record_id, '', '', 'execution', 'task',
-				'Шаг: ' || i.title, i.proof_text, i.status, i.updated_at, 8
+				'Шаг: ' || i.title, i.proof_text, i.status, i.updated_at, r.workspace_id, 8
 			FROM checklist_items i
 			JOIN records r ON r.id = i.record_id
 			WHERE r.status <> 'archived'
 			UNION ALL
 			SELECT 'proof:' || p.id, 'proof', p.record_id, '', '', 'execution', 'task',
-				'Доказательство ' || u.username, p.content, 'completed', p.created_at, 9
+				'Доказательство ' || u.username, p.content, 'completed', p.created_at, r.workspace_id, 9
 			FROM task_proofs p
 			JOIN records r ON r.id = p.record_id
 			JOIN users u ON u.id = p.author_id
@@ -101,13 +101,13 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			UNION ALL
 			SELECT 'attachment:' || a.id, 'attachment', a.record_id, '', '', 'files',
 				CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' WHEN r.record_kind = 'meeting' THEN 'meeting' ELSE r.type END,
-				a.original_name, a.content_type, r.status, a.created_at, 10
+				a.original_name, a.content_type, r.status, a.created_at, r.workspace_id, 10
 			FROM record_attachments a
 			JOIN records r ON r.id = a.record_id
 			WHERE r.status <> 'archived'
-		)
+		) WHERE workspace_id = ?
 		ORDER BY rank, updated_at DESC
-		LIMIT 10000`)
+		LIMIT 10000`, currentWorkspace(r).ID)
 	if err != nil {
 		log.Printf("search: %v", err)
 		writeError(w, http.StatusInternalServerError, "Не удалось выполнить поиск")

@@ -95,17 +95,23 @@ type AIChatDigest struct {
 }
 
 func (s *Server) ensureTeamChat(ctx context.Context, actorID int64) (string, error) {
-	const teamID = "team-chat-general"
+	workspaceID := workspaceIDFromContext(ctx)
+	teamID := "team-chat-" + workspaceID
 	now := nowText()
 	tx, err := s.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO chat_threads(id, kind, title, created_by, created_at, updated_at) VALUES(?, 'team', 'Команда', ?, ?, ?)`, teamID, actorID, now, now); err != nil {
+	var existingID string
+	if queryErr := tx.QueryRowContext(ctx, `SELECT id FROM chat_threads WHERE workspace_id = ? AND kind = 'team'`, workspaceID).Scan(&existingID); queryErr == nil {
+		teamID = existingID
+	} else if !errors.Is(queryErr, sql.ErrNoRows) {
+		return "", queryErr
+	} else if _, err = tx.ExecContext(ctx, `INSERT INTO chat_threads(id, workspace_id, kind, title, created_by, created_at, updated_at) VALUES(?, ?, 'team', 'Команда', ?, ?, ?)`, teamID, workspaceID, actorID, now, now); err != nil {
 		return "", err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO chat_members(thread_id, user_id, last_read_at, joined_at) SELECT ?, id, '', ? FROM users`, teamID, now); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO chat_members(thread_id, user_id, last_read_at, joined_at) SELECT ?, user_id, '', ? FROM workspace_members WHERE workspace_id = ? AND status = 'active'`, teamID, now, workspaceID); err != nil {
 		return "", err
 	}
 	return teamID, tx.Commit()
@@ -113,7 +119,7 @@ func (s *Server) ensureTeamChat(ctx context.Context, actorID int64) (string, err
 
 func (s *Server) requireChatMember(w http.ResponseWriter, r *http.Request, threadID string) bool {
 	var exists int
-	err := s.store.db.QueryRowContext(r.Context(), `SELECT 1 FROM chat_members WHERE thread_id = ? AND user_id = ?`, threadID, currentUser(r).ID).Scan(&exists)
+	err := s.store.db.QueryRowContext(r.Context(), `SELECT 1 FROM chat_members member JOIN chat_threads thread ON thread.id = member.thread_id WHERE member.thread_id = ? AND member.user_id = ? AND thread.workspace_id = ?`, threadID, currentUser(r).ID, currentWorkspace(r).ID).Scan(&exists)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusForbidden, "Нет доступа к этому диалогу")
 		return false
@@ -136,13 +142,14 @@ func (s *Server) handleListChatThreads(w http.ResponseWriter, r *http.Request) {
 			COALESCE((SELECT CASE WHEN m.message_type = 'voice' THEN 'Голосовое сообщение' WHEN m.message_type = 'file' THEN 'Файл' WHEN m.message_type = 'call' THEN 'Звонок' ELSE m.body END FROM chat_messages m WHERE m.thread_id = t.id AND m.archived_at IS NULL ORDER BY m.created_at DESC LIMIT 1), ''),
 			COALESCE((SELECT m.created_at FROM chat_messages m WHERE m.thread_id = t.id AND m.archived_at IS NULL ORDER BY m.created_at DESC LIMIT 1), t.updated_at),
 			(SELECT COUNT(*) FROM chat_messages m WHERE m.thread_id = t.id AND m.author_id <> ? AND m.archived_at IS NULL AND m.created_at > cm.last_read_at),
-			COALESCE((SELECT username FROM users WHERE id <> ? ORDER BY id LIMIT 1), ''),
-			COALESCE((SELECT MAX(last_seen_at) FROM user_activity_daily WHERE user_id = (SELECT id FROM users WHERE id <> ? ORDER BY id LIMIT 1)), ''),
+			COALESCE((SELECT u.username FROM workspace_members wm JOIN users u ON u.id = wm.user_id WHERE wm.workspace_id = t.workspace_id AND wm.status = 'active' AND wm.user_id <> ? ORDER BY u.id LIMIT 1), ''),
+			COALESCE((SELECT MAX(last_seen_at) FROM user_activity_daily WHERE user_id = (SELECT wm.user_id FROM workspace_members wm WHERE wm.workspace_id = t.workspace_id AND wm.status = 'active' AND wm.user_id <> ? ORDER BY wm.user_id LIMIT 1)), ''),
 			t.updated_at
 		FROM chat_threads t
 		JOIN chat_members cm ON cm.thread_id = t.id AND cm.user_id = ?
 		LEFT JOIN records rec ON rec.id = t.record_id
-		ORDER BY COALESCE((SELECT MAX(created_at) FROM chat_messages WHERE thread_id = t.id), t.updated_at) DESC`, user.ID, user.ID, user.ID, user.ID)
+		WHERE t.workspace_id = ?
+		ORDER BY COALESCE((SELECT MAX(created_at) FROM chat_messages WHERE thread_id = t.id), t.updated_at) DESC`, user.ID, user.ID, user.ID, user.ID, currentWorkspace(r).ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить диалоги")
 		return
@@ -202,11 +209,11 @@ func (s *Server) handleCreateChatThread(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(r.Context(), `INSERT INTO chat_threads(id, kind, title, record_id, created_by, created_at, updated_at) VALUES(?, 'record', ?, ?, ?, ?, ?)`, id, input.Title, record.ID, currentUser(r).ID, now, now); err != nil {
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO chat_threads(id, workspace_id, kind, title, record_id, created_by, created_at, updated_at) VALUES(?, ?, 'record', ?, ?, ?, ?, ?)`, id, currentWorkspace(r).ID, input.Title, record.ID, currentUser(r).ID, now, now); err != nil {
 		writeError(w, 500, "Не удалось создать ветку")
 		return
 	}
-	if _, err = tx.ExecContext(r.Context(), `INSERT INTO chat_members(thread_id, user_id, last_read_at, joined_at) SELECT ?, id, '', ? FROM users`, id, now); err != nil {
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO chat_members(thread_id, user_id, last_read_at, joined_at) SELECT ?, user_id, '', ? FROM workspace_members WHERE workspace_id = ? AND status = 'active'`, id, now, currentWorkspace(r).ID); err != nil {
 		writeError(w, 500, "Не удалось добавить участников")
 		return
 	}

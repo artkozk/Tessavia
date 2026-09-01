@@ -38,6 +38,7 @@ type QualityReport struct {
 type qualityRecord struct {
 	ID            string
 	Type          string
+	CollectionID  string
 	Title         string
 	Status        string
 	ParentID      string
@@ -71,16 +72,12 @@ func (s *Server) listTeamCapacity(r *http.Request) ([]TeamCapacity, error) {
 		FROM users u
 		LEFT JOIN user_work_capacity c ON c.user_id = u.id
 		LEFT JOIN records rec ON rec.owner_id = u.id
+			AND rec.workspace_id = ?
 			AND rec.status NOT IN ('completed', 'cancelled', 'archived', 'rejected')
 			AND (rec.type IN ('task', 'research', 'disagreement') OR rec.subtype = 'question_set' OR rec.record_kind = 'meeting' OR rec.business_kind IN ('risk', 'hypothesis', 'experiment'))
-		WHERE u.id = ? OR EXISTS (
-			SELECT 1 FROM workspace_members viewer
-			JOIN workspace_members target ON target.workspace_id = viewer.workspace_id
-			WHERE viewer.user_id = ? AND viewer.status = 'active'
-				AND target.user_id = u.id AND target.status = 'active'
-		)
+		JOIN workspace_members member ON member.user_id = u.id AND member.workspace_id = ? AND member.status = 'active'
 		GROUP BY u.id, u.username, u.display_name, u.bio, u.created_at, u.avatar_stored_name, u.avatar_updated_at, c.weekly_minutes
-		ORDER BY u.username`, start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano), start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano), currentUser(r).ID, currentUser(r).ID)
+		ORDER BY u.username`, start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano), start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano), currentWorkspace(r).ID, currentWorkspace(r).ID)
 	if err != nil {
 		return nil, err
 	}
@@ -172,13 +169,13 @@ func publicRecordType(databaseType, subtype, recordKind, businessKind string) st
 
 func (s *Server) loadQualityRecords(r *http.Request) ([]qualityRecord, error) {
 	rows, err := s.store.db.QueryContext(r.Context(), `
-		SELECT r.id, r.type, r.subtype, r.record_kind, r.business_kind, r.title, r.status,
+		SELECT r.id, r.type, r.subtype, r.record_kind, r.business_kind, COALESCE(r.collection_id, ''), r.title, r.status,
 			COALESCE(r.parent_id, ''), r.is_root, r.result, r.updated_at,
 			COALESCE(b.review_at, ''), COALESCE(b.source_excerpt_md, ''),
 			(SELECT COUNT(*) FROM record_links l WHERE l.active = 1 AND (l.source_id = r.id OR l.target_id = r.id))
 		FROM records r
 		LEFT JOIN record_business_details b ON b.record_id = r.id
-		WHERE r.status <> 'archived'`)
+		WHERE r.workspace_id = ? AND r.status <> 'archived'`, currentWorkspace(r).ID)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +184,7 @@ func (s *Server) loadQualityRecords(r *http.Request) ([]qualityRecord, error) {
 	for rows.Next() {
 		var item qualityRecord
 		var databaseType, subtype, recordKind, businessKind string
-		if err := rows.Scan(&item.ID, &databaseType, &subtype, &recordKind, &businessKind, &item.Title, &item.Status, &item.ParentID, &item.IsRoot, &item.Result, &item.UpdatedAt, &item.ReviewAt, &item.SourceExcerpt, &item.LinkCount); err != nil {
+		if err := rows.Scan(&item.ID, &databaseType, &subtype, &recordKind, &businessKind, &item.CollectionID, &item.Title, &item.Status, &item.ParentID, &item.IsRoot, &item.Result, &item.UpdatedAt, &item.ReviewAt, &item.SourceExcerpt, &item.LinkCount); err != nil {
 			return nil, err
 		}
 		item.Type = publicRecordType(databaseType, subtype, recordKind, businessKind)
@@ -220,7 +217,7 @@ func (s *Server) handleQualityReport(w http.ResponseWriter, r *http.Request) {
 			titles[normalizedTitle] = append(titles[normalizedTitle], record)
 		}
 		active := record.Status != "completed" && record.Status != "cancelled" && record.Status != "rejected"
-		if active && record.ParentID == "" && !record.IsRoot && record.LinkCount == 0 && record.Type != "inbox" {
+		if active && record.CollectionID == "" && record.ParentID == "" && !record.IsRoot && record.LinkCount == 0 && record.Type != "inbox" {
 			addQualityIssue(&report, QualityIssue{Code: "orphan", Severity: "warning", RecordID: record.ID, RecordType: record.Type, Title: record.Title, Message: "Карточка не имеет родителя и смысловых связей"})
 		}
 		if record.Status == "completed" && strings.TrimSpace(record.Result) == "" && containsString([]string{"task", "research", "hypothesis", "experiment"}, record.Type) {
@@ -292,12 +289,13 @@ func (s *Server) handleIncrementalSync(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Некорректный курсор истории")
 		return
 	}
-	query := recordSelect + ` WHERE julianday(r.updated_at) >= julianday(?) OR EXISTS (
+	workspaceID := currentWorkspace(r).ID
+	query := recordSelect + ` WHERE r.workspace_id = ? AND (julianday(r.updated_at) >= julianday(?) OR EXISTS (
 		SELECT 1 FROM record_links dependency
 		JOIN records target ON target.id = dependency.target_id
 		WHERE dependency.source_id = r.id AND dependency.active = 1 AND dependency.relation_type = 'depends_on' AND julianday(target.updated_at) >= julianday(?)
-	) ORDER BY r.updated_at LIMIT 500`
-	rows, err := s.store.db.QueryContext(r.Context(), query, recordsSince, recordsSince)
+	)) ORDER BY r.updated_at LIMIT 500`
+	rows, err := s.store.db.QueryContext(r.Context(), query, workspaceID, recordsSince, recordsSince)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось синхронизировать карточки")
 		return
@@ -315,6 +313,10 @@ func (s *Server) handleIncrementalSync(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 	if err := s.attachActiveBlockers(r.Context(), records); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось обновить зависимости")
+		return
+	}
+	if err := s.attachCustomFields(r.Context(), records); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось обновить пользовательские поля")
 		return
 	}
 	activities, err := s.listActivitySince(r.Context(), activitySince, 200)
@@ -337,7 +339,7 @@ func containsString(values []string, value string) bool {
 }
 
 func (s *Server) listActivitySince(ctx context.Context, since string, limit int) ([]Activity, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT a.id, a.actor_id, u.username, a.entity_type, a.entity_id, a.action, a.details_json, a.reason, a.created_at FROM activity a JOIN users u ON u.id = a.actor_id WHERE julianday(a.created_at) >= julianday(?) ORDER BY a.created_at ASC LIMIT ?`, since, limit)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT a.id, a.actor_id, u.username, a.entity_type, a.entity_id, a.action, a.details_json, a.reason, a.created_at FROM activity a JOIN users u ON u.id = a.actor_id WHERE a.workspace_id = ? AND julianday(a.created_at) >= julianday(?) ORDER BY a.created_at ASC LIMIT ?`, workspaceIDFromContext(ctx), since, limit)
 	if err != nil {
 		return nil, err
 	}

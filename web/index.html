@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#faf9f5">
   <title>BizFlow</title>
-  <link rel="stylesheet" href="/styles.css?v=20260901-profile-avatar-1">
+  <link rel="stylesheet" href="/styles.css?v=20260902-crm-constructor-1">
 </head>
 <body>
   <div id="auth-root" class="auth-root" hidden>
@@ -44,6 +44,7 @@
   <div id="app-root" class="app-shell" hidden>
     <aside class="sidebar" aria-hidden="true" inert>
       <div class="brand"><span class="brand-mark small"><span class="brand-symbol"><i></i><i></i></span></span><span><strong>BizFlow</strong><small>пространство основателей</small></span><button type="button" class="sidebar-close icon-button" id="sidebar-close" aria-label="Закрыть меню"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+      <div id="workspace-control" class="workspace-control"></div>
       <nav id="main-nav" class="main-nav" aria-label="Разделы"></nav>
       <div class="sidebar-footer">
         <button type="button" class="user-button" id="profile-button"><span class="avatar" id="user-avatar"></span><span><strong id="user-name"></strong><small>Профиль</small></span></button>
@@ -75,11 +76,12 @@
   <dialog id="onboarding-dialog" class="onboarding-dialog"><div id="onboarding-dialog-content" class="onboarding-layout"></div></dialog>
   <dialog id="profile-dialog" class="profile-dialog"><div id="profile-dialog-content"></div></dialog>
   <dialog id="personal-dialog" class="create-dialog personal-dialog"><div id="personal-dialog-content"></div></dialog>
+  <dialog id="workspace-dialog" class="create-dialog workspace-dialog"><div id="workspace-dialog-content"></div></dialog>
   <dialog id="notebook-dialog" class="notebook-dialog"><div id="notebook-dialog-content"></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/vendor/cytoscape-3.34.1.min.js"></script>
   <script src="/vendor/marked-18.0.9.umd.js"></script>
   <script src="/vendor/dompurify-3.4.13.min.js"></script>
-  <script type="module" src="/app.js?v=20260901-profile-avatar-1"></script>
+  <script type="module" src="/app.js?v=20260902-crm-constructor-1"></script>
 </body>
 </html>

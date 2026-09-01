@@ -55,7 +55,8 @@ func (s *Server) listPlanningCycles(r *http.Request) (PlanningCyclesResponse, er
 	rows, err := s.store.db.QueryContext(r.Context(), `
 		SELECT c.id, c.title, c.start_date, c.status, c.created_by, u.username, c.created_at, c.updated_at
 		FROM planning_cycles c JOIN users u ON u.id = c.created_by
-		ORDER BY c.start_date DESC, c.created_at DESC LIMIT 24`)
+		WHERE c.workspace_id = ?
+		ORDER BY c.start_date DESC, c.created_at DESC LIMIT 24`, currentWorkspace(r).ID)
 	if err != nil {
 		return PlanningCyclesResponse{}, err
 	}
@@ -117,7 +118,8 @@ func (s *Server) handleCreatePlanningCycle(w http.ResponseWriter, r *http.Reques
 	}
 	defer tx.Rollback()
 	var previousID, previousTitle string
-	previousErr := tx.QueryRowContext(r.Context(), `SELECT id, title FROM planning_cycles WHERE status = 'active' LIMIT 1`).Scan(&previousID, &previousTitle)
+	workspaceID := currentWorkspace(r).ID
+	previousErr := tx.QueryRowContext(r.Context(), `SELECT id, title FROM planning_cycles WHERE workspace_id = ? AND status = 'active' LIMIT 1`, workspaceID).Scan(&previousID, &previousTitle)
 	if previousErr != nil && !errors.Is(previousErr, sql.ErrNoRows) {
 		writeError(w, http.StatusInternalServerError, "Не удалось проверить активный цикл")
 		return
@@ -136,7 +138,7 @@ func (s *Server) handleCreatePlanningCycle(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
-	if _, err = tx.ExecContext(r.Context(), `INSERT INTO planning_cycles(id, title, start_date, status, created_by, created_at, updated_at) VALUES(?, ?, ?, 'active', ?, ?, ?)`, id, input.Title, start.Format(planningDateLayout), user.ID, now, now); err != nil {
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO planning_cycles(id, workspace_id, title, start_date, status, created_by, created_at, updated_at) VALUES(?, ?, ?, ?, 'active', ?, ?, ?)`, id, workspaceID, input.Title, start.Format(planningDateLayout), user.ID, now, now); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить цикл")
 		return
 	}
@@ -170,7 +172,7 @@ func (s *Server) handleUpdatePlanningCycle(w http.ResponseWriter, r *http.Reques
 	var before PlanningCycle
 	row := s.store.db.QueryRowContext(r.Context(), `
 		SELECT c.id, c.title, c.start_date, c.status, c.created_by, u.username, c.created_at, c.updated_at
-		FROM planning_cycles c JOIN users u ON u.id = c.created_by WHERE c.id = ?`, r.PathValue("id"))
+		FROM planning_cycles c JOIN users u ON u.id = c.created_by WHERE c.id = ? AND c.workspace_id = ?`, r.PathValue("id"), currentWorkspace(r).ID)
 	before, err := scanPlanningCycle(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "Цикл не найден")
@@ -233,7 +235,7 @@ func (s *Server) handleUpdatePlanningCycle(w http.ResponseWriter, r *http.Reques
 	}
 	defer tx.Rollback()
 	if status == "active" {
-		if _, err = tx.ExecContext(r.Context(), `UPDATE planning_cycles SET status = 'archived', updated_at = ? WHERE status = 'active' AND id <> ?`, now, before.ID); err != nil {
+		if _, err = tx.ExecContext(r.Context(), `UPDATE planning_cycles SET status = 'archived', updated_at = ? WHERE workspace_id = ? AND status = 'active' AND id <> ?`, now, currentWorkspace(r).ID, before.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось переключить активный цикл")
 			return
 		}

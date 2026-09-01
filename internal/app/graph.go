@@ -51,12 +51,12 @@ func graphResearchOptionID(id string) string { return "research-option:" + id }
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	startedAt := time.Now()
 	includeArchived := r.URL.Query().Get("includeArchived") == "true"
-	archiveFilter := ""
+	archiveFilter := " WHERE r.workspace_id = ?"
 	if !includeArchived {
-		archiveFilter = " WHERE r.status <> 'archived'"
+		archiveFilter += " AND r.status <> 'archived'"
 	}
 
-	rows, err := s.store.db.QueryContext(r.Context(), recordSelect+archiveFilter+" ORDER BY r.updated_at DESC LIMIT 2000")
+	rows, err := s.store.db.QueryContext(r.Context(), recordSelect+archiveFilter+" ORDER BY r.updated_at DESC LIMIT 2000", currentWorkspace(r).ID)
 	if err != nil {
 		log.Printf("graph records: %v", err)
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить карточки карты")

@@ -39,6 +39,11 @@ type User struct {
 
 type Record struct {
 	ID                string                 `json:"id"`
+	WorkspaceID       string                 `json:"workspaceId"`
+	CollectionID      string                 `json:"collectionId,omitempty"`
+	CollectionName    string                 `json:"collectionName,omitempty"`
+	StageID           string                 `json:"stageId,omitempty"`
+	StageName         string                 `json:"stageName,omitempty"`
 	Type              string                 `json:"type"`
 	Kind              string                 `json:"kind"`
 	Title             string                 `json:"title"`
@@ -67,6 +72,7 @@ type Record struct {
 	ProofCount        int                    `json:"proofCount"`
 	BusinessDetails   *RecordBusinessDetails `json:"businessDetails,omitempty"`
 	Blockers          []RecordBlocker        `json:"blockers"`
+	CustomFields      map[string]any         `json:"customFields"`
 }
 
 type RecordBlocker struct {
@@ -367,6 +373,10 @@ func writeActivityWithID(ctx context.Context, tx *sql.Tx, actorID int64, entityT
 	if err != nil {
 		return "", err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO activity(id, actor_id, entity_type, entity_id, action, details_json, reason, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, id, actorID, entityType, entityID, action, string(body), reason, nowText())
+	workspaceID := workspaceIDFromContext(ctx)
+	if workspaceID == "" {
+		workspaceID = "bizflow-team"
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO activity(id, actor_id, entity_type, entity_id, action, details_json, reason, created_at, workspace_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, actorID, entityType, entityID, action, string(body), reason, nowText(), workspaceID)
 	return id, err
 }
