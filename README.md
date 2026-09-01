@@ -421,4 +421,4 @@ Gemini теперь настроен как Google Vertex AI Express Mode с м�
 173. Интеграционный тест проверяет поддельный файл, чтение партнёром, запрет постороннему, замену без остаточных файлов и полное удаление.
 174. Профиль и редактор фото проверены в реальном браузере на desktop, 390 и 320 пикселях; горизонтального переполнения и ошибок консоли нет.
 
-Пользовательский сценарий описан в `docs/product/BIZFLOW_PROFILE_AVATAR_RELEASE_2026_09_01.md`, серверные и файловые гарантии — в `docs/architecture/PROFILE_AVATAR_SECURITY_CONTRACT_2026_09_01.md`.
+Пользовательский сценарий описан в `docs/product/BIZFLOW_PROFILE_AVATAR_RELEASE_2026_09_01.md`, серверные и файловые гарантии — в `docs/architecture/PROFILE_AVATAR_SECURITY_CONTRACT_2026_09_01.md`, фактические backup, dry-run, rollback первой попытки и успешное production-переключение — в `docs/operations/BIZFLOW_PROFILE_AVATAR_DEPLOY_2026_09_01.md`.
