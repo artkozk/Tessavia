@@ -420,6 +420,8 @@ Gemini теперь настроен как Google Vertex AI Express Mode с м�
 
 Продуктовый сценарий описан в `docs/product/BIZFLOW_PERSONAL_WRITING_RELEASE_2026_09_02.md`, а правила данных, истории, черновиков и мобильного поведения — в `docs/architecture/PERSONAL_WRITING_UX_CONTRACT_2026_09_02.md`.
 
+Фактические проверки, backup, dry-run, production-переключение и авторизованный smoke записаны в `docs/operations/BIZFLOW_PERSONAL_WRITING_DEPLOY_2026_09_02.md`.
+
 ## Актуальная стабильность мобильной вёрстки от 1 сентября 2026 года
 
 155. В мобильной карточке тип и действия находятся в первой строке, а название использует полную ширину следующей строки.
