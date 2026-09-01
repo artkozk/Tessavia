@@ -36,7 +36,7 @@
 
 * { box-sizing: border-box; }
 html { font-family: "Onest Local", "Inter Local", "Segoe UI", sans-serif; background: var(--bg); font-size: 14px; }
-body { margin: 0; min-width: 320px; background: var(--bg); color: var(--ink); }
+body { margin: 0; min-width: 0; background: var(--bg); color: var(--ink); }
 html:has(dialog[open]), body:has(dialog[open]) { overflow: hidden; }
 html:has(dialog[open]) { scrollbar-width: none; }
 html:has(dialog[open])::-webkit-scrollbar { display: none; }
@@ -3019,4 +3019,75 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
   .life-meta { flex-wrap: wrap; }
   .life-meta .text-button { margin-left: 0; }
   .personal-plan { grid-template-columns: 32px minmax(0, 1fr) 34px; }
+}
+
+/* Mobile layout stability: keep dense work rows, card navigation and graph
+   controls inside the viewport without changing the established palette. */
+.record-tab-select { display: none; }
+.outcome-filter, .personal-tabs { scrollbar-width: none; }
+.outcome-filter::-webkit-scrollbar, .personal-tabs::-webkit-scrollbar { display: none; }
+
+@media (max-width: 560px) {
+  .focus-record {
+    min-height: 0;
+    grid-template-columns: 30px minmax(0, 1fr) 16px;
+    gap: 7px 9px;
+    padding: 10px 2px;
+  }
+  .focus-record.primary-focus { min-height: 0; padding: 11px 8px; }
+  .focus-marker { width: 30px; height: 30px; }
+  .focus-copy { gap: 2px; }
+  .focus-copy small { line-height: 1.25; }
+  .focus-copy strong {
+    display: -webkit-box;
+    overflow: hidden;
+    line-height: 1.28;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .focus-copy > span { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .focus-copy .priority, .focus-copy .deadline { padding: 3px 7px; font-size: 10px; }
+  .focus-progress {
+    width: 100%;
+    display: grid;
+    grid-column: 2;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: center;
+    gap: 7px;
+    text-align: left;
+  }
+  .focus-progress b { line-height: 1; }
+  .focus-record > .row-chevron { grid-column: 3; grid-row: 1 / span 2; }
+
+  .record-dialog-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px 10px;
+  }
+  .record-dialog-header > div:first-child { display: contents; }
+  .record-dialog-header .record-kind { grid-column: 1; grid-row: 1; min-width: 0; align-self: center; }
+  .record-dialog-header > .record-header-actions,
+  .record-dialog-header > .close-button { grid-column: 2; grid-row: 1; }
+  .record-dialog-header h2 { width: 100%; grid-column: 1 / -1; grid-row: 2; overflow-wrap: anywhere; }
+  .record-dialog-header p { min-width: 0; grid-column: 1 / -1; grid-row: 3; overflow-wrap: anywhere; }
+  .record-tabs { display: none; }
+  .record-tab-select {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .record-tab-select > span { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .record-tab-select select { width: 100%; min-width: 0; min-height: 40px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 8px 10px; font: inherit; }
+
+  .outcome-filter { width: 100%; }
+}
+
+@media (max-width: 340px) {
+  .personal-tabs .segment { min-width: 0; padding-inline: 4px; font-size: 10px; }
 }

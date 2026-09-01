@@ -3148,7 +3148,7 @@ function graphLayoutOptions(randomize = false, nodeCount = state.graphInstance?.
     gravity: .02 + state.graphCenterForce * .0036,
     componentSpacing: compact ? 124 : 132, nestingFactor: 1.15,
     numIter: compact ? 900 : 1300, initialTemp: 170, coolingFactor: .96, minTemp: 1,
-    fit: true, padding: window.innerWidth <= 560 ? 30 : 64, nodeDimensionsIncludeLabels: true,
+    fit: true, padding: window.innerWidth <= 560 ? 44 : 64, nodeDimensionsIncludeLabels: true,
   };
 }
 
@@ -3156,6 +3156,11 @@ function updateGraphZoomStyles() {
   const cy = state.graphInstance;
   if (!cy) return;
   const zoom = cy.zoom();
+  if (window.innerWidth <= 560 && cy.nodes().length <= 18) {
+    cy.nodes().removeClass('zoom-compact').removeClass('zoom-hidden');
+    cy.edges().toggleClass('zoom-hidden', zoom < .38);
+    return;
+  }
   const fadeThreshold = window.innerWidth <= 560 ? .16 + state.graphTextFade * .0055 : .24 + state.graphTextFade * .009;
   cy.nodes().toggleClass('zoom-compact', zoom < fadeThreshold + .16).toggleClass('zoom-hidden', zoom < fadeThreshold);
   cy.edges().toggleClass('zoom-hidden', zoom < fadeThreshold + .12);
@@ -3170,7 +3175,10 @@ function ensureReadableGraphView(cy) {
     cy.center(cy.nodes());
     return;
   }
-  const minimumZoom = nodeCount <= 18 ? (window.innerWidth <= 560 ? .62 : .9) : (window.innerWidth <= 560 ? .52 : .76);
+  // On narrow screens the fitted zoom is the only scale guaranteed to keep
+  // labels inside the canvas. Raising it afterwards cropped edge nodes.
+  if (window.innerWidth <= 560) return;
+  const minimumZoom = nodeCount <= 18 ? .9 : .76;
   if (cy.zoom() >= minimumZoom) return;
   cy.zoom(minimumZoom);
   cy.center(cy.nodes());
@@ -3204,10 +3212,11 @@ function mountGraph() {
   ];
   const container = $('#relationship-graph');
   container.innerHTML = '';
+  const compactGraphViewport = window.innerWidth <= 560;
   const cy = window.cytoscape({
     container, elements, minZoom: .1, maxZoom: 3, boxSelectionEnabled: true,
     style: [
-      { selector: 'node', style: { shape: 'ellipse', width: 'data(size)', height: 'data(size)', label: 'data(label)', 'font-family': 'Onest Local, sans-serif', 'font-size': 12, 'font-weight': 600, color: '#eef4f1', 'text-wrap': 'wrap', 'text-max-width': 148, 'text-valign': 'bottom', 'text-margin-y': 11, 'text-halign': 'center', 'line-height': 1.25, 'text-background-color': '#171d1a', 'text-background-opacity': .78, 'text-background-padding': 3, 'background-color': 'data(color)', 'background-opacity': .9, 'border-width': 1.5, 'border-color': '#e5eee9', 'border-opacity': .52, 'overlay-opacity': 0, 'transition-property': 'opacity, border-width, border-color, background-opacity, width, height', 'transition-duration': '.16s' } },
+      { selector: 'node', style: { shape: 'ellipse', width: 'data(size)', height: 'data(size)', label: 'data(label)', 'font-family': 'Onest Local, sans-serif', 'font-size': compactGraphViewport ? 13 : 12, 'font-weight': 600, color: '#eef4f1', 'text-wrap': 'wrap', 'text-max-width': compactGraphViewport ? 104 : 148, 'text-valign': 'bottom', 'text-margin-y': compactGraphViewport ? 8 : 11, 'text-halign': 'center', 'line-height': 1.25, 'text-background-color': '#171d1a', 'text-background-opacity': .78, 'text-background-padding': 3, 'background-color': 'data(color)', 'background-opacity': .9, 'border-width': 1.5, 'border-color': '#e5eee9', 'border-opacity': .52, 'overlay-opacity': 0, 'transition-property': 'opacity, border-width, border-color, background-opacity, width, height', 'transition-duration': '.16s' } },
       { selector: 'node.is-root', style: { 'border-width': 3, 'border-color': '#f6fbf8', 'background-opacity': 1, 'font-size': 12, 'font-weight': 700 } },
       { selector: 'node.kind-joint_decision', style: { shape: 'diamond' } },
       { selector: 'node.kind-question', style: { shape: 'round-rectangle' } },
@@ -3226,7 +3235,7 @@ function mountGraph() {
 	  { selector: 'edge.branch-moving', style: { width: 2.4 * state.graphLinkThickness / 100, 'line-color': '#7fd1b5', 'line-opacity': .86, 'target-arrow-color': '#7fd1b5' } },
       { selector: '.timeline-hidden', style: { opacity: 0, 'text-opacity': 0 } },
     ],
-    layout: usePreset ? { name: 'preset', fit: true, padding: window.innerWidth <= 560 ? 28 : 48, animate: false } : (nodes.length > 1 ? graphLayoutOptions(true, nodes.length) : { name: 'grid', fit: true, padding: 48 }),
+    layout: usePreset ? { name: 'preset', fit: true, padding: window.innerWidth <= 560 ? 44 : 48, animate: false } : (nodes.length > 1 ? graphLayoutOptions(true, nodes.length) : { name: 'grid', fit: true, padding: 48 }),
   });
   state.graphInstance = cy;
   $('#graph-count').textContent = `${nodes.length} · ${edges.length}`;
@@ -3414,7 +3423,7 @@ function fitGraph() {
   const cy = state.graphInstance;
   if (!cy || !cy.nodes().length) return;
   cy.animate({
-    fit: { eles: cy.elements(), padding: window.innerWidth <= 560 ? 28 : 54 },
+    fit: { eles: cy.elements(), padding: window.innerWidth <= 560 ? 44 : 54 },
     duration: 240,
     complete: () => { ensureReadableGraphView(cy); updateGraphZoomStyles(); },
   });
@@ -3844,7 +3853,7 @@ function renderRecordLoadError(id, message) {
   $('[data-close-dialog]').addEventListener('click', () => requestDialogClose($('#record-dialog')));
 }
 
-function recordTabs(record, detail, activity) {
+function recordTabItems(record, detail, activity) {
   const filledSections = detail.sections.filter((section) => section.content).length;
   const relationCount = detail.relationsLoaded ? detail.links.length + (detail.researchOptions?.length || 0) : 0;
   const comparison = record.type === 'research' ? state.researchComparisons.get(record.id) : null;
@@ -3867,7 +3876,20 @@ function recordTabs(record, detail, activity) {
     tabs.splice(2, 1);
   }
   if (record.type === 'inbox') tabs.splice(1, 1);
-  return tabs.map(([key, label, count]) => `<button type="button" class="record-tab ${state.activeRecordTab === key ? 'active' : ''}" data-record-tab="${key}"><span>${label}</span>${count ? `<b>${count}</b>` : ''}</button>`).join('');
+  return tabs;
+}
+
+function recordTabs(record, detail, activity) {
+  return recordTabItems(record, detail, activity)
+    .map(([key, label, count]) => `<button type="button" class="record-tab ${state.activeRecordTab === key ? 'active' : ''}" data-record-tab="${key}"><span>${label}</span>${count ? `<b>${count}</b>` : ''}</button>`)
+    .join('');
+}
+
+function recordTabSelect(record, detail, activity) {
+  const options = recordTabItems(record, detail, activity)
+    .map(([key, label, count]) => `<option value="${key}" ${state.activeRecordTab === key ? 'selected' : ''}>${escapeHTML(count ? `${label} · ${count}` : label)}</option>`)
+    .join('');
+  return `<label class="record-tab-select" for="record-tab-select"><span>Раздел карточки</span><select id="record-tab-select" data-native-select>${options}</select></label>`;
 }
 
 function nextRecordOptions(record) {
@@ -4391,6 +4413,7 @@ function renderRecordDialog() {
     <div class="dialog-header record-dialog-header"><div><span class="record-kind">${icon(typeMeta[record.type].icon)} ${typeMeta[record.type].singular}</span><h2>${escapeHTML(record.title)}</h2><p>Создал ${escapeHTML(record.authorUsername)} · ${formatDate(record.createdAt, true)}</p></div><div class="record-header-actions">${canEdit && !state.recordEditMode ? `<button type="button" class="secondary record-header-edit" data-open-record-edit>${icon('edit')} Редактировать</button>` : ''}<button type="button" class="icon-button" data-record-graph="${record.id}" title="Открыть локальную карту" aria-label="Открыть локальную карту">${icon('network')}</button><button type="button" class="close-button icon-button" data-close-dialog aria-label="Закрыть">${icon('x')}</button></div></div>
     ${ideaActions}
     <nav class="record-tabs" aria-label="Разделы карточки">${recordTabs(record, detail, activity)}</nav>
+    ${recordTabSelect(record, detail, activity)}
     ${renderRecordContextStrip(record)}
     <div class="dialog-layout">
       <div class="dialog-main">
@@ -4557,6 +4580,9 @@ function bindRecordDialogEvents() {
       } catch (error) { toast(error.message, true); }
     }
   }));
+  $('#record-tab-select')?.addEventListener('change', (event) => {
+    $(`[data-record-tab="${event.currentTarget.value}"]`)?.click();
+  });
   const startEditing = (field = '') => {
     state.activeRecordTab = 'overview';
     state.recordEditMode = true;

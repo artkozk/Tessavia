@@ -199,8 +199,8 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260901-personal-foundation-1")) {
-		t.Fatal("personal workspace release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	if !bytes.Contains(index, []byte("20260901-mobile-layout-1")) {
+		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }
 
@@ -448,6 +448,39 @@ func TestMobileReliabilityAssetsAreEmbedded(t *testing.T) {
 	} {
 		if !bytes.Contains(styles, marker) {
 			t.Fatalf("styles.css does not contain mobile reliability marker %q", marker)
+		}
+	}
+}
+
+func TestMobileLayoutStabilityAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("function recordTabItems"),
+		[]byte("function recordTabSelect"),
+		[]byte("record-tab-select"),
+		[]byte("compactGraphViewport"),
+		[]byte("cy.nodes().length <= 18"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain mobile layout stability marker %q", marker)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("Mobile layout stability"),
+		[]byte("grid-template-columns: 34px minmax(0, 1fr)"),
+		[]byte(".record-dialog-header > div:first-child { display: contents; }"),
+		[]byte(".record-tabs { display: none; }"),
+		[]byte(".outcome-filter, .personal-tabs { scrollbar-width: none; }"),
+	} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain mobile layout stability marker %q", marker)
 		}
 	}
 }
