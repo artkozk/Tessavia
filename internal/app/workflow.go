@@ -771,7 +771,7 @@ func (s *Server) spawnRecurringTask(ctx context.Context, tx *sql.Tx, record Reco
 		next = base.AddDate(0, interval, 0)
 	}
 	id, _ := newID()
-	_, err := tx.ExecContext(ctx, `INSERT INTO records(id, type, title, description, status, author_id, owner_id, decision_maker_id, due_at, priority, workstream, edit_policy, parent_id, is_root, estimate_minutes, actual_minutes, created_at, updated_at) VALUES(?, 'task', ?, ?, 'planned', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?)`, id, record.Title, record.Description, record.AuthorID, record.OwnerID, record.DecisionMakerID, next.Format(time.RFC3339Nano), record.Priority, record.Workstream, record.EditPolicy, record.ParentID, record.EstimateMinutes, now, now)
+	_, err := tx.ExecContext(ctx, `INSERT INTO records(id, workspace_id, collection_id, stage_id, type, title, description, status, author_id, owner_id, decision_maker_id, due_at, priority, workstream, edit_policy, parent_id, is_root, estimate_minutes, actual_minutes, created_at, updated_at) VALUES(?, ?, NULLIF(?, ''), NULLIF(?, ''), 'task', ?, ?, 'planned', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?)`, id, record.WorkspaceID, record.CollectionID, record.StageID, record.Title, record.Description, record.AuthorID, record.OwnerID, record.DecisionMakerID, next.Format(time.RFC3339Nano), record.Priority, record.Workstream, record.EditPolicy, record.ParentID, record.EstimateMinutes, now, now)
 	if err != nil {
 		return "", err
 	}

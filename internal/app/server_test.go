@@ -11,8 +11,17 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
+
+var collaborativeTestTeams sync.Map
+
+type collaborativeTestTeam struct {
+	ownerClient *http.Client
+	teamID      string
+	projectID   string
+}
 
 func TestBusinessWorkflow(t *testing.T) {
 	store, err := OpenStore(filepath.Join(t.TempDir(), "workflow.db"))
@@ -731,10 +740,30 @@ func testClient(t *testing.T) *http.Client {
 
 func register(t *testing.T, client *http.Client, baseURL, email, username string) User {
 	t.Helper()
-	var user User
+	var challenge registrationChallengeResponse
 	requestJSON(t, client, http.MethodPost, baseURL+"/api/auth/register", map[string]any{
 		"email": email, "username": username, "password": "strong-password-123",
+	}, http.StatusAccepted, &challenge)
+	if challenge.ChallengeID == "" || challenge.TestingCode == "" {
+		t.Fatalf("registration challenge is incomplete: %#v", challenge)
+	}
+	var user User
+	requestJSON(t, client, http.MethodPost, baseURL+"/api/auth/register/verify", map[string]any{
+		"challengeId": challenge.ChallengeID, "code": challenge.TestingCode,
 	}, http.StatusCreated, &user)
+	if existing, ok := collaborativeTestTeams.Load(baseURL); ok {
+		team := existing.(collaborativeTestTeam)
+		requestWorkspaceJSON(t, team.ownerClient, http.MethodPost, baseURL+"/api/teams/"+team.teamID+"/members", team.projectID, map[string]any{
+			"username": username, "role": "member", "projectIds": []string{team.projectID},
+		}, http.StatusOK, nil)
+	} else {
+		var project Workspace
+		requestJSON(t, client, http.MethodPost, baseURL+"/api/workspaces", map[string]any{
+			"name": "Команда теста", "description": "Изолированная совместная область тестового сценария",
+		}, http.StatusCreated, &project)
+		collaborativeTestTeams.Store(baseURL, collaborativeTestTeam{ownerClient: client, teamID: project.TeamID, projectID: project.ID})
+		t.Cleanup(func() { collaborativeTestTeams.Delete(baseURL) })
+	}
 	return user
 }
 

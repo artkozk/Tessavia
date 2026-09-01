@@ -35,8 +35,11 @@ func TestProfileAvatarLifecycleAndVisibility(t *testing.T) {
 	owner := register(t, ownerClient, server.URL, "avatar-owner@example.test", "avatar_owner")
 	register(t, partnerClient, server.URL, "avatar-partner@example.test", "avatar_partner")
 	outsider := register(t, outsiderClient, server.URL, "avatar-outsider@example.test", "avatar_outsider")
-	if _, err := store.db.Exec(`DELETE FROM workspace_members WHERE workspace_id = 'bizflow-team' AND user_id = ?`, outsider.ID); err != nil {
+	if _, err := store.db.Exec(`DELETE FROM workspace_members WHERE user_id = ? AND workspace_id NOT LIKE 'personal-%'`, outsider.ID); err != nil {
 		t.Fatalf("separate outsider workspace: %v", err)
+	}
+	if _, err := store.db.Exec(`DELETE FROM team_members WHERE user_id = ?`, outsider.ID); err != nil {
+		t.Fatalf("separate outsider team: %v", err)
 	}
 
 	postAvatar(t, ownerClient, server.URL, "fake.png", []byte("not an image"), http.StatusBadRequest, nil)

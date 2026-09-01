@@ -150,7 +150,7 @@ func TestWorkspaceCRMConstructorIsIsolatedAndConfigurable(t *testing.T) {
 		t.Fatalf("crm records = %#v", crmRecords)
 	}
 	var mainRecords []Record
-	requestWorkspaceJSON(t, ownerClient, http.MethodGet, server.URL+"/api/records?includeArchived=true", "bizflow-team", nil, http.StatusOK, &mainRecords)
+	requestWorkspaceJSON(t, ownerClient, http.MethodGet, server.URL+"/api/records?includeArchived=true", mainRecord.WorkspaceID, nil, http.StatusOK, &mainRecords)
 	if len(mainRecords) != 1 || mainRecords[0].ID != mainRecord.ID {
 		t.Fatalf("main workspace leaked records: %#v", mainRecords)
 	}

@@ -129,6 +129,7 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		slugBase = "workspace"
 	}
 	slug := fmt.Sprintf("%s-%s", slugBase, id[:8])
+	teamID := "team-" + id
 	user := currentUser(r)
 	now := nowText()
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
@@ -137,8 +138,16 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(r.Context(), `INSERT INTO workspaces(id, name, slug, kind, owner_id, delete_policy, description, created_at, updated_at) VALUES(?, ?, ?, 'team', ?, 'archive_only', ?, ?, ?)`, id, input.Name, slug, user.ID, input.Description, now, now); err != nil {
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO teams(id, name, slug, description, owner_id, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)`, teamID, input.Name, "team-"+slug, input.Description, user.ID, now, now); err != nil {
 		writeError(w, http.StatusConflict, "Команда с таким названием уже существует")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO team_members(team_id, user_id, role, status, joined_at) VALUES(?, ?, 'owner', 'active', ?)`, teamID, user.ID, now); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось добавить владельца команды")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO workspaces(id, name, slug, kind, owner_id, delete_policy, description, team_id, created_at, updated_at) VALUES(?, ?, ?, 'team', ?, 'archive_only', ?, ?, ?, ?)`, id, input.Name, slug, user.ID, input.Description, teamID, now, now); err != nil {
+		writeError(w, http.StatusConflict, "Проект с таким названием уже существует")
 		return
 	}
 	if _, err = tx.ExecContext(r.Context(), `INSERT INTO workspace_members(workspace_id, user_id, role, status, joined_at) VALUES(?, ?, 'owner', 'active', ?)`, id, user.ID, now); err != nil {
@@ -161,12 +170,16 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "Не удалось добавить участника")
 			return
 		}
+		if _, err = tx.ExecContext(r.Context(), `INSERT INTO team_members(team_id, user_id, role, status, joined_at) VALUES(?, ?, 'member', 'active', ?)`, teamID, memberID, now); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось добавить участника в команду")
+			return
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить создание команды")
 		return
 	}
-	writeJSON(w, http.StatusCreated, Workspace{ID: id, Name: input.Name, Slug: slug, Kind: "team", Role: "owner", DeletePolicy: "archive_only", Description: input.Description})
+	writeJSON(w, http.StatusCreated, Workspace{ID: id, Name: input.Name, Slug: slug, Kind: "team", Role: "owner", DeletePolicy: "archive_only", Description: input.Description, TeamID: teamID, TeamName: input.Name, TeamRole: "owner"})
 }
 
 func (s *Server) handleListCollections(w http.ResponseWriter, r *http.Request) {

@@ -69,6 +69,7 @@ func NewServer(store *Store, config Config) http.Handler {
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/health", s.handleHealth)
 	s.mux.HandleFunc("POST /api/auth/register", s.handleRegister)
+	s.mux.HandleFunc("POST /api/auth/register/verify", s.handleVerifyRegistration)
 	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	s.mux.Handle("POST /api/auth/logout", s.requireAuth(http.HandlerFunc(s.handleLogout)))
 	s.mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
@@ -81,6 +82,17 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/users/{id}/avatar", s.requireAuth(http.HandlerFunc(s.handleAvatar)))
 	s.mux.Handle("GET /api/workspaces", s.requireAuth(http.HandlerFunc(s.handleListWorkspaces)))
 	s.mux.Handle("POST /api/workspaces", s.requireAuth(http.HandlerFunc(s.handleCreateWorkspace)))
+	s.mux.Handle("GET /api/teams", s.requireAuth(http.HandlerFunc(s.handleListTeams)))
+	s.mux.Handle("POST /api/teams", s.requireAuth(http.HandlerFunc(s.handleCreateTeam)))
+	s.mux.Handle("GET /api/teams/{id}", s.requireAuth(http.HandlerFunc(s.handleGetTeam)))
+	s.mux.Handle("POST /api/teams/{id}/projects", s.requireAuth(http.HandlerFunc(s.handleCreateTeamProject)))
+	s.mux.Handle("POST /api/teams/{id}/members", s.requireAuth(http.HandlerFunc(s.handleAddTeamMember)))
+	s.mux.Handle("PATCH /api/teams/{id}/members/{userId}", s.requireAuth(http.HandlerFunc(s.handleUpdateTeamMember)))
+	s.mux.Handle("POST /api/teams/{id}/invitations", s.requireAuth(http.HandlerFunc(s.handleCreateTeamInvitation)))
+	s.mux.Handle("DELETE /api/teams/{id}/invitations/{inviteId}", s.requireAuth(http.HandlerFunc(s.handleRevokeTeamInvitation)))
+	s.mux.Handle("POST /api/invitations/accept", s.requireAuth(http.HandlerFunc(s.handleAcceptTeamInvitation)))
+	s.mux.Handle("GET /api/interface/preferences", s.requireAuth(http.HandlerFunc(s.handleGetInterfacePreferences)))
+	s.mux.Handle("PUT /api/interface/preferences", s.requireAuth(http.HandlerFunc(s.handleUpdateInterfacePreferences)))
 	s.mux.Handle("GET /api/collections", s.requireAuth(http.HandlerFunc(s.handleListCollections)))
 	s.mux.Handle("POST /api/collections", s.requireAuth(http.HandlerFunc(s.handleCreateCollection)))
 	s.mux.Handle("PATCH /api/collections/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollection)))
@@ -266,73 +278,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type registerRequest struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Email       string `json:"email"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	InviteToken string `json:"inviteToken"`
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	var input registerRequest
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
-	input.Username = strings.TrimSpace(input.Username)
-	if !strings.Contains(input.Email, "@") || len(input.Email) > 254 {
-		writeError(w, http.StatusBadRequest, "Укажите корректную почту")
-		return
-	}
-	if !usernamePattern.MatchString(input.Username) {
-		writeError(w, http.StatusBadRequest, "Логин: 3–32 символа, латинские буквы, цифры и _")
-		return
-	}
-	if len(input.Password) < 8 || len(input.Password) > 128 {
-		writeError(w, http.StatusBadRequest, "Пароль должен содержать от 8 до 128 символов")
-		return
-	}
-	if len(s.config.AllowedUsernames) > 0 {
-		if _, ok := s.config.AllowedUsernames[strings.ToLower(input.Username)]; !ok {
-			writeError(w, http.StatusForbidden, "Этот логин не входит в рабочую команду")
-			return
-		}
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось создать пароль")
-		return
-	}
-	tx, err := s.store.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось начать регистрацию")
-		return
-	}
-	defer tx.Rollback()
-	now := nowText()
-	result, err := tx.ExecContext(r.Context(), `INSERT INTO users(email, username, password_hash, created_at, updated_at) VALUES(?, ?, ?, ?, ?)`, input.Email, input.Username, string(hash), now, now)
-	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			writeError(w, http.StatusConflict, "Почта или логин уже заняты")
-			return
-		}
-		log.Printf("register user: %v", err)
-		writeError(w, http.StatusInternalServerError, "Не удалось зарегистрироваться")
-		return
-	}
-	userID, _ := result.LastInsertId()
-	if err := writeActivity(r.Context(), tx, userID, "user", strconv.FormatInt(userID, 10), "created", "", map[string]any{"username": input.Username}); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось записать регистрацию")
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось завершить регистрацию")
-		return
-	}
-	user := User{ID: userID, Email: input.Email, Username: input.Username, CreatedAt: now}
-	if err := s.createSession(w, r, user.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "Аккаунт создан, но вход не выполнен")
-		return
-	}
-	writeJSON(w, http.StatusCreated, user)
+	s.startRegistration(w, r)
 }
 
 type loginRequest struct {
@@ -2908,7 +2861,7 @@ func (s *Server) handleCreateQuestionOutput(w http.ResponseWriter, r *http.Reque
 		completedAt = now
 		progress = 100
 	}
-	if _, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, type, subtype, record_kind, title, description, status, author_id, owner_id, due_at, workstream, parent_id, estimate_minutes, progress, completed_at, created_at, updated_at) VALUES(?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, outputID, databaseType, recordKind, input.Title, input.Description, status, user.ID, input.OwnerID, dueAt, source.Workstream, source.ID, input.EstimateMinutes, progress, completedAt, now, now); err != nil {
+	if _, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, workspace_id, type, subtype, record_kind, title, description, status, author_id, owner_id, due_at, workstream, parent_id, estimate_minutes, progress, completed_at, created_at, updated_at) VALUES(?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, outputID, source.WorkspaceID, databaseType, recordKind, input.Title, input.Description, status, user.ID, input.OwnerID, dueAt, source.Workstream, source.ID, input.EstimateMinutes, progress, completedAt, now, now); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось создать карточку результата")
 		return
 	}

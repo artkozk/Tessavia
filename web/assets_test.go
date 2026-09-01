@@ -199,8 +199,39 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260902-crm-constructor-1")) {
+	if !bytes.Contains(index, []byte("20260902-team-project-access-1")) {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	}
+}
+
+func TestTeamAccessAndPersonalizationAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("function openTeamSettings"),
+		[]byte("function openJoinTeamDialog"),
+		[]byte("function openInterfaceSettings"),
+		[]byte("/api/auth/register/verify"),
+		[]byte("data-toggle-nav-group"),
+		[]byte("dashboardWidgets"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain team access marker %q", marker)
+		}
+	}
+	index, err := Files.ReadFile("index.html")
+	if err != nil {
+		t.Fatalf("read index.html: %v", err)
+	}
+	for _, marker := range [][]byte{[]byte("viewport-fit=cover"), []byte("manifest.webmanifest"), []byte("interface-settings-button")} {
+		if !bytes.Contains(index, marker) {
+			t.Fatalf("index.html does not contain mobile personalization marker %q", marker)
+		}
+	}
+	if _, err := Files.ReadFile("manifest.webmanifest"); err != nil {
+		t.Fatalf("manifest is not embedded: %v", err)
 	}
 }
 
