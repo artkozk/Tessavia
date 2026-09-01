@@ -199,8 +199,34 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260901-mobile-layout-1")) {
+	if !bytes.Contains(index, []byte("20260901-profile-avatar-1")) {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	}
+}
+
+func TestProfileAvatarAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("function avatarMarkup"),
+		[]byte("function uploadProfileAvatar"),
+		[]byte("profile-avatar-input"),
+		[]byte("/api/me/avatar"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain profile avatar marker %q", marker)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{[]byte(".avatar img"), []byte(".profile-photo-editor"), []byte(".profile-avatar-picker")} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain profile avatar marker %q", marker)
+		}
 	}
 }
 

@@ -81,9 +81,19 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Некорректный участник")
 		return
 	}
+	allowed, err := s.canViewUserProfile(r, userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить доступ к профилю")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusForbidden, "Профиль доступен только участникам общего пространства")
+		return
+	}
 	var profile UserProfile
-	err = s.store.db.QueryRowContext(r.Context(), `SELECT id, username, display_name, bio, created_at FROM users WHERE id = ?`, userID).
-		Scan(&profile.User.ID, &profile.User.Username, &profile.User.DisplayName, &profile.User.Bio, &profile.User.CreatedAt)
+	var avatarStoredName, avatarUpdatedAt string
+	err = s.store.db.QueryRowContext(r.Context(), `SELECT id, username, display_name, bio, created_at, avatar_stored_name, avatar_updated_at FROM users WHERE id = ?`, userID).
+		Scan(&profile.User.ID, &profile.User.Username, &profile.User.DisplayName, &profile.User.Bio, &profile.User.CreatedAt, &avatarStoredName, &avatarUpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "Участник не найден")
 		return
@@ -92,6 +102,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить профиль")
 		return
 	}
+	setUserAvatar(&profile.User, avatarStoredName, avatarUpdatedAt)
 	since := time.Now().UTC().AddDate(0, 0, -29).Format("2006-01-02")
 	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(active_seconds), 0), COALESCE(SUM(interactions), 0) FROM user_activity_daily WHERE user_id = ? AND activity_date >= ?`, userID, since).
 		Scan(&profile.ActiveSeconds30Days, &profile.Interactions30Days)

@@ -63,7 +63,7 @@ func weekBounds(now time.Time) (time.Time, time.Time) {
 func (s *Server) listTeamCapacity(r *http.Request) ([]TeamCapacity, error) {
 	start, end := weekBounds(time.Now())
 	rows, err := s.store.db.QueryContext(r.Context(), `
-		SELECT u.id, u.username, u.display_name, u.bio, u.created_at, COALESCE(c.weekly_minutes, 0),
+		SELECT u.id, u.username, u.display_name, u.bio, u.created_at, u.avatar_stored_name, u.avatar_updated_at, COALESCE(c.weekly_minutes, 0),
 			COALESCE(SUM(CASE WHEN rec.due_at >= ? AND rec.due_at < ? THEN rec.estimate_minutes ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN rec.due_at IS NULL THEN rec.estimate_minutes ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN rec.due_at >= ? AND rec.due_at < ? THEN 1 ELSE 0 END), 0),
@@ -73,8 +73,14 @@ func (s *Server) listTeamCapacity(r *http.Request) ([]TeamCapacity, error) {
 		LEFT JOIN records rec ON rec.owner_id = u.id
 			AND rec.status NOT IN ('completed', 'cancelled', 'archived', 'rejected')
 			AND (rec.type IN ('task', 'research', 'disagreement') OR rec.subtype = 'question_set' OR rec.record_kind = 'meeting' OR rec.business_kind IN ('risk', 'hypothesis', 'experiment'))
-		GROUP BY u.id, u.username, u.display_name, u.bio, u.created_at, c.weekly_minutes
-		ORDER BY u.username`, start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano), start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano))
+		WHERE u.id = ? OR EXISTS (
+			SELECT 1 FROM workspace_members viewer
+			JOIN workspace_members target ON target.workspace_id = viewer.workspace_id
+			WHERE viewer.user_id = ? AND viewer.status = 'active'
+				AND target.user_id = u.id AND target.status = 'active'
+		)
+		GROUP BY u.id, u.username, u.display_name, u.bio, u.created_at, u.avatar_stored_name, u.avatar_updated_at, c.weekly_minutes
+		ORDER BY u.username`, start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano), start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano), currentUser(r).ID, currentUser(r).ID)
 	if err != nil {
 		return nil, err
 	}
@@ -82,9 +88,11 @@ func (s *Server) listTeamCapacity(r *http.Request) ([]TeamCapacity, error) {
 	items := make([]TeamCapacity, 0)
 	for rows.Next() {
 		var item TeamCapacity
-		if err := rows.Scan(&item.User.ID, &item.User.Username, &item.User.DisplayName, &item.User.Bio, &item.User.CreatedAt, &item.WeeklyCapacityMinutes, &item.ScheduledMinutes, &item.UnscheduledMinutes, &item.DueThisWeek, &item.UnscheduledRecords); err != nil {
+		var avatarStoredName, avatarUpdatedAt string
+		if err := rows.Scan(&item.User.ID, &item.User.Username, &item.User.DisplayName, &item.User.Bio, &item.User.CreatedAt, &avatarStoredName, &avatarUpdatedAt, &item.WeeklyCapacityMinutes, &item.ScheduledMinutes, &item.UnscheduledMinutes, &item.DueThisWeek, &item.UnscheduledRecords); err != nil {
 			return nil, err
 		}
+		setUserAvatar(&item.User, avatarStoredName, avatarUpdatedAt)
 		if item.WeeklyCapacityMinutes > 0 {
 			item.UtilizationPercent = item.ScheduledMinutes * 100 / item.WeeklyCapacityMinutes
 		}

@@ -74,8 +74,11 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
 	s.mux.Handle("PATCH /api/me", s.requireAuth(http.HandlerFunc(s.handleUpdateMe)))
 	s.mux.Handle("PUT /api/me/password", s.requireAuth(http.HandlerFunc(s.handleUpdatePassword)))
+	s.mux.Handle("POST /api/me/avatar", s.requireAuth(http.HandlerFunc(s.handleUploadAvatar)))
+	s.mux.Handle("DELETE /api/me/avatar", s.requireAuth(http.HandlerFunc(s.handleDeleteAvatar)))
 	s.mux.Handle("GET /api/users", s.requireAuth(http.HandlerFunc(s.handleUsers)))
 	s.mux.Handle("GET /api/users/{id}/profile", s.requireAuth(http.HandlerFunc(s.handleUserProfile)))
+	s.mux.Handle("GET /api/users/{id}/avatar", s.requireAuth(http.HandlerFunc(s.handleAvatar)))
 	s.mux.Handle("GET /api/workspaces", s.requireAuth(http.HandlerFunc(s.handleListWorkspaces)))
 	s.mux.Handle("GET /api/personal/overview", s.requireAuth(http.HandlerFunc(s.handlePersonalOverview)))
 	s.mux.Handle("POST /api/personal/notes", s.requireAuth(http.HandlerFunc(s.handleCreatePersonalNote)))
@@ -204,11 +207,12 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 		}
 		var user User
 		var lastSeenAt string
+		var avatarStoredName, avatarUpdatedAt string
 		err = s.store.db.QueryRowContext(r.Context(), `
-			SELECT u.id, u.email, u.username, u.display_name, u.bio, u.created_at, s.last_seen_at
+			SELECT u.id, u.email, u.username, u.display_name, u.bio, u.created_at, u.avatar_stored_name, u.avatar_updated_at, s.last_seen_at
 			FROM sessions s JOIN users u ON u.id = s.user_id
 			WHERE s.token_hash = ? AND s.expires_at > ?`, hashToken(cookie.Value), nowText()).
-			Scan(&user.ID, &user.Email, &user.Username, &user.DisplayName, &user.Bio, &user.CreatedAt, &lastSeenAt)
+			Scan(&user.ID, &user.Email, &user.Username, &user.DisplayName, &user.Bio, &user.CreatedAt, &avatarStoredName, &avatarUpdatedAt, &lastSeenAt)
 		if errors.Is(err, sql.ErrNoRows) {
 			s.clearSessionCookie(w)
 			writeError(w, http.StatusUnauthorized, "Сессия истекла")
@@ -223,6 +227,7 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 		if parseErr != nil || time.Since(lastSeen) >= 5*time.Minute {
 			_, _ = s.store.db.ExecContext(r.Context(), `UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?`, nowText(), hashToken(cookie.Value))
 		}
+		setUserAvatar(&user, avatarStoredName, avatarUpdatedAt)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey, user)))
 	})
 }
@@ -321,8 +326,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	var user User
 	var passwordHash string
-	err := s.store.db.QueryRowContext(r.Context(), `SELECT id, email, username, display_name, bio, created_at, password_hash FROM users WHERE email = ? OR username = ?`, strings.TrimSpace(input.Login), strings.TrimSpace(input.Login)).
-		Scan(&user.ID, &user.Email, &user.Username, &user.DisplayName, &user.Bio, &user.CreatedAt, &passwordHash)
+	var avatarStoredName, avatarUpdatedAt string
+	err := s.store.db.QueryRowContext(r.Context(), `SELECT id, email, username, display_name, bio, created_at, avatar_stored_name, avatar_updated_at, password_hash FROM users WHERE email = ? OR username = ?`, strings.TrimSpace(input.Login), strings.TrimSpace(input.Login)).
+		Scan(&user.ID, &user.Email, &user.Username, &user.DisplayName, &user.Bio, &user.CreatedAt, &avatarStoredName, &avatarUpdatedAt, &passwordHash)
 	if err != nil || bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(input.Password)) != nil {
 		writeError(w, http.StatusUnauthorized, "Неверный логин или пароль")
 		return
@@ -331,6 +337,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось создать сессию")
 		return
 	}
+	setUserAvatar(&user, avatarStoredName, avatarUpdatedAt)
 	writeJSON(w, http.StatusOK, user)
 }
 
@@ -513,7 +520,17 @@ func (s *Server) handleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, username, display_name, bio, created_at FROM users ORDER BY username`)
+	viewer := currentUser(r)
+	rows, err := s.store.db.QueryContext(r.Context(), `
+		SELECT u.id, u.username, u.display_name, u.bio, u.created_at, u.avatar_stored_name, u.avatar_updated_at
+		FROM users u
+		WHERE u.id = ? OR EXISTS (
+			SELECT 1 FROM workspace_members viewer
+			JOIN workspace_members target ON target.workspace_id = viewer.workspace_id
+			WHERE viewer.user_id = ? AND viewer.status = 'active'
+				AND target.user_id = u.id AND target.status = 'active'
+		)
+		ORDER BY u.username`, viewer.ID, viewer.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить участников")
 		return
@@ -522,10 +539,12 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 	users := make([]User, 0)
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.Bio, &user.CreatedAt); err != nil {
+		var avatarStoredName, avatarUpdatedAt string
+		if err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.Bio, &user.CreatedAt, &avatarStoredName, &avatarUpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось прочитать участников")
 			return
 		}
+		setUserAvatar(&user, avatarStoredName, avatarUpdatedAt)
 		users = append(users, user)
 	}
 	writeJSON(w, http.StatusOK, users)

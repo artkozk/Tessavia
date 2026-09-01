@@ -33,6 +33,7 @@ type User struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"displayName"`
 	Bio         string `json:"bio"`
+	AvatarURL   string `json:"avatarUrl,omitempty"`
 	CreatedAt   string `json:"createdAt"`
 }
 

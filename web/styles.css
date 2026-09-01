@@ -133,6 +133,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .user-button small, .quiet { color: var(--muted); }
 .quiet { border: 0; background: transparent; padding: 7px; }
 .avatar { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-style: normal; font-weight: 700; }
+.avatar img { width: 100%; height: 100%; display: block; border-radius: inherit; object-fit: cover; }
 .avatar.tiny { width: 27px; height: 27px; }
 
 .workspace { min-width: 0; }
@@ -2974,6 +2975,13 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
 .personal-link-results > button > .icon { grid-column: 3; grid-row: 1 / span 2; width: 15px; height: 15px; }
 .profile-bio { max-width: 560px; padding-top: 4px; color: var(--ink); font-size: 12px; line-height: 1.55; }
 .profile-editor { display: grid; gap: 14px; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.profile-photo-editor { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.profile-photo-editor > div { min-width: 0; display: grid; gap: 5px; }
+.profile-photo-editor small { color: var(--muted); font-size: 11px; }
+.profile-photo-editor > div > div { display: flex; flex-wrap: wrap; gap: 7px; padding-top: 3px; }
+.profile-avatar-picker { width: fit-content; cursor: pointer; }
+.profile-avatar-picker.disabled { pointer-events: none; opacity: .48; }
+.profile-photo-editor progress { width: min(320px, 100%); height: 5px; margin-top: 5px; accent-color: var(--accent); }
 .profile-private-fields { display: grid; gap: 12px; padding: 14px; border-left: 2px solid var(--accent); background: var(--accent-soft); }
 .profile-private-fields > div:first-child { display: grid; gap: 3px; }
 .profile-private-fields > div:first-child > span { display: flex; align-items: center; gap: 6px; color: var(--accent); font-size: 12px; font-weight: 700; }
@@ -3007,6 +3015,9 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
   .habit-row > .personal-link-chips { grid-row: 3; }
   .personal-note-grid, .personal-notes-preview { grid-template-columns: minmax(0, 1fr); }
   .profile-editor .form-grid, .profile-security .form-grid { grid-template-columns: minmax(0, 1fr); }
+	.profile-photo-editor { grid-template-columns: 44px minmax(0, 1fr); align-items: start; }
+	.profile-photo-editor > div > div { display: grid; grid-template-columns: minmax(0, 1fr); }
+	.profile-photo-editor .secondary, .profile-photo-editor .quiet { width: 100%; }
   .profile-security form > button { width: 100%; }
 }
 
