@@ -82,8 +82,8 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var profile UserProfile
-	err = s.store.db.QueryRowContext(r.Context(), `SELECT id, email, username, created_at FROM users WHERE id = ?`, userID).
-		Scan(&profile.User.ID, &profile.User.Email, &profile.User.Username, &profile.User.CreatedAt)
+	err = s.store.db.QueryRowContext(r.Context(), `SELECT id, username, display_name, bio, created_at FROM users WHERE id = ?`, userID).
+		Scan(&profile.User.ID, &profile.User.Username, &profile.User.DisplayName, &profile.User.Bio, &profile.User.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "Участник не найден")
 		return

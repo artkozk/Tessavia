@@ -138,6 +138,7 @@ const graphSettingDefaults = {
 };
 
 const navItems = [
+  ['personal', 'Личное', 'lock', 'Личное'],
   ['dashboard', 'Обзор', 'dashboard', 'Работа'], ['work', 'Работа', 'checkSquare', 'Работа'],
 	['chat', 'Чат', 'messages', 'Работа'],
   ['principles', 'Правила и критерии', 'bookOpen', 'Основа'], ['goal', 'Цели', 'target', 'Основа'],
@@ -152,6 +153,7 @@ const navItems = [
 
 const state = {
   me: null, users: [], records: [], notifications: [], activity: [], definitions: [], pendingQuestions: [],
+  workspaces: [], personal: null, personalLoading: false, personalTab: 'today', personalSuggestionTimer: null,
   view: 'dashboard', search: '', statusFilter: '', ownerFilter: '', authMode: 'login', activeDetail: null,
   activeRecordTab: 'overview', activeActivity: null, historyMode: 'feed', activeRecordRequest: 0,
   workScope: 'all', workType: 'all', workStatus: 'active', workstreamFilter: 'all',
@@ -886,15 +888,27 @@ function toast(message, error = false) {
 }
 
 function showAuth() {
+  clearPrivateClientState();
   $('#app-root').hidden = true;
   $('#auth-root').hidden = false;
+}
+
+function clearPrivateClientState() {
+  state.personal = null;
+  state.personalLoading = false;
+  state.workspaces = [];
+  state.personalTab = 'today';
+  ['personal-dialog', 'profile-dialog'].forEach((id) => {
+    const dialog = document.getElementById(id);
+    if (dialog?.open) closeDialogImmediately(dialog);
+  });
 }
 
 function showApp() {
   $('#auth-root').hidden = true;
   $('#app-root').hidden = false;
   $('#user-name').textContent = state.me.username;
-  $('#user-avatar').textContent = state.me.username.slice(0, 2).toUpperCase();
+  $('#user-avatar').textContent = userInitials(state.me);
   setSidebarOpen(false);
 }
 
@@ -922,9 +936,9 @@ async function bootstrap() {
 }
 
 async function loadData(silent = false) {
-  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads, planning] = await Promise.all([
+  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads, planning, workspaces] = await Promise.all([
     api('/api/users'), api('/api/records?includeArchived=true'), api('/api/notifications'),
-    api('/api/activity?limit=200'), api('/api/section-definitions'), api('/api/questions/pending'), api('/api/saved-views'), api('/api/chat/threads'), api('/api/planning/cycles'),
+    api('/api/activity?limit=200'), api('/api/section-definitions'), api('/api/questions/pending'), api('/api/saved-views'), api('/api/chat/threads'), api('/api/planning/cycles'), api('/api/workspaces'),
   ]);
   const projectActivity = activity.filter((item) => typeMeta[item.entityType] || ['section_definition', 'planning_cycle'].includes(item.entityType));
   const recordsByID = new Map(records.map((record) => [record.id, record]));
@@ -932,7 +946,7 @@ async function loadData(silent = false) {
     const current = recordsByID.get(id);
     if (!current || current.updatedAt !== detail.record.updatedAt) state.detailCache.delete(id);
   });
-  Object.assign(state, { users, records, notifications, activity: projectActivity, definitions, pendingQuestions, savedViews, chatThreads, planningCycles: planning.cycles || [], activePlanningCycle: planning.active || null });
+  Object.assign(state, { users, records, notifications, activity: projectActivity, definitions, pendingQuestions, savedViews, chatThreads, workspaces, planningCycles: planning.cycles || [], activePlanningCycle: planning.active || null });
   state.syncRecordsSince = latestTimestamp(records, 'updatedAt', state.syncRecordsSince);
   state.syncActivitySince = latestTimestamp(projectActivity, 'createdAt', state.syncActivitySince);
   state.qualityReport = null;
@@ -1153,7 +1167,7 @@ function openModal(dialog) {
   dialog.dataset.historyState = 'true';
 }
 
-const protectedWorkspaceDialogs = new Set(['record-dialog', 'create-dialog', 'notebook-dialog']);
+const protectedWorkspaceDialogs = new Set(['record-dialog', 'create-dialog', 'personal-dialog', 'profile-dialog', 'notebook-dialog']);
 
 function pointerIsOutsideDialog(event, dialog) {
   const rect = dialog.getBoundingClientRect();
@@ -1398,7 +1412,9 @@ async function submitAuth(event) {
     ? { email: form.get('email'), username: form.get('login'), password: form.get('password') }
     : { login: form.get('login'), password: form.get('password') };
   try {
-    state.me = await api(`/api/auth/${state.authMode}`, { method: 'POST', body: JSON.stringify(body) });
+    const authenticatedUser = await api(`/api/auth/${state.authMode}`, { method: 'POST', body: JSON.stringify(body) });
+    clearPrivateClientState();
+    state.me = authenticatedUser;
     showApp();
     await loadData();
     maybeShowOnboarding();
@@ -1423,7 +1439,8 @@ function renderNotificationBadge() {
 function renderNav() {
   let group = '';
   $('#main-nav').innerHTML = navItems.map(([key, label, iconName, itemGroup]) => {
-    const count = key === 'work'
+    const count = key === 'personal' ? ((state.personal?.plans || []).filter((plan) => plan.status === 'planned').length || '')
+      : key === 'work'
       ? state.records.filter((record) => isWorkRecord(record) && isActiveRecord(record)).length
 			: key === 'chat' ? state.chatThreads.reduce((sum, thread) => sum + thread.unreadCount, 0)
       : key === 'validation' ? state.records.filter((record) => ['risk', 'hypothesis', 'experiment'].includes(record.type) && record.status !== 'archived').length
@@ -1445,6 +1462,7 @@ function renderContent() {
     state.graphInstance.destroy(); state.graphInstance = null;
   }
   $('#page-title').textContent = titles[state.view] || (state.view === 'notifications' ? 'Уведомления' : state.view === 'quality' ? 'Качество базы' : 'Обзор');
+  if (state.view === 'personal') return renderPersonal();
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'work') return renderWorkList();
 	if (state.view === 'chat') return renderChat();
@@ -1496,6 +1514,233 @@ function renderDashboard() {
   $$('[data-quick-create]').forEach((button) => button.addEventListener('click', () => openCreateDialog(button.dataset.quickCreate)));
   $$('[data-go]').forEach((button) => button.addEventListener('click', () => { navigateToView(button.dataset.go); }));
   loadDashboardInsights();
+}
+
+async function loadPersonal({ force = false } = {}) {
+  if (state.personalLoading || (state.personal && !force)) return;
+  state.personalLoading = true;
+  if (state.view === 'personal') renderPersonal();
+  try {
+    state.personal = await api('/api/personal/overview');
+  } catch (error) {
+    toast(`Личное пространство не загрузилось: ${error.message}`, true);
+  } finally {
+    state.personalLoading = false;
+  }
+  renderNav();
+  if (state.view === 'personal') renderPersonal();
+}
+
+function renderPersonal() {
+  if (!state.personal) {
+    $('#main-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">Только для вас</p><h1>Личное пространство</h1></div></div><div class="personal-loading"><span class="spinner"></span><strong>${state.personalLoading ? 'Загружаем личные данные' : 'Открываем пространство'}</strong></div>`;
+    loadPersonal();
+    return;
+  }
+  const data = state.personal;
+  const openPlans = data.plans.filter((plan) => plan.status === 'planned');
+  const doneToday = data.habits.filter((habit) => habit.checkins?.some((checkin) => checkin.date === localISODate())).length;
+  const tabs = [['today', 'Сегодня'], ['notes', 'Заметки'], ['plans', 'Планы'], ['habits', 'Привычки']];
+  $('#main-content').innerHTML = `
+    <div class="page-heading personal-heading">
+      <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>Личное пространство</h1><p>${escapeHTML(state.me.displayName || state.me.username)}</p></div>
+      <div class="personal-create-actions"><button type="button" class="secondary" data-personal-create="note">${icon('edit')} Заметка</button><button type="button" class="secondary" data-personal-create="plan">${icon('calendar')} План</button><button type="button" class="primary" data-personal-create="habit">${icon('checkSquare')} Привычка</button></div>
+    </div>
+    <section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.length}</strong><small>отмечено</small></article><article><span>Открытые планы</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt).length} со сроком</small></article><article><span>Заметки</span><strong>${data.notes.length}</strong><small>${data.notes.filter((note) => note.pinned).length} закреплено</small></article></section>
+    <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}</div>
+    <div class="personal-content">${renderPersonalTab(data)}</div>`;
+  $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; renderPersonal(); }));
+  bindPersonalInteractions();
+}
+
+function renderPersonalTab(data) {
+  if (state.personalTab === 'notes') return renderPersonalNotes(data.notes, data.links);
+  if (state.personalTab === 'plans') return renderPersonalPlans(data.plans, data.links);
+  if (state.personalTab === 'habits') return renderPersonalHabits(data.habits, data.links);
+  const activePlans = data.plans.filter((plan) => plan.status === 'planned').slice(0, 6);
+  const notes = [...data.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)).slice(0, 4);
+  return `<section class="personal-today-grid"><div class="personal-column"><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ритм дня</p><h2>Привычки</h2></div>${data.habits.length ? `<span class="panel-note">${data.habits.filter((habit) => habit.currentStreak > 0).length} серий</span>` : ''}</div><div class="habit-list">${data.habits.map((habit) => renderHabitRow(habit, data.links, true)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ближайшее</p><h2>Планы</h2></div><button type="button" class="text-button" data-personal-tab-jump="plans">Все планы</button></div><div class="personal-list">${activePlans.map((plan) => renderPlanRow(plan, data.links)).join('') || personalEmpty('Открытых планов нет', 'plan', 'Добавить план')}</div></section></div><div class="personal-column"><section class="personal-section life-section">${renderLifeMap(data.settings)}</section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Под рукой</p><h2>Заметки</h2></div><button type="button" class="text-button" data-personal-tab-jump="notes">Все заметки</button></div><div class="personal-notes-preview">${notes.map((note) => renderNoteCard(note, data.links, true)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section></div></section>`;
+}
+
+function renderPersonalNotes(notes, links) {
+  return `<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Личная память</p><h2>Заметки</h2></div><span class="panel-note">${notes.length}</span></div><div class="personal-note-grid">${notes.map((note) => renderNoteCard(note, links)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section>`;
+}
+
+function renderPersonalPlans(plans, links) {
+  const active = plans.filter((plan) => plan.status === 'planned');
+  const done = plans.filter((plan) => plan.status === 'done');
+  return `<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Личный горизонт</p><h2>Планы</h2></div><span class="panel-note">${active.length} открыто</span></div><div class="personal-plan-groups"><div><h3>В работе</h3><div class="personal-list">${active.map((plan) => renderPlanRow(plan, links)).join('') || `<p class="personal-muted">Открытых планов нет.</p>`}</div></div>${done.length ? `<div><h3>Завершено</h3><div class="personal-list completed">${done.map((plan) => renderPlanRow(plan, links)).join('')}</div></div>` : ''}</div></section>`;
+}
+
+function renderPersonalHabits(habits, links) {
+  return `<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Повторяемые действия</p><h2>Привычки</h2></div><span class="panel-note">${habits.length}</span></div><div class="habit-list expanded">${habits.map((habit) => renderHabitRow(habit, links)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section>`;
+}
+
+function renderNoteCard(note, links, compact = false) {
+  const ownLinks = personalLinksFor(links, 'note', note.id);
+  return `<article class="personal-note ${compact ? 'compact' : ''}"><button type="button" class="personal-card-main" data-personal-edit="note" data-personal-id="${note.id}"><span>${note.pinned ? icon('bookmark') : icon('edit')}</span><strong>${escapeHTML(note.title)}</strong><div class="markdown-body">${renderMarkdown(note.body, 'Пустая заметка')}</div></button>${renderPersonalLinkChips(ownLinks)}<footer><time>${formatDate(note.updatedAt, true)}</time><button type="button" class="text-button" data-personal-link="note" data-personal-id="${note.id}" data-personal-title="${escapeHTML(note.title)}">${icon('link')} Связать</button></footer></article>`;
+}
+
+function renderPlanRow(plan, links) {
+  const ownLinks = personalLinksFor(links, 'plan', plan.id);
+  const done = plan.status === 'done';
+  return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong><span>${plan.dueAt ? formatDate(plan.dueAt, true) : 'Без срока'}${plan.notes ? ` · ${escapeHTML(markdownPlain(plan.notes).slice(0, 90))}` : ''}</span></button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
+}
+
+function renderHabitRow(habit, links, compact = false) {
+  const dates = lastDates(7);
+  const done = new Set((habit.checkins || []).map((checkin) => checkin.date));
+  const ownLinks = personalLinksFor(links, 'habit', habit.id);
+  return `<article class="habit-row ${compact ? 'compact' : ''}"><button type="button" class="habit-main" data-personal-edit="habit" data-personal-id="${habit.id}"><strong>${escapeHTML(habit.title)}</strong><span>${habit.completedThisWeek}/${habit.targetPerWeek} ${escapeHTML(habit.unit)} за неделю · серия ${habit.currentStreak}</span></button><div class="habit-week" aria-label="Отметки за 7 дней">${dates.map((date) => `<button type="button" class="habit-day ${done.has(date) ? 'done' : ''} ${date === localISODate() ? 'today' : ''}" data-habit-check="${habit.id}" data-check-date="${date}" title="${formatDate(`${date}T12:00:00`)}" aria-label="${done.has(date) ? 'Снять отметку' : 'Отметить выполнение'}">${done.has(date) ? icon('check') : `<span>${new Date(`${date}T12:00:00`).toLocaleDateString('ru-RU', { weekday: 'narrow' })}</span>`}</button>`).join('')}</div><div class="habit-actions"><button type="button" class="icon-button" data-personal-link="habit" data-personal-id="${habit.id}" data-personal-title="${escapeHTML(habit.title)}" title="Связать" aria-label="Связать привычку">${icon('link')}</button></div>${renderPersonalLinkChips(ownLinks)}</article>`;
+}
+
+function renderLifeMap(settings) {
+  if (!settings.birthDate) return `<div class="section-heading"><div><p class="eyebrow">Карта времени</p><h2>Жизнь в месяцах</h2></div></div><div class="life-empty"><span class="life-empty-dots">${Array.from({ length: 48 }, () => '<i></i>').join('')}</span><p>Укажите дату рождения и горизонт жизни в профиле.</p><button type="button" class="secondary" data-open-own-profile>${icon('edit')} Настроить</button></div>`;
+  const born = new Date(`${settings.birthDate}T12:00:00`);
+  const now = new Date();
+  const lived = Math.max(0, (now.getFullYear() - born.getFullYear()) * 12 + now.getMonth() - born.getMonth());
+  const total = Math.max(12, settings.lifeExpectancyYears * 12);
+  const filled = Math.min(total, lived);
+  const percent = Math.min(100, Math.round(filled * 100 / total));
+  return `<div class="section-heading"><div><p class="eyebrow">Карта времени</p><h2>Жизнь в месяцах</h2></div><strong class="life-percent">${percent}%</strong></div><div class="life-meta"><span><b>${filled}</b> прожито</span><span><b>${Math.max(0, total - filled)}</b> впереди</span><button type="button" class="text-button" data-open-own-profile>Настроить</button></div><div class="life-grid" style="--life-total:${total}" role="img" aria-label="${filled} из ${total} месяцев">${Array.from({ length: total }, (_, index) => `<i class="${index < filled ? 'lived' : ''}" aria-hidden="true"></i>`).join('')}</div>`;
+}
+
+function personalLinksFor(links, sourceType, sourceID) {
+  return (links || []).filter((link) => link.sourceType === sourceType && link.sourceId === sourceID);
+}
+
+function renderPersonalLinkChips(links) {
+  if (!links.length) return '';
+  return `<div class="personal-link-chips">${links.map((link) => `<button type="button" data-personal-target-type="${link.targetType}" data-personal-target-id="${link.targetId}" title="Открыть связанную запись">${icon('link')} ${escapeHTML(link.targetTitle || 'Связанная запись')}</button>`).join('')}</div>`;
+}
+
+function personalEmpty(title, kind, action) {
+  return `<div class="personal-empty"><span>${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')}</span><strong>${escapeHTML(title)}</strong><button type="button" class="text-button" data-personal-create="${kind}">${escapeHTML(action)}</button></div>`;
+}
+
+function localISODate(date = new Date()) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function lastDates(count) {
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date();
+    date.setHours(12, 0, 0, 0);
+    date.setDate(date.getDate() - (count - index - 1));
+    return localISODate(date);
+  });
+}
+
+function bindPersonalInteractions() {
+  $$('[data-personal-tab-jump]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTabJump; renderPersonal(); }));
+  $$('[data-personal-edit]').forEach((button) => button.addEventListener('click', () => openPersonalEditor(button.dataset.personalEdit, button.dataset.personalId)));
+  $$('[data-personal-create]').forEach((button) => button.addEventListener('click', () => openPersonalEditor(button.dataset.personalCreate)));
+  $$('[data-plan-toggle]').forEach((button) => button.addEventListener('click', () => togglePersonalPlan(button.dataset.planToggle)));
+  $$('[data-habit-check]').forEach((button) => button.addEventListener('click', () => toggleHabitCheckin(button.dataset.habitCheck, button.dataset.checkDate)));
+  $$('[data-personal-link]').forEach((button) => button.addEventListener('click', () => openPersonalLinkDialog(button.dataset.personalLink, button.dataset.personalId, button.dataset.personalTitle)));
+  $$('[data-personal-target-type]').forEach((button) => button.addEventListener('click', () => openPersonalTarget(button.dataset.personalTargetType, button.dataset.personalTargetId)));
+  $$('[data-open-own-profile]').forEach((button) => button.addEventListener('click', () => openProfile(state.me.id)));
+}
+
+function findPersonalItem(kind, id) {
+  const collection = kind === 'note' ? state.personal?.notes : kind === 'plan' ? state.personal?.plans : state.personal?.habits;
+  return (collection || []).find((item) => item.id === id);
+}
+
+async function togglePersonalPlan(id) {
+  const plan = findPersonalItem('plan', id);
+  if (!plan) return;
+  try {
+    await api(`/api/personal/plans/${id}`, { method: 'PATCH', body: JSON.stringify({ title: plan.title, notes: plan.notes || '', dueAt: plan.dueAt || '', status: plan.status === 'done' ? 'planned' : 'done' }) });
+    await loadPersonal({ force: true });
+  } catch (error) { toast(error.message, true); }
+}
+
+async function toggleHabitCheckin(id, date) {
+  const habit = findPersonalItem('habit', id);
+  if (!habit) return;
+  const completed = (habit.checkins || []).some((checkin) => checkin.date === date);
+  try {
+    await api(`/api/personal/habits/${id}/checkins/${date}`, completed ? { method: 'DELETE' } : { method: 'PUT', body: JSON.stringify({ value: 1, note: '' }) });
+    await loadPersonal({ force: true });
+  } catch (error) { toast(error.message, true); }
+}
+
+function openPersonalTarget(type, id) {
+  if (type === 'record') return openRecord(id);
+  openPersonalEditor(type, id);
+}
+
+function openPersonalEditor(kind, id = '') {
+  const item = id ? findPersonalItem(kind, id) : null;
+  const dialog = $('#personal-dialog');
+  const content = $('#personal-dialog-content');
+  const labels = { note: ['Заметка', 'Текст заметки'], plan: ['План', 'Детали'], habit: ['Привычка', ''] };
+  const [title, bodyLabel] = labels[kind] || labels.note;
+  const body = kind === 'note'
+    ? `<label>${bodyLabel}<textarea name="body" rows="10" placeholder="Запишите мысль без обязательной структуры">${escapeHTML(item?.body || '')}</textarea></label><label class="personal-checkbox"><input type="checkbox" name="pinned" ${item?.pinned ? 'checked' : ''}><span>Закрепить заметку</span></label>`
+    : kind === 'plan'
+      ? `<label>${bodyLabel}<textarea name="notes" rows="6" placeholder="Что важно учесть">${escapeHTML(item?.notes || '')}</textarea></label><label>Срок<input type="datetime-local" name="dueAt" value="${escapeHTML(toLocalInput(item?.dueAt || ''))}"></label>`
+      : `<div class="form-grid two"><label>Режим<select name="scheduleKind"><option value="daily" ${(item?.scheduleKind || 'daily') === 'daily' ? 'selected' : ''}>Каждый день</option><option value="weekdays" ${item?.scheduleKind === 'weekdays' ? 'selected' : ''}>По будням</option><option value="weekly_target" ${item?.scheduleKind === 'weekly_target' ? 'selected' : ''}>Цель на неделю</option></select></label><label>Дней в неделю<input type="number" name="targetPerWeek" min="1" max="7" value="${item?.targetPerWeek || 7}"></label></div><div class="form-grid two"><label>Единица<input name="unit" maxlength="32" value="${escapeHTML(item?.unit || 'раз')}"></label><label>Начало<input type="date" name="startDate" value="${escapeHTML(item?.startDate || localISODate())}" ${item ? 'disabled' : ''}></label></div>`;
+  const newHeading = kind === 'habit' ? 'Новая привычка' : kind === 'plan' ? 'Новый план' : 'Новая заметка';
+  content.innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Личное пространство</span><h2>${item ? `Изменить: ${escapeHTML(title.toLowerCase())}` : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form"><label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}"></label>${body}<div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
+  $$('[data-close-personal]', dialog).forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
+  $('#personal-editor-form', dialog).addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    let payload;
+    if (kind === 'note') payload = { title: form.get('title'), body: form.get('body'), pinned: form.get('pinned') === 'on' };
+    else if (kind === 'plan') payload = { title: form.get('title'), notes: form.get('notes'), dueAt: form.get('dueAt') ? new Date(form.get('dueAt')).toISOString() : '', ...(item ? { status: item.status } : {}) };
+    else payload = { title: form.get('title'), scheduleKind: form.get('scheduleKind'), targetPerWeek: Number(form.get('targetPerWeek')), unit: form.get('unit'), ...(item ? {} : { startDate: form.get('startDate') }) };
+    const submit = $('button[type="submit"]', event.currentTarget);
+    submit.disabled = true;
+    try {
+      await api(`/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}${item ? `/${item.id}` : ''}`, { method: item ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
+      requestDialogClose(dialog);
+      await loadPersonal({ force: true });
+      toast(`${title} ${kind === 'plan' ? 'сохранён' : 'сохранена'}`);
+    } catch (error) { submit.disabled = false; toast(error.message, true); }
+  });
+  $('[data-archive-personal]', dialog)?.addEventListener('click', async () => {
+    try {
+      await api(`/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}/${item.id}`, { method: 'DELETE' });
+      requestDialogClose(dialog);
+      await loadPersonal({ force: true });
+      toast(`${title} ${kind === 'plan' ? 'перенесён' : 'перенесена'} в архив`);
+    } catch (error) { toast(error.message, true); }
+  });
+  openModal(dialog);
+}
+
+function openPersonalLinkDialog(sourceType, sourceID, sourceTitle) {
+  const dialog = $('#personal-dialog');
+  $('#personal-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon('link')} Личная связь</span><h2>${escapeHTML(sourceTitle)}</h2><p>Начните вводить название связанной карточки или личной записи.</p></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><div class="dialog-form personal-link-dialog"><label>Найти связь<input id="personal-link-search" type="search" autocomplete="off" autofocus placeholder="Например: отдых на даче"></label><div id="personal-link-results" class="personal-link-results"><p>Совпадения появятся здесь.</p></div></div>`;
+  $('[data-close-personal]', dialog).addEventListener('click', () => requestDialogClose(dialog));
+  const input = $('#personal-link-search', dialog);
+  input.addEventListener('input', () => {
+    clearTimeout(state.personalSuggestionTimer);
+    const query = input.value.trim();
+    if (query.length < 2) { $('#personal-link-results', dialog).innerHTML = '<p>Введите не меньше двух символов.</p>'; return; }
+    state.personalSuggestionTimer = setTimeout(async () => {
+      const resultsNode = $('#personal-link-results', dialog);
+      resultsNode.innerHTML = '<span class="spinner"></span>';
+      try {
+        const items = (await api(`/api/personal/suggestions?q=${encodeURIComponent(query)}`)).filter((item) => !(item.type === sourceType && item.id === sourceID));
+        resultsNode.innerHTML = items.map((item) => `<button type="button" data-link-target-type="${item.type}" data-link-target-id="${item.id}"><span>${icon(item.type === 'record' ? 'network' : item.type === 'habit' ? 'checkSquare' : item.type === 'plan' ? 'calendar' : 'edit')}</span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.subtitle)}</small>${icon('chevronRight')}</button>`).join('') || '<p>Подходящих записей не найдено.</p>';
+        $$('[data-link-target-id]', resultsNode).forEach((button) => button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            await api('/api/personal/links', { method: 'POST', body: JSON.stringify({ sourceType, sourceId: sourceID, targetType: button.dataset.linkTargetType, targetId: button.dataset.linkTargetId, relationType: 'related' }) });
+            requestDialogClose(dialog);
+            await loadPersonal({ force: true });
+            toast('Связь добавлена');
+          } catch (error) { button.disabled = false; toast(error.message, true); }
+        }));
+      } catch (error) { resultsNode.innerHTML = `<p class="form-error">${escapeHTML(error.message)}</p>`; }
+    }, 220);
+  });
+  openModal(dialog);
 }
 
 async function loadDashboardInsights(force = false) {
@@ -5140,22 +5385,49 @@ async function openProfile(userId) {
   $('#profile-dialog-content').innerHTML = `<div class="profile-loading"><span class="spinner"></span><strong>Загружаем активность ${escapeHTML(user?.username || '')}</strong></div>`;
   openModal(dialog);
   try {
-    const profile = await api(`/api/users/${userId}/profile`);
+    const ownProfile = Number(userId) === state.me.id;
+    const [profile, personal] = await Promise.all([
+      api(`/api/users/${userId}/profile`),
+      ownProfile ? api('/api/personal/overview') : Promise.resolve(null),
+    ]);
+    if (personal) state.personal = personal;
     const maxSeconds = Math.max(1, ...profile.activity.map((day) => day.activeSeconds));
     const accuracy = profile.estimateMinutes > 0 && profile.actualMinutes > 0 ? Math.round(profile.actualMinutes * 100 / profile.estimateMinutes) : 0;
     const insight = estimateInsight(accuracy, profile.completedRecords);
     const capacityHours = profile.weeklyCapacityMinutes ? Number((profile.weeklyCapacityMinutes / 60).toFixed(1)) : 0;
     const capacityTone = !profile.weeklyCapacityMinutes ? 'unset' : profile.utilizationPercent > 100 ? 'overload' : profile.utilizationPercent >= 80 ? 'tight' : 'normal';
-    $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Участник проекта</span><h2>${escapeHTML(profile.user.username)}</h2><p>На платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body"><section class="profile-summary"><span class="avatar profile-avatar">${escapeHTML(profile.user.username.slice(0, 2).toUpperCase())}</span><div><h3>${escapeHTML(profile.user.username)}</h3><p>${profile.user.id === state.me.id ? 'Ваш профиль активности' : 'Активность сооснователя'}</p></div>${profile.user.id === state.me.id ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить логин</button>` : ''}</section>${profile.user.id === state.me.id ? `<section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Проверяем AI</strong><p>Локальный анализ доступен всегда.</p></div></section>` : ''}<div class="profile-metrics"><article><span>Активное время · 30 дней</span><strong>${durationLabel(profile.activeSeconds30Days)}</strong><small>Только взаимодействие с интерфейсом</small></article><article><span>Действия · 30 дней</span><strong>${profile.actions30Days}</strong><small>${interactionsCountLabel(profile.interactions30Days)} с UI</small></article><article><span>Завершено</span><strong>${profile.completedRecords}</strong><small>карточек с результатом</small></article><article><span>Факт к оценке</span><strong>${accuracy ? `${accuracy}%` : 'Нет данных'}</strong><small>${minutesLabel(profile.actualMinutes)} факт · ${minutesLabel(profile.estimateMinutes)} план</small></article></div><section class="estimate-insight ${insight.tone}">${icon('clock')}<div><strong>${escapeHTML(insight.title)}</strong><p>${escapeHTML(insight.text)}</p></div></section><section class="weekly-capacity capacity-${capacityTone}"><header><div><span>Рабочая неделя</span><h3>${profile.weeklyCapacityMinutes ? `${profile.utilizationPercent}% запланировано` : 'Ёмкость пока не задана'}</h3><p>${minutesLabel(profile.scheduledMinutes)} со сроком на этой неделе${profile.unscheduledMinutes ? ` · ${minutesLabel(profile.unscheduledMinutes)} без недельного слота` : ''}</p></div><strong>${profile.weeklyCapacityMinutes ? minutesLabel(profile.weeklyCapacityMinutes) : '—'}</strong></header><progress max="100" value="${Math.min(100, profile.utilizationPercent || 0)}"></progress>${profile.user.id === state.me.id ? `<form id="capacity-form"><label>Доступно в неделю, часов<input name="hours" type="number" min="0" max="168" step="0.5" value="${capacityHours}"></label><button type="submit" class="secondary">Сохранить ёмкость</button></form>` : '<small>Ёмкость задаёт сам участник в своём профиле.</small>'}</section><section class="activity-chart"><header><h3>Активность по дням</h3><span>Последние 30 дней</span></header><div>${profile.activity.length ? profile.activity.slice().reverse().map((day) => `<span title="${escapeHTML(day.date)} · ${durationLabel(day.activeSeconds)} · ${interactionsCountLabel(day.interactions)}"><i data-level="${Math.max(1, Math.ceil(day.activeSeconds * 5 / maxSeconds))}"></i><small>${day.date.slice(8)}</small></span>`).join('') : `<p>Активность начнёт накапливаться после взаимодействия с новой версией.</p>`}</div></section><section class="profile-actions"><header><h3>Последние действия</h3><span>${profile.recentActions.length}</span></header><div class="activity-list">${profile.recentActions.map(renderActivityItem).join('') || emptyState('Действий пока нет.')}</div></section></div>`;
+    const displayName = profile.user.displayName || profile.user.username;
+    const settings = personal?.settings || { birthDate: null, lifeExpectancyYears: 100 };
+    $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Участник проекта</span><h2>${escapeHTML(displayName)}</h2><p>@${escapeHTML(profile.user.username)} · на платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body"><section class="profile-summary"><span class="avatar profile-avatar">${escapeHTML(userInitials(profile.user))}</span><div><h3>${escapeHTML(displayName)}</h3><p>@${escapeHTML(profile.user.username)}</p>${profile.user.bio ? `<div class="profile-bio">${escapeHTML(profile.user.bio).replace(/\n/g, '<br>')}</div>` : ''}</div>${ownProfile ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить профиль</button>` : ''}</section>${ownProfile ? `<form id="profile-details-form" class="profile-editor" hidden><div class="form-grid two"><label>Отображаемое имя<input name="displayName" maxlength="80" value="${escapeHTML(profile.user.displayName || '')}" placeholder="Как вас видят участники"></label><label>Логин<input name="username" maxlength="32" value="${escapeHTML(profile.user.username)}"></label></div><label>О себе<textarea name="bio" maxlength="800" rows="4" placeholder="Короткое публичное описание">${escapeHTML(profile.user.bio || '')}</textarea></label><div class="profile-private-fields"><div><span>${icon('lock')} Видно только вам</span><small>Эти данные используются только для личной карты времени.</small></div><div class="form-grid two"><label>Дата рождения<input name="birthDate" type="date" value="${escapeHTML(settings.birthDate || '')}"></label><label>Горизонт, лет<input name="lifeExpectancyYears" type="number" min="1" max="150" value="${settings.lifeExpectancyYears || 100}"></label></div></div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить профиль</button><button type="button" class="secondary" data-cancel-profile-edit>Отмена</button></div></form><details class="profile-security"><summary>${icon('lock')} Безопасность аккаунта</summary><form id="password-form"><div class="form-grid two"><label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label></div><button type="submit" class="secondary">Изменить пароль</button></form></details><section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Проверяем AI</strong><p>Локальный анализ доступен всегда.</p></div></section>` : ''}<div class="profile-metrics"><article><span>Активное время · 30 дней</span><strong>${durationLabel(profile.activeSeconds30Days)}</strong><small>Только взаимодействие с интерфейсом</small></article><article><span>Действия · 30 дней</span><strong>${profile.actions30Days}</strong><small>${interactionsCountLabel(profile.interactions30Days)} с UI</small></article><article><span>Завершено</span><strong>${profile.completedRecords}</strong><small>карточек с результатом</small></article><article><span>Факт к оценке</span><strong>${accuracy ? `${accuracy}%` : 'Нет данных'}</strong><small>${minutesLabel(profile.actualMinutes)} факт · ${minutesLabel(profile.estimateMinutes)} план</small></article></div><section class="estimate-insight ${insight.tone}">${icon('clock')}<div><strong>${escapeHTML(insight.title)}</strong><p>${escapeHTML(insight.text)}</p></div></section><section class="weekly-capacity capacity-${capacityTone}"><header><div><span>Рабочая неделя</span><h3>${profile.weeklyCapacityMinutes ? `${profile.utilizationPercent}% запланировано` : 'Ёмкость пока не задана'}</h3><p>${minutesLabel(profile.scheduledMinutes)} со сроком на этой неделе${profile.unscheduledMinutes ? ` · ${minutesLabel(profile.unscheduledMinutes)} без недельного слота` : ''}</p></div><strong>${profile.weeklyCapacityMinutes ? minutesLabel(profile.weeklyCapacityMinutes) : '—'}</strong></header><progress max="100" value="${Math.min(100, profile.utilizationPercent || 0)}"></progress>${ownProfile ? `<form id="capacity-form"><label>Доступно в неделю, часов<input name="hours" type="number" min="0" max="168" step="0.5" value="${capacityHours}"></label><button type="submit" class="secondary">Сохранить ёмкость</button></form>` : '<small>Ёмкость задаёт сам участник в своём профиле.</small>'}</section><section class="activity-chart"><header><h3>Активность по дням</h3><span>Последние 30 дней</span></header><div>${profile.activity.length ? profile.activity.slice().reverse().map((day) => `<span title="${escapeHTML(day.date)} · ${durationLabel(day.activeSeconds)} · ${interactionsCountLabel(day.interactions)}"><i data-level="${Math.max(1, Math.ceil(day.activeSeconds * 5 / maxSeconds))}"></i><small>${day.date.slice(8)}</small></span>`).join('') : `<p>Активность начнёт накапливаться после взаимодействия с новой версией.</p>`}</div></section><section class="profile-actions"><header><h3>Последние действия</h3><span>${profile.recentActions.length}</span></header><div class="activity-list">${profile.recentActions.map(renderActivityItem).join('') || emptyState('Действий пока нет.')}</div></section></div>`;
     $$('[data-close-profile]').forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
-    $('[data-edit-profile]')?.addEventListener('click', async () => {
-      const username = await askText({ title: 'Изменить логин', label: 'Новый логин', defaultValue: state.me.username, required: true });
-      if (!username || username === state.me.username) return;
+    $('[data-edit-profile]')?.addEventListener('click', () => { $('#profile-details-form', dialog).hidden = false; $('[data-edit-profile]', dialog).hidden = true; $('#profile-details-form input', dialog)?.focus(); });
+    $('[data-cancel-profile-edit]')?.addEventListener('click', () => { $('#profile-details-form', dialog).hidden = true; $('[data-edit-profile]', dialog).hidden = false; });
+    $('#profile-details-form')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const submit = $('button[type="submit"]', event.currentTarget);
+      submit.disabled = true;
       try {
-        state.me = await api('/api/me', { method: 'PATCH', body: JSON.stringify({ username }) });
-        $('#user-name').textContent = state.me.username; $('#user-avatar').textContent = state.me.username.slice(0, 2).toUpperCase();
-        await loadData(true); await openProfile(state.me.id); toast('Логин изменён');
-      } catch (error) { toast(error.message, true); }
+        state.me = await api('/api/me', { method: 'PATCH', body: JSON.stringify({ username: form.get('username'), displayName: form.get('displayName'), bio: form.get('bio'), birthDate: form.get('birthDate'), lifeExpectancyYears: Number(form.get('lifeExpectancyYears')) }) });
+        $('#user-name').textContent = state.me.username;
+        $('#user-avatar').textContent = userInitials(state.me);
+        await loadData(true);
+        await loadPersonal({ force: true });
+        await openProfile(state.me.id);
+        toast('Профиль сохранён');
+      } catch (error) { submit.disabled = false; toast(error.message, true); }
+    });
+    $('#password-form')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const submit = $('button[type="submit"]', event.currentTarget);
+      submit.disabled = true;
+      try {
+        await api('/api/me/password', { method: 'PUT', body: JSON.stringify({ currentPassword: form.get('currentPassword'), newPassword: form.get('newPassword') }) });
+        event.currentTarget.reset();
+        submit.disabled = false;
+        toast('Пароль изменён, остальные сессии завершены');
+      } catch (error) { submit.disabled = false; toast(error.message, true); }
     });
     $('#capacity-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -5168,7 +5440,7 @@ async function openProfile(userId) {
     });
     const recentActions = new Map(profile.recentActions.map((item) => [item.id, item]));
     $$('[data-open-event]', dialog).forEach((button) => button.addEventListener('click', () => openActivity(button.dataset.openEvent, recentActions.get(button.dataset.openEvent))));
-		if (profile.user.id === state.me.id) api('/api/ai/health').then((health) => {
+    if (ownProfile) api('/api/ai/health').then((health) => {
 			const node = $('#ai-provider-status', dialog); if (!node) return;
 			const externalProvider = health.provider === 'gemini' ? 'Gemini' : health.provider === 'groq' ? 'Groq' : 'Внешняя модель';
 			const provider = health.providerAvailable ? externalProvider : 'Локальный анализ активен';
@@ -5183,6 +5455,13 @@ async function openProfile(userId) {
     $('#profile-dialog-content').innerHTML = `<div class="record-load-error">${icon('help')}<h2>Профиль не загрузился</h2><p>${escapeHTML(error.message)}</p><button type="button" class="secondary" data-close-profile>Закрыть</button></div>`;
     $('[data-close-profile]').addEventListener('click', () => requestDialogClose(dialog));
   }
+}
+
+function userInitials(user) {
+  const source = String(user?.displayName || user?.username || '').trim();
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length > 1) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return source.slice(0, 2).toUpperCase();
 }
 
 function openActivity(id, suppliedItem = null) {

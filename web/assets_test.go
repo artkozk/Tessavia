@@ -199,8 +199,8 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260831-flexible-cycle-start-2")) {
-		t.Fatal("12-week calendar release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	if !bytes.Contains(index, []byte("20260901-personal-foundation-1")) {
+		t.Fatal("personal workspace release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }
 
@@ -230,6 +230,42 @@ func TestTwelveWeekPlanningCalendarAssetsAreEmbedded(t *testing.T) {
 		if !bytes.Contains(styles, marker) {
 			t.Fatalf("styles.css does not contain planning visual marker %q", marker)
 		}
+	}
+}
+
+func TestPersonalWorkspaceAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("['personal', 'Личное'"),
+		[]byte("function renderPersonal"),
+		[]byte("function renderLifeMap"),
+		[]byte("function openPersonalEditor"),
+		[]byte("function openPersonalLinkDialog"),
+		[]byte("/api/personal/overview"),
+		[]byte("/api/me/password"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain personal workspace marker %q", marker)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{[]byte(".personal-today-grid"), []byte(".habit-week"), []byte(".life-grid"), []byte(".profile-private-fields")} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain personal workspace marker %q", marker)
+		}
+	}
+	index, err := Files.ReadFile("index.html")
+	if err != nil {
+		t.Fatalf("read index.html: %v", err)
+	}
+	if !bytes.Contains(index, []byte(`id="personal-dialog"`)) {
+		t.Fatal("index.html does not contain the personal editor dialog")
 	}
 }
 

@@ -73,8 +73,25 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/auth/logout", s.requireAuth(http.HandlerFunc(s.handleLogout)))
 	s.mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
 	s.mux.Handle("PATCH /api/me", s.requireAuth(http.HandlerFunc(s.handleUpdateMe)))
+	s.mux.Handle("PUT /api/me/password", s.requireAuth(http.HandlerFunc(s.handleUpdatePassword)))
 	s.mux.Handle("GET /api/users", s.requireAuth(http.HandlerFunc(s.handleUsers)))
 	s.mux.Handle("GET /api/users/{id}/profile", s.requireAuth(http.HandlerFunc(s.handleUserProfile)))
+	s.mux.Handle("GET /api/workspaces", s.requireAuth(http.HandlerFunc(s.handleListWorkspaces)))
+	s.mux.Handle("GET /api/personal/overview", s.requireAuth(http.HandlerFunc(s.handlePersonalOverview)))
+	s.mux.Handle("POST /api/personal/notes", s.requireAuth(http.HandlerFunc(s.handleCreatePersonalNote)))
+	s.mux.Handle("PATCH /api/personal/notes/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdatePersonalNote)))
+	s.mux.Handle("DELETE /api/personal/notes/{id}", s.requireAuth(http.HandlerFunc(s.handleArchivePersonalNote)))
+	s.mux.Handle("POST /api/personal/plans", s.requireAuth(http.HandlerFunc(s.handleCreatePersonalPlan)))
+	s.mux.Handle("PATCH /api/personal/plans/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdatePersonalPlan)))
+	s.mux.Handle("DELETE /api/personal/plans/{id}", s.requireAuth(http.HandlerFunc(s.handleArchivePersonalPlan)))
+	s.mux.Handle("POST /api/personal/habits", s.requireAuth(http.HandlerFunc(s.handleCreatePersonalHabit)))
+	s.mux.Handle("PATCH /api/personal/habits/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdatePersonalHabit)))
+	s.mux.Handle("DELETE /api/personal/habits/{id}", s.requireAuth(http.HandlerFunc(s.handleArchivePersonalHabit)))
+	s.mux.Handle("PUT /api/personal/habits/{id}/checkins/{date}", s.requireAuth(http.HandlerFunc(s.handleSetHabitCheckin)))
+	s.mux.Handle("DELETE /api/personal/habits/{id}/checkins/{date}", s.requireAuth(http.HandlerFunc(s.handleDeleteHabitCheckin)))
+	s.mux.Handle("GET /api/personal/suggestions", s.requireAuth(http.HandlerFunc(s.handlePersonalSuggestions)))
+	s.mux.Handle("POST /api/personal/links", s.requireAuth(http.HandlerFunc(s.handleCreatePersonalLink)))
+	s.mux.Handle("DELETE /api/personal/links/{id}", s.requireAuth(http.HandlerFunc(s.handleRemovePersonalLink)))
 	s.mux.Handle("PUT /api/users/{id}/capacity", s.requireAuth(http.HandlerFunc(s.handleUpdateUserCapacity)))
 	s.mux.Handle("GET /api/team/capacity", s.requireAuth(http.HandlerFunc(s.handleTeamCapacity)))
 	s.mux.Handle("GET /api/planning/cycles", s.requireAuth(http.HandlerFunc(s.handleListPlanningCycles)))
@@ -188,10 +205,10 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 		var user User
 		var lastSeenAt string
 		err = s.store.db.QueryRowContext(r.Context(), `
-			SELECT u.id, u.email, u.username, u.created_at, s.last_seen_at
+			SELECT u.id, u.email, u.username, u.display_name, u.bio, u.created_at, s.last_seen_at
 			FROM sessions s JOIN users u ON u.id = s.user_id
 			WHERE s.token_hash = ? AND s.expires_at > ?`, hashToken(cookie.Value), nowText()).
-			Scan(&user.ID, &user.Email, &user.Username, &user.CreatedAt, &lastSeenAt)
+			Scan(&user.ID, &user.Email, &user.Username, &user.DisplayName, &user.Bio, &user.CreatedAt, &lastSeenAt)
 		if errors.Is(err, sql.ErrNoRows) {
 			s.clearSessionCookie(w)
 			writeError(w, http.StatusUnauthorized, "Сессия истекла")
@@ -304,8 +321,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	var user User
 	var passwordHash string
-	err := s.store.db.QueryRowContext(r.Context(), `SELECT id, email, username, created_at, password_hash FROM users WHERE email = ? OR username = ?`, strings.TrimSpace(input.Login), strings.TrimSpace(input.Login)).
-		Scan(&user.ID, &user.Email, &user.Username, &user.CreatedAt, &passwordHash)
+	err := s.store.db.QueryRowContext(r.Context(), `SELECT id, email, username, display_name, bio, created_at, password_hash FROM users WHERE email = ? OR username = ?`, strings.TrimSpace(input.Login), strings.TrimSpace(input.Login)).
+		Scan(&user.ID, &user.Email, &user.Username, &user.DisplayName, &user.Bio, &user.CreatedAt, &passwordHash)
 	if err != nil || bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(input.Password)) != nil {
 		writeError(w, http.StatusUnauthorized, "Неверный логин или пароль")
 		return
@@ -350,50 +367,153 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Username string `json:"username"`
+		Username            *string `json:"username"`
+		DisplayName         *string `json:"displayName"`
+		Bio                 *string `json:"bio"`
+		BirthDate           *string `json:"birthDate"`
+		LifeExpectancyYears *int    `json:"lifeExpectancyYears"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	input.Username = strings.TrimSpace(input.Username)
-	if !usernamePattern.MatchString(input.Username) {
+	user := currentUser(r)
+	username := user.Username
+	displayName := user.DisplayName
+	bio := user.Bio
+	var birthDate *string
+	lifeExpectancyYears := 100
+	if err := s.store.db.QueryRowContext(r.Context(), `SELECT birth_date, life_expectancy_years FROM users WHERE id = ?`, user.ID).Scan(&birthDate, &lifeExpectancyYears); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось загрузить профиль")
+		return
+	}
+	if input.Username != nil {
+		username = strings.TrimSpace(*input.Username)
+	}
+	if input.DisplayName != nil {
+		displayName = strings.TrimSpace(*input.DisplayName)
+	}
+	if input.Bio != nil {
+		bio = strings.TrimSpace(*input.Bio)
+	}
+	if !usernamePattern.MatchString(username) {
 		writeError(w, http.StatusBadRequest, "Логин: 3–32 символа, латинские буквы, цифры и _")
 		return
 	}
-	if len(s.config.AllowedUsernames) > 0 {
-		if _, ok := s.config.AllowedUsernames[strings.ToLower(input.Username)]; !ok {
+	if len([]rune(displayName)) > 80 || len([]rune(bio)) > 800 {
+		writeError(w, http.StatusBadRequest, "Имя или описание профиля слишком длинное")
+		return
+	}
+	if username != user.Username && len(s.config.AllowedUsernames) > 0 {
+		if _, ok := s.config.AllowedUsernames[strings.ToLower(username)]; !ok {
 			writeError(w, http.StatusForbidden, "Новый логин нужно сначала добавить в конфигурацию команды")
 			return
 		}
 	}
-	user := currentUser(r)
+	if input.BirthDate != nil {
+		value := strings.TrimSpace(*input.BirthDate)
+		if value == "" {
+			birthDate = nil
+		} else if !validDate(value) || value > time.Now().Format("2006-01-02") {
+			writeError(w, http.StatusBadRequest, "Укажите корректную дату рождения")
+			return
+		} else {
+			birthDate = &value
+		}
+	}
+	if input.LifeExpectancyYears != nil {
+		lifeExpectancyYears = *input.LifeExpectancyYears
+	}
+	if lifeExpectancyYears < 1 || lifeExpectancyYears > 150 {
+		writeError(w, http.StatusBadRequest, "Горизонт жизни должен быть от 1 до 150 лет")
+		return
+	}
 	beforeUsername := user.Username
+	beforeDisplayName := user.DisplayName
+	beforeBio := user.Bio
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось начать изменение профиля")
 		return
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(r.Context(), `UPDATE users SET username = ?, updated_at = ? WHERE id = ?`, input.Username, nowText(), user.ID); err != nil {
+	if _, err := tx.ExecContext(r.Context(), `UPDATE users SET username = ?, display_name = ?, bio = ?, birth_date = ?, life_expectancy_years = ?, updated_at = ? WHERE id = ?`, username, displayName, bio, birthDate, lifeExpectancyYears, nowText(), user.ID); err != nil {
 		writeError(w, http.StatusConflict, "Логин уже занят")
 		return
 	}
-	if err := writeActivity(r.Context(), tx, user.ID, "user", strconv.FormatInt(user.ID, 10), "profile_updated", "", map[string]any{
-		"username": map[string]any{"before": beforeUsername, "after": input.Username},
-	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось записать историю профиля")
-		return
+	publicChanges := map[string]any{}
+	if beforeUsername != username {
+		publicChanges["username"] = map[string]any{"before": beforeUsername, "after": username}
+	}
+	if beforeDisplayName != displayName {
+		publicChanges["displayName"] = map[string]any{"before": beforeDisplayName, "after": displayName}
+	}
+	if beforeBio != bio {
+		publicChanges["bio"] = map[string]any{"before": beforeBio, "after": bio}
+	}
+	if len(publicChanges) > 0 {
+		if err := writeActivity(r.Context(), tx, user.ID, "user", strconv.FormatInt(user.ID, 10), "profile_updated", "", publicChanges); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось записать историю профиля")
+			return
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить изменение профиля")
 		return
 	}
-	user.Username = input.Username
+	user.Username = username
+	user.DisplayName = displayName
+	user.Bio = bio
 	writeJSON(w, http.StatusOK, user)
 }
 
+func (s *Server) handleUpdatePassword(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if len(input.NewPassword) < 8 || len(input.NewPassword) > 128 {
+		writeError(w, http.StatusBadRequest, "Новый пароль должен содержать от 8 до 128 символов")
+		return
+	}
+	user := currentUser(r)
+	var currentHash string
+	if err := s.store.db.QueryRowContext(r.Context(), `SELECT password_hash FROM users WHERE id = ?`, user.ID).Scan(&currentHash); err != nil || bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(input.CurrentPassword)) != nil {
+		writeError(w, http.StatusUnauthorized, "Текущий пароль указан неверно")
+		return
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось обновить пароль")
+		return
+	}
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось начать смену пароля")
+		return
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(r.Context(), `UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, string(newHash), nowText(), user.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось обновить пароль")
+		return
+	}
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?`, user.ID, hashToken(cookie.Value)); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось завершить другие сессии")
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось завершить смену пароля")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, email, username, created_at FROM users ORDER BY username`)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, username, display_name, bio, created_at FROM users ORDER BY username`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить участников")
 		return
@@ -402,7 +522,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 	users := make([]User, 0)
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.Email, &user.Username, &user.CreatedAt); err != nil {
+		if err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.Bio, &user.CreatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось прочитать участников")
 			return
 		}

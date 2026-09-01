@@ -28,10 +28,12 @@ type Store struct {
 }
 
 type User struct {
-	ID        int64  `json:"id"`
-	Email     string `json:"email"`
-	Username  string `json:"username"`
-	CreatedAt string `json:"createdAt"`
+	ID          int64  `json:"id"`
+	Email       string `json:"email,omitempty"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+	Bio         string `json:"bio"`
+	CreatedAt   string `json:"createdAt"`
 }
 
 type Record struct {
