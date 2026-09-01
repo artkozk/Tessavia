@@ -70,6 +70,7 @@ const iconPaths = {
   testTube: '<path d="m14.5 2-9 9a4.2 4.2 0 0 0 6 6l9-9"/><path d="m13 6 5 5M6.5 10.5l7 7"/>',
   inbox: '<path d="M4 4h16v14H4z"/><path d="M4 13h4l2 3h4l2-3h4"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 0 1 7 7v4"/>',
+	redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9h-9a7 7 0 0 0-7 7v4"/>',
 	arrowUp: '<path d="m6 10 6-6 6 6M12 4v16"/>',
 	arrowDown: '<path d="m6 14 6 6 6-6M12 20V4"/>',
 };
@@ -233,10 +234,14 @@ function markdownPlain(value, empty = '') {
 		.trim();
 }
 
-function markdownEditor(name, label, value, rows = 6, placeholder = '', suffix = '') {
+function markdownEditor(name, label, value, rows = 6, placeholder = '', suffix = '', options = {}) {
   const id = `markdown-${String(name).replace(/[^a-z0-9_-]/gi, '-')}-${suffix || 'main'}`;
   const content = String(value || '').trim() ? renderMarkdown(value, '') : '';
-  return `<div class="markdown-editor"><label for="${escapeHTML(id)}">${escapeHTML(label)}</label><div class="markdown-toolbar" role="toolbar" aria-label="Форматирование текста"><button type="button" data-md="bold" title="Полужирный (Ctrl+B)" aria-label="Полужирный"><b>B</b></button><button type="button" data-md="italic" title="Курсив (Ctrl+I)" aria-label="Курсив"><i>I</i></button><button type="button" data-md="heading2" title="Заголовок второго уровня (Ctrl+Alt+2)" aria-label="Заголовок второго уровня">H2</button><button type="button" data-md="list" title="Маркированный список (Ctrl+Shift+8)" aria-label="Маркированный список">${icon('menu')}</button><button type="button" data-md="ordered" title="Нумерованный список (Ctrl+Shift+7)" aria-label="Нумерованный список">1.</button><button type="button" data-md="quote" title="Цитата (Ctrl+Shift+.)" aria-label="Цитата">❯</button><button type="button" data-md="code" title="Блок кода (Ctrl+&#96;)" aria-label="Блок кода">&lt;/&gt;</button><button type="button" data-md="note" title="Примечание" aria-label="Примечание">i</button><button type="button" data-md="link" title="Ссылка (Ctrl+K)" aria-label="Ссылка">${icon('link')}</button><span class="markdown-toolbar-spacer"></span><button type="button" data-ai-draft-editor title="Предложить черновик AI" aria-label="Предложить черновик AI">${icon('sparkles')}</button><button type="button" data-open-notebook title="Развернуть редактор" aria-label="Развернуть редактор">${icon('maximize')}</button></div><div id="${escapeHTML(id)}" class="markdown-rich-editor markdown-body" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="${escapeHTML(placeholder)}" style="--editor-rows:${Math.max(3, Number(rows) || 6)}">${content}</div><textarea class="markdown-source" name="${escapeHTML(name)}" hidden tabindex="-1" aria-hidden="true">${escapeHTML(value || '')}</textarea></div>`;
+  const editorClass = options.compact ? ' compact-toolbar' : '';
+  const historyActions = options.history ? `<button type="button" data-md-history="undo" title="Отменить (Ctrl+Z)" aria-label="Отменить">${icon('undo')}</button><button type="button" data-md-history="redo" title="Повторить (Ctrl+Y)" aria-label="Повторить">${icon('redo')}</button>` : '';
+  const aiAction = options.ai === false ? '' : `<button type="button" data-ai-draft-editor title="Предложить черновик AI" aria-label="Предложить черновик AI">${icon('sparkles')}</button>`;
+  const expandAction = options.expand === false ? '' : `<button type="button" data-open-notebook title="Развернуть редактор" aria-label="Развернуть редактор">${icon('maximize')}</button>`;
+  return `<div class="markdown-editor${editorClass}"><label for="${escapeHTML(id)}">${escapeHTML(label)}</label><div class="markdown-toolbar" role="toolbar" aria-label="Форматирование текста">${historyActions}<button type="button" data-md="bold" title="Полужирный (Ctrl+B)" aria-label="Полужирный"><b>B</b></button><button type="button" data-md="italic" title="Курсив (Ctrl+I)" aria-label="Курсив"><i>I</i></button><button type="button" data-md="heading2" title="Заголовок второго уровня (Ctrl+Alt+2)" aria-label="Заголовок второго уровня">H2</button><button type="button" data-md="list" title="Маркированный список (Ctrl+Shift+8)" aria-label="Маркированный список">${icon('menu')}</button><button type="button" data-md="ordered" title="Нумерованный список (Ctrl+Shift+7)" aria-label="Нумерованный список">1.</button><button type="button" data-md="quote" title="Цитата (Ctrl+Shift+.)" aria-label="Цитата">❯</button><button type="button" data-md="code" title="Блок кода (Ctrl+&#96;)" aria-label="Блок кода">&lt;/&gt;</button><button type="button" data-md="note" title="Примечание" aria-label="Примечание">i</button><button type="button" data-md="link" title="Ссылка (Ctrl+K)" aria-label="Ссылка">${icon('link')}</button><span class="markdown-toolbar-spacer"></span>${aiAction}${expandAction}</div><div id="${escapeHTML(id)}" class="markdown-rich-editor markdown-body" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="${escapeHTML(placeholder)}" style="--editor-rows:${Math.max(3, Number(rows) || 6)}">${content}</div><textarea class="markdown-source" name="${escapeHTML(name)}" hidden tabindex="-1" aria-hidden="true">${escapeHTML(value || '')}</textarea></div>`;
 }
 
 function aiDraftTargetForEditor(editor) {
@@ -373,17 +378,36 @@ function bindMarkdownEditors(root = document) {
     let restoringHistory = false;
     let historyIndex = 0;
     let editorHistory = [{ html: richEditor.innerHTML, source: textarea.value }];
-    const sync = () => {
+    let lastHistoryAt = 0;
+    let lastHistoryInputType = '';
+    const updateHistoryControls = () => {
+      const undo = $('[data-md-history="undo"]', editor);
+      const redo = $('[data-md-history="redo"]', editor);
+      if (undo) undo.disabled = historyIndex <= 0;
+      if (redo) redo.disabled = historyIndex >= editorHistory.length - 1;
+    };
+    const sync = (event) => {
       textarea.value = richTextToMarkdown(richEditor);
       if (!restoringHistory) {
         const current = editorHistory[historyIndex];
         if (!current || current.html !== richEditor.innerHTML || current.source !== textarea.value) {
-          editorHistory = editorHistory.slice(0, historyIndex + 1);
-          editorHistory.push({ html: richEditor.innerHTML, source: textarea.value });
-          if (editorHistory.length > 120) editorHistory.shift();
-          historyIndex = editorHistory.length - 1;
+          const now = Date.now();
+          const inputType = event?.inputType || 'input';
+          const typingAction = inputType === 'input' || inputType === 'insertText' || inputType.startsWith('deleteContent');
+          const sameTypingGroup = typingAction && (lastHistoryInputType === inputType || lastHistoryInputType === 'input' || inputType === 'input');
+          const coalesce = sameTypingGroup && now - lastHistoryAt < 2500 && historyIndex === editorHistory.length - 1 && historyIndex > 0;
+          if (coalesce) editorHistory[historyIndex] = { html: richEditor.innerHTML, source: textarea.value };
+          else {
+            editorHistory = editorHistory.slice(0, historyIndex + 1);
+            editorHistory.push({ html: richEditor.innerHTML, source: textarea.value });
+            if (editorHistory.length > 120) editorHistory.shift();
+            historyIndex = editorHistory.length - 1;
+          }
+          lastHistoryAt = now;
+          lastHistoryInputType = inputType;
         }
       }
+      updateHistoryControls();
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     };
     const restoreHistory = (direction) => {
@@ -396,11 +420,18 @@ function bindMarkdownEditors(root = document) {
       textarea.value = snapshot.source;
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
       restoringHistory = false;
+      lastHistoryAt = 0;
+      lastHistoryInputType = '';
+      updateHistoryControls();
       richEditor.focus();
     };
     $$('[data-md]', editor).forEach((button) => {
       button.addEventListener('mousedown', (event) => event.preventDefault());
       button.addEventListener('click', () => applyRichTextAction(richEditor, button.dataset.md));
+    });
+    $$('[data-md-history]', editor).forEach((button) => {
+      button.addEventListener('mousedown', (event) => event.preventDefault());
+      button.addEventListener('click', () => restoreHistory(button.dataset.mdHistory === 'redo' ? 1 : -1));
     });
     $('[data-open-notebook]', editor)?.addEventListener('click', () => openNotebook({ title: editor.querySelector('label')?.textContent || 'Редактор', value: textarea.value, onSave: (value) => setMarkdownEditorValue(editor, value) }));
     const aiDraftButton = $('[data-ai-draft-editor]', editor);
@@ -442,6 +473,7 @@ function bindMarkdownEditors(root = document) {
         editor.closest('form')?.requestSubmit();
       }
     });
+    updateHistoryControls();
   });
   bindMarkdownViews(root);
 }
@@ -728,7 +760,10 @@ function clearWorkingDraft(scope) {
 
 function clearWorkingDraftFor(root) {
   if (root?.dataset?.workingDraftScope) clearWorkingDraft(root.dataset.workingDraftScope);
+  state.workingDraftPersistors.delete(root);
+  if (root?.dataset) delete root.dataset.workingDraftScope;
   root?.classList.remove('has-unsaved-draft');
+  $('.working-draft-note', root)?.remove();
 }
 
 function applyWorkingDraft(root, values = {}) {
@@ -1050,7 +1085,11 @@ function bindGlobalEvents() {
 	$('#auth-change-registration').addEventListener('click', () => resetRegistrationVerification());
   $('#logout-button').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.reload(); });
   $('#profile-button').addEventListener('click', () => { setSidebarOpen(false); openProfile(state.me.id); });
-  $('#new-record-button').addEventListener('click', (event) => { event.stopPropagation(); toggleCreateMenu(); });
+  $('#new-record-button').addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (state.view === 'personal') openPersonalEditor('note');
+    else toggleCreateMenu();
+  });
   $('#notification-button').addEventListener('click', () => { state.view = 'notifications'; render(); });
   $('#onboarding-button').addEventListener('click', () => openOnboarding(0));
 	$('#interface-settings-button').addEventListener('click', () => openInterfaceSettings());
@@ -1746,6 +1785,11 @@ function renderContent() {
     state.graphInstance.destroy(); state.graphInstance = null;
   }
   $('#page-title').textContent = titles[state.view] || (state.view === 'notifications' ? 'Уведомления' : state.view === 'quality' ? 'Качество базы' : 'Обзор');
+  const createButton = $('#new-record-button');
+  const personalCreate = state.view === 'personal';
+  createButton.innerHTML = `${icon('plus')} ${personalCreate ? 'Заметка' : 'Создать'}`;
+  createButton.setAttribute('aria-label', personalCreate ? 'Новая личная заметка' : 'Создать');
+  createButton.title = personalCreate ? 'Новая личная заметка' : 'Создать';
   if (state.view === 'personal') return renderPersonal();
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'work') return renderWorkList();
@@ -1829,13 +1873,17 @@ function renderPersonal() {
   $('#main-content').innerHTML = `
     <div class="page-heading personal-heading">
       <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>Личное пространство</h1><p>${escapeHTML(state.me.displayName || state.me.username)}</p></div>
-      <div class="personal-create-actions"><button type="button" class="secondary" data-personal-create="note">${icon('edit')} Заметка</button><button type="button" class="secondary" data-personal-create="plan">${icon('calendar')} План</button><button type="button" class="primary" data-personal-create="habit">${icon('checkSquare')} Привычка</button></div>
+      ${renderPersonalCreateMenu()}
     </div>
     <section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.length}</strong><small>отмечено</small></article><article><span>Открытые планы</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt).length} со сроком</small></article><article><span>Заметки</span><strong>${data.notes.length}</strong><small>${data.notes.filter((note) => note.pinned).length} закреплено</small></article></section>
     <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}</div>
     <div class="personal-content">${renderPersonalTab(data)}</div>`;
   $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; renderPersonal(); }));
   bindPersonalInteractions();
+}
+
+function renderPersonalCreateMenu() {
+  return `<details class="personal-create-menu"><summary class="primary">${icon('plus')} Записать</summary><div><button type="button" data-personal-create="note">${icon('edit')}<span><strong>Заметка</strong><small>Свободный текст и списки</small></span></button><button type="button" data-personal-create="plan">${icon('calendar')}<span><strong>План</strong><small>Срок можно добавить позже</small></span></button><button type="button" data-personal-create="habit">${icon('checkSquare')}<span><strong>Привычка</strong><small>Регулярная отметка</small></span></button></div></details>`;
 }
 
 function renderPersonalTab(data) {
@@ -1863,13 +1911,17 @@ function renderPersonalHabits(habits, links) {
 
 function renderNoteCard(note, links, compact = false) {
   const ownLinks = personalLinksFor(links, 'note', note.id);
-  return `<article class="personal-note ${compact ? 'compact' : ''}"><button type="button" class="personal-card-main" data-personal-edit="note" data-personal-id="${note.id}"><span>${note.pinned ? icon('bookmark') : icon('edit')}</span><strong>${escapeHTML(note.title)}</strong><div class="markdown-body">${renderMarkdown(note.body, 'Пустая заметка')}</div></button>${renderPersonalLinkChips(ownLinks)}<footer><time>${formatDate(note.updatedAt, true)}</time><button type="button" class="text-button" data-personal-link="note" data-personal-id="${note.id}" data-personal-title="${escapeHTML(note.title)}">${icon('link')} Связать</button></footer></article>`;
+  const body = markdownPlain(note.body).trim();
+  const preview = body && body !== note.title ? `<div class="markdown-body">${renderMarkdown(note.body)}</div>` : '';
+  return `<article class="personal-note ${compact ? 'compact' : ''}"><button type="button" class="personal-card-main" data-personal-edit="note" data-personal-id="${note.id}"><span>${note.pinned ? icon('bookmark') : icon('edit')}</span><strong>${escapeHTML(note.title)}</strong>${preview}</button>${renderPersonalLinkChips(ownLinks)}<footer><time>${formatDate(note.updatedAt, true)}</time><button type="button" class="text-button" data-personal-link="note" data-personal-id="${note.id}" data-personal-title="${escapeHTML(note.title)}">${icon('link')} Связать</button></footer></article>`;
 }
 
 function renderPlanRow(plan, links) {
   const ownLinks = personalLinksFor(links, 'plan', plan.id);
   const done = plan.status === 'done';
-  return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong><span>${plan.dueAt ? formatDate(plan.dueAt, true) : 'Без срока'}${plan.notes ? ` · ${escapeHTML(markdownPlain(plan.notes).slice(0, 90))}` : ''}</span></button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
+  const notes = markdownPlain(plan.notes).trim();
+  const summary = [plan.dueAt ? formatDate(plan.dueAt, true) : '', notes && notes !== plan.title ? notes.slice(0, 90) : ''].filter(Boolean).join(' · ');
+  return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
 function renderHabitRow(habit, links, compact = false) {
@@ -1920,7 +1972,10 @@ function lastDates(count) {
 function bindPersonalInteractions() {
   $$('[data-personal-tab-jump]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTabJump; renderPersonal(); }));
   $$('[data-personal-edit]').forEach((button) => button.addEventListener('click', () => openPersonalEditor(button.dataset.personalEdit, button.dataset.personalId)));
-  $$('[data-personal-create]').forEach((button) => button.addEventListener('click', () => openPersonalEditor(button.dataset.personalCreate)));
+  $$('[data-personal-create]').forEach((button) => button.addEventListener('click', () => {
+    button.closest('details')?.removeAttribute('open');
+    openPersonalEditor(button.dataset.personalCreate);
+  }));
   $$('[data-plan-toggle]').forEach((button) => button.addEventListener('click', () => togglePersonalPlan(button.dataset.planToggle)));
   $$('[data-habit-check]').forEach((button) => button.addEventListener('click', () => toggleHabitCheckin(button.dataset.habitCheck, button.dataset.checkDate)));
   $$('[data-personal-link]').forEach((button) => button.addEventListener('click', () => openPersonalLinkDialog(button.dataset.personalLink, button.dataset.personalId, button.dataset.personalTitle)));
@@ -1961,28 +2016,47 @@ function openPersonalEditor(kind, id = '') {
   const item = id ? findPersonalItem(kind, id) : null;
   const dialog = $('#personal-dialog');
   const content = $('#personal-dialog-content');
-  const labels = { note: ['Заметка', 'Текст заметки'], plan: ['План', 'Детали'], habit: ['Привычка', ''] };
-  const [title, bodyLabel] = labels[kind] || labels.note;
+  const labels = { note: 'Заметка', plan: 'План', habit: 'Привычка' };
+  const title = labels[kind] || labels.note;
   const body = kind === 'note'
-    ? `<label>${bodyLabel}<textarea name="body" rows="10" placeholder="Запишите мысль без обязательной структуры">${escapeHTML(item?.body || '')}</textarea></label><label class="personal-checkbox"><input type="checkbox" name="pinned" ${item?.pinned ? 'checked' : ''}><span>Закрепить заметку</span></label>`
+    ? `${markdownEditor('body', 'Текст', item?.body || '', 13, 'Начните писать. Выделяйте главное, добавляйте заголовки и списки.', 'personal-note', { compact: true, history: true, ai: false, expand: false })}<label class="personal-pin-toggle"><input type="checkbox" name="pinned" ${item?.pinned ? 'checked' : ''}><span>${icon('bookmark')}<span><strong>Закрепить</strong><small>Показывать заметку первой</small></span></span></label>`
     : kind === 'plan'
-      ? `<label>${bodyLabel}<textarea name="notes" rows="6" placeholder="Что важно учесть">${escapeHTML(item?.notes || '')}</textarea></label><label>Срок<input type="datetime-local" name="dueAt" value="${escapeHTML(toLocalInput(item?.dueAt || ''))}"></label>`
+      ? `${markdownEditor('notes', 'Описание', item?.notes || '', 11, 'Опишите план обычным текстом или составьте список шагов.', 'personal-plan', { compact: true, history: true, ai: false, expand: false })}<details class="personal-plan-date" ${item?.dueAt ? 'open' : ''}><summary>${icon('calendar')}<span><strong>${item?.dueAt ? 'Срок' : 'Добавить срок'}</strong><small>${item?.dueAt ? escapeHTML(formatDate(item.dueAt, true)) : 'Необязательно'}</small></span>${icon('chevronRight')}</summary><div><label>Дата и время<input type="datetime-local" name="dueAt" value="${escapeHTML(toLocalInput(item?.dueAt || ''))}"></label><button type="button" class="text-button" data-clear-personal-due ${item?.dueAt ? '' : 'hidden'}>Убрать срок</button></div></details>`
       : `<div class="form-grid two"><label>Режим<select name="scheduleKind"><option value="daily" ${(item?.scheduleKind || 'daily') === 'daily' ? 'selected' : ''}>Каждый день</option><option value="weekdays" ${item?.scheduleKind === 'weekdays' ? 'selected' : ''}>По будням</option><option value="weekly_target" ${item?.scheduleKind === 'weekly_target' ? 'selected' : ''}>Цель на неделю</option></select></label><label>Дней в неделю<input type="number" name="targetPerWeek" min="1" max="7" value="${item?.targetPerWeek || 7}"></label></div><div class="form-grid two"><label>Единица<input name="unit" maxlength="32" value="${escapeHTML(item?.unit || 'раз')}"></label><label>Начало<input type="date" name="startDate" value="${escapeHTML(item?.startDate || localISODate())}" ${item ? 'disabled' : ''}></label></div>`;
   const newHeading = kind === 'habit' ? 'Новая привычка' : kind === 'plan' ? 'Новый план' : 'Новая заметка';
-  content.innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Личное пространство</span><h2>${item ? `Изменить: ${escapeHTML(title.toLowerCase())}` : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form"><label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}"></label>${body}<div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
+  const titleField = kind === 'habit'
+    ? `<label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}" placeholder="Например: читать 20 минут"></label>`
+    : `<label class="personal-title-field"><span>Название <small>необязательно</small></span><input name="title" maxlength="240" value="${escapeHTML(item?.title || '')}" placeholder="Система возьмёт его из первой строки"></label>`;
+  content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
   $$('[data-close-personal]', dialog).forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
-  $('#personal-editor-form', dialog).addEventListener('submit', async (event) => {
+  const editorForm = $('#personal-editor-form', dialog);
+  const draftScope = `personal:${state.me.id}:${kind}:${item?.id || 'new'}`;
+  bindWorkingDraft(editorForm, draftScope);
+  bindMarkdownEditors(dialog);
+  const dueInput = $('input[name="dueAt"]', editorForm);
+  dueInput?.addEventListener('input', () => { $('[data-clear-personal-due]', editorForm).hidden = !dueInput.value; });
+  $('[data-clear-personal-due]', editorForm)?.addEventListener('click', () => {
+    dueInput.value = '';
+    dueInput.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  editorForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     let payload;
     if (kind === 'note') payload = { title: form.get('title'), body: form.get('body'), pinned: form.get('pinned') === 'on' };
     else if (kind === 'plan') payload = { title: form.get('title'), notes: form.get('notes'), dueAt: form.get('dueAt') ? new Date(form.get('dueAt')).toISOString() : '', ...(item ? { status: item.status } : {}) };
     else payload = { title: form.get('title'), scheduleKind: form.get('scheduleKind'), targetPerWeek: Number(form.get('targetPerWeek')), unit: form.get('unit'), ...(item ? {} : { startDate: form.get('startDate') }) };
+    if (kind !== 'habit' && !String(payload.title || '').trim() && !String(kind === 'note' ? payload.body : payload.notes || '').trim()) {
+      toast('Напишите текст или укажите название', true);
+      $('.markdown-rich-editor', editorForm)?.focus();
+      return;
+    }
     const submit = $('button[type="submit"]', event.currentTarget);
     submit.disabled = true;
     try {
       await api(`/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}${item ? `/${item.id}` : ''}`, { method: item ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
-      requestDialogClose(dialog);
+      clearWorkingDraftFor(editorForm);
+      await requestDialogClose(dialog);
       await loadPersonal({ force: true });
       toast(`${title} ${kind === 'plan' ? 'сохранён' : 'сохранена'}`);
     } catch (error) { submit.disabled = false; toast(error.message, true); }
@@ -1990,12 +2064,14 @@ function openPersonalEditor(kind, id = '') {
   $('[data-archive-personal]', dialog)?.addEventListener('click', async () => {
     try {
       await api(`/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}/${item.id}`, { method: 'DELETE' });
-      requestDialogClose(dialog);
+      clearWorkingDraftFor(editorForm);
+      await requestDialogClose(dialog);
       await loadPersonal({ force: true });
       toast(`${title} ${kind === 'plan' ? 'перенесён' : 'перенесена'} в архив`);
     } catch (error) { toast(error.message, true); }
   });
   openModal(dialog);
+  if (!item && kind !== 'habit') requestAnimationFrame(() => $('.markdown-rich-editor', editorForm)?.focus({ preventScroll: true }));
 }
 
 function openPersonalLinkDialog(sourceType, sourceID, sourceTitle) {

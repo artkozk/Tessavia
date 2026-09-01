@@ -42,6 +42,30 @@ func TestPersonalWorkspaceIsPrivateAndConnected(t *testing.T) {
 	requestJSON(t, ownerClient, http.MethodPost, server.URL+"/api/personal/plans", map[string]any{
 		"title": "Подготовить поездку", "notes": "Собрать список", "dueAt": "2026-09-05T09:00:00+03:00",
 	}, http.StatusCreated, &plan)
+	var quickNote PersonalNote
+	requestJSON(t, ownerClient, http.MethodPost, server.URL+"/api/personal/notes", map[string]any{
+		"title": "", "body": "## Купить продукты\n\n- Мясо\n- Угли", "pinned": false,
+	}, http.StatusCreated, &quickNote)
+	if quickNote.Title != "Купить продукты" {
+		t.Fatalf("quick note title = %q", quickNote.Title)
+	}
+	var undatedPlan PersonalPlan
+	requestJSON(t, ownerClient, http.MethodPost, server.URL+"/api/personal/plans", map[string]any{
+		"title": "", "notes": "**Обсудить план запуска**", "dueAt": "",
+	}, http.StatusCreated, &undatedPlan)
+	if undatedPlan.Title != "Обсудить план запуска" || undatedPlan.DueAt != nil {
+		t.Fatalf("undated plan = %#v", undatedPlan)
+	}
+	var orderedPlan PersonalPlan
+	requestJSON(t, ownerClient, http.MethodPost, server.URL+"/api/personal/plans", map[string]any{
+		"title": "", "notes": "1. Проверить мобильный редактор", "dueAt": "",
+	}, http.StatusCreated, &orderedPlan)
+	if orderedPlan.Title != "Проверить мобильный редактор" {
+		t.Fatalf("ordered plan title = %q", orderedPlan.Title)
+	}
+	requestJSON(t, ownerClient, http.MethodPost, server.URL+"/api/personal/notes", map[string]any{
+		"title": "", "body": "   ", "pinned": false,
+	}, http.StatusBadRequest, nil)
 	var habit PersonalHabit
 	requestJSON(t, ownerClient, http.MethodPost, server.URL+"/api/personal/habits", map[string]any{
 		"title": "Читать", "scheduleKind": "weekly_target", "targetPerWeek": 5, "unit": "дней", "startDate": "2026-09-01",
@@ -92,7 +116,7 @@ func TestPersonalWorkspaceIsPrivateAndConnected(t *testing.T) {
 
 	var overview PersonalOverview
 	requestJSON(t, ownerClient, http.MethodGet, server.URL+"/api/personal/overview", nil, http.StatusOK, &overview)
-	if len(overview.Notes) != 1 || len(overview.Plans) != 1 || len(overview.Habits) != 1 || len(overview.Habits[0].Checkins) != 1 || len(overview.Links) != 1 {
+	if len(overview.Notes) != 2 || len(overview.Plans) != 3 || len(overview.Habits) != 1 || len(overview.Habits[0].Checkins) != 1 || len(overview.Links) != 1 {
 		t.Fatalf("owner overview incomplete: %#v", overview)
 	}
 

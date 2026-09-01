@@ -722,8 +722,11 @@ func (s *Server) personalTargetExists(r *http.Request, ownerID int64, targetType
 
 func validatePersonalText(w http.ResponseWriter, title *string, body string) bool {
 	*title = strings.TrimSpace(*title)
+	if *title == "" {
+		*title = personalTitleFromBody(body)
+	}
 	if len([]rune(*title)) < 1 || len([]rune(*title)) > 240 {
-		writeError(w, http.StatusBadRequest, "Название должно содержать от 1 до 240 символов")
+		writeError(w, http.StatusBadRequest, "Добавьте текст или название длиной до 240 символов")
 		return false
 	}
 	if len([]rune(body)) > 100000 {
@@ -731,6 +734,38 @@ func validatePersonalText(w http.ResponseWriter, title *string, body string) boo
 		return false
 	}
 	return true
+}
+
+func personalTitleFromBody(body string) string {
+	for _, line := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
+		candidate := strings.TrimSpace(line)
+		candidate = strings.TrimLeft(candidate, "#> \t")
+		if strings.HasPrefix(candidate, "- ") || strings.HasPrefix(candidate, "* ") || strings.HasPrefix(candidate, "+ ") {
+			candidate = strings.TrimSpace(candidate[2:])
+		}
+		if separator := strings.Index(candidate, ". "); separator > 0 {
+			ordered := true
+			for _, symbol := range candidate[:separator] {
+				if symbol < '0' || symbol > '9' {
+					ordered = false
+					break
+				}
+			}
+			if ordered {
+				candidate = strings.TrimSpace(candidate[separator+2:])
+			}
+		}
+		candidate = strings.Trim(candidate, "*_~` ")
+		if candidate == "" {
+			continue
+		}
+		runes := []rune(candidate)
+		if len(runes) > 120 {
+			return strings.TrimSpace(string(runes[:117])) + "..."
+		}
+		return candidate
+	}
+	return ""
 }
 
 func validHabitSchedule(value string) bool {

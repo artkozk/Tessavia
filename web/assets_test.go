@@ -199,8 +199,36 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260902-team-project-access-1")) {
+	if !bytes.Contains(index, []byte("20260902-personal-writing-1")) {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	}
+}
+
+func TestPersonalWritingExperienceAssetsAreEmbedded(t *testing.T) {
+	app, err := Files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte("function renderPersonalCreateMenu"),
+		[]byte("history: true, ai: false, expand: false"),
+		[]byte("personal-plan-date"),
+		[]byte("Новая личная заметка"),
+		[]byte("sameTypingGroup"),
+		[]byte("personal:${state.me.id}:${kind}"),
+	} {
+		if !bytes.Contains(app, marker) {
+			t.Fatalf("app.js does not contain personal writing marker %q", marker)
+		}
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{[]byte(".personal-editor-actions"), []byte("#new-record-button"), []byte("display-mode: browser")} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain personal mobile marker %q", marker)
+		}
 	}
 }
 
