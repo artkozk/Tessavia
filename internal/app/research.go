@@ -117,7 +117,7 @@ func (s *Server) handleCompleteResearch(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET result = ?, status = 'completed', progress = 100, completed_at = ?, updated_at = ? WHERE id = ?`, input.Result, now, now, record.ID); err != nil {
+	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET stage_id = COALESCE((SELECT id FROM collection_stages WHERE collection_id = records.collection_id AND category = 'done' AND archived_at IS NULL ORDER BY sort_order LIMIT 1), stage_id), result = ?, status = 'completed', progress = 100, completed_at = ?, updated_at = ? WHERE id = ?`, input.Result, now, now, record.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить исследование")
 		return
 	}

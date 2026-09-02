@@ -693,6 +693,25 @@ func (s *Server) handleMoveRecordStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status := map[string]string{"backlog": "planned", "active": "in_progress", "review": "review", "done": "completed"}[stage.Category]
+	if status == "planned" && !validStatusForType(record.Type, status) {
+		status = defaultStatus(record.Type)
+	}
+	if !validStatusForType(record.Type, status) {
+		writeError(w, http.StatusBadRequest, "Этот этап не подходит типу карточки")
+		return
+	}
+	if status == "completed" && record.Status != "completed" {
+		if record.Type == "research" || record.Type == "question_set" {
+			writeError(w, http.StatusBadRequest, "Завершите работу в карточке после принятия итогов")
+			return
+		}
+		if record.Type == "hypothesis" || record.Type == "experiment" {
+			if strings.TrimSpace(record.Result) == "" || record.BusinessDetails == nil || record.BusinessDetails.Verdict == "" || record.BusinessDetails.Verdict == "pending" {
+				writeError(w, http.StatusBadRequest, "Зафиксируйте вывод и итог проверки в карточке")
+				return
+			}
+		}
+	}
 	now := nowText()
 	completedAt := any(nil)
 	progress := record.Progress

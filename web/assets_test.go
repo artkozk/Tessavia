@@ -221,7 +221,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260902-pages-profile-1")) != 2 {
+	if bytes.Count(index, []byte("20260903-calendar-lifecycle-1")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }
@@ -382,13 +382,14 @@ func TestPersonalWorkspaceAssetsAreEmbedded(t *testing.T) {
 	}
 }
 
-func TestProtectedWorkspaceCannotCloseThroughIncidentalNavigation(t *testing.T) {
+func TestWorkspaceKeepsBackdropProtectionButAllowsExplicitEscape(t *testing.T) {
 	app, err := Files.ReadFile("app.js")
 	if err != nil {
 		t.Fatalf("read app.js: %v", err)
 	}
 	for _, marker := range [][]byte{
-		[]byte("Рабочее окно не закрыто. Используйте кнопку ×"),
+		[]byte("const dialog = topOpenDialog();"),
+		[]byte("requestDialogClose(dialog);"),
 		[]byte("protectedWorkspaceDialogs.has(dialog.id)"),
 		[]byte("Рабочее окно осталось открытым. Закройте его явной кнопкой ×."),
 	} {
@@ -408,7 +409,7 @@ func TestWorkspaceDialogsProtectDraftsAndScrollbars(t *testing.T) {
 		[]byte("function bindDialogBackdrop"),
 		[]byte("function flushDialogDrafts"),
 		[]byte("function dialogHasUnsavedChanges"),
-		[]byte("function confirmUnsavedDialog"),
+		[]byte("function confirmDialogTransition"),
 		[]byte("function requestDialogClose"),
 		[]byte("function preventImplicitWorkspaceSubmit"),
 		[]byte("window.addEventListener('beforeunload'"),

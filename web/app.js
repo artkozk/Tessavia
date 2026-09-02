@@ -91,7 +91,7 @@ function statusLabel(record) {
   if (record?.type === 'task' && record.status === 'review') return 'На проверке';
 	if (record?.type === 'decision' && record.status === 'completed') return 'Принято';
 	if (record?.type === 'research' && record.status === 'completed') return 'Завершено';
-  if (record?.type === 'risk' && record.status === 'completed') return 'Снижен';
+  if (record?.type === 'risk' && record.status === 'completed') return record.businessDetails?.occurred ? 'Последствия устранены' : 'Предотвращён';
   if (record?.type === 'experiment' && record.status === 'completed') return 'Проверен';
   if (record?.type === 'inbox' && record.status === 'inbox') return 'Нужно разобрать';
   return statusLabels[record?.status] || record?.status || '';
@@ -297,14 +297,14 @@ async function requestAIFieldDraft(editor, target) {
 function openNotebook({ title, value = '', onSave = null }) {
   const dialog = $('#notebook-dialog');
   const content = $('#notebook-dialog-content');
-  content.innerHTML = `<div class="notebook-shell"><header><div><p class="eyebrow">Расширенный редактор</p><h2>${escapeHTML(title)}</h2></div><button type="button" class="icon-button" data-close-notebook aria-label="Закрыть">${icon('x')}</button></header><div class="notebook-body editor-only">${markdownEditor('notebookValue', 'Содержание', value, 22, 'Фиксируйте структуру, аргументы и выводы', 'fullscreen')}</div><footer><span>Ctrl+Enter — применить изменения</span><div><button type="button" class="secondary" data-close-notebook>Отмена</button><button type="button" class="primary" data-save-notebook>${icon('check')} Применить</button></div></footer></div>`;
+  content.innerHTML = `<div class="notebook-shell"><header><div><p class="eyebrow">Расширенный редактор</p><h2>${escapeHTML(title)}</h2></div><button type="button" class="icon-button" data-close-notebook aria-label="Закрыть">${icon('x')}</button></header><div class="notebook-body editor-only">${markdownEditor('notebookValue', 'Содержание', value, 22, 'Фиксируйте структуру, аргументы и выводы', 'fullscreen')}</div><footer><div><button type="button" class="secondary" data-close-notebook>Закрыть</button><button type="button" class="primary" data-save-notebook>${icon('check')} Применить</button></div></footer></div>`;
   dialog.dataset.notebookDirty = 'false';
   $$('[data-close-notebook]', dialog).forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
   bindMarkdownEditors(dialog);
   const textarea = $('textarea[name="notebookValue"]', dialog);
   const richEditor = $('.markdown-rich-editor', dialog);
   const initialValue = textarea.value;
-  textarea.addEventListener('input', () => { dialog.dataset.notebookDirty = String(textarea.value !== initialValue); });
+  textarea.addEventListener('input', () => { dialog.dataset.notebookDirty = String(textarea.value !== initialValue); onSave?.(textarea.value); });
   const save = () => { onSave?.(textarea.value); dialog.dataset.notebookDirty = 'false'; closeDialogImmediately(dialog); };
   $('[data-save-notebook]', dialog).addEventListener('click', save);
   richEditor.addEventListener('keydown', (event) => { if ((event.ctrlKey || event.metaKey) && event.code === 'Enter') { event.preventDefault(); save(); } });
@@ -759,7 +759,9 @@ function loadRecordDraft(recordId) {
 }
 
 function saveRecordDraft(recordId, values) {
-  try { localStorage.setItem(recordDraftKey(recordId), JSON.stringify({ values, savedAt: new Date().toISOString() })); } catch (_) {}
+  state.recordDraftFailures ||= new Set();
+  try { localStorage.setItem(recordDraftKey(recordId), JSON.stringify({ values, savedAt: new Date().toISOString() })); state.recordDraftFailures.delete(recordId); }
+  catch (_) { state.recordDraftFailures.add(recordId); }
 }
 
 function clearRecordDraft(recordId) {
@@ -774,7 +776,12 @@ function workingDraftValues(root) {
   const values = {};
   $$('[name]', root).forEach((field) => {
     if (field.disabled || field.type === 'file' || field.type === 'submit' || field.type === 'button') return;
-    if (field.type === 'checkbox' || field.type === 'radio') values[field.name] = field.checked ? String(field.value || 'on') : '';
+    if (field.type === 'radio') { if (field.checked) values[field.name] = String(field.value); else if (!(field.name in values)) values[field.name] = ''; }
+    else if (field.type === 'checkbox') {
+      const group = $$(`[name="${CSS.escape(field.name)}"]`, root);
+      values[field.name] = group.length > 1 ? group.filter((item) => item.checked).map((item) => String(item.value || 'on')) : field.checked ? String(field.value || 'on') : '';
+    }
+    else if (field.multiple) values[field.name] = [...field.selectedOptions].map((option) => option.value);
     else values[field.name] = String(field.value || '');
   });
   return values;
@@ -800,13 +807,15 @@ function clearWorkingDraftFor(root) {
 
 function applyWorkingDraft(root, values = {}) {
   Object.entries(values).forEach(([name, value]) => {
-    const field = root.querySelector(`[name="${CSS.escape(name)}"]`);
+    $$(`[name="${CSS.escape(name)}"]`, root).forEach((field) => {
     if (!field || field.type === 'file') return;
-    if (field.type === 'checkbox' || field.type === 'radio') field.checked = String(field.value || 'on') === String(value);
+    if (field.type === 'checkbox' || field.type === 'radio') field.checked = Array.isArray(value) ? value.includes(String(field.value || 'on')) : String(field.value || 'on') === String(value);
+    else if (field.multiple && Array.isArray(value)) [...field.options].forEach((option) => { option.selected = value.includes(option.value); });
     else field.value = String(value ?? '');
     field.dataset.userChanged = 'true';
     if (field.classList.contains('markdown-source')) setMarkdownEditorValue(field.closest('.markdown-editor'), field.value, false);
     if (field.tagName === 'SELECT') syncCustomSelect(field);
+    });
   });
 }
 
@@ -833,7 +842,8 @@ function bindWorkingDraft(root, scope) {
     try {
       if (!dirty) localStorage.removeItem(workingDraftKey(scope));
       else localStorage.setItem(workingDraftKey(scope), JSON.stringify({ values, savedAt: new Date().toISOString() }));
-    } catch (_) {}
+      delete root.dataset.draftSaveFailed;
+    } catch (_) { root.dataset.draftSaveFailed = 'true'; }
   };
   const persist = () => {
     root.classList.toggle('has-unsaved-draft', JSON.stringify(workingDraftValues(root)) !== JSON.stringify(baseline));
@@ -907,7 +917,8 @@ function interactionsCountLabel(count) {
 }
 
 function deadlineState(record) {
-  if (record.status === 'completed') return { className: 'done', label: 'Выполнено' };
+  if (record.status === 'completed') return { className: 'done', label: statusLabel(record) };
+  if (['archived', 'cancelled', 'rejected'].includes(record.status)) return { className: 'done', label: statusLabel(record) };
   if (!record.dueAt) return { className: 'none', label: 'Без срока' };
   const delta = new Date(record.dueAt).getTime() - Date.now();
   if (delta < 0) return { className: 'overdue', label: `Просрочено · ${formatDate(record.dueAt)}` };
@@ -1202,11 +1213,15 @@ function bindGlobalEvents() {
         event.preventDefault();
         event.stopPropagation();
       } else if (!searchOpen) {
-        const dialog = [...$$('dialog[open]')].pop();
-        if (dialog && protectedWorkspaceDialogs.has(dialog.id)) {
+        const dialog = topOpenDialog();
+        if (dialog) {
           event.preventDefault();
           event.stopPropagation();
-          signalProtectedDialog(dialog, 'Рабочее окно не закрыто. Используйте кнопку ×, чтобы завершить работу с ним.');
+          requestDialogClose(dialog);
+        } else if (state.calendarExpanded) {
+          event.preventDefault();
+          state.calendarExpanded = '';
+          state.view === 'calendar' ? renderCalendarPage() : renderWorkList();
         }
       }
     }
@@ -1358,11 +1373,16 @@ function openModal(dialog) {
   closeTransientPanels();
   rememberView();
   dialog.showModal();
+  dialog.dataset.openOrder = String(state.dialogOpenSequence = (state.dialogOpenSequence || 0) + 1);
   history.pushState({ ...history.state, businessControlOverlay: dialog.id }, '');
   dialog.dataset.historyState = 'true';
 }
 
 const protectedWorkspaceDialogs = new Set(['record-dialog', 'create-dialog', 'personal-dialog', 'profile-dialog', 'notebook-dialog']);
+
+function topOpenDialog() {
+  return [...$$('dialog[open]')].sort((a, b) => Number(a.dataset.openOrder || 0) - Number(b.dataset.openOrder || 0)).pop();
+}
 
 function pointerIsOutsideDialog(event, dialog) {
   const rect = dialog.getBoundingClientRect();
@@ -1387,6 +1407,7 @@ function flushDialogDrafts(dialog) {
   $$('[data-working-draft-scope]', dialog).forEach((root) => state.workingDraftPersistors.get(root)?.());
   const editForm = $('#record-edit-form', dialog);
   if (editForm && state.activeDetail?.record) updateRecordFormState(editForm, state.activeDetail.record, true);
+  return !$('[data-draft-save-failed="true"]', dialog) && !(editForm && state.recordDraftFailures?.has(state.activeDetail?.record.id));
 }
 
 function dialogHasUnsavedChanges(dialog) {
@@ -1407,44 +1428,11 @@ function signalProtectedDialog(dialog, message = 'Рабочее окно зак
   }
 }
 
-function confirmUnsavedDialog(dialog) {
-  return new Promise((resolve) => {
-    const previousFocus = document.activeElement;
-    const titleID = `${dialog.id}-close-title`;
-    const notebook = dialog.id === 'notebook-dialog';
-    const message = notebook
-      ? 'Текст в расширенном редакторе ещё не применён. При закрытии изменения внутри этого окна будут отброшены.'
-      : 'Изменения ещё не отправлены команде. Черновик сохранён на этом устройстве и восстановится при следующем открытии.';
-    const leaveLabel = notebook ? 'Закрыть без применения' : 'Закрыть и оставить черновик';
-    const guard = document.createElement('div');
-    guard.className = 'dialog-close-guard';
-    guard.innerHTML = `<section role="alertdialog" aria-modal="true" aria-labelledby="${titleID}"><span>${icon('edit')}</span><h3 id="${titleID}">Закрыть рабочее окно?</h3><p>${escapeHTML(message)}</p><div><button type="button" class="primary" data-keep-working>Продолжить работу</button><button type="button" class="secondary" data-leave-dialog>${escapeHTML(leaveLabel)}</button></div></section>`;
-    const contentNodes = [...dialog.children];
-    contentNodes.forEach((node) => { node.inert = true; });
-    dialog.append(guard);
-    const finish = (leave) => {
-      guard.remove();
-      contentNodes.forEach((node) => { node.inert = false; });
-      if (!leave && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
-      resolve(leave);
-    };
-    $('[data-keep-working]', guard).addEventListener('click', () => finish(false));
-    $('[data-leave-dialog]', guard).addEventListener('click', () => finish(true));
-    guard.addEventListener('pointerdown', (event) => { if (event.target === guard) finish(false); });
-    guard.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); } });
-    $('[data-keep-working]', guard).focus({ preventScroll: true });
-  });
-}
-
 async function confirmDialogTransition(dialog) {
   if (dialog.dataset.profileBusy === 'true') { toast('Дождитесь завершения сохранения профиля'); return false; }
   if (dialog.dataset.composerDirty === 'true') return discardComposerChanges(dialog);
-  flushDialogDrafts(dialog);
-  if (!dialogHasUnsavedChanges(dialog)) return true;
-  if (state.dialogClosePending.has(dialog)) return false;
-  state.dialogClosePending.add(dialog);
-  try { return await confirmUnsavedDialog(dialog); }
-  finally { state.dialogClosePending.delete(dialog); }
+  if (!flushDialogDrafts(dialog)) { toast('Не удалось сохранить черновик на устройстве. Окно оставлено открытым', true); return false; }
+  return true;
 }
 
 function closeDialogImmediately(dialog, returnValue = '') {
@@ -1458,7 +1446,7 @@ async function requestDialogClose(dialog, { returnValue = '' } = {}) {
   const hadUnsavedChanges = dialogHasUnsavedChanges(dialog);
   const composer = dialog.dataset.composerDirty === 'true';
   if (!await confirmDialogTransition(dialog)) return false;
-  if (hadUnsavedChanges) toast(composer ? 'Настройки закрыты без сохранения.' : dialog.id === 'notebook-dialog' ? 'Расширенный редактор закрыт без применения изменений.' : 'Окно закрыто. Несохранённый черновик оставлен на этом устройстве.');
+  if (hadUnsavedChanges && !composer && dialog.id !== 'notebook-dialog') toast('Черновик сохранён');
   closeDialogImmediately(dialog, returnValue);
   return true;
 }
@@ -1479,9 +1467,8 @@ function bindDialogDismissalEvents() {
       else requestDialogClose(dialog, { returnValue: dialog.id === 'reason-dialog' ? 'cancel' : '' });
     });
     dialog.addEventListener('cancel', (event) => {
-      if (!protectedWorkspaceDialogs.has(dialog.id)) return;
       event.preventDefault();
-      requestDialogClose(dialog);
+      requestDialogClose(dialog, { returnValue: dialog.id === 'reason-dialog' ? 'cancel' : '' });
     });
   });
 }
@@ -2541,6 +2528,7 @@ function sortWorkHierarchy(records) {
 
 function filteredWorkRecords() {
   let records = state.records.filter((record) => isWorkRecord(record));
+  if (state.workCollection) records = state.records.filter((record) => record.collectionId === state.workCollection);
   if (state.ownerFilter) records = records.filter((record) => String(record.ownerId) === state.ownerFilter);
   else if (state.workScope === 'mine') records = records.filter((record) => record.ownerId === state.me.id);
   else if (state.workScope === 'partner') records = records.filter((record) => record.ownerId !== state.me.id);
@@ -2564,6 +2552,9 @@ function renderWorkKanban(records) {
 		{ key: 'in_progress', label: 'В работе', statuses: ['in_progress'] },
 		{ key: 'blocked', label: 'Заблокировано', statuses: ['blocked'] },
 		{ key: 'review', label: 'На проверке', statuses: ['review'] },
+		{ key: 'completed', label: 'Завершено', statuses: ['completed'] },
+		{ key: 'postponed', label: 'Отложено', statuses: ['postponed'] },
+		{ key: 'cancelled', label: 'Отменено', statuses: ['cancelled', 'rejected', 'archived'] },
 	];
 	return `<section class="work-kanban" data-drag-scroll="true">${columns.map((column) => {
 		const items = records.filter((record) => column.statuses.includes(record.status));
@@ -2590,6 +2581,7 @@ async function moveBoardRecord(recordID, targetStatus, rerender) {
 	if (!record) return;
 	targetStatus = resolvedBoardStatus(record, targetStatus);
 	if (record.status === targetStatus) return;
+	if (targetStatus === 'completed') { await completeRecordFromAction(record); return; }
 	if (record.type === 'task' && targetStatus === 'review' && record.status !== 'review') {
 		await openRecord(record.id);
 		state.activeRecordTab = 'overview';
@@ -2702,16 +2694,16 @@ function addCalendarDays(value, amount) {
 
 function calendarRecordPool() {
   let records = state.records.filter((record) => isWorkRecord(record));
+  if (state.workCollection) records = state.records.filter((record) => record.collectionId === state.workCollection);
   if (state.ownerFilter) records = records.filter((record) => String(record.ownerId) === state.ownerFilter);
   else if (state.workScope === 'mine') records = records.filter((record) => record.ownerId === state.me.id);
   else if (state.workScope === 'partner') records = records.filter((record) => record.ownerId !== state.me.id);
   if (state.workType !== 'all') records = records.filter((record) => record.type === state.workType);
   if (state.workstreamFilter !== 'all') records = records.filter((record) => record.workstream === state.workstreamFilter);
-  if (state.workStatus === 'active') records = records.filter((record) => isActiveRecord(record) || record.status === 'completed');
+  if (state.workStatus === 'active') records = records.filter((record) => isActiveRecord(record));
   if (state.workStatus === 'overdue') records = records.filter((record) => isActiveRecord(record) && deadlineState(record).className === 'overdue');
   if (state.workStatus === 'completed') records = records.filter((record) => record.status === 'completed');
   if (state.workStatus === 'archived') records = records.filter((record) => record.status === 'archived');
-  if (state.workStatus === 'all') records = records.filter((record) => !['cancelled', 'rejected'].includes(record.status));
   if (state.search) {
     const query = state.search.toLowerCase();
     records = records.filter((record) => `${record.title} ${record.description} ${record.ownerUsername}`.toLowerCase().includes(query));
@@ -2732,7 +2724,7 @@ function recordsByDueDate(records) {
 
 function calendarScore(records, startKey, endKey) {
   const planned = records.filter((record) => record.dueAt && localDateKey(record.dueAt) >= startKey && localDateKey(record.dueAt) <= endKey);
-  const completed = planned.filter((record) => record.status === 'completed' || Number(record.progress) >= 100);
+  const completed = planned.filter((record) => record.status === 'completed');
   return { planned: planned.length, completed: completed.length, percent: planned.length ? Math.round(completed.length * 100 / planned.length) : 0 };
 }
 
@@ -2741,13 +2733,95 @@ function quarterClass(date) {
 }
 
 function calendarTaskChip(record, compact = false) {
-  const completed = record.status === 'completed' || Number(record.progress) >= 100;
+  const completed = record.status === 'completed';
   const draggable = isActiveRecord(record);
   return `<button type="button" data-open-record="${record.id}" data-calendar-record="${record.id}" draggable="${draggable}" class="calendar-item priority-${record.priority || 'normal'} ${completed ? 'completed' : ''} ${compact ? 'compact' : ''}" title="${escapeHTML(record.title)}${draggable ? ' · перетащите, чтобы изменить срок' : ''}"><i>${escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(record.ownerUsername)}</i><strong>${escapeHTML(record.title)}</strong></button>`;
 }
 
 function calendarModeToolbar() {
   return `<div class="calendar-mode segmented compact" aria-label="Масштаб календаря">${[['cycle', '12 недель'], ['year', 'Год'], ['month', 'Месяц']].map(([value, label]) => `<button type="button" class="segment ${state.calendarMode === value ? 'active' : ''}" data-calendar-mode="${value}">${label}</button>`).join('')}</div>`;
+}
+
+function calendarPresentationKey(surface) {
+  return `business-control:calendar:${state.me?.id}:${surface === 'personal' ? 'personal' : state.activeWorkspaceId}:${interfaceDevice()}:${surface}`;
+}
+
+function calendarPresentation(surface) {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(calendarPresentationKey(surface)) || '{}') || {}; } catch (_) {}
+  return { format: saved.format === 'circles' ? 'circles' : 'grid', zoom: Math.max(60, Math.min(180, Number(saved.zoom) || 100)) };
+}
+
+function saveCalendarPresentation(surface, patch) {
+  const next = { ...calendarPresentation(surface), ...patch };
+  try { localStorage.setItem(calendarPresentationKey(surface), JSON.stringify(next)); } catch (_) { toast('Не удалось сохранить вид календаря на устройстве', true); }
+  return next;
+}
+
+function calendarPresentationToolbar(surface) {
+  const settings = calendarPresentation(surface);
+  return `<div class="calendar-presentation" data-calendar-presentation="${surface}"><div class="segmented compact" aria-label="Формат календаря">${[['grid', 'Сетка'], ['circles', 'Круги']].map(([key, label]) => `<button type="button" class="segment ${settings.format === key ? 'active' : ''}" data-calendar-format="${key}" aria-pressed="${settings.format === key}">${label}</button>`).join('')}</div><label class="calendar-zoom"><span>Масштаб</span><input type="range" min="60" max="180" step="10" value="${settings.zoom}" data-calendar-zoom aria-label="Масштаб календаря"><output>${settings.zoom}%</output></label><button type="button" class="icon-button" data-calendar-expand title="${state.calendarExpanded === surface ? 'Обычный размер' : 'На весь экран'}" aria-label="${state.calendarExpanded === surface ? 'Обычный размер' : 'На весь экран'}">${icon(state.calendarExpanded === surface ? 'x' : 'maximize')}</button></div>`;
+}
+
+function calendarSurfaceClass(surface) {
+  return state.calendarExpanded === surface ? 'calendar-expanded' : '';
+}
+
+function bindCalendarPresentation(surface, root, rerender) {
+  const toolbar = $('[data-calendar-presentation]', root);
+  if (!toolbar) return;
+  root.style.setProperty('--calendar-scale', calendarPresentation(surface).zoom / 100);
+  $$('[data-calendar-format]', toolbar).forEach((button) => button.addEventListener('click', () => { saveCalendarPresentation(surface, { format: button.dataset.calendarFormat }); if (surface !== 'work') state.calendarDisplay = 'month'; rerender(); }));
+  const range = $('[data-calendar-zoom]', toolbar);
+  range.addEventListener('input', () => {
+    root.style.setProperty('--calendar-scale', Number(range.value) / 100);
+    $('output', toolbar).textContent = `${range.value}%`;
+  });
+  range.addEventListener('change', () => saveCalendarPresentation(surface, { zoom: Number(range.value) }));
+  $('[data-calendar-expand]', toolbar).addEventListener('click', () => { state.calendarExpanded = state.calendarExpanded === surface ? '' : surface; rerender(); });
+}
+
+function calendarTimeState(key, today = localDateKey(new Date())) {
+  return key < today ? 'elapsed' : key === today ? 'current' : 'future';
+}
+
+function calendarCircle(key, entries, attribute = 'data-time-map-day', selected = '') {
+  const timeState = calendarTimeState(key);
+  const date = dateFromKey(key).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const label = `${date}: ${({ elapsed: 'прошедший день', current: 'сегодня', future: 'впереди' })[timeState]}; записей: ${entries.length}`;
+  return `<button type="button" class="calendar-circle ${timeState} ${selected === key ? 'selected' : ''} ${entries.length ? 'has-work' : ''}" ${attribute}="${key}" data-calendar-drop-date="${key}" aria-label="${escapeHTML(label)}" title="${escapeHTML(label)}" ${timeState === 'current' ? 'aria-current="date"' : ''}><span>${Number(key.slice(-2))}</span>${entries.length ? `<small>${entries.length}</small>` : ''}</button>`;
+}
+
+function calendarTimeLegend() {
+  return '<div class="time-map-legend"><span><i class="elapsed"></i>Прошло</span><span><i class="current"></i>Сегодня</span><span><i></i>Впереди</span></div>';
+}
+
+function renderWorkTimeMap(records, dueMap) {
+  const cycle = state.activePlanningCycle;
+  let groups = [], heading = '';
+  if (state.calendarMode === 'cycle') {
+    if (!cycle) return renderCycleSetup();
+    heading = renderCycleSummary(cycle, records);
+    groups = Array.from({ length: 12 }, (_, index) => ({ label: `Неделя ${index + 1}`, tone: `quarter-${Math.floor(index / 3) + 1}`, days: Array.from({ length: 7 }, (_, day) => localDateKey(addCalendarDays(cycle.startDate, index * 7 + day))) }));
+  } else {
+    const year = Number(state.calendarYear) || new Date().getFullYear();
+    const months = state.calendarMode === 'year' ? Array.from({ length: 12 }, (_, index) => new Date(year, index, 1, 12)) : [dateFromKey(state.workCalendarMonth || localDateKey(new Date()))];
+    groups = months.map((month) => ({ label: month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }), tone: quarterClass(month), days: Array.from({ length: new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate() }, (_, index) => localDateKey(new Date(month.getFullYear(), month.getMonth(), index + 1, 12))) }));
+    heading = `<div class="calendar-period-nav"><button type="button" class="icon-button" data-calendar-shift="-1" aria-label="Предыдущий период">${icon('arrowLeft')}</button><h2>${state.calendarMode === 'year' ? `${year} год` : groups[0].label}</h2><button type="button" class="icon-button" data-calendar-shift="1" aria-label="Следующий период">${icon('chevronRight')}</button></div>`;
+  }
+  const days = groups.flatMap((group) => group.days), passed = days.filter((key) => calendarTimeState(key) === 'elapsed').length;
+  const score = calendarScore(records, days[0], days[days.length - 1]);
+  return `${heading}<div class="time-map-summary"><span>Время: <strong>${passed} из ${days.length} дней прошло</strong></span><span>Работа: <strong>${score.completed} из ${score.planned} завершено</strong></span></div>${calendarTimeLegend()}<div class="calendar-time-map">${groups.map((group) => `<section class="time-map-group ${group.tone}"><h3>${escapeHTML(group.label)}</h3><div class="time-map-days">${group.days.map((key) => calendarCircle(key, dueMap.get(key) || [])).join('')}</div></section>`).join('')}</div>`;
+}
+
+function openCalendarDay(date) {
+  const records = recordsByDueDate(calendarRecordPool()).get(date) || [];
+  const dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
+  content.innerHTML = `<div class="workspace-editor-shell calendar-day-details"><header><h2>${escapeHTML(dateFromKey(date).toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }))}</h2><button type="button" class="icon-button" data-day-close aria-label="Закрыть">${icon('x')}</button></header><div>${records.map((record) => `<button type="button" class="planner-entry" data-day-record="${record.id}"><span><strong>${escapeHTML(record.title)}</strong><small>${escapeHTML(statusLabel(record))} · ${escapeHTML(record.ownerUsername)}</small></span>${icon('chevronRight')}</button>`).join('') || '<p class="muted">Нет запланированных карточек</p>'}</div><button type="button" class="primary" data-day-create>${icon('plus')} Создать задачу</button></div>`;
+  $('[data-day-close]', content).addEventListener('click', () => requestDialogClose(dialog));
+  $$('[data-day-record]', content).forEach((button) => button.addEventListener('click', () => openRecord(button.dataset.dayRecord)));
+  $('[data-day-create]', content).addEventListener('click', () => openCreateDialog('task', { dueAt: `${date}T18:00` }));
+  openModal(dialog);
 }
 
 function renderCycleSetup() {
@@ -2832,8 +2906,8 @@ function renderUnscheduledWork(records) {
 function renderWorkCalendar() {
   const records = calendarRecordPool();
   const dueMap = recordsByDueDate(records);
-  const body = state.calendarMode === 'year' ? renderYearCalendar(records, dueMap) : state.calendarMode === 'month' ? renderMonthCalendar(records, dueMap) : renderTwelveWeekCalendar(records, dueMap);
-  return `<section class="work-calendar"><header class="calendar-commandbar">${calendarModeToolbar()}<p>${state.calendarMode === 'cycle' ? 'Недельный план и исполнение' : state.calendarMode === 'year' ? 'Весь год по кварталам' : 'Точные сроки по дням'}</p></header>${renderUnscheduledWork(records)}${body}</section>`;
+  const body = calendarPresentation('work').format === 'circles' ? renderWorkTimeMap(records, dueMap) : state.calendarMode === 'year' ? renderYearCalendar(records, dueMap) : state.calendarMode === 'month' ? renderMonthCalendar(records, dueMap) : renderTwelveWeekCalendar(records, dueMap);
+  return `<section class="work-calendar ${calendarSurfaceClass('work')}"><header class="calendar-commandbar">${calendarModeToolbar()}${calendarPresentationToolbar('work')}</header>${renderUnscheduledWork(records)}<div class="calendar-viewport">${body}</div></section>`;
 }
 
 function validCycleDate(value) {
@@ -2900,6 +2974,9 @@ function bindCalendarDnD() {
 }
 
 function bindCalendarControls() {
+  const surface = $('.work-calendar');
+  if (surface) bindCalendarPresentation('work', surface, renderWorkList);
+  $$('[data-time-map-day]').forEach((button) => button.addEventListener('click', () => openCalendarDay(button.dataset.timeMapDay)));
   $$('[data-calendar-mode]').forEach((button) => button.addEventListener('click', () => { state.calendarMode = button.dataset.calendarMode; renderWorkList(); }));
   $$('[data-calendar-shift]').forEach((button) => button.addEventListener('click', () => {
     const shift = Number(button.dataset.calendarShift);
@@ -2924,6 +3001,8 @@ function bindCalendarControls() {
 }
 
 function renderWorkBody(records) {
+  const collection = state.collections.find((item) => item.id === state.workCollection);
+  if (state.workViewMode === 'kanban' && collection) return renderWorkCollectionBoard(records, collection);
   if (state.workViewMode === 'kanban') return renderWorkKanban(records);
   if (state.workViewMode === 'calendar') return renderWorkCalendar(records);
   return `<section class="table-panel work-table-panel"><div class="record-table work-header"><span>Работа</span><span>Ответственный</span><span>Состояние</span><span>Срок / прогресс</span></div><div class="record-rows">${records.map(renderWorkRow).join('') || `<div class="guided-empty work-empty">${icon('checkSquare')}<h3>В этом фильтре работы нет</h3><p>Измените фильтр или создайте следующий конкретный шаг.</p></div>`}</div></section>`;
@@ -2932,11 +3011,12 @@ function renderWorkBody(records) {
 function currentWorkViewPayload() {
   return {
     name: '', viewMode: state.workViewMode === 'list' && state.workOrder === 'hierarchy' ? 'hierarchy' : state.workViewMode,
-    filters: { scope: state.workScope, ownerId: state.ownerFilter, type: state.workType, workstream: state.workstreamFilter, status: state.workStatus, order: state.workOrder, search: state.search },
+    filters: { scope: state.workScope, ownerId: state.ownerFilter, type: state.workType, workstream: state.workstreamFilter, status: state.workStatus, order: state.workOrder, search: state.search, collectionId: state.workCollection || '' },
   };
 }
 
 function renderWorkList() {
+  if (!state.collections.some((item) => item.id === state.workCollection)) state.workCollection = '';
   const records = state.workViewMode === 'calendar' ? calendarRecordPool() : filteredWorkRecords();
   const activeFilters = workFilterCount();
   $('#main-content').innerHTML = `
@@ -2956,6 +3036,8 @@ function renderWorkList() {
     </section>
     <div class="work-view-summary"><span>${icon(state.workViewMode === 'calendar' ? 'calendar' : state.workViewMode === 'kanban' ? 'network' : state.workOrder === 'hierarchy' ? 'network' : 'flag')} ${state.workViewMode === 'calendar' ? 'Работа по срокам' : state.workViewMode === 'kanban' ? 'Работа по состояниям' : state.workOrder === 'hierarchy' ? 'Ветки и дочерние работы' : 'Сначала срочное и важное'}</span><span>${escapeHTML(workTypeFilters.find(([value]) => value === state.workType)?.[1] || 'Вся работа')} · ${escapeHTML(state.workstreamFilter === 'all' ? 'все направления' : workstreamLabels[state.workstreamFilter])}</span><details class="saved-view-menu"><summary class="text-button">Представления</summary><div>${state.savedViews.map((view) => `<span><button type="button" data-apply-saved-view="${view.id}">${escapeHTML(view.name)}</button><button type="button" data-delete-saved-view="${view.id}" aria-label="Удалить">${icon('x')}</button></span>`).join('') || '<p>Сохранённых представлений нет</p>'}<button type="button" data-save-work-view>${icon('plus')} Сохранить текущий вид</button><a href="/api/export?format=csv">Скачать CSV</a><a href="/api/export">Полный JSON</a></div></details></div>
     ${renderWorkBody(records)}`;
+  $('.work-controls').insertAdjacentHTML('beforebegin', renderWorkBoardToolbar());
+  bindWorkBoardToolbar();
   $('#work-search').addEventListener('input', (event) => {
     state.search = event.target.value;
     clearTimeout(state.workSearchTimer);
@@ -2970,10 +3052,17 @@ function renderWorkList() {
   $('#work-type-select').addEventListener('change', (event) => { state.workType = event.target.value; renderWorkList(); });
   $('#workstream-select').addEventListener('change', (event) => { state.workstreamFilter = event.target.value; renderWorkList(); });
   $$('[data-work-order]').forEach((button) => button.addEventListener('click', () => { state.workOrder = button.dataset.workOrder; renderWorkList(); }));
-	$$('[data-work-view]').forEach((button) => button.addEventListener('click', () => { state.workViewMode = button.dataset.workView; renderWorkList(); }));
+	$$('[data-work-view]').forEach((button) => button.addEventListener('click', () => {
+    state.workViewMode = button.dataset.workView;
+    if (state.workViewMode === 'calendar' && state.workStatus === 'active') state.workStatus = 'all';
+    renderWorkList();
+  }));
   $$('[data-close-work-filters]').forEach((button) => button.addEventListener('click', () => $('.work-filter-menu').removeAttribute('open')));
   $('[data-reset-work-filters]')?.addEventListener('click', () => { state.workType = 'all'; state.workstreamFilter = 'all'; state.workStatus = 'active'; state.workOrder = 'priority'; renderWorkList(); });
-  $$('[data-work-create]').forEach((button) => button.addEventListener('click', () => openCreateDialog(button.dataset.workCreate, { comparisonMode: button.dataset.workMode === 'comparison' })));
+  $$('[data-work-create]').forEach((button) => button.addEventListener('click', () => {
+    state.workCollection = '';
+    openCreateDialog(button.dataset.workCreate, { comparisonMode: button.dataset.workMode === 'comparison' });
+  }));
 	$('[data-save-work-view]')?.addEventListener('click', async () => {
 		const name = await askText({ title: 'Сохранить представление', label: 'Название', required: true });
 		if (!name) return;
@@ -2983,17 +3072,90 @@ function renderWorkList() {
 	$$('[data-apply-saved-view]').forEach((button) => button.addEventListener('click', () => {
 		const view = state.savedViews.find((item) => item.id === button.dataset.applySavedView); if (!view) return;
 		const filters = typeof view.filters === 'string' ? JSON.parse(view.filters) : view.filters || {};
+    state.workCollection = filters.collectionId || '';
 		state.workViewMode = view.viewMode === 'hierarchy' ? 'list' : view.viewMode; state.workOrder = view.viewMode === 'hierarchy' ? 'hierarchy' : filters.order || 'priority';
 		state.workScope = filters.scope || 'all'; state.ownerFilter = filters.ownerId || ''; state.workType = filters.type || 'all'; state.workstreamFilter = filters.workstream || 'all'; state.workStatus = filters.status || 'active'; state.search = filters.search || ''; renderWorkList();
 	}));
 	$$('[data-delete-saved-view]').forEach((button) => button.addEventListener('click', async () => { try { await api(`/api/saved-views/${button.dataset.deleteSavedView}`, { method: 'DELETE' }); state.savedViews = state.savedViews.filter((item) => item.id !== button.dataset.deleteSavedView); renderWorkList(); toast('Представление удалено'); } catch (error) { toast(error.message, true); } }));
-	if (state.workViewMode === 'kanban') bindBoardDnD(renderWorkList);
+	if (state.workViewMode === 'kanban') {
+    const collection = state.collections.find((item) => item.id === state.workCollection);
+    if (collection) {
+      bindCollectionBoard(collection, renderWorkList);
+      $$('[data-create-at-stage]').forEach((button) => button.addEventListener('click', () => openCollectionCardDialog(collection, null, button.dataset.createAtStage)));
+    } else bindBoardDnD(renderWorkList);
+  }
   if (state.workViewMode === 'calendar') bindCalendarControls();
-  bindOpenRecords();
+  if (state.workViewMode !== 'kanban' || !state.workCollection) bindOpenRecords();
 }
 
 function activeCollection() {
 	return state.collections.find((collection) => collection.id === state.activeCollectionId) || null;
+}
+
+function renderWorkBoardToolbar() {
+  const collection = state.collections.find((item) => item.id === state.workCollection);
+  return `<section class="work-board-toolbar"><label>Доска<select data-work-collection><option value="">Вся работа проекта</option>${state.collections.map((item) => `<option value="${item.id}" ${item.id === state.workCollection ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select></label><label>Состояние<select data-work-visible-status>${[['active', 'Активные'], ['completed', 'Завершённые'], ['all', 'Все'], ['overdue', 'Просроченные'], ['archived', 'Архив']].map(([key, label]) => `<option value="${key}" ${state.workStatus === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label>${canConfigureWorkspace() ? `<button type="button" class="secondary" data-work-board-settings>${icon('settings')} Поля и этапы</button><button type="button" class="icon-button" data-work-board-create aria-label="Новая доска" title="Новая доска">${icon('plus')}</button>` : ''}${collection ? `<button type="button" class="secondary" data-work-board-attach>${icon('link')} Добавить существующую</button>` : ''}</section>`;
+}
+
+function bindWorkBoardToolbar() {
+  $('[data-work-collection]').addEventListener('change', (event) => { state.workCollection = event.target.value; state.workType = 'all'; state.workStatus = 'all'; renderWorkList(); });
+  $('[data-work-visible-status]').addEventListener('change', (event) => { state.workStatus = event.target.value; renderWorkList(); });
+  $('[data-work-board-create]')?.addEventListener('click', openCollectionCreateDialog);
+  $('[data-work-board-settings]')?.addEventListener('click', async () => {
+    let collection = state.collections.find((item) => item.id === state.workCollection);
+    if (!collection && !state.collections.length) return openCollectionCreateDialog();
+    if (!collection) {
+      const id = await askChoice({ title: 'Поля и этапы', label: 'Доска', choices: state.collections.map((item) => ({ value: item.id, label: item.name })) });
+      collection = state.collections.find((item) => item.id === id);
+    }
+    if (collection) { state.workCollection = collection.id; renderWorkList(); openCollectionSettingsDialog(collection); }
+  });
+  $('[data-work-board-attach]')?.addEventListener('click', () => openExistingCardPicker(state.collections.find((item) => item.id === state.workCollection)));
+}
+
+function renderWorkCollectionBoard(records, collection) {
+  return `<section class="collection-board" aria-label="Доска ${escapeHTML(collection.name)}">${collection.stages.map((stage) => {
+    const items = records.filter((record) => record.stageId === stage.id);
+    return `<section class="collection-column tone-${stage.colorKey}" data-collection-drop="${stage.id}"><header><div><i></i><strong>${escapeHTML(stage.name)}</strong></div><span>${items.length}</span></header><div>${items.map((record) => renderCollectionCard(record, collection)).join('')}</div><button type="button" class="collection-add-card" data-create-at-stage="${stage.id}">${icon('plus')} Добавить</button></section>`;
+  }).join('')}</section>`;
+}
+
+function openExistingCardPicker(collection) {
+  if (!collection) return;
+  const dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
+  content.innerHTML = `<div class="workspace-editor-shell"><header><h2>Добавить на «${escapeHTML(collection.name)}»</h2><button type="button" class="icon-button" data-attach-close aria-label="Закрыть">${icon('x')}</button></header><label>Найти карточку<input type="search" data-attach-search></label><div data-attach-results></div></div>`;
+  const renderItems = () => {
+    const query = $('[data-attach-search]', content).value.toLowerCase();
+    const records = state.records.filter((item) => !item.collectionId && item.status !== 'archived' && (item.editPolicy !== 'owner_only' || [item.ownerId, item.authorId].includes(state.me.id)) && item.title.toLowerCase().includes(query));
+    $('[data-attach-results]', content).innerHTML = records.map((item) => `<button type="button" class="planner-entry" data-attach-record="${item.id}"><span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(typeMeta[item.type].singular)} · ${escapeHTML(statusLabel(item))}</small></span>${icon('plus')}</button>`).join('') || '<p class="muted">Нет подходящих карточек без доски</p>';
+    $$('[data-attach-record]', content).forEach((button) => button.addEventListener('click', () => openAssignRecordBoard(state.records.find((item) => item.id === button.dataset.attachRecord), collection.id)));
+  };
+  $('[data-attach-search]', content).addEventListener('input', renderItems);
+  $('[data-attach-close]', content).addEventListener('click', () => requestDialogClose(dialog));
+  renderItems(); openModal(dialog);
+}
+
+function openAssignRecordBoard(record, collectionID = '') {
+  if (!record) return;
+  if (!state.collections.length) return openCollectionCreateDialog();
+  const dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
+  content.innerHTML = `<div class="workspace-editor-shell"><header><h2>Поля карточки</h2><button type="button" class="icon-button" data-assign-close aria-label="Закрыть">${icon('x')}</button></header><p>${escapeHTML(record.title)}</p><form id="assign-record-board"><label>Доска<select name="collectionId">${state.collections.map((item) => `<option value="${item.id}" ${item.id === collectionID ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select></label><div class="form-grid two" data-assign-fields></div><button type="submit" class="primary">${icon('check')} Добавить на доску</button></form></div>`;
+  const form = $('#assign-record-board', content);
+  const selected = () => state.collections.find((item) => item.id === form.elements.collectionId.value);
+  const renderFields = () => { $('[data-assign-fields]', form).innerHTML = selected().fields.map((field) => collectionFieldInput(field, null)).join(''); enhanceSelects(form); };
+  form.elements.collectionId.addEventListener('change', renderFields);
+  $('[data-assign-close]', content).addEventListener('click', () => requestDialogClose(dialog));
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault(); const button = $('button[type="submit"]', form); button.disabled = true;
+    try {
+      await api(`/api/records/${record.id}/collection`, { method: 'PUT', body: JSON.stringify({ collectionId: selected().id, values: customFieldsFromForm(form, selected().fields), expectedUpdatedAt: record.updatedAt }) });
+      state.detailCache.delete(record.id); await syncProjectChanges(); closeDialogImmediately(dialog);
+      if ($('#record-dialog').open && state.activeDetail?.record.id === record.id) { state.activeDetail = await fetchRecordDetail(record.id, true); renderRecordDialog(); }
+      if (state.view === 'work') renderWorkList(); else renderContent();
+      toast('Карточка добавлена без изменения состояния');
+    } catch (error) { button.disabled = false; toast(error.message, true); }
+  });
+  renderFields(); openModal(dialog);
 }
 
 function collectionRecords(collectionID = state.activeCollectionId) {
@@ -3076,6 +3238,7 @@ async function reloadCollections({ render = true } = {}) {
 	state.collections = await api('/api/collections');
 	if (!state.collections.some((collection) => collection.id === state.activeCollectionId)) state.activeCollectionId = state.collections[0]?.id || '';
 	if (render && state.view === 'collections') renderCollections();
+  if (render && state.view === 'work') renderWorkList();
 }
 
 function bindCollectionBoard(collection, rerender = renderCollections) {
@@ -3186,7 +3349,11 @@ function openCollectionCreateDialog() {
 		try {
 			const created = await api('/api/collections', { method: 'POST', body: JSON.stringify({ name: form.get('name'), description: form.get('description'), cardLabel: form.get('cardLabel'), defaultRecordType: 'task' }) });
 			if (workspace !== state.activeWorkspaceId) return;
-			state.activeCollectionId = created.id; if (element.isConnected) closeWorkspaceDialog(); await reloadCollections(); toast('Доска создана');
+			state.activeCollectionId = created.id;
+      if (state.view === 'work') state.workCollection = created.id;
+      if (element.isConnected) closeWorkspaceDialog();
+      await reloadCollections(); toast('Доска создана');
+      if (state.view === 'work') openCollectionSettingsDialog(state.collections.find((item) => item.id === created.id));
 		} catch (error) { toast(error.message, true); }
 		finally { submit.disabled = false; }
 	});
@@ -4925,7 +5092,7 @@ function renderBusinessDetailsRead(record, canEdit) {
   if (record.type === 'inbox') return `<section class="dossier-section business-read inbox-read"><header><div><p class="eyebrow">Разбор входящего</p><h3>Во что превратить эту запись?</h3></div></header><p>Карточка сохранит название, текст, автора, историю и связи. Меняется только её рабочий тип.</p>${canEdit ? `<div class="inbox-triage-actions">${[['task', 'Задача'], ['idea', 'Идея'], ['question_set', 'Вопросы'], ['research', 'Исследование'], ['risk', 'Риск'], ['hypothesis', 'Гипотеза'], ['experiment', 'Эксперимент'], ['document', 'Документ']].map(([type, label]) => `<button type="button" class="secondary" data-triage-inbox="${type}">${icon(typeMeta[type].icon)} ${label}</button>`).join('')}</div>` : ''}</section>`;
   if (record.type === 'risk') {
     const score = Number(details.probability || 0) * Number(details.impact || 0);
-    return `<section class="dossier-section business-read risk-read"><header><div><p class="eyebrow">Контроль риска</p><h3>${details.occurred ? 'Риск наступил' : score ? `Оценка ${score} из 25` : 'Нужна оценка'}</h3></div>${canEdit ? `<button type="button" class="icon-button" data-open-record-edit aria-label="Изменить риск">${icon('edit')}</button>` : ''}</header><div class="dossier-properties">${dossierProperty('Вероятность', details.probability ? `${details.probability} из 5` : 'Не оценена', '', false)}${dossierProperty('Влияние', details.impact ? `${details.impact} из 5` : 'Не оценено', '', false)}${dossierProperty('Состояние', details.occurred ? 'Наступил' : 'Не наступил', '', false, details.occurred ? 'overdue' : '')}${dossierProperty('Следующая проверка', details.reviewAt ? formatDate(details.reviewAt, true) : 'Не назначена', '', false)}</div><div class="business-markdown"><span>Мера снижения</span>${markdownView(details.mitigation, 'Мера снижения пока не определена.')}</div></section>`;
+    return `<section class="dossier-section business-read risk-read"><header><div><p class="eyebrow">Контроль риска</p><h3>${record.status === 'completed' ? statusLabel(record) : details.occurred ? 'Риск наступил' : score ? `Оценка ${score} из 25` : 'Нужна оценка'}</h3></div>${canEdit ? `<button type="button" class="icon-button" data-open-record-edit aria-label="Изменить риск">${icon('edit')}</button>` : ''}</header><div class="dossier-properties">${dossierProperty('Вероятность', details.probability ? `${details.probability} из 5` : 'Не оценена', '', false)}${dossierProperty('Влияние', details.impact ? `${details.impact} из 5` : 'Не оценено', '', false)}${dossierProperty('Состояние', record.status === 'completed' ? statusLabel(record) : details.occurred ? 'Наступил' : 'Не наступил', '', false, record.status !== 'completed' && details.occurred ? 'overdue' : '')}${dossierProperty('Следующая проверка', details.reviewAt ? formatDate(details.reviewAt, true) : 'Не назначена', '', false)}</div><div class="business-markdown"><span>Мера снижения</span>${markdownView(details.mitigation, 'Мера снижения пока не определена.')}</div></section>`;
   }
   if (record.type === 'hypothesis' || record.type === 'experiment') return `<section class="dossier-section business-read experiment-read"><header><div><p class="eyebrow">Проверяемость</p><h3>${escapeHTML(verdictLabels[details.verdict] || 'Ожидает проверки')}</h3></div>${canEdit ? `<button type="button" class="icon-button" data-open-record-edit aria-label="Изменить проверку">${icon('edit')}</button>` : ''}</header><div class="dossier-properties">${dossierProperty('Метрика', details.metric || 'Не задана', '', false)}${dossierProperty('Порог успеха', details.successThreshold || 'Не задан', '', false)}</div><div class="business-markdown"><span>${record.type === 'experiment' ? 'Метод эксперимента' : 'Способ проверки'}</span>${markdownView(details.experimentMethod, 'Способ проверки пока не описан.')}</div></section>`;
   if (record.type === 'decision') {
@@ -4946,10 +5113,45 @@ function renderBlockersPanel(record) {
 }
 
 function renderRecordCustomFieldsRead(record, canEdit) {
-	if (!record.collectionId) return '';
+	if (!record.collectionId) return canEdit ? `<section class="dossier-section record-custom-fields"><header><h3>Свои поля</h3><button type="button" class="secondary" data-assign-record-board>${icon('plus')} Добавить поля</button></header></section>` : '';
 	const collection = state.collections.find((item) => item.id === record.collectionId);
 	if (!collection) return '';
 	return `<section class="dossier-section record-custom-fields"><header><div><p class="eyebrow">${escapeHTML(collection.name)}</p><h3>Поля карточки</h3></div>${canEdit ? `<button type="button" class="icon-button" data-edit-custom-fields aria-label="Изменить поля" title="Изменить поля">${icon('edit')}</button>` : ''}</header><div class="dossier-properties">${collection.fields.map((field) => dossierProperty(field.name, collectionFieldDisplay(field, record.customFields?.[field.id]) || 'Не указано', '', false)).join('') || '<p class="muted">На доске пока нет пользовательских полей.</p>'}</div></section>`;
+}
+
+function completionLabel(record) {
+  if (record.type === 'risk') return record.businessDetails?.occurred ? 'Последствия устранены' : 'Риск предотвращён';
+  return { goal: 'Цель достигнута', task: 'Завершить задачу', research: 'Завершить исследование', question_set: 'Завершить обсуждение', meeting: 'Встреча завершена', disagreement: 'Разногласие решено', hypothesis: 'Завершить проверку', experiment: 'Завершить эксперимент', document: 'Документ готов', criterion: 'Критерий готов' }[record.type] || '';
+}
+
+function renderRecordLifecycle(record, canEdit) {
+  const label = completionLabel(record);
+  if (!label || record.status === 'archived') return '';
+  const closed = !isActiveRecord(record);
+  return `<section class="record-lifecycle ${closed ? 'resolved' : ''}"><span><strong>${escapeHTML(statusLabel(record))}</strong>${record.completedAt && record.status === 'completed' ? `<small>${formatDate(record.completedAt, true)}</small>` : ''}</span>${canEdit ? `<button type="button" class="${closed ? 'secondary' : 'success'}" data-record-lifecycle="${closed ? 'reopen' : 'complete'}">${icon(closed ? 'rotate' : 'check')} ${closed ? 'Вернуть в работу' : escapeHTML(label)}</button>` : ''}</section>`;
+}
+
+async function completeRecordFromAction(record, reopen = false) {
+  if (!completionLabel(record)) return;
+  if (state.activeDetail?.record.id !== record.id || !$('#record-dialog').open) await openRecord(record.id);
+  if (state.activeDetail?.record.id !== record.id) return;
+  record = state.activeDetail.record;
+  if (reopen) {
+    return mutateRecord(`/api/records/${record.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'in_progress', reason: 'Пользователь вернул карточку в работу', expectedUpdatedAt: record.updatedAt }) });
+  }
+  if (record.type === 'task') {
+    if (!state.activeDetail.workflowLoaded) await loadRecordWorkflow(record.id);
+    state.activeRecordTab = 'execution'; state.recordEditMode = false; renderRecordDialog();
+    requestAnimationFrame(() => ($('#complete-task') || $('#proof-form'))?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    return;
+  }
+  if (record.type === 'research') { $('[data-complete-research]')?.click(); return; }
+  if (['hypothesis', 'experiment'].includes(record.type) && (!record.result?.trim() || !record.businessDetails?.verdict || record.businessDetails.verdict === 'pending')) {
+    state.recordEditMode = true; state.activeRecordTab = 'overview'; renderRecordDialog();
+    toast('Укажите итог проверки и результат, затем завершите карточку');
+    return;
+  }
+  await mutateRecord(`/api/records/${record.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed', reason: completionLabel(record), expectedUpdatedAt: record.updatedAt }) });
 }
 
 function renderRecordReadOverview(record, options) {
@@ -5028,7 +5230,7 @@ function renderRecordOverview(record, statuses) {
     ${canEdit ? '' : `<div class="access-banner">${icon('lock')}<span><strong>Личная карточка ${escapeHTML(record.ownerUsername)}</strong><small>Вы можете просматривать её ход и связи, но изменять содержание может только ответственный.</small></span></div>`}
     ${renderHierarchyPanel(record, canEdit)}
     <form id="record-edit-form" class="card-form record-overview-form" data-can-edit="${canEdit}">
-      <div class="form-grid two"><label>Название<input name="title" value="${escapeHTML(record.title)}" required></label><label>${record.type === 'question_set' ? 'Статус рассчитывается автоматически' : 'Статус'}<select name="status" ${record.type === 'question_set' ? 'disabled' : ''}>${statuses.map((status) => `<option value="${status}" ${record.status === status ? 'selected' : ''}>${record.type === 'task' && status === 'review' ? 'На проверке' : record.type === 'inbox' && status === 'inbox' ? 'Нужно разобрать' : statusLabels[status]}</option>`).join('')}</select></label></div>
+      <div class="form-grid two"><label>Название<input name="title" value="${escapeHTML(record.title)}" required></label><label>${record.type === 'question_set' ? 'Статус рассчитывается автоматически' : 'Статус'}<select name="status" ${record.type === 'question_set' ? 'disabled' : ''}>${statuses.map((status) => `<option value="${status}" ${record.status === status ? 'selected' : ''}>${statusLabel({ ...record, status })}</option>`).join('')}</select></label></div>
       ${markdownEditor('description', language.description, record.description, 5, 'Контекст, факты и ожидаемый результат')}
       ${renderBusinessDetailsFields(record.type, record.businessDetails || {}, record.id)}
       ${hasExecution ? `<section class="execution-fields"><header><span>${icon(record.type === 'question_set' ? 'messages' : record.type === 'meeting' ? 'calendar' : 'checkSquare')}</span><div><h3>${planningTitle}</h3><p>${record.type === 'question_set' ? 'Карточка участвует в общей очереди наравне с задачами.' : 'Поля, по которым команда контролирует выполнение.'}</p></div></header>
@@ -5334,6 +5536,7 @@ function renderRecordDialog() {
     <nav class="record-tabs" aria-label="Разделы карточки">${recordTabs(record, detail, activity)}</nav>
     ${recordTabSelect(record, detail, activity)}
     ${renderRecordContextStrip(record)}
+    ${!state.recordEditMode ? renderRecordLifecycle(record, canEdit) : ''}
     <div class="dialog-layout">
       <div class="dialog-main">
         ${record.type === 'question_set' ? renderQuestionWorkflow(detail) : ''}
@@ -5517,11 +5720,21 @@ function bindRecordDialogEvents() {
     });
   };
   $$('[data-open-record-edit]').forEach((button) => button.addEventListener('click', () => startEditing()));
+  $('[data-record-lifecycle]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget; button.disabled = true;
+    try { await completeRecordFromAction(record, button.dataset.recordLifecycle === 'reopen'); }
+    finally { if (button.isConnected) button.disabled = false; }
+  });
   $$('[data-edit-field]').forEach((button) => button.addEventListener('click', () => startEditing(button.dataset.editField)));
+  $('[data-assign-record-board]')?.addEventListener('click', () => openAssignRecordBoard(record));
 	$('[data-edit-custom-fields]')?.addEventListener('click', () => {
 		const collection = state.collections.find((item) => item.id === record.collectionId);
 		if (collection) openCollectionCardDialog(collection, record);
 	});
+  if (record.collectionId && canConfigureWorkspace()) {
+    $('.record-custom-fields > header')?.insertAdjacentHTML('beforeend', `<button type="button" class="icon-button" data-configure-record-fields title="Настроить поля доски" aria-label="Настроить поля доски">${icon('settings')}</button>`);
+    $('[data-configure-record-fields]')?.addEventListener('click', () => openCollectionSettingsDialog(state.collections.find((item) => item.id === record.collectionId)));
+  }
   $('[data-change-parent]')?.addEventListener('click', () => changeRecordParent(record));
   $$('[data-triage-inbox]').forEach((button) => button.addEventListener('click', async () => {
     const targetType = button.dataset.triageInbox;
@@ -6744,7 +6957,7 @@ function finishOnboarding() {
 
 // Only view state goes into browser history, never record bodies or account data.
 const routeFields = ['view', 'search', 'statusFilter', 'ownerFilter', 'personalTab', 'workScope', 'workType', 'workStatus', 'workstreamFilter', 'workOrder', 'workViewMode', 'ideaViewMode', 'workCalendarMonth', 'calendarMode', 'calendarYear', 'activeCollectionId', 'collectionSearch', 'collectionOwnerFilter', 'collectionFieldFilters', 'historyMode', 'historyScope', 'historyActor', 'historyType', 'notificationStatus', 'notificationPeriod', 'pageSearch'];
-routeFields.push('calendarScope', 'calendarDisplay', 'calendarMonth', 'calendarDay', 'calendarCollection', 'calendarOwner', 'calendarStatus', 'calendarColorBy');
+routeFields.push('workCollection', 'calendarScope', 'calendarDisplay', 'calendarMonth', 'calendarDay', 'calendarCollection', 'calendarOwner', 'calendarStatus', 'calendarColorBy');
 
 function viewSnapshot() {
   return { ...Object.fromEntries(routeFields.map((key) => [key, structuredClone(state[key])])), workspaceId: state.activeWorkspaceId, scrollY: window.scrollY };
@@ -7659,6 +7872,14 @@ function renderCalendarPage() {
   const agenda = monthDays.filter((key) => forDay(key).length).map((key) => `<section><h3>${escapeHTML(dateFromKey(key).toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }))}</h3>${forDay(key).map(plannerEntry).join('')}</section>`).join('');
   $('#main-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Только для вас' : activeWorkspace()?.name || 'Проект')}</p><h1>Календарь</h1></div><button type="button" class="primary" data-planner-create>${icon('plus')} ${personal ? 'План' : 'Карточка'}</button></div><section class="planner-controls"><div class="planner-switches"><div class="segmented" aria-label="Пространство календаря">${[['personal', 'Личное'], ['project', 'Проект']].map(([key, label]) => `<button type="button" class="segment ${state.calendarScope === key ? 'active' : ''}" aria-pressed="${state.calendarScope === key}" data-planner-scope="${key}">${label}</button>`).join('')}</div><div class="segmented" aria-label="Вид календаря">${[['month', 'Месяц'], ['agenda', 'Расписание']].map(([key, label]) => `<button type="button" class="segment ${state.calendarDisplay === key ? 'active' : ''}" data-planner-display="${key}">${label}</button>`).join('')}</div>${!personal ? `<button type="button" class="text-button" data-planner-cycle>12 недель и год ${icon('chevronRight')}</button>` : ''}</div><div class="planner-filters">${!personal ? `<label>Доска<select data-planner-filter="calendarCollection">${option('', 'Все доски', state.calendarCollection)}${state.collections.map((board) => option(board.id, board.name, state.calendarCollection)).join('')}</select></label><label>Ответственный<select data-planner-filter="calendarOwner">${option('', 'Все', state.calendarOwner)}${state.users.map((user) => option(user.id, user.username, state.calendarOwner)).join('')}</select></label>` : ''}<label>Состояние<select data-planner-filter="calendarStatus">${[['active', 'Открытые'], ['done', 'Завершённые'], ['all', 'Все']].map(([key, label]) => option(key, label, state.calendarStatus)).join('')}</select></label>${!personal ? `<label>Цвет<select data-planner-filter="calendarColorBy">${option('stage', 'По этапу доски', state.calendarColorBy)}${option('priority', 'По приоритету', state.calendarColorBy)}</select></label>` : ''}<button type="button" class="text-button" data-planner-reset>Сбросить</button></div></section><section class="planner-body"><header class="planner-period"><button type="button" class="icon-button" data-planner-shift="-1" aria-label="Предыдущий месяц">${icon('arrowLeft')}</button><label><span class="sr-only">Месяц</span><input type="month" data-planner-month value="${state.calendarMonth}" min="1900-01" max="9998-12"></label><button type="button" class="icon-button" data-planner-shift="1" aria-label="Следующий месяц">${icon('chevronRight')}</button><button type="button" class="text-button" data-planner-today>Сегодня</button></header>${state.calendarDisplay === 'agenda' ? `<div class="planner-agenda">${agenda || '<p class="muted">В этом месяце записей по выбранным фильтрам нет.</p>'}</div>` : `<div class="planner-month"><div class="planner-weekdays">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => `<span>${day}</span>`).join('')}</div><div class="planner-grid">${days.map((key) => { const entries = forDay(key); return `<button type="button" data-planner-day="${key}" class="planner-day ${!key.startsWith(state.calendarMonth) ? 'outside' : ''} ${key === today ? 'today' : ''} ${key === state.calendarDay ? 'selected' : ''}" aria-pressed="${key === state.calendarDay}" aria-label="${key}: ${entries.length} записей"><b>${Number(key.slice(-2))}</b><span class="planner-day-preview">${entries.slice(0, 2).map((item) => `<span class="planner-mini planner-tone-${plannerTone(item)}">${escapeHTML(item.title)}</span>`).join('')}${entries.length > 2 ? `<small>+${entries.length - 2}</small>` : ''}</span><span class="planner-day-dots" aria-hidden="true">${entries.slice(0, 3).map((item) => `<i class="planner-tone-${plannerTone(item)}"></i>`).join('')}${entries.length > 3 ? `<small>+${entries.length - 3}</small>` : ''}</span></button>`; }).join('')}</div></div><section class="planner-selected"><header><h2>${escapeHTML(dateFromKey(state.calendarDay).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' }))}</h2><div><button type="button" class="text-button" data-planner-create>${icon('plus')} ${personal ? 'План' : 'Карточка'}</button>${!personal ? `<button type="button" class="text-button" data-planner-assign>${icon('link')} Назначить карточку</button>` : ''}</div></header>${selected.map(plannerEntry).join('') || '<p class="muted">На этот день записей по выбранным фильтрам нет.</p>'}</section>`}</section><details class="planner-undated"><summary>Без даты <b>${undated.length}</b></summary>${undated.map(plannerEntry).join('') || '<p class="muted">Записей без даты нет.</p>'}</details>`;
   const root = $('#main-content');
+  const calendarSurface = personal ? 'personal' : 'project';
+  const calendarBody = $('.planner-body', root);
+  calendarBody.classList.toggle('calendar-expanded', state.calendarExpanded === calendarSurface);
+  calendarBody.insertAdjacentHTML('afterbegin', calendarPresentationToolbar(calendarSurface));
+  if (state.calendarDisplay !== 'agenda' && calendarPresentation(calendarSurface).format === 'circles') {
+    $('.planner-month', root).innerHTML = `${calendarTimeLegend()}<div class="planner-circle-grid">${monthDays.map((key) => calendarCircle(key, forDay(key), 'data-planner-day', state.calendarDay)).join('')}</div>`;
+  }
+  bindCalendarPresentation(calendarSurface, calendarBody, renderCalendarPage);
   $$('[data-planner-scope]', root).forEach((button) => button.addEventListener('click', () => { state.calendarScope = button.dataset.plannerScope; renderCalendarPage(); }));
   $$('[data-planner-display]', root).forEach((button) => button.addEventListener('click', () => { state.calendarDisplay = button.dataset.plannerDisplay; renderCalendarPage(); }));
   $$('[data-planner-filter]', root).forEach((select) => select.addEventListener('change', () => { state[select.dataset.plannerFilter] = select.value; renderCalendarPage(); }));

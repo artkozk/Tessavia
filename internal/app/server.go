@@ -111,6 +111,7 @@ func (s *Server) routes() {
 	s.mux.Handle("PATCH /api/collections/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollection)))
 	s.mux.Handle("POST /api/collections/{id}/stages", s.requireAuth(http.HandlerFunc(s.handleCreateCollectionStage)))
 	s.mux.Handle("PATCH /api/collections/{id}/stages/{stageId}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollectionStage)))
+	s.mux.Handle("PUT /api/records/{id}/collection", s.requireAuth(http.HandlerFunc(s.handleAssignRecordCollection)))
 	s.mux.Handle("POST /api/collections/{id}/fields", s.requireAuth(http.HandlerFunc(s.handleCreateCollectionField)))
 	s.mux.Handle("PATCH /api/collections/{id}/fields/{fieldId}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollectionField)))
 	s.mux.Handle("GET /api/personal/overview", s.requireAuth(http.HandlerFunc(s.handlePersonalOverview)))
@@ -1320,6 +1321,13 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if *input.Status != before.Status {
+			if before.CollectionID != "" {
+				category := collectionCategoryForStatus(*input.Status)
+				var stageID string
+				if err := s.store.db.QueryRowContext(r.Context(), `SELECT id FROM collection_stages WHERE collection_id = ? AND category = ? AND archived_at IS NULL ORDER BY sort_order LIMIT 1`, before.CollectionID, category).Scan(&stageID); err == nil {
+					add("stage_id", stageID)
+				}
+			}
 			add("status", *input.Status)
 			changes["status"] = map[string]any{"before": before.Status, "after": *input.Status}
 			reasonRequired = true
@@ -1329,6 +1337,11 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 			if *input.Status == "completed" {
 				add("completed_at", nowText())
 				add("progress", 100)
+			} else if *input.Status != "archived" && *input.Status != "cancelled" && *input.Status != "rejected" {
+				add("completed_at", nil)
+				if before.Status == "completed" && input.Progress == nil {
+					add("progress", 0)
+				}
 			}
 		}
 	}
@@ -2244,7 +2257,7 @@ func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 		defer tx.Rollback()
 		now := nowText()
 		eventID, _ := newID()
-		if _, err := tx.ExecContext(r.Context(), `UPDATE records SET status = 'review', progress = 100, result = ?, completed_at = NULL, updated_at = ? WHERE id = ?`, input.Result, now, record.ID); err != nil {
+		if _, err := tx.ExecContext(r.Context(), `UPDATE records SET stage_id = COALESCE((SELECT id FROM collection_stages WHERE collection_id = records.collection_id AND category = 'review' AND archived_at IS NULL ORDER BY sort_order LIMIT 1), stage_id), status = 'review', progress = 100, result = ?, completed_at = NULL, updated_at = ? WHERE id = ?`, input.Result, now, record.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось отправить результат на проверку")
 			return
 		}
@@ -2277,7 +2290,7 @@ func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	now := nowText()
-	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET status = 'completed', progress = 100, result = ?, completed_at = ?, updated_at = ? WHERE id = ?`, input.Result, now, now, record.ID); err != nil {
+	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET stage_id = COALESCE((SELECT id FROM collection_stages WHERE collection_id = records.collection_id AND category = 'done' AND archived_at IS NULL ORDER BY sort_order LIMIT 1), stage_id), status = 'completed', progress = 100, result = ?, completed_at = ?, updated_at = ? WHERE id = ?`, input.Result, now, now, record.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить задачу")
 		return
 	}
