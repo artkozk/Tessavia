@@ -1,0 +1,736 @@
+{
+  "auditId": "concepts-2026-09-02",
+  "codeCommit": "6716ed6",
+  "deployedCodeCommit": "5b9547e",
+  "sources": [
+    {
+      "key": "A",
+      "title": "Два режима, личный ассистент и карта времени",
+      "attachment": "1b7aa5fd-6005-434f-962c-8a294738e4cd/pasted-text.txt",
+      "sha256": "eaafa40c616c3cc22311da682a892e3dcd69f2ea3ea29f51a6d08ce2491ccfe2"
+    },
+    {
+      "key": "B",
+      "title": "Переносимая персонализация и ассистент действий",
+      "attachment": "a7fa362d-77de-45d9-8dc3-e65d8b14cc97/pasted-text.txt",
+      "sha256": "1ce3d53795158e95e1fff9a14ccf85b79dff6a6fa0de8d335fc7d4a7deccc205"
+    }
+  ],
+  "statusDefinitions": {
+    "implemented": "Указанная ограниченная часть выпущена и подтверждена кодом/существующими тестами и отчётом; не обещание отсутствия регрессий.",
+    "partial": "Есть фундамент, но хотя бы одно обещанное поведение или полная приёмка отсутствует.",
+    "missing": "Соответствующий пользовательский сценарий не найден в проверенных моделях/интерфейсе.",
+    "guardrail": "Ограничение реализации, закреплённое в критериях, а не новая самостоятельная кнопка."
+  },
+  "evidence": {
+    "personal": [
+      "internal/app/personal.go",
+      "internal/app/personal_test.go",
+      "web/app.js:renderPersonalTab",
+      "web/app.js:renderPersonalNotes",
+      "web/app.js:renderLifeMap"
+    ],
+    "calendar": [
+      "internal/app/personal_calendar_test.go",
+      "docs/architecture/CALENDAR_NOTES_WORKFLOW_CONTRACT_2026_09_02.md"
+    ],
+    "profile": [
+      "internal/app/collaboration.go:handleUserProfile",
+      "internal/app/profile_scope_test.go",
+      "internal/app/profile_avatar_test.go",
+      "internal/app/registration.go"
+    ],
+    "team": [
+      "internal/app/team_access.go",
+      "internal/app/team_access_test.go",
+      "docs/architecture/TEAM_PROJECT_ACCESS_AND_PERSONALIZATION_CONTRACT_2026_09_02.md"
+    ],
+    "interface": [
+      "internal/app/interface_presets.go",
+      "web/app.js:pageLayoutCatalog",
+      "web/app.js:renderDashboard",
+      "docs/architecture/INTERFACE_PRESETS_CONTRACT_2026_09_02.md",
+      "docs/architecture/ALL_PAGES_LAYOUT_CONTRACT_2026_09_02.md"
+    ],
+    "scope": "Сверка кода, действующих контрактов, опубликованных выпусков и 140 записей API. Не новый полный browser/device-прогон."
+  },
+  "rows": [
+    {
+      "id": "A01",
+      "requirement": "Один аккаунт, одно личное пространство и несколько команд/проектов",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "A02",
+      "requirement": "Понятный переключатель Личное/команды и независимый личный режим",
+      "status": "partial",
+      "taskKeys": [
+        "personal-context"
+      ]
+    },
+    {
+      "id": "A03",
+      "requirement": "Личное невидимо участнику, администратору и владельцу через все каналы, прямые ссылки и AI",
+      "status": "partial",
+      "taskKeys": [
+        "personal-privacy-regression"
+      ]
+    },
+    {
+      "id": "A04",
+      "requirement": "Базовые личные заметки, планы без обязательной даты и недельные привычки",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "A05",
+      "requirement": "Сегодня: ближайшие задачи, привычки, заметки, календарные события",
+      "status": "partial",
+      "taskKeys": [
+        "personal-today",
+        "personal-plans"
+      ]
+    },
+    {
+      "id": "A06",
+      "requirement": "Сегодня: свободное время, один фокус дня и личные напоминания",
+      "status": "missing",
+      "taskKeys": [
+        "personal-today",
+        "reminders"
+      ]
+    },
+    {
+      "id": "A07",
+      "requirement": "Перестановка/скрытие личных блоков не меняют команду и другое устройство",
+      "status": "partial",
+      "taskKeys": [
+        "personal-context",
+        "layout-fields"
+      ]
+    },
+    {
+      "id": "A08",
+      "requirement": "На виду переключатель, поиск, создание, Сегодня, уведомления/профиль; остальные пункты в Ещё",
+      "status": "partial",
+      "taskKeys": [
+        "personal-context",
+        "onboarding"
+      ]
+    },
+    {
+      "id": "A09",
+      "requirement": "Привычки: название, описание, цвет и значок",
+      "status": "partial",
+      "taskKeys": [
+        "habit-modes"
+      ]
+    },
+    {
+      "id": "A10",
+      "requirement": "Привычки: дни недели или N раз за период, дата старта, пауза",
+      "status": "partial",
+      "taskKeys": [
+        "habit-modes"
+      ]
+    },
+    {
+      "id": "A11",
+      "requirement": "Привычки: выполнено/количество/длительность, измеримая цель и единица",
+      "status": "partial",
+      "taskKeys": [
+        "habit-modes"
+      ]
+    },
+    {
+      "id": "A12",
+      "requirement": "Время напоминания и связь привычки с личной целью",
+      "status": "missing",
+      "taskKeys": [
+        "habit-modes",
+        "reminders",
+        "personal-plans"
+      ]
+    },
+    {
+      "id": "A13",
+      "requirement": "Одно нажатие и четыре состояния: выполнено, осознанно пропущено, не выполнено, отложено сегодня",
+      "status": "partial",
+      "taskKeys": [
+        "habit-modes"
+      ]
+    },
+    {
+      "id": "A14",
+      "requirement": "Серия текущая/лучшая, процент, неделя/месяц/12 недель, календарь и устойчивые/проблемные дни",
+      "status": "partial",
+      "taskKeys": [
+        "habit-stats"
+      ]
+    },
+    {
+      "id": "A15",
+      "requirement": "Личные заметки к выполнению, причины пропуска, спокойное возвращение без наказания",
+      "status": "partial",
+      "taskKeys": [
+        "habit-stats"
+      ]
+    },
+    {
+      "id": "A16",
+      "requirement": "Быстрая заметка и визуальный редактор без показа Markdown, Enter из названия",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "A17",
+      "requirement": "Папки, метки, избранное, ежедневные заметки, шаблоны",
+      "status": "partial",
+      "taskKeys": [
+        "note-organize"
+      ]
+    },
+    {
+      "id": "A18",
+      "requirement": "Вложения, история изменений, восстановление версии и корзина личных заметок",
+      "status": "missing",
+      "taskKeys": [
+        "note-media-history",
+        "delete-policy"
+      ]
+    },
+    {
+      "id": "A19",
+      "requirement": "Поиск по телу заметок и внутренние ссылки между заметками",
+      "status": "partial",
+      "taskKeys": [
+        "note-organize",
+        "universal-links"
+      ]
+    },
+    {
+      "id": "A20",
+      "requirement": "Явная публикация личной заметки в команду с предпросмотром, закрытым оригиналом и без автосинхронизации",
+      "status": "missing",
+      "taskKeys": [
+        "personal-publish"
+      ]
+    },
+    {
+      "id": "A21",
+      "requirement": "Личные задачи сегодня/неделя, проекты, повторяющиеся дела",
+      "status": "partial",
+      "taskKeys": [
+        "personal-plans"
+      ]
+    },
+    {
+      "id": "A22",
+      "requirement": "Календарное планирование и временные блоки с началом/окончанием",
+      "status": "partial",
+      "taskKeys": [
+        "personal-plans",
+        "personal-today"
+      ]
+    },
+    {
+      "id": "A23",
+      "requirement": "Личные цели месяц/12 недель, план/факт времени, обзор незавершённого",
+      "status": "missing",
+      "taskKeys": [
+        "personal-plans"
+      ]
+    },
+    {
+      "id": "A24",
+      "requirement": "Личные планы и заметки не становятся командными карточками",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "A25",
+      "requirement": "Карта жизни: дата рождения, свой горизонт, месяцы по умолчанию, личные данные",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "A26",
+      "requirement": "Карта жизни: недельный вид, ясный текущий период, отдельный экран",
+      "status": "partial",
+      "taskKeys": [
+        "life-weeks"
+      ]
+    },
+    {
+      "id": "A27",
+      "requirement": "Прошедшие/текущие/будущие месяцы и нейтральная формулировка выбранного горизонта",
+      "status": "partial",
+      "taskKeys": [
+        "life-weeks"
+      ]
+    },
+    {
+      "id": "A28",
+      "requirement": "Круги: привычка, проект, цикл, год, этап цели, занятие и доля накопительной цели",
+      "status": "partial",
+      "taskKeys": [
+        "time-grid"
+      ]
+    },
+    {
+      "id": "A29",
+      "requirement": "Разделение календарного времени и прогресса работы, компактный и полный немодальный вид",
+      "status": "partial",
+      "taskKeys": [
+        "time-grid"
+      ]
+    },
+    {
+      "id": "A30",
+      "requirement": "Отдельная конфигурация личного, каждого рабочего пространства, ПК и телефона",
+      "status": "partial",
+      "taskKeys": [
+        "personal-context",
+        "appearance",
+        "layout-fields"
+      ]
+    },
+    {
+      "id": "A31",
+      "requirement": "Вся библиотека: фокус, привычки, задачи, заметки, календарь, цикл, время, исследования, решения, риски, нагрузка, сообщения",
+      "status": "partial",
+      "taskKeys": [
+        "layout-fields",
+        "personal-today"
+      ]
+    },
+    {
+      "id": "A32",
+      "requirement": "Стартовые варианты: Минимальный, Личная продуктивность, Руководитель, Исследования и решения, самостоятельный",
+      "status": "missing",
+      "taskKeys": [
+        "starter-kits",
+        "onboarding"
+      ]
+    },
+    {
+      "id": "A33",
+      "requirement": "Профиль: уникальный username, имя, аватар, био, дата регистрации",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "A34",
+      "requirement": "Профиль: должность/роль, часовой пояс, общие пространства и приватность присутствия/последнего входа",
+      "status": "partial",
+      "taskKeys": [
+        "profile-privacy"
+      ]
+    },
+    {
+      "id": "A35",
+      "requirement": "Открытие профиля из чата, комментария, карточки, состава команды",
+      "status": "partial",
+      "taskKeys": [
+        "profile-privacy"
+      ]
+    },
+    {
+      "id": "A36",
+      "requirement": "Настройки имени/username, пароля, аватара и описания",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "A37",
+      "requirement": "Смена почты с подтверждением, активные устройства и выход с них",
+      "status": "partial",
+      "taskKeys": [
+        "email-codes",
+        "sessions-2fa"
+      ]
+    },
+    {
+      "id": "A38",
+      "requirement": "Настройки уведомлений, языка, часового пояса и присутствия",
+      "status": "partial",
+      "taskKeys": [
+        "reminders",
+        "profile-privacy"
+      ]
+    },
+    {
+      "id": "A39",
+      "requirement": "Личный экспорт и подтверждаемое удаление аккаунта",
+      "status": "missing",
+      "taskKeys": [
+        "data-center",
+        "delete-policy"
+      ]
+    },
+    {
+      "id": "A40",
+      "requirement": "Дата рождения и личная активность не видны в публичном профиле",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "A41",
+      "requirement": "Приглашения по username, коду и одноразовой/отзываемой ссылке",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "A42",
+      "requirement": "Закрытая проверка регистрации и приглашения по подтверждённой почте",
+      "status": "partial",
+      "taskKeys": [
+        "email-codes",
+        "guest-access"
+      ]
+    },
+    {
+      "id": "A43",
+      "requirement": "Роли владелец/администратор/участник/гость с ограниченным доступом",
+      "status": "partial",
+      "taskKeys": [
+        "guest-access",
+        "card-privacy"
+      ]
+    },
+    {
+      "id": "A44",
+      "requirement": "Настройки пространства: название/изображение, участники, модули, домашний экран, уведомления, хранение/экспорт/журнал",
+      "status": "partial",
+      "taskKeys": [
+        "workspace-defaults",
+        "reminders",
+        "delete-policy"
+      ]
+    },
+    {
+      "id": "A45",
+      "requirement": "Политики: только архив, корзина 30 дней, финальное удаление администраторами",
+      "status": "partial",
+      "taskKeys": [
+        "delete-policy"
+      ]
+    },
+    {
+      "id": "A46",
+      "requirement": "Текущий BizFlow сохраняет Только архив; для критичных итогов обезличенный факт удаления",
+      "status": "partial",
+      "taskKeys": [
+        "delete-policy"
+      ]
+    },
+    {
+      "id": "A47",
+      "requirement": "Чат: диалоги/разговор, поле и одна контекстная кнопка вместо ряда постоянных действий",
+      "status": "partial",
+      "taskKeys": [
+        "chat-basics"
+      ]
+    },
+    {
+      "id": "A48",
+      "requirement": "Ответ свайпом/двойным нажатием, реакции удержанием/наведением, полный/частый emoji, редкие действия в меню",
+      "status": "partial",
+      "taskKeys": [
+        "chat-basics",
+        "emoji"
+      ]
+    },
+    {
+      "id": "A49",
+      "requirement": "Статусы, черновики, закреплённое/сохранённое, поиск",
+      "status": "partial",
+      "taskKeys": [
+        "chat-basics",
+        "chat-realtime"
+      ]
+    },
+    {
+      "id": "A50",
+      "requirement": "Медиа-галерея, несколько файлов drop, запись голоса с отменой свайпом, кружки",
+      "status": "partial",
+      "taskKeys": [
+        "chat-media"
+      ]
+    },
+    {
+      "id": "A51",
+      "requirement": "Личные диалоги по username, групповые чаты, ветки карточек и предпросмотр ссылок",
+      "status": "partial",
+      "taskKeys": [
+        "chat-conversations"
+      ]
+    },
+    {
+      "id": "A52",
+      "requirement": "AI личного: разбор заметок, обзор, план, привычки, перегрузка, заметка в задачу, итог",
+      "status": "missing",
+      "taskKeys": [
+        "ai-assistant",
+        "ai-context"
+      ]
+    },
+    {
+      "id": "A53",
+      "requirement": "AI команды: исследования, решения, критерии, ограничения, связанные карточки и обсуждения",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "A54",
+      "requirement": "Личный AI-контекст не попадает в команду; перенос только конкретного подтверждённого текста",
+      "status": "partial",
+      "taskKeys": [
+        "ai-context",
+        "personal-publish",
+        "personal-privacy-regression"
+      ]
+    },
+    {
+      "id": "A55",
+      "requirement": "Не смешивать приватность с edit-policy, время с прогрессом, привычки с задачами и не ставить круги везде",
+      "status": "guardrail",
+      "taskKeys": [
+        "personal-privacy-regression",
+        "time-grid",
+        "habit-modes"
+      ]
+    },
+    {
+      "id": "A56",
+      "requirement": "Поэтапный выпуск с мобильной, доступной и приватной сквозной приёмкой, без обещания готовности всего сразу",
+      "status": "guardrail",
+      "taskKeys": [
+        "ux-regression",
+        "ux-navigation",
+        "personal-privacy-regression"
+      ]
+    },
+    {
+      "id": "B01",
+      "requirement": "Персонализация как переносимый и связываемый объект",
+      "status": "partial",
+      "taskKeys": [
+        "kit-workflows",
+        "universal-links"
+      ]
+    },
+    {
+      "id": "B02",
+      "requirement": "Наборы ЕГЭ, 12 недель бизнеса, дневник, команда, спорт, новая профессия",
+      "status": "missing",
+      "taskKeys": [
+        "starter-kits"
+      ]
+    },
+    {
+      "id": "B03",
+      "requirement": "Полный состав пакета: блоки/меню/оформление/шаблоны/папки/действия/правила/напоминания/представления",
+      "status": "partial",
+      "taskKeys": [
+        "kit-workflows"
+      ]
+    },
+    {
+      "id": "B04",
+      "requirement": "Пакеты не содержат личных записей, имён, конкретных дат, файлов, переписок и статистики",
+      "status": "partial",
+      "taskKeys": [
+        "kit-workflows",
+        "personal-privacy-regression"
+      ]
+    },
+    {
+      "id": "B05",
+      "requirement": "Наглядный предпросмотр, добавляемые элементы, разрешения, целевое пространство и последствия",
+      "status": "partial",
+      "taskKeys": [
+        "kit-sharing",
+        "kit-workflows"
+      ]
+    },
+    {
+      "id": "B06",
+      "requirement": "Одно подтверждение применения, независимая копия, неразрушающая установка и отмена всего набора",
+      "status": "partial",
+      "taskKeys": [
+        "kit-workflows"
+      ]
+    },
+    {
+      "id": "B07",
+      "requirement": "Обмен между своими пространствами, в команде, по закрытой ссылке и публично",
+      "status": "partial",
+      "taskKeys": [
+        "kit-sharing"
+      ]
+    },
+    {
+      "id": "B08",
+      "requirement": "Обновления автора, сравнение версий, решение получателя и сохранение его изменений",
+      "status": "missing",
+      "taskKeys": [
+        "kit-versions"
+      ]
+    },
+    {
+      "id": "B09",
+      "requirement": "Каскад: стандарт, аккаунт, личное, конкретное рабочее пространство, устройство",
+      "status": "partial",
+      "taskKeys": [
+        "appearance",
+        "personal-context"
+      ]
+    },
+    {
+      "id": "B10",
+      "requirement": "Рекомендованный вид команды и собственный вид участника; принудительно только явным действием администратора",
+      "status": "missing",
+      "taskKeys": [
+        "workspace-defaults"
+      ]
+    },
+    {
+      "id": "B11",
+      "requirement": "Светлая/тёмная/автоматическая тема, акцент, цвет/обои, проверенный шрифт, размер текста",
+      "status": "missing",
+      "taskKeys": [
+        "appearance"
+      ]
+    },
+    {
+      "id": "B12",
+      "requirement": "Плотность, карточки, меню/порядок, главная, календарь, прогресс, действия и компактность",
+      "status": "partial",
+      "taskKeys": [
+        "layout-fields",
+        "time-grid"
+      ]
+    },
+    {
+      "id": "B13",
+      "requirement": "Без произвольного CSS, автоматический контраст, подложка обоев и всегда доступный сброс",
+      "status": "partial",
+      "taskKeys": [
+        "appearance",
+        "layout-fields"
+      ]
+    },
+    {
+      "id": "B14",
+      "requirement": "Отдельный режим редактирования: drag/resize/скрытие/библиотека/предпросмотр устройств/сохранение набора",
+      "status": "partial",
+      "taskKeys": [
+        "layout-fields",
+        "kit-workflows"
+      ]
+    },
+    {
+      "id": "B15",
+      "requirement": "Заметка как узел графа, связи с задачей/событием/привычкой/целью/проектом/человеком/исследованием/решением/заметкой/сообщением/файлом",
+      "status": "partial",
+      "taskKeys": [
+        "universal-links"
+      ]
+    },
+    {
+      "id": "B16",
+      "requirement": "Смысловой T9: текст, даты, пространство, недавние объекты, связи, повторяющееся поведение",
+      "status": "partial",
+      "taskKeys": [
+        "semantic-t9"
+      ]
+    },
+    {
+      "id": "B17",
+      "requirement": "Мясо и угли -> Отдых на даче: связь, подготовка, напоминание на пятницу",
+      "status": "partial",
+      "taskKeys": [
+        "semantic-t9",
+        "reminders"
+      ]
+    },
+    {
+      "id": "B18",
+      "requirement": "Принять/изменить одним действием и навсегда скрыть похожие предложения",
+      "status": "missing",
+      "taskKeys": [
+        "semantic-t9",
+        "ai-assistant"
+      ]
+    },
+    {
+      "id": "B19",
+      "requirement": "Асимметричная личная связь: команда не видит заметку, ребро и текст в AI",
+      "status": "implemented",
+      "taskKeys": []
+    },
+    {
+      "id": "B20",
+      "requirement": "Наблюдение только внутри платформы: завершённые рабочие задачи -> предложение вклада в личную цель повышения",
+      "status": "missing",
+      "taskKeys": [
+        "ai-assistant"
+      ]
+    },
+    {
+      "id": "B21",
+      "requirement": "Пять исходов: событие цели, прогресс, заметка, правило, больше не предлагать",
+      "status": "missing",
+      "taskKeys": [
+        "ai-assistant",
+        "automation-rules"
+      ]
+    },
+    {
+      "id": "B22",
+      "requirement": "Четыре уровня ассистента, объяснение основания, список контекста и исключение источников",
+      "status": "missing",
+      "taskKeys": [
+        "ai-assistant",
+        "ai-context"
+      ]
+    },
+    {
+      "id": "B23",
+      "requirement": "Пять областей AI: объект, проект, рабочее, личное, все доступные лично пространства",
+      "status": "partial",
+      "taskKeys": [
+        "ai-context"
+      ]
+    },
+    {
+      "id": "B24",
+      "requirement": "Правила по событию/метке и расписанию, недельный обзор и подготовка поездки",
+      "status": "missing",
+      "taskKeys": [
+        "automation-rules"
+      ]
+    },
+    {
+      "id": "B25",
+      "requirement": "Правила из набора выключены до проверки; автоматические действия только по собственному включённому правилу",
+      "status": "missing",
+      "taskKeys": [
+        "automation-rules",
+        "kit-workflows"
+      ]
+    },
+    {
+      "id": "B26",
+      "requirement": "Публичный каталог проверенных наборов после устойчивого фундамента; приватность/объяснимость обязательны",
+      "status": "partial",
+      "taskKeys": [
+        "starter-kits",
+        "personal-privacy-regression",
+        "ai-context"
+      ]
+    }
+  ]
+}
