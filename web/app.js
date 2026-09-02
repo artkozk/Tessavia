@@ -164,7 +164,7 @@ const state = {
 	workspaces: [], activeWorkspaceId: localStorage.getItem('bizflow-active-workspace') || '', collections: [], activeCollectionId: '', collectionSearch: '', collectionOwnerFilter: '', collectionFieldFilters: {}, personal: null, personalLoading: false, personalTab: 'today', personalSuggestionTimer: null,
 	interfacePreferences: { hiddenNavGroups: [], collapsedNavGroups: [], dashboardWidgets: ['focus', 'capture', 'capacity', 'quality'] }, teamDetail: null,
 	interfaceProfiles: {},
-	registrationChallenge: null, pendingInviteToken: new URLSearchParams(location.search).get('invite') || '',
+	registrationChallenge: null, pendingInviteToken: new URLSearchParams(location.search).get('invite') || '', pendingInterfacePresetId: new URLSearchParams(location.search).get('interface-preset') || '', interfacePresetScope: 'mine', interfacePresetRequest: 0,
   view: 'dashboard', search: '', statusFilter: '', ownerFilter: '', authMode: 'login', activeDetail: null,
   activeRecordTab: 'overview', activeActivity: null, historyMode: 'feed', activeRecordRequest: 0,
   workScope: 'all', workType: 'all', workStatus: 'active', workstreamFilter: 'all',
@@ -958,6 +958,21 @@ function toast(message, error = false) {
   toast.timer = setTimeout(() => { node.className = 'toast'; }, 3200);
 }
 
+function toastAction(message, label, action) {
+  const node = $('#toast');
+  node.replaceChildren(document.createTextNode(message));
+  const button = document.createElement('button');
+  button.type = 'button'; button.textContent = label;
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try { await action(); } catch (error) { toast(error.message, true); }
+  }, { once: true });
+  node.append(button);
+  node.className = 'toast visible action-toast';
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { node.className = 'toast'; }, 9000);
+}
+
 function showAuth() {
   clearPrivateClientState();
   $('#app-root').hidden = true;
@@ -1010,8 +1025,8 @@ async function bootstrap() {
     state.me = await api('/api/me');
     showApp();
     await loadData();
-    maybeShowOnboarding();
-		maybeOpenPendingInvitation();
+		maybeShowOnboarding();
+		if (!maybeOpenPendingInvitation()) maybeOpenPendingInterfacePreset();
   } catch (error) {
     showAuth();
   }
@@ -1650,8 +1665,8 @@ async function submitAuth(event) {
     state.me = authenticatedUser;
     showApp();
     await loadData();
-    maybeShowOnboarding();
-		maybeOpenPendingInvitation();
+		maybeShowOnboarding();
+		if (!maybeOpenPendingInvitation()) maybeOpenPendingInterfacePreset();
   } catch (error) {
     $('#auth-error').textContent = error.message;
   }
@@ -1797,17 +1812,18 @@ function openJoinTeamDialog({ token = '', code = '' } = {}) {
 			await api('/api/invitations/accept', { method: 'POST', body: JSON.stringify({ token, code: form.get('code') || '' }) });
 			state.pendingInviteToken = '';
 			const url = new URL(location.href); url.searchParams.delete('invite'); history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
-			closeWorkspaceDialog(); await loadData(); toast('Команда добавлена');
+			closeWorkspaceDialog(); await loadData(); toast('Команда добавлена'); maybeOpenPendingInterfacePreset();
 		} catch (error) { submit.disabled = false; toast(error.message, true); }
 	});
 	openModal(dialog);
 }
 
 function maybeOpenPendingInvitation() {
-	if (!state.me || !state.pendingInviteToken) return;
+	if (!state.me || !state.pendingInviteToken) return false;
 	const token = state.pendingInviteToken;
 	state.pendingInviteToken = '';
 	openJoinTeamDialog({ token });
+	return true;
 }
 
 function renderNotificationBadge() {
@@ -6710,6 +6726,172 @@ function bindReorderList(list, rowSelector, onCommit) {
   return () => { drag = null; listeners.splice(0).forEach((remove) => remove()); status.remove(); };
 }
 
+function interfacePresetShareURL(id) {
+  const url = new URL(location.pathname, location.origin);
+  url.searchParams.set('interface-preset', id);
+  return url.toString();
+}
+
+function maybeOpenPendingInterfacePreset() {
+  if (!state.me || !state.pendingInterfacePresetId) return false;
+  const id = state.pendingInterfacePresetId;
+  state.pendingInterfacePresetId = '';
+  const url = new URL(location.href);
+  url.searchParams.delete('interface-preset');
+  history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  openInterfacePresetDetail(id, 'public');
+  return true;
+}
+
+function interfacePresetSummaryText(summary) {
+  return `Блоков главной: ${summary.dashboardWidgets} · Страниц: ${summary.customizedPages} · ${summary.density === 'compact' ? 'Компактно' : 'Обычно'}`;
+}
+
+function renderInterfacePresetComposition(summaries) {
+  const pageNames = { ...Object.fromEntries(navItems.map(([key, label]) => [key, label])), notifications: 'Уведомления' };
+  return `<details class="preset-composition"><summary>Состав набора</summary><div>${[['desktop', 'ПК'], ['mobile', 'Телефон']].map(([device, label]) => {
+    const value = summaries[device];
+    const hidden = [...(value.hiddenNavigation || []).map((key) => pageNames[key] || key), ...(value.hiddenGroups || []).map((group) => `Группа: ${group}`)];
+    return `<section><h4>${label}</h4><dl><dt>Скрыто в меню</dt><dd>${escapeHTML(hidden.join(', ') || 'Ничего')}</dd><dt>Порядок главной</dt><dd>${escapeHTML((value.dashboardOrder || []).map((key) => widgetNames[key] || key).join(' → '))}</dd><dt>Отдельные раскладки страниц</dt><dd>${escapeHTML((value.pageKeys || []).map((key) => pageNames[key] || key).join(', ') || 'По умолчанию')}</dd>${device === 'desktop' ? `<dt>Ширина рабочей области</dt><dd>${value.contentWidth} px</dd>` : ''}</dl></section>`;
+  }).join('')}</div></details>`;
+}
+
+function applyInterfacePresetProfiles(profiles) {
+  Object.assign(state.interfaceProfiles, profiles);
+  state.interfacePreferences = state.interfaceProfiles[interfaceDevice()];
+  render();
+}
+
+async function undoInterfacePresetApplication(id, workspace) {
+  if (state.activeWorkspaceId !== workspace) throw new Error('Для отмены вернитесь в исходный проект');
+  const undone = await api(`/api/interface/preset-applications/${id}/undo`, { method: 'POST', body: '{}' });
+  if (state.activeWorkspaceId !== workspace) return;
+  applyInterfacePresetProfiles(undone.profiles);
+  toast('Предыдущие настройки восстановлены');
+}
+
+function openPresetsFromLayout() {
+  if (state.layoutDraft && JSON.stringify(state.layoutDraft) !== state.layoutBaseline && !confirm('Открыть наборы без сохранения текущей раскладки?')) return;
+  if (!leavePageLayoutEditor()) return;
+  state.layoutDraft = null;
+  render();
+  openInterfacePresetsDialog();
+}
+
+async function openInterfacePresetsDialog(scope = state.interfacePresetScope, query = '') {
+  const dialog = $('#workspace-dialog');
+  if (!discardComposerChanges(dialog)) return;
+  state.interfacePresetScope = scope;
+  const request = ++state.interfacePresetRequest;
+  const content = $('#workspace-dialog-content');
+  content.innerHTML = `<div class="workspace-dialog-loading" data-preset-loading="${request}"><span class="spinner"></span><strong>Загружаем наборы</strong></div>`;
+  openModal(dialog);
+  try {
+    const [presets, latest] = await Promise.all([api(`/api/interface/presets?scope=${encodeURIComponent(scope)}&q=${encodeURIComponent(query)}`), api('/api/interface/preset-applications/latest')]);
+    if (!dialog.open || !$(`[data-preset-loading="${request}"]`, content)) return;
+    content.innerHTML = `<div class="workspace-editor-shell interface-presets-shell"><header><div><p class="eyebrow">Персонализация</p><h2>Наборы интерфейса</h2></div><button type="button" class="icon-button" data-close-presets aria-label="Закрыть">${icon('x')}</button></header><div class="preset-library-toolbar"><div class="segmented" role="tablist" aria-label="Наборы интерфейса">${[['mine', 'Мои'], ['public', 'Публичные']].map(([key, label]) => `<button type="button" class="segment ${scope === key ? 'active' : ''}" role="tab" aria-selected="${scope === key}" data-preset-scope="${key}">${label}</button>`).join('')}</div><button type="button" class="primary" data-new-preset>${icon('plus')} Сохранить текущий</button></div><form class="preset-search"><label>${icon('search')}<input type="search" name="query" value="${escapeHTML(query)}" placeholder="Найти набор" aria-label="Найти набор"></label><button type="submit" class="secondary">Найти</button></form><div class="preset-library-list">${presets.map((preset) => `<article class="preset-library-item"><div><h3>${escapeHTML(preset.name)}</h3>${preset.description ? `<p>${escapeHTML(preset.description)}</p>` : ''}<small>@${escapeHTML(preset.ownerUsername)} · ${preset.visibility === 'public' ? 'Публичный' : 'Только у вас'}${preset.useCount ? ` · Применений: ${preset.useCount}` : ''}</small><div class="preset-device-lines"><span><b>ПК</b> ${interfacePresetSummaryText(preset.summary.desktop)}</span><span><b>Телефон</b> ${interfacePresetSummaryText(preset.summary.mobile)}</span></div></div><button type="button" class="secondary" data-open-preset="${preset.id}">Посмотреть ${icon('chevronRight')}</button></article>`).join('') || `<div class="preset-library-empty"><h3>${query ? 'Наборы не найдены' : scope === 'mine' ? 'Сохранённых наборов пока нет' : 'Публичных наборов пока нет'}</h3></div>`}</div><footer class="composer-shortcuts"><button type="button" class="text-button" data-preset-menu>${icon('arrowLeft')} Меню и страницы</button></footer></div>`;
+    $('[data-close-presets]', dialog).addEventListener('click', closeWorkspaceDialog);
+    if (latest) {
+      $('.preset-search', dialog).insertAdjacentHTML('afterend', `<div class="preset-last-application"><span><strong>${escapeHTML(latest.presetName)}</strong><small>Последнее применение · ${formatDate(latest.createdAt)}${latest.canUndo ? '' : ' · После него настройки менялись'}</small></span><button type="button" class="secondary" data-undo-preset ${latest.canUndo ? '' : 'disabled'}>${icon('undo')} Отменить</button></div>`);
+      $('[data-undo-preset]', dialog).addEventListener('click', async (event) => {
+        const button = event.currentTarget; button.disabled = true;
+        try { await undoInterfacePresetApplication(latest.id, state.activeWorkspaceId); if (dialog.open && button.isConnected) await openInterfacePresetsDialog(scope, query); }
+        catch (error) { button.disabled = false; toast(error.message, true); }
+      });
+    }
+    $('[data-preset-menu]', dialog).addEventListener('click', () => openNavigationSettings());
+    $('[data-new-preset]', dialog).addEventListener('click', () => openCreateInterfacePresetDialog());
+    $$('[data-preset-scope]', dialog).forEach((button) => button.addEventListener('click', () => openInterfacePresetsDialog(button.dataset.presetScope)));
+    $$('[data-open-preset]', dialog).forEach((button) => button.addEventListener('click', () => openInterfacePresetDetail(button.dataset.openPreset, scope)));
+    $('.preset-search', dialog).addEventListener('submit', (event) => { event.preventDefault(); openInterfacePresetsDialog(scope, new FormData(event.currentTarget).get('query').trim()); });
+  } catch (error) {
+    if (!dialog.open || !$(`[data-preset-loading="${request}"]`, content)) return;
+    content.innerHTML = `<div class="workspace-editor-shell interface-presets-shell"><header><div><h2>Наборы не загрузились</h2><p>${escapeHTML(error.message)}</p></div><button type="button" class="icon-button" data-close-presets aria-label="Закрыть">${icon('x')}</button></header><button type="button" class="secondary" data-retry-presets>Повторить</button></div>`;
+    $('[data-close-presets]', dialog).addEventListener('click', closeWorkspaceDialog);
+    $('[data-retry-presets]', dialog).addEventListener('click', () => openInterfacePresetsDialog(scope, query));
+  }
+}
+
+function openCreateInterfacePresetDialog(preset = null, backScope = 'mine') {
+  const dialog = $('#workspace-dialog');
+  if (!discardComposerChanges(dialog)) return;
+  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell interface-presets-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Текущий проект')}</p><h2>${preset ? 'Изменить набор' : 'Сохранить набор'}</h2></div><button type="button" class="icon-button" data-close-presets aria-label="Закрыть">${icon('x')}</button></header><form id="interface-preset-form" class="card-form"><label>Название<input name="name" required maxlength="80" value="${escapeHTML(preset?.name || '')}" placeholder="Например: Подготовка к экзамену"></label><label>Описание<textarea name="description" rows="3" maxlength="500" placeholder="Для каких задач подходит набор">${escapeHTML(preset?.description || '')}</textarea></label><label class="check"><input type="checkbox" name="public" ${preset?.visibility === 'public' ? 'checked' : ''}><span>Опубликовать в общем каталоге</span></label><p class="preset-privacy-note">${preset ? 'Название, описание и публикация. Сохранённые раскладки не изменятся.' : 'Сохраняются раскладки ПК и телефона. Записи, доски, свои страницы, поля проекта и данные участников не публикуются.'}</p><div class="form-actions"><button type="submit" class="primary">${icon('check')} ${preset ? 'Сохранить изменения' : 'Сохранить набор'}</button><button type="button" class="secondary" data-preset-back>Назад</button></div></form></div>`;
+  $('[data-close-presets]', dialog).addEventListener('click', closeWorkspaceDialog);
+  $('[data-preset-back]', dialog).addEventListener('click', () => preset ? openInterfacePresetDetail(preset.id, backScope) : openInterfacePresetsDialog());
+  const form = $('#interface-preset-form', dialog);
+  bindComposerForm(form);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const values = new FormData(form), button = $('button[type="submit"]', form);
+    button.disabled = true;
+    try {
+      const saved = await api(preset ? `/api/interface/presets/${preset.id}` : '/api/interface/presets', { method: preset ? 'PATCH' : 'POST', body: JSON.stringify({ name: values.get('name'), description: values.get('description'), visibility: values.has('public') ? 'public' : 'private', ...(preset ? { expectedUpdatedAt: preset.updatedAt } : {}) }) });
+      if (dialog.open && form.isConnected) {
+        dialog.dataset.composerDirty = 'false';
+        await openInterfacePresetDetail(saved.id, backScope);
+      }
+      toast('Набор сохранён');
+    } catch (error) { button.disabled = false; toast(error.message, true); }
+  });
+  openModal(dialog);
+  $('[name="name"]', form).focus();
+}
+
+async function openInterfacePresetDetail(id, backScope = state.interfacePresetScope) {
+  const dialog = $('#workspace-dialog');
+  if (!discardComposerChanges(dialog)) return;
+  const request = ++state.interfacePresetRequest;
+  const content = $('#workspace-dialog-content');
+  content.innerHTML = `<div class="workspace-dialog-loading" data-preset-loading="${request}"><span class="spinner"></span><strong>Сравниваем настройки</strong></div>`;
+  openModal(dialog);
+  try {
+    const preset = await api(`/api/interface/presets/${encodeURIComponent(id)}`);
+    if (!dialog.open || !$(`[data-preset-loading="${request}"]`, content)) return;
+    content.innerHTML = `<div class="workspace-editor-shell interface-presets-shell"><header><div><p class="eyebrow">Набор · @${escapeHTML(preset.ownerUsername)}</p><h2>${escapeHTML(preset.name)}</h2>${preset.description ? `<p>${escapeHTML(preset.description)}</p>` : ''}</div><button type="button" class="icon-button" data-close-presets aria-label="Закрыть">${icon('x')}</button></header><section class="preset-preview"><h3>Применить для себя в «${escapeHTML(activeWorkspace()?.name || 'Текущий проект')}»</h3><div class="preset-preview-devices">${[['desktop', 'ПК'], ['mobile', 'Телефон']].map(([device, label]) => { const summary = preset.summary[device]; return `<label class="preset-device-choice"><input type="checkbox" name="presetDevice" value="${device}" checked><span><strong>${label}</strong><small>${summary.changed ? 'Настройки изменятся' : 'Настройки уже совпадают'}</small><span>${interfacePresetSummaryText(summary)}</span><span>Скрыто пунктов меню: ${summary.hiddenMenuItems} · Действий в панели: ${summary.visibleToolbarItems}</span></span></label>`; }).join('')}</div><p class="preset-privacy-note">Раскладки выбранных устройств будут заменены. Карточки и доступы не изменятся. Сразу после применения можно вернуть прежние настройки.</p><div class="form-actions"><button type="button" class="primary" data-apply-preset>${icon('check')} Применить набор</button><button type="button" class="secondary" data-preset-back>Назад</button></div></section>${preset.visibility === 'public' ? `<div class="preset-share-row"><button type="button" class="secondary" data-copy-preset>${icon('link')} Скопировать ссылку</button><span>Публичный набор</span></div>` : ''}${preset.mine ? `<details class="preset-management"><summary>Управление набором</summary><div><button type="button" class="secondary" data-toggle-preset-public>${icon(preset.visibility === 'public' ? 'lock' : 'users')} ${preset.visibility === 'public' ? 'Снять с публикации' : 'Опубликовать'}</button><button type="button" class="secondary" data-refresh-preset>${icon('rotate')} Обновить текущими настройками</button><button type="button" class="text-button danger-text" data-delete-preset>${icon('trash')} Удалить набор</button></div></details>` : ''}</div>`;
+    $('[data-close-presets]', dialog).addEventListener('click', closeWorkspaceDialog);
+    $('[data-preset-back]', dialog).addEventListener('click', () => openInterfacePresetsDialog(backScope));
+    $('.preset-preview-devices', dialog).insertAdjacentHTML('afterend', renderInterfacePresetComposition(preset.summary));
+    if (preset.mine) {
+      $('.preset-management > div', dialog).insertAdjacentHTML('afterbegin', `<button type="button" class="secondary" data-edit-preset>${icon('edit')} Название и описание</button>`);
+      $('[data-edit-preset]', dialog).addEventListener('click', () => openCreateInterfacePresetDialog(preset, backScope));
+    }
+    $('[data-copy-preset]', dialog)?.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(interfacePresetShareURL(preset.id)); toast('Ссылка скопирована'); } catch { toast('Браузер не разрешил копирование ссылки', true); }
+    });
+    $('[data-apply-preset]', dialog).addEventListener('click', async (event) => {
+      const devices = $$('[name="presetDevice"]:checked', dialog).map((input) => input.value);
+      if (!devices.length) { toast('Выберите хотя бы одно устройство'); return; }
+      const button = event.currentTarget, workspace = state.activeWorkspaceId;
+      button.disabled = true;
+      try {
+        const applied = await api(`/api/interface/presets/${preset.id}/apply`, { method: 'POST', body: JSON.stringify({ devices }) });
+        if (workspace !== state.activeWorkspaceId) return;
+        if (dialog.open && button.isConnected) closeWorkspaceDialog();
+        applyInterfacePresetProfiles(applied.profiles);
+        toastAction('Набор применён', 'Отменить', () => undoInterfacePresetApplication(applied.applicationId, workspace));
+      } catch (error) { button.disabled = false; toast(error.message, true); }
+    });
+    const updatePreset = async (changes, button) => {
+      button.disabled = true;
+      try { await api(`/api/interface/presets/${preset.id}`, { method: 'PATCH', body: JSON.stringify({ ...changes, expectedUpdatedAt: preset.updatedAt }) }); if (dialog.open && button.isConnected) await openInterfacePresetDetail(preset.id, backScope); }
+      catch (error) { button.disabled = false; toast(error.message, true); }
+    };
+    $('[data-toggle-preset-public]', dialog)?.addEventListener('click', (event) => updatePreset({ visibility: preset.visibility === 'public' ? 'private' : 'public' }, event.currentTarget));
+    $('[data-refresh-preset]', dialog)?.addEventListener('click', (event) => { if (confirm('Заменить содержимое набора текущими сохранёнными настройками ПК и телефона?')) updatePreset({ refreshFromCurrent: true }, event.currentTarget); });
+    $('[data-delete-preset]', dialog)?.addEventListener('click', async (event) => {
+      if (!confirm('Удалить этот набор? Уже применённые настройки других людей сохранятся.')) return;
+      const button = event.currentTarget; button.disabled = true;
+      try { await api(`/api/interface/presets/${preset.id}`, { method: 'DELETE' }); if (dialog.open && button.isConnected) await openInterfacePresetsDialog('mine'); toast('Набор удалён'); }
+      catch (error) { button.disabled = false; toast(error.message, true); }
+    });
+  } catch (error) {
+    if (!dialog.open || !$(`[data-preset-loading="${request}"]`, content)) return;
+    content.innerHTML = `<div class="workspace-editor-shell interface-presets-shell"><header><div><h2>Набор недоступен</h2><p>${escapeHTML(error.message)}</p></div><button type="button" class="icon-button" data-close-presets aria-label="Закрыть">${icon('x')}</button></header><button type="button" class="secondary" data-preset-back>${icon('arrowLeft')} К наборам</button></div>`;
+    $('[data-close-presets]', dialog).addEventListener('click', closeWorkspaceDialog);
+    $('[data-preset-back]', dialog).addEventListener('click', () => openInterfacePresetsDialog(backScope));
+  }
+}
+
 function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
   const dialog = $('#workspace-dialog');
   if (!discardComposerChanges(dialog)) return;
@@ -6734,6 +6916,8 @@ function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
   };
   $('[data-composer-layout]', dialog).addEventListener('click', () => leaveFor(state.view, () => state.view === 'dashboard' ? startLayoutEditor(device) : startPageLayoutEditor(device)));
   $('[data-composer-templates]', dialog).addEventListener('click', () => leaveFor('structure'));
+  $('.composer-shortcuts', dialog).insertAdjacentHTML('beforeend', `<button type="button" class="text-button" data-composer-presets>${icon('copy')} Наборы интерфейса</button>`);
+  $('[data-composer-presets]', dialog).addEventListener('click', openPresetsFromLayout);
   const personalForm = $('#navigation-personal-form', dialog);
   if (personalForm) {
     bindComposerForm(personalForm);
@@ -6915,6 +7099,8 @@ function moveLayoutWidget(key, target, after = false) {
 
 function bindLayoutEditor() {
   const header = $('.layout-editor-header');
+  $('.layout-editor-actions', header).insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-layout-presets>${icon('copy')} Наборы</button>`);
+  $('[data-layout-presets]', header).addEventListener('click', openPresetsFromLayout);
   $$('[data-interface-device]', header).forEach((button) => button.addEventListener('click', () => {
     if (button.dataset.interfaceDevice === state.layoutDraft.device) return;
     if (JSON.stringify(state.layoutDraft) !== state.layoutBaseline && !confirm('Сменить устройство без сохранения раскладки?')) return;
@@ -7078,6 +7264,8 @@ function renderPageLayoutEditor(catalog) {
 
 function bindPageLayoutEditor(editor, catalog) {
   const draft = state.pageLayoutDraft;
+  $('header > div', editor).insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-layout-presets>${icon('copy')} Наборы</button>`);
+  $('[data-layout-presets]', editor).addEventListener('click', openPresetsFromLayout);
   const refresh = () => { editor.remove(); applyInterfaceLayout(); applyPageLayout(); };
   $('[data-page-layout-cancel]', editor).addEventListener('click', () => { state.pageLayoutDraft = null; editor.remove(); applyInterfaceLayout(); applyPageLayout(); });
   $('[data-page-layout-reset]', editor).addEventListener('click', () => { draft.value = {}; refresh(); });

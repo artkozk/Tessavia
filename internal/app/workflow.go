@@ -1163,6 +1163,7 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 		"sectionDefinitions":     {`SELECT * FROM section_definitions WHERE workspace_id IS NULL OR workspace_id = ?`, workspaceArg},
 		"sectionOverrides":       {`SELECT * FROM workspace_section_overrides WHERE workspace_id = ?`, workspaceArg},
 		"myInterfacePreferences": {`SELECT * FROM user_interface_preferences WHERE workspace_id = ? AND user_id = ?`, []any{workspaceID, currentUser(r).ID}},
+		"myInterfacePresets":     {`SELECT * FROM interface_presets WHERE owner_id = ?`, []any{currentUser(r).ID}},
 		"users":                  {`SELECT u.id, u.email, u.username, u.created_at FROM users u JOIN workspace_members wm ON wm.user_id = u.id WHERE wm.workspace_id = ? AND wm.status = 'active'`, workspaceArg},
 		"userWorkCapacity":       {`SELECT c.* FROM user_work_capacity c JOIN workspace_members wm ON wm.user_id = c.user_id WHERE wm.workspace_id = ? AND wm.status = 'active'`, workspaceArg},
 		"collections":            {`SELECT * FROM workspace_collections WHERE workspace_id = ?`, workspaceArg},
@@ -1188,7 +1189,7 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 		"activity":               {`SELECT * FROM activity WHERE workspace_id = ?`, workspaceArg},
 		"activityUndos":          {`SELECT u.* FROM activity_undos u JOIN activity a ON a.id = u.activity_id WHERE a.workspace_id = ?`, workspaceArg},
 	}
-	payload := map[string]any{"schemaVersion": 13, "workspaceId": workspaceID, "exportedAt": nowText(), "exportedBy": currentUser(r).Username, "tables": map[string]any{}}
+	payload := map[string]any{"schemaVersion": 14, "workspaceId": workspaceID, "exportedAt": nowText(), "exportedBy": currentUser(r).Username, "tables": map[string]any{}}
 	data := payload["tables"].(map[string]any)
 	for name, item := range tables {
 		rows, err := exportRows(r.Context(), s.store.db, item.query, item.args...)

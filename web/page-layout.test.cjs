@@ -80,7 +80,7 @@ test('resetting the dashboard keeps all other page settings', () => {
   const handlers = {};
   const pages = { work: { hiddenFields: ['owner'] } };
   const state = { layoutDraft: { layout: { pages }, dashboardWidgets: ['focus'] } };
-  const context = vm.createContext({ state, widgetNames: {focus:'Focus'}, interfaceLayout:()=>({density:'comfortable'}), render(){}, bindLayoutFields(){}, $$:()=>[], $:selector=>({addEventListener:(type,fn)=>{handlers[selector]=fn;}}) });
+  const context = vm.createContext({ state, widgetNames: {focus:'Focus'}, icon:()=>'', openPresetsFromLayout(){}, interfaceLayout:()=>({density:'comfortable'}), render(){}, bindLayoutFields(){}, $$:()=>[], $:selector=>({insertAdjacentHTML(){},addEventListener:(type,fn)=>{handlers[selector]=fn;}}) });
   vm.runInContext(source.slice(source.indexOf('function bindLayoutEditor('),source.indexOf('function pageLayoutKey(')),context);
   vm.runInContext('bindLayoutEditor()',context);
   handlers['[data-layout-reset]']();

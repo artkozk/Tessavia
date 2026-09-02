@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -154,49 +155,115 @@ func defaultInterfacePreferences(device string) InterfacePreferences {
 	return InterfacePreferences{Device: device, HiddenNavItems: []string{}, NavOrder: []string{}, HiddenNavGroups: []string{}, CollapsedNavGroups: []string{}, DashboardWidgets: append([]string(nil), defaultDashboardWidgets...), Layout: normalizeInterfaceLayout(InterfaceLayout{})}
 }
 
-func (s *Server) handleGetInterfacePreferences(w http.ResponseWriter, r *http.Request) {
-	device, ok := interfaceDevice(w, r)
-	if !ok {
-		return
-	}
+func (s *Server) loadInterfacePreferences(ctx context.Context, userID int64, workspaceID, device string) (InterfacePreferences, error) {
+	return loadInterfacePreferencesWithReader(ctx, s.store.db, userID, workspaceID, device)
+}
+
+type interfacePreferenceReader interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func loadInterfacePreferencesWithReader(ctx context.Context, reader interfacePreferenceReader, userID int64, workspaceID, device string) (InterfacePreferences, error) {
 	preferences := defaultInterfacePreferences(device)
 	var hiddenJSON, collapsedJSON, widgetsJSON, layoutJSON, itemsJSON, orderJSON, mobileJSON string
-	err := s.store.db.QueryRowContext(r.Context(), `SELECT hidden_nav_groups_json, collapsed_nav_groups_json, dashboard_widgets_json, layout_json, hidden_nav_items_json, nav_order_json, mobile_preferences_json, updated_at FROM user_interface_preferences WHERE user_id = ? AND workspace_id = ?`, currentUser(r).ID, currentWorkspace(r).ID).
+	err := reader.QueryRowContext(ctx, `SELECT hidden_nav_groups_json, collapsed_nav_groups_json, dashboard_widgets_json, layout_json, hidden_nav_items_json, nav_order_json, mobile_preferences_json, updated_at FROM user_interface_preferences WHERE user_id = ? AND workspace_id = ?`, userID, workspaceID).
 		Scan(&hiddenJSON, &collapsedJSON, &widgetsJSON, &layoutJSON, &itemsJSON, &orderJSON, &mobileJSON, &preferences.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusOK, preferences)
-		return
+		return preferences, nil
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось загрузить настройки интерфейса")
-		return
+		return InterfacePreferences{}, err
 	}
 	if device == "mobile" {
 		preferences = defaultInterfacePreferences(device)
-		if mobileJSON != "" && json.Unmarshal([]byte(mobileJSON), &preferences) != nil {
-			writeError(w, http.StatusInternalServerError, "Настройки телефона повреждены")
-			return
+		if mobileJSON != "" {
+			if err := json.Unmarshal([]byte(mobileJSON), &preferences); err != nil {
+				return InterfacePreferences{}, err
+			}
 		}
 		preferences.Device = device
 		preferences.Layout = normalizeInterfaceLayout(preferences.Layout)
-		writeJSON(w, http.StatusOK, preferences)
-		return
+		return preferences, nil
 	}
-	if json.Unmarshal([]byte(hiddenJSON), &preferences.HiddenNavGroups) != nil || json.Unmarshal([]byte(collapsedJSON), &preferences.CollapsedNavGroups) != nil || json.Unmarshal([]byte(widgetsJSON), &preferences.DashboardWidgets) != nil {
-		writeError(w, http.StatusInternalServerError, "Настройки интерфейса повреждены")
-		return
+	if err := json.Unmarshal([]byte(hiddenJSON), &preferences.HiddenNavGroups); err != nil {
+		return InterfacePreferences{}, err
+	}
+	if err := json.Unmarshal([]byte(collapsedJSON), &preferences.CollapsedNavGroups); err != nil {
+		return InterfacePreferences{}, err
+	}
+	if err := json.Unmarshal([]byte(widgetsJSON), &preferences.DashboardWidgets); err != nil {
+		return InterfacePreferences{}, err
 	}
 	preferences.HiddenNavGroups = uniqueAllowedStrings(preferences.HiddenNavGroups, interfaceNavGroups)
 	preferences.CollapsedNavGroups = uniqueAllowedStrings(preferences.CollapsedNavGroups, interfaceNavGroups)
 	preferences.DashboardWidgets = uniqueAllowedStrings(preferences.DashboardWidgets, interfaceDashboardWidgets)
 	var layout InterfaceLayout
-	if json.Unmarshal([]byte(layoutJSON), &layout) != nil {
-		writeError(w, http.StatusInternalServerError, "Настройки раскладки повреждены")
-		return
+	if err := json.Unmarshal([]byte(layoutJSON), &layout); err != nil {
+		return InterfacePreferences{}, err
 	}
 	preferences.Layout = normalizeInterfaceLayout(layout)
-	if json.Unmarshal([]byte(itemsJSON), &preferences.HiddenNavItems) != nil || json.Unmarshal([]byte(orderJSON), &preferences.NavOrder) != nil {
-		writeError(w, 500, "Настройки меню повреждены")
+	if err := json.Unmarshal([]byte(itemsJSON), &preferences.HiddenNavItems); err != nil {
+		return InterfacePreferences{}, err
+	}
+	if err := json.Unmarshal([]byte(orderJSON), &preferences.NavOrder); err != nil {
+		return InterfacePreferences{}, err
+	}
+	return preferences, nil
+}
+
+func (s *Server) prepareInterfacePreferences(ctx context.Context, workspaceID, device string, input InterfacePreferences) (InterfacePreferences, error) {
+	keys, err := s.navigationKeys(ctx, workspaceID)
+	if err != nil {
+		return InterfacePreferences{}, err
+	}
+	return normalizeInterfacePreferences(input, device, keys), nil
+}
+
+func normalizeInterfacePreferences(input InterfacePreferences, device string, keys map[string]bool) InterfacePreferences {
+	input.HiddenNavGroups = uniqueAllowedStrings(input.HiddenNavGroups, interfaceNavGroups)
+	input.CollapsedNavGroups = uniqueAllowedStrings(input.CollapsedNavGroups, interfaceNavGroups)
+	input.DashboardWidgets = uniqueAllowedStrings(input.DashboardWidgets, interfaceDashboardWidgets)
+	if len(input.DashboardWidgets) == 0 {
+		input.DashboardWidgets = []string{"focus"}
+	}
+	input.Layout = normalizeInterfaceLayout(input.Layout)
+	input.HiddenNavItems = uniqueAllowedStrings(input.HiddenNavItems, keys)
+	input.NavOrder = uniqueAllowedStrings(input.NavOrder, keys)
+	input.Device = device
+	input.UpdatedAt = nowText()
+	return input
+}
+
+type interfacePreferenceExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func persistInterfacePreferences(ctx context.Context, exec interfacePreferenceExecer, userID int64, workspaceID, device string, input InterfacePreferences) error {
+	if device == "mobile" {
+		mobileJSON, _ := json.Marshal(input)
+		_, err := exec.ExecContext(ctx, `INSERT INTO user_interface_preferences(user_id, workspace_id, mobile_preferences_json, updated_at) VALUES(?, ?, ?, ?)
+			ON CONFLICT(user_id, workspace_id) DO UPDATE SET mobile_preferences_json = excluded.mobile_preferences_json, updated_at = excluded.updated_at`, userID, workspaceID, string(mobileJSON), input.UpdatedAt)
+		return err
+	}
+	hiddenJSON, _ := json.Marshal(input.HiddenNavGroups)
+	collapsedJSON, _ := json.Marshal(input.CollapsedNavGroups)
+	widgetsJSON, _ := json.Marshal(input.DashboardWidgets)
+	layoutJSON, _ := json.Marshal(input.Layout)
+	itemsJSON, _ := json.Marshal(input.HiddenNavItems)
+	orderJSON, _ := json.Marshal(input.NavOrder)
+	_, err := exec.ExecContext(ctx, `INSERT INTO user_interface_preferences(user_id, workspace_id, hidden_nav_groups_json, collapsed_nav_groups_json, dashboard_widgets_json, layout_json, hidden_nav_items_json, nav_order_json, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, workspace_id) DO UPDATE SET hidden_nav_groups_json = excluded.hidden_nav_groups_json, collapsed_nav_groups_json = excluded.collapsed_nav_groups_json, dashboard_widgets_json = excluded.dashboard_widgets_json, layout_json = excluded.layout_json, hidden_nav_items_json=excluded.hidden_nav_items_json, nav_order_json=excluded.nav_order_json, updated_at = excluded.updated_at`, userID, workspaceID, string(hiddenJSON), string(collapsedJSON), string(widgetsJSON), string(layoutJSON), string(itemsJSON), string(orderJSON), input.UpdatedAt)
+	return err
+}
+
+func (s *Server) handleGetInterfacePreferences(w http.ResponseWriter, r *http.Request) {
+	device, ok := interfaceDevice(w, r)
+	if !ok {
+		return
+	}
+	preferences, err := s.loadInterfacePreferences(r.Context(), currentUser(r).ID, currentWorkspace(r).ID, device)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось загрузить настройки интерфейса")
 		return
 	}
 	writeJSON(w, http.StatusOK, preferences)
@@ -211,41 +278,12 @@ func (s *Server) handleUpdateInterfacePreferences(w http.ResponseWriter, r *http
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	input.HiddenNavGroups = uniqueAllowedStrings(input.HiddenNavGroups, interfaceNavGroups)
-	input.CollapsedNavGroups = uniqueAllowedStrings(input.CollapsedNavGroups, interfaceNavGroups)
-	input.DashboardWidgets = uniqueAllowedStrings(input.DashboardWidgets, interfaceDashboardWidgets)
-	if len(input.DashboardWidgets) == 0 {
-		input.DashboardWidgets = []string{"focus"}
-	}
-	input.Layout = normalizeInterfaceLayout(input.Layout)
-	keys, err := s.navigationKeys(r.Context(), currentWorkspace(r).ID)
+	input, err := s.prepareInterfacePreferences(r.Context(), currentWorkspace(r).ID, device, input)
 	if err != nil {
 		writeError(w, 500, "Не удалось проверить пункты меню")
 		return
 	}
-	input.HiddenNavItems = uniqueAllowedStrings(input.HiddenNavItems, keys)
-	input.NavOrder = uniqueAllowedStrings(input.NavOrder, keys)
-	input.Device = device
-	input.UpdatedAt = nowText()
-	if device == "mobile" {
-		mobileJSON, _ := json.Marshal(input)
-		if _, err := s.store.db.ExecContext(r.Context(), `INSERT INTO user_interface_preferences(user_id, workspace_id, mobile_preferences_json, updated_at) VALUES(?, ?, ?, ?)
-			ON CONFLICT(user_id, workspace_id) DO UPDATE SET mobile_preferences_json = excluded.mobile_preferences_json`, currentUser(r).ID, currentWorkspace(r).ID, string(mobileJSON), input.UpdatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "Не удалось сохранить настройки телефона")
-			return
-		}
-		writeJSON(w, http.StatusOK, input)
-		return
-	}
-	hiddenJSON, _ := json.Marshal(input.HiddenNavGroups)
-	collapsedJSON, _ := json.Marshal(input.CollapsedNavGroups)
-	widgetsJSON, _ := json.Marshal(input.DashboardWidgets)
-	layoutJSON, _ := json.Marshal(input.Layout)
-	itemsJSON, _ := json.Marshal(input.HiddenNavItems)
-	orderJSON, _ := json.Marshal(input.NavOrder)
-	input.UpdatedAt = nowText()
-	if _, err := s.store.db.ExecContext(r.Context(), `INSERT INTO user_interface_preferences(user_id, workspace_id, hidden_nav_groups_json, collapsed_nav_groups_json, dashboard_widgets_json, layout_json, hidden_nav_items_json, nav_order_json, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(user_id, workspace_id) DO UPDATE SET hidden_nav_groups_json = excluded.hidden_nav_groups_json, collapsed_nav_groups_json = excluded.collapsed_nav_groups_json, dashboard_widgets_json = excluded.dashboard_widgets_json, layout_json = excluded.layout_json, hidden_nav_items_json=excluded.hidden_nav_items_json, nav_order_json=excluded.nav_order_json, updated_at = excluded.updated_at`, currentUser(r).ID, currentWorkspace(r).ID, string(hiddenJSON), string(collapsedJSON), string(widgetsJSON), string(layoutJSON), string(itemsJSON), string(orderJSON), input.UpdatedAt); err != nil {
+	if err := persistInterfacePreferences(r.Context(), s.store.db, currentUser(r).ID, currentWorkspace(r).ID, device, input); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить настройки интерфейса")
 		return
 	}
