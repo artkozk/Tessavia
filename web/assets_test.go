@@ -199,7 +199,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260902-navigation-layout-1")) {
+	if !bytes.Contains(index, []byte("20260902-project-composer-1")) {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }
@@ -242,7 +242,9 @@ func TestTeamAccessAndPersonalizationAssetsAreEmbedded(t *testing.T) {
 		[]byte("function openJoinTeamDialog"),
 		[]byte("function openInterfaceSettings"),
 		[]byte("/api/auth/register/verify"),
-		[]byte("data-toggle-nav-group"),
+		[]byte("data-configure-navigation"),
+		[]byte("data-hide-definition"),
+		[]byte("/api/workspace/pages"),
 		[]byte("dashboardWidgets"),
 	} {
 		if !bytes.Contains(app, marker) {

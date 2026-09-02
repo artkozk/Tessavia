@@ -23,10 +23,8 @@ SELECT 'crm-first-client', id, 'owner', 'active', strftime('%Y-%m-%dT%H:%M:%fZ',
 FROM users
 WHERE username = 'artkozk' COLLATE NOCASE;
 
-INSERT OR IGNORE INTO workspace_members(workspace_id, user_id, role, status, joined_at)
-SELECT 'crm-first-client', id, 'member', 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-FROM users
-WHERE username = 'sweetybboy' COLLATE NOCASE;
+-- Project members are invited explicitly; the product team's partner does not
+-- automatically belong to this client CRM.
 
 INSERT OR IGNORE INTO workspace_collections(
     id, workspace_id, name, description, card_label, default_record_type,

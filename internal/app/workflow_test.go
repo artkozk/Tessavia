@@ -188,7 +188,7 @@ func TestCofounderWorkflowComfort(t *testing.T) {
 	}
 
 	assertDownload(t, artkozk, server.URL+"/api/export?format=csv", "text/csv", "Проверить сценарий приёмки")
-	assertDownload(t, artkozk, server.URL+"/api/export", "application/json", `"schemaVersion":11`)
+	assertDownload(t, artkozk, server.URL+"/api/export", "application/json", `"schemaVersion":12`)
 
 }
 

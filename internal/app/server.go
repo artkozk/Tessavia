@@ -78,6 +78,11 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/me/avatar", s.requireAuth(http.HandlerFunc(s.handleUploadAvatar)))
 	s.mux.Handle("DELETE /api/me/avatar", s.requireAuth(http.HandlerFunc(s.handleDeleteAvatar)))
 	s.mux.Handle("GET /api/users", s.requireAuth(http.HandlerFunc(s.handleUsers)))
+	s.mux.Handle("GET /api/workspace/navigation", s.requireAuth(http.HandlerFunc(s.handleProjectNavigation)))
+	s.mux.Handle("PUT /api/workspace/navigation", s.requireAuth(http.HandlerFunc(s.handleProjectNavigation)))
+	s.mux.Handle("GET /api/workspace/pages", s.requireAuth(http.HandlerFunc(s.handleListWorkspacePages)))
+	s.mux.Handle("POST /api/workspace/pages", s.requireAuth(http.HandlerFunc(s.handleSaveWorkspacePage)))
+	s.mux.Handle("PATCH /api/workspace/pages/{id}", s.requireAuth(http.HandlerFunc(s.handleSaveWorkspacePage)))
 	s.mux.Handle("GET /api/users/{id}/profile", s.requireAuth(http.HandlerFunc(s.handleUserProfile)))
 	s.mux.Handle("GET /api/users/{id}/avatar", s.requireAuth(http.HandlerFunc(s.handleAvatar)))
 	s.mux.Handle("GET /api/workspaces", s.requireAuth(http.HandlerFunc(s.handleListWorkspaces)))
@@ -1761,17 +1766,18 @@ func (s *Server) userExists(ctx context.Context, id int64) bool {
 
 func (s *Server) listSections(ctx context.Context, record Record) ([]RecordSection, error) {
 	rows, err := s.store.db.QueryContext(ctx, `
-		SELECT COALESCE(rs.id, ''), rs.record_id, d.id, d.name, COALESCE(rs.content, ''), d.sort_order,
-			COALESCE(rs.updated_by, 0), COALESCE(u.username, ''), COALESCE(rs.updated_at, d.updated_at)
+		SELECT COALESCE(rs.id, ''), rs.record_id, d.id, COALESCE(o.name,d.name), COALESCE(rs.content, ''), COALESCE(o.sort_order,d.sort_order),
+			COALESCE(rs.updated_by, 0), COALESCE(u.username, ''), COALESCE(rs.updated_at, d.updated_at), COALESCE(o.active,d.active)=0
 		FROM section_definitions d
+		LEFT JOIN workspace_section_overrides o ON o.definition_id=d.id AND o.workspace_id=?
 		LEFT JOIN record_sections rs ON rs.definition_id = d.id AND rs.record_id = ?
 		LEFT JOIN users u ON u.id = rs.updated_by
-		WHERE (d.scope_type IS NULL OR d.scope_type = ?) AND (d.active = 1 OR rs.id IS NOT NULL)
+		WHERE (d.scope_type IS NULL OR d.scope_type = ?) AND (d.workspace_id IS NULL OR d.workspace_id=? OR rs.id IS NOT NULL) AND (COALESCE(o.active,d.active) = 1 OR rs.id IS NOT NULL)
 		UNION ALL
-		SELECT rs.id, rs.record_id, NULL, rs.title, rs.content, rs.sort_order, rs.updated_by, u.username, rs.updated_at
+		SELECT rs.id, rs.record_id, NULL, rs.title, rs.content, rs.sort_order, rs.updated_by, u.username, rs.updated_at, 0
 		FROM record_sections rs JOIN users u ON u.id = rs.updated_by
 		WHERE rs.record_id = ? AND rs.definition_id IS NULL
-		ORDER BY 6, 9`, record.ID, record.Type, record.ID)
+		ORDER BY 6, 9`, record.WorkspaceID, record.ID, record.Type, record.WorkspaceID, record.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -1780,7 +1786,7 @@ func (s *Server) listSections(ctx context.Context, record Record) ([]RecordSecti
 	for rows.Next() {
 		var section RecordSection
 		var recordID, definitionID sql.NullString
-		if err := rows.Scan(&section.ID, &recordID, &definitionID, &section.Title, &section.Content, &section.SortOrder, &section.UpdatedBy, &section.UpdatedByName, &section.UpdatedAt); err != nil {
+		if err := rows.Scan(&section.ID, &recordID, &definitionID, &section.Title, &section.Content, &section.SortOrder, &section.UpdatedBy, &section.UpdatedByName, &section.UpdatedAt, &section.Hidden); err != nil {
 			return nil, err
 		}
 		section.RecordID = record.ID
@@ -1852,7 +1858,7 @@ func (s *Server) handleSaveSection(w http.ResponseWriter, r *http.Request) {
 	before := ""
 	if input.DefinitionID != nil {
 		var definitionName, scope sql.NullString
-		if err := tx.QueryRowContext(r.Context(), `SELECT name, scope_type FROM section_definitions WHERE id = ?`, *input.DefinitionID).Scan(&definitionName, &scope); err != nil {
+		if err := tx.QueryRowContext(r.Context(), `SELECT COALESCE(o.name,d.name), d.scope_type FROM section_definitions d LEFT JOIN workspace_section_overrides o ON o.definition_id=d.id AND o.workspace_id=? WHERE d.id = ? AND (d.workspace_id IS NULL OR d.workspace_id=? OR EXISTS(SELECT 1 FROM record_sections WHERE record_id=? AND definition_id=d.id))`, record.WorkspaceID, *input.DefinitionID, record.WorkspaceID, record.ID).Scan(&definitionName, &scope); err != nil {
 			writeError(w, http.StatusBadRequest, "Раздел не найден")
 			return
 		}
@@ -1864,7 +1870,7 @@ func (s *Server) handleSaveSection(w http.ResponseWriter, r *http.Request) {
 		err := tx.QueryRowContext(r.Context(), `SELECT id, content FROM record_sections WHERE record_id = ? AND definition_id = ?`, record.ID, *input.DefinitionID).Scan(&sectionID, &before)
 		if errors.Is(err, sql.ErrNoRows) {
 			sectionID, _ = newID()
-			_, err = tx.ExecContext(r.Context(), `INSERT INTO record_sections(id, record_id, definition_id, title, content, sort_order, created_by, updated_by, created_at, updated_at) SELECT ?, ?, id, name, ?, sort_order, ?, ?, ?, ? FROM section_definitions WHERE id = ?`, sectionID, record.ID, input.Content, user.ID, user.ID, now, now, *input.DefinitionID)
+			_, err = tx.ExecContext(r.Context(), `INSERT INTO record_sections(id, record_id, definition_id, title, content, sort_order, created_by, updated_by, created_at, updated_at) SELECT ?, ?, d.id, ?, ?, COALESCE(o.sort_order,d.sort_order), ?, ?, ?, ? FROM section_definitions d LEFT JOIN workspace_section_overrides o ON o.definition_id=d.id AND o.workspace_id=? WHERE d.id = ?`, sectionID, record.ID, input.Title, input.Content, user.ID, user.ID, now, now, record.WorkspaceID, *input.DefinitionID)
 		} else if err == nil {
 			_, err = tx.ExecContext(r.Context(), `UPDATE record_sections SET content = ?, updated_by = ?, updated_at = ? WHERE id = ?`, input.Content, user.ID, now, sectionID)
 		}
@@ -2958,7 +2964,7 @@ func (s *Server) handleArchiveQuestion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListDefinitions(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, key, name, scope_type, kind, active, sort_order FROM section_definitions ORDER BY active DESC, scope_type, sort_order, name`)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT d.id, d.key, COALESCE(o.name,d.name), d.scope_type, d.kind, COALESCE(o.active,d.active), COALESCE(o.sort_order,d.sort_order) FROM section_definitions d LEFT JOIN workspace_section_overrides o ON o.definition_id=d.id AND o.workspace_id=? WHERE d.workspace_id IS NULL OR d.workspace_id=? ORDER BY 6 DESC, 4, 7, 3`, currentWorkspace(r).ID, currentWorkspace(r).ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить структуру")
 		return
@@ -2981,6 +2987,9 @@ func (s *Server) handleListDefinitions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateDefinition(w http.ResponseWriter, r *http.Request) {
+	if !s.requireWorkspaceAdmin(w, r) {
+		return
+	}
 	var input struct {
 		Name      string  `json:"name"`
 		ScopeType *string `json:"scopeType"`
@@ -3019,7 +3028,7 @@ func (s *Server) handleCreateDefinition(w http.ResponseWriter, r *http.Request) 
 	key := "section_" + id
 	user := currentUser(r)
 	var sortOrder int
-	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COALESCE(MAX(sort_order), 0) + 10 FROM section_definitions WHERE scope_type IS ?`, input.ScopeType).Scan(&sortOrder)
+	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COALESCE(MAX(COALESCE(o.sort_order,d.sort_order)), 0) + 10 FROM section_definitions d LEFT JOIN workspace_section_overrides o ON o.definition_id=d.id AND o.workspace_id=? WHERE d.scope_type IS ? AND (d.workspace_id IS NULL OR d.workspace_id=?)`, currentWorkspace(r).ID, input.ScopeType, currentWorkspace(r).ID).Scan(&sortOrder)
 	now := nowText()
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -3027,7 +3036,7 @@ func (s *Server) handleCreateDefinition(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(r.Context(), `INSERT INTO section_definitions(id, key, name, scope_type, kind, active, sort_order, created_by, created_at, updated_at) VALUES(?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`, id, key, input.Name, input.ScopeType, input.Kind, sortOrder, user.ID, now, now); err != nil {
+	if _, err := tx.ExecContext(r.Context(), `INSERT INTO section_definitions(id, key, name, scope_type, kind, active, sort_order, created_by, created_at, updated_at,workspace_id) VALUES(?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`, id, key, input.Name, input.ScopeType, input.Kind, sortOrder, user.ID, now, now, currentWorkspace(r).ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось создать раздел")
 		return
 	}
@@ -3043,6 +3052,9 @@ func (s *Server) handleCreateDefinition(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleUpdateDefinition(w http.ResponseWriter, r *http.Request) {
+	if !s.requireWorkspaceAdmin(w, r) {
+		return
+	}
 	var input struct {
 		Name   *string `json:"name"`
 		Active *bool   `json:"active"`
@@ -3056,7 +3068,7 @@ func (s *Server) handleUpdateDefinition(w http.ResponseWriter, r *http.Request) 
 	details := make(map[string]any)
 	if input.Name != nil {
 		value := strings.TrimSpace(*input.Name)
-		if value == "" {
+		if value == "" || len([]rune(value)) > 120 {
 			writeError(w, http.StatusBadRequest, "Название не может быть пустым")
 			return
 		}
@@ -3074,7 +3086,7 @@ func (s *Server) handleUpdateDefinition(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	updates = append(updates, "updated_at = ?")
-	args = append(args, nowText(), r.PathValue("id"))
+	args = append(args, nowText(), r.PathValue("id"), currentWorkspace(r).ID)
 	user := currentUser(r)
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -3082,7 +3094,11 @@ func (s *Server) handleUpdateDefinition(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(r.Context(), `UPDATE section_definitions SET `+strings.Join(updates, ", ")+` WHERE id = ?`, args...)
+	if _, err := tx.ExecContext(r.Context(), `INSERT OR IGNORE INTO workspace_section_overrides(workspace_id,definition_id,name,active,sort_order,updated_at) SELECT ?,id,name,active,sort_order,? FROM section_definitions WHERE id=? AND (workspace_id IS NULL OR workspace_id=?)`, currentWorkspace(r).ID, nowText(), r.PathValue("id"), currentWorkspace(r).ID); err != nil {
+		writeError(w, 500, "Не удалось подготовить настройку блока")
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `UPDATE workspace_section_overrides SET `+strings.Join(updates, ", ")+` WHERE definition_id = ? AND workspace_id=?`, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось изменить раздел")
 		return
@@ -3104,6 +3120,9 @@ func (s *Server) handleUpdateDefinition(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleReorderDefinitions(w http.ResponseWriter, r *http.Request) {
+	if !s.requireWorkspaceAdmin(w, r) {
+		return
+	}
 	var input struct {
 		ScopeType  string   `json:"scopeType"`
 		OrderedIDs []string `json:"orderedIds"`
@@ -3129,7 +3148,7 @@ func (s *Server) handleReorderDefinitions(w http.ResponseWriter, r *http.Request
 		seen[id] = struct{}{}
 	}
 	var expected int
-	if err := s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM section_definitions WHERE scope_type = ? AND active = 1`, input.ScopeType).Scan(&expected); err != nil || expected != len(input.OrderedIDs) {
+	if err := s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM section_definitions d LEFT JOIN workspace_section_overrides o ON o.definition_id=d.id AND o.workspace_id=? WHERE d.scope_type = ? AND COALESCE(o.active,d.active) = 1 AND (d.workspace_id IS NULL OR d.workspace_id=?)`, currentWorkspace(r).ID, input.ScopeType, currentWorkspace(r).ID).Scan(&expected); err != nil || expected != len(input.OrderedIDs) {
 		writeError(w, http.StatusConflict, "Состав блоков изменился. Обновите страницу и повторите")
 		return
 	}
@@ -3140,7 +3159,7 @@ func (s *Server) handleReorderDefinitions(w http.ResponseWriter, r *http.Request
 	}
 	defer tx.Rollback()
 	for index, id := range input.OrderedIDs {
-		result, updateErr := tx.ExecContext(r.Context(), `UPDATE section_definitions SET sort_order = ?, updated_at = ? WHERE id = ? AND scope_type = ? AND active = 1`, (index+1)*10, nowText(), id, input.ScopeType)
+		result, updateErr := tx.ExecContext(r.Context(), `INSERT INTO workspace_section_overrides(workspace_id,definition_id,name,active,sort_order,updated_at) SELECT ?, d.id, COALESCE(o.name,d.name), COALESCE(o.active,d.active), ?, ? FROM section_definitions d LEFT JOIN workspace_section_overrides o ON o.definition_id=d.id AND o.workspace_id=? WHERE d.id=? AND d.scope_type=? AND COALESCE(o.active,d.active)=1 AND (d.workspace_id IS NULL OR d.workspace_id=?) ON CONFLICT(workspace_id,definition_id) DO UPDATE SET sort_order=excluded.sort_order,updated_at=excluded.updated_at`, currentWorkspace(r).ID, (index+1)*10, nowText(), currentWorkspace(r).ID, id, input.ScopeType, currentWorkspace(r).ID)
 		if updateErr != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось сохранить порядок")
 			return

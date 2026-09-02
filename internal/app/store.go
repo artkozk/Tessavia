@@ -112,6 +112,7 @@ type SectionDefinition struct {
 }
 
 type RecordSection struct {
+	Hidden        bool    `json:"hidden"`
 	ID            string  `json:"id"`
 	RecordID      string  `json:"recordId"`
 	DefinitionID  *string `json:"definitionId"`

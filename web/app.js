@@ -157,6 +157,7 @@ const navItems = [
 ];
 
 const state = {
+  projectNavigation: { enabledViews: ['dashboard', 'work', 'collections', 'chat'] }, workspacePages: [], pageSearch: '',
   notificationInbox: null, notificationStatus: 'unread', notificationPeriod: 'all', unreadCount: null,
   notificationRequest: 0, notificationLoading: false, notificationError: '', layoutDraft: null,
   me: null, users: [], records: [], notifications: [], activity: [], definitions: [], pendingQuestions: [],
@@ -939,6 +940,7 @@ function showAuth() {
 }
 
 function clearPrivateClientState() {
+  state.workspacePages = []; state.pageSearch = ''; state.projectNavigation = { enabledViews: ['dashboard', 'work', 'collections', 'chat'] };
   state.notificationInbox = null; state.unreadCount = null; state.notificationRequest += 1;
   state.notificationLoading = false; state.layoutDraft = null;
   state.viewHistoryInitialized = false;
@@ -995,17 +997,18 @@ async function loadData(silent = false) {
 		state.activeWorkspaceId = teamWorkspaces.find((workspace) => workspace.id === 'bizflow-team')?.id || teamWorkspaces[0]?.id || workspaces[0]?.id || '';
 	}
 	if (state.activeWorkspaceId) localStorage.setItem('bizflow-active-workspace', state.activeWorkspaceId);
-  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads, planning, collections, interfacePreferences] = await Promise.all([
+  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads, planning, collections, interfacePreferences, projectNavigation, workspacePages] = await Promise.all([
     api('/api/users'), api('/api/records?includeArchived=true'), api('/api/notifications'),
 		api('/api/activity?limit=200'), api('/api/section-definitions'), api('/api/questions/pending'), api('/api/saved-views'), api('/api/chat/threads'), api('/api/planning/cycles'), api('/api/collections'), api('/api/interface/preferences'),
+    api('/api/workspace/navigation'), api('/api/workspace/pages?includeArchived=true'),
   ]);
-  const projectActivity = activity.filter((item) => typeMeta[item.entityType] || ['section_definition', 'planning_cycle'].includes(item.entityType));
+  const projectActivity = activity.filter((item) => typeMeta[item.entityType] || ['section_definition', 'planning_cycle', 'workspace_page', 'workspace'].includes(item.entityType));
   const recordsByID = new Map(records.map((record) => [record.id, record]));
   state.detailCache.forEach((detail, id) => {
     const current = recordsByID.get(id);
     if (!current || current.updatedAt !== detail.record.updatedAt) state.detailCache.delete(id);
   });
-	Object.assign(state, { users, records, notifications, activity: projectActivity, definitions, pendingQuestions, savedViews, chatThreads, workspaces, collections, interfacePreferences, planningCycles: planning.cycles || [], activePlanningCycle: planning.active || null });
+	Object.assign(state, { users, records, notifications, activity: projectActivity, definitions, pendingQuestions, savedViews, chatThreads, workspaces, collections, interfacePreferences, projectNavigation, workspacePages, planningCycles: planning.cycles || [], activePlanningCycle: planning.active || null });
 	if (!collections.some((collection) => collection.id === state.activeCollectionId)) state.activeCollectionId = collections[0]?.id || '';
   state.syncRecordsSince = latestTimestamp(records, 'updatedAt', state.syncRecordsSince);
   state.syncActivitySince = latestTimestamp(projectActivity, 'createdAt', state.syncActivitySince);
@@ -1063,7 +1066,12 @@ async function syncProjectChanges({ renderCurrent = false, includeCompanions = t
   });
   state.records = [...recordsByID.values()];
   const knownActivity = new Set(state.activity.map((item) => item.id));
-  const newActivity = (changes.activity || []).filter((item) => !knownActivity.has(item.id) && (typeMeta[item.entityType] || ['section_definition', 'planning_cycle'].includes(item.entityType)));
+  const newActivity = (changes.activity || []).filter((item) => !knownActivity.has(item.id) && (typeMeta[item.entityType] || ['section_definition', 'planning_cycle', 'workspace_page', 'workspace'].includes(item.entityType)));
+  if (newActivity.some((item) => ['section_definition', 'workspace_page', 'workspace'].includes(item.entityType))) {
+    const [definitions, projectNavigation, workspacePages] = await Promise.all([api('/api/section-definitions'), api('/api/workspace/navigation'), api('/api/workspace/pages?includeArchived=true')]);
+    Object.assign(state, { definitions, projectNavigation, workspacePages });
+    state.detailCache.clear();
+  }
   if (newActivity.length) state.activity = [...newActivity.slice().reverse(), ...state.activity].slice(0, 500);
   state.syncRecordsSince = latestTimestamp(changes.records || [], 'updatedAt', state.syncRecordsSince);
   state.syncActivitySince = latestTimestamp(changes.activity || [], 'createdAt', state.syncActivitySince);
@@ -1093,6 +1101,7 @@ function closeGlobalSearch({ clear = false, restoreFocus = false } = {}) {
 }
 
 function bindGlobalEvents() {
+  document.addEventListener('pointerdown', (event) => closeTransientPanels(event.target), true);
   $$('[data-auth-mode]').forEach((button) => button.addEventListener('click', () => setAuthMode(button.dataset.authMode)));
   $('#auth-form').addEventListener('submit', submitAuth);
 	$('#auth-change-registration').addEventListener('click', () => resetRegistrationVerification());
@@ -1121,7 +1130,9 @@ function bindGlobalEvents() {
       event.preventDefault(); globalSearchInput.focus(); globalSearchInput.select();
     }
     if (event.key === 'Escape') {
-      const transientOpen = Boolean(document.querySelector('.custom-select.open, .work-filter-menu[open], .work-create-menu[open], .record-more-actions[open], .chat-header-more[open], .chat-composer-more[open]'));
+      const transientOpen = Boolean(document.querySelector('.custom-select.open, .workspace-switcher[open], .personal-create-menu[open], .work-filter-menu[open], .work-create-menu[open], .record-more-actions[open], .chat-header-more[open], .chat-composer-more[open]'));
+      $('.workspace-switcher[open]')?.removeAttribute('open');
+      $('.personal-create-menu[open]')?.removeAttribute('open');
       const searchOpen = $('#global-search').classList.contains('search-open') || !$('#global-search-results').hidden;
       closeCustomSelects();
       if ($('#global-search').classList.contains('search-open')) {
@@ -1271,6 +1282,7 @@ function setSidebarOpen(open) {
 
 function openModal(dialog) {
   if (dialog.open) return;
+  closeTransientPanels();
   rememberView();
   dialog.showModal();
   history.pushState({ ...history.state, businessControlOverlay: dialog.id }, '');
@@ -1306,6 +1318,7 @@ function flushDialogDrafts(dialog) {
 
 function dialogHasUnsavedChanges(dialog) {
   if (!dialog?.open) return false;
+  if (dialog.dataset.composerDirty === 'true') return true;
   if ($('#record-edit-form.dirty', dialog)) return true;
   if ($('.has-unsaved-draft', dialog)) return true;
   return dialog.dataset.notebookDirty === 'true';
@@ -1351,6 +1364,7 @@ function confirmUnsavedDialog(dialog) {
 }
 
 async function confirmDialogTransition(dialog) {
+  if (dialog.dataset.composerDirty === 'true') return discardComposerChanges(dialog);
   flushDialogDrafts(dialog);
   if (!dialogHasUnsavedChanges(dialog)) return true;
   if (state.dialogClosePending.has(dialog)) return false;
@@ -1368,8 +1382,9 @@ function closeDialogImmediately(dialog, returnValue = '') {
 async function requestDialogClose(dialog, { returnValue = '' } = {}) {
   if (!dialog?.open) return true;
   const hadUnsavedChanges = dialogHasUnsavedChanges(dialog);
+  const composer = dialog.dataset.composerDirty === 'true';
   if (!await confirmDialogTransition(dialog)) return false;
-  if (hadUnsavedChanges) toast(dialog.id === 'notebook-dialog' ? 'Расширенный редактор закрыт без применения изменений.' : 'Окно закрыто. Несохранённый черновик оставлен на этом устройстве.');
+  if (hadUnsavedChanges) toast(composer ? 'Настройки закрыты без сохранения.' : dialog.id === 'notebook-dialog' ? 'Расширенный редактор закрыт без применения изменений.' : 'Окно закрыто. Несохранённый черновик оставлен на этом устройстве.');
   closeDialogImmediately(dialog, returnValue);
   return true;
 }
@@ -1630,6 +1645,7 @@ function renderWorkspaceControl() {
 }
 
 function closeWorkspaceDialog() {
+	if (!discardComposerChanges()) return;
 	closeDialogImmediately($('#workspace-dialog'));
 }
 
@@ -1753,42 +1769,32 @@ function renderNotificationBadge() {
   badge.hidden = unread === 0;
 }
 
+function navigationCatalog() {
+  const enabled = new Set(state.projectNavigation.enabledViews || []);
+  const builtin = navItems.filter(([key]) => key === 'personal' || enabled.has(key)).map(([key, label, iconName, group]) => ({ key, label, iconName, group }));
+  const pages = state.workspacePages.filter((page) => !page.archived).map((page) => ({ key: `page:${page.id}`, label: page.name, iconName: page.viewMode === 'board' ? 'network' : 'fileText', group: 'Свои страницы' }));
+  const items = [...builtin, ...pages];
+  const order = state.interfacePreferences.navOrder || [];
+  const positions = new Map(items.map((item, index) => [item.key, order.includes(item.key) ? order.indexOf(item.key) : order.length + index]));
+  return items.sort((a, b) => positions.get(a.key) - positions.get(b.key));
+}
+
+function navCount(key) {
+  if (key === 'work') return state.records.filter((record) => isWorkRecord(record) && isActiveRecord(record)).length;
+  if (key === 'collections') return state.collections.length;
+  if (key === 'chat') return state.chatThreads.reduce((sum, thread) => sum + thread.unreadCount, 0);
+  if (key.startsWith('page:')) return workspacePageRecords(state.workspacePages.find((page) => `page:${page.id}` === key), '').length;
+  return '';
+}
+
 function renderNav() {
-	const preferences = state.interfacePreferences || {};
-	const hiddenGroups = new Set(preferences.hiddenNavGroups || []);
-	const collapsedGroups = new Set(preferences.collapsedNavGroups || []);
-	const grouped = new Map();
-	navItems.forEach((item) => {
-		if (!grouped.has(item[3])) grouped.set(item[3], []);
-		grouped.get(item[3]).push(item);
-	});
-	$('#main-nav').innerHTML = [...grouped.entries()].filter(([itemGroup]) => !hiddenGroups.has(itemGroup)).map(([itemGroup, items]) => {
-		const collapsed = collapsedGroups.has(itemGroup);
-		const groupLabel = `<button type="button" class="nav-group ${collapsed ? 'collapsed' : ''}" data-toggle-nav-group="${escapeHTML(itemGroup)}" aria-expanded="${collapsed ? 'false' : 'true'}"><span>${escapeHTML(itemGroup)}</span>${icon('chevronRight')}</button>`;
-		const links = items.map(([key, label, iconName]) => {
-    const count = key === 'personal' ? ((state.personal?.plans || []).filter((plan) => plan.status === 'planned').length || '')
-		: key === 'collections' ? state.collections.length
-		: key === 'work'
-      ? state.records.filter((record) => isWorkRecord(record) && isActiveRecord(record)).length
-			: key === 'chat' ? state.chatThreads.reduce((sum, thread) => sum + thread.unreadCount, 0)
-      : key === 'validation' ? state.records.filter((record) => ['risk', 'hypothesis', 'experiment'].includes(record.type) && record.status !== 'archived').length
-      : key === 'outcomes' ? state.records.filter((record) => record.type === 'decision' || (record.type === 'research' && record.status === 'completed')).length
-      : typeMeta[key] ? state.records.filter((record) => record.type === key && record.status !== 'archived').length : '';
-			return `<button type="button" class="nav-item ${state.view === key ? 'active' : ''}" data-view="${key}" title="${escapeHTML(label)}">${icon(iconName)}<span>${escapeHTML(label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`;
-		}).join('');
-		return `<section class="nav-section ${collapsed ? 'collapsed' : ''}">${groupLabel}<div>${links}</div></section>`;
-	}).join('');
-  $$('[data-view]', $('#main-nav')).forEach((button) => button.addEventListener('click', () => {
-		navigateToView(button.dataset.view);
-  }));
-	$$('[data-toggle-nav-group]', $('#main-nav')).forEach((button) => button.addEventListener('click', () => {
-		const group = button.dataset.toggleNavGroup;
-		const collapsed = new Set(state.interfacePreferences.collapsedNavGroups || []);
-		if (collapsed.has(group)) collapsed.delete(group); else collapsed.add(group);
-		state.interfacePreferences.collapsedNavGroups = [...collapsed];
-		renderNav();
-		saveInterfacePreferences().catch((error) => toast(error.message, true));
-	}));
+  const preferences = state.interfacePreferences || {};
+  const hidden = new Set(preferences.hiddenNavItems || []);
+  const groups = new Set(preferences.hiddenNavGroups || []);
+  const items = navigationCatalog().filter((item) => !hidden.has(item.key) && !groups.has(item.group));
+  $('#main-nav').innerHTML = `<div class="project-nav-items">${items.map((item) => { const count = navCount(item.key); return `<button type="button" class="nav-item ${state.view === item.key ? 'active' : ''}" data-view="${escapeHTML(item.key)}" title="${escapeHTML(item.label)}">${icon(item.iconName)}<span>${escapeHTML(item.label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`; }).join('')}</div><button type="button" class="nav-item nav-configure" data-configure-navigation>${icon('sliders')}<span>Настроить меню</span></button>`;
+  $$('[data-view]', $('#main-nav')).forEach((button) => button.addEventListener('click', () => navigateToView(button.dataset.view)));
+  $('[data-configure-navigation]').addEventListener('click', () => { setSidebarOpen(false); openNavigationSettings(); });
 }
 
 async function saveInterfacePreferences(preferences = state.interfacePreferences) {
@@ -1801,34 +1807,7 @@ function openInterfaceSettings() {
     $('.layout-editor-header').scrollIntoView({ block: 'start', behavior: 'instant' });
     return;
   }
-	const dialog = $('#workspace-dialog');
-	const groups = [...new Set(navItems.map((item) => item[3]))];
-	const hidden = new Set(state.interfacePreferences.hiddenNavGroups || []);
-	const collapsed = new Set(state.interfacePreferences.collapsedNavGroups || []);
-	const widgetLabels = { focus: ['Следующая работа', 'Ваши приоритеты и вопросы'], capture: ['Быстрая фиксация', 'Создание карточек с главной'], capacity: ['Недельная загрузка', 'План команды и доступное время'], quality: ['Качество базы', 'Пробелы, связи и результаты'] };
-	const order = [...(state.interfacePreferences.dashboardWidgets || [])];
-	Object.keys(widgetLabels).forEach((key) => { if (!order.includes(key)) order.push(key); });
-	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell interface-settings-shell"><header><div><p class="eyebrow">Личная настройка</p><h2>Интерфейс этого проекта</h2><p>Изменения видны только вам и не затрагивают коллег.</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="interface-settings-form"><div class="interface-settings-grid"><section><div class="section-heading"><div><h3>Боковое меню</h3><p>Скрывайте лишнее, не теряя доступ к настройке.</p></div></div><div class="interface-nav-options">${groups.map((group) => `<article><label class="check"><input type="checkbox" name="visibleGroup" value="${escapeHTML(group)}" ${hidden.has(group) ? '' : 'checked'}><span><strong>${escapeHTML(group)}</strong><small>${navItems.filter((item) => item[3] === group).length} пунктов</small></span></label><label class="check compact-check"><input type="checkbox" name="collapsedGroup" value="${escapeHTML(group)}" ${collapsed.has(group) ? 'checked' : ''}><span>Сворачивать по умолчанию</span></label></article>`).join('')}</div></section><section><div class="section-heading"><div><h3>Главная страница</h3><p>Оставьте нужные блоки и задайте порядок.</p></div></div><div class="dashboard-widget-options" data-dashboard-widget-list>${order.map((key) => `<article data-dashboard-widget="${key}"><span>${icon(key === 'focus' ? 'target' : key === 'capture' ? 'plus' : key === 'capacity' ? 'users' : 'shield')}</span><label class="check"><input type="checkbox" name="dashboardWidget" value="${key}" ${(state.interfacePreferences.dashboardWidgets || []).includes(key) ? 'checked' : ''}><span><strong>${widgetLabels[key][0]}</strong><small>${widgetLabels[key][1]}</small></span></label><div><button type="button" class="icon-button" data-widget-up aria-label="Поднять блок" title="Поднять">${icon('arrowUp')}</button><button type="button" class="icon-button" data-widget-down aria-label="Опустить блок" title="Опустить">${icon('arrowDown')}</button></div></article>`).join('')}</div></section></div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить интерфейс</button><button type="button" class="secondary" data-reset-interface>${icon('rotate')} По умолчанию</button></div></form></div>`;
-	$('[data-close-workspace-dialog]', dialog).addEventListener('click', closeWorkspaceDialog);
-  $('#interface-settings-form', dialog).insertAdjacentHTML('afterbegin', `<section class="layout-settings-section"><button type="button" class="secondary" data-open-layout-editor>${icon('dashboard')} Раскладка на главной</button>${renderLayoutFields(interfaceLayout())}</section>`);
-  $('[data-open-layout-editor]', dialog).addEventListener('click', () => {
-    state.afterOverlayClose = () => { navigateToView('dashboard'); startLayoutEditor(); };
-    closeWorkspaceDialog();
-  });
-  bindLayoutFields($('#interface-settings-form', dialog));
-	$$('[data-widget-up]', dialog).forEach((button) => button.addEventListener('click', () => { const row = button.closest('[data-dashboard-widget]'); if (row.previousElementSibling) row.parentElement.insertBefore(row, row.previousElementSibling); }));
-	$$('[data-widget-down]', dialog).forEach((button) => button.addEventListener('click', () => { const row = button.closest('[data-dashboard-widget]'); if (row.nextElementSibling) row.parentElement.insertBefore(row.nextElementSibling, row); }));
-	$('[data-reset-interface]', dialog).addEventListener('click', async () => {
-		const preferences = { hiddenNavGroups: [], collapsedNavGroups: [], dashboardWidgets: ['focus', 'capture', 'capacity', 'quality'] };
-		try { await saveInterfacePreferences(preferences); closeWorkspaceDialog(); render(); toast('Интерфейс восстановлен'); } catch (error) { toast(error.message, true); }
-	});
-	$('#interface-settings-form', dialog).addEventListener('submit', async (event) => {
-		event.preventDefault(); const form = new FormData(event.currentTarget); const visible = new Set(form.getAll('visibleGroup')); const widgets = $$('[data-dashboard-widget]', event.currentTarget).filter((row) => $('input[name="dashboardWidget"]', row).checked).map((row) => row.dataset.dashboardWidget);
-		const hiddenNavGroups = groups.filter((group) => !visible.has(group));
-		const preferences = { hiddenNavGroups, collapsedNavGroups: form.getAll('collapsedGroup'), dashboardWidgets: widgets, layout: readLayoutFields(event.currentTarget, interfaceLayout()) };
-		try { await saveInterfacePreferences(preferences); if (hiddenNavGroups.includes(navItems.find((item) => item[0] === state.view)?.[3])) state.view = 'dashboard'; closeWorkspaceDialog(); render(); toast('Интерфейс сохранён'); } catch (error) { toast(error.message, true); }
-	});
-	openModal(dialog);
+  openNavigationSettings();
 }
 
 function renderContent() {
@@ -1844,6 +1823,7 @@ function renderContent() {
   createButton.innerHTML = `${icon('plus')} ${personalCreate ? 'Заметка' : 'Создать'}`;
   createButton.setAttribute('aria-label', personalCreate ? 'Новая личная заметка' : 'Создать');
   createButton.title = personalCreate ? 'Новая личная заметка' : 'Создать';
+  if (state.view.startsWith('page:')) { $('#page-title').textContent = state.workspacePages.find((page) => `page:${page.id}` === state.view)?.name || 'Страница'; return renderWorkspacePage(); }
   if (state.view === 'personal') return renderPersonal();
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'work') return renderWorkList();
@@ -1892,8 +1872,8 @@ function renderDashboard() {
         <div class="compact-list quality-compact-list">${state.dashboardInsightsLoading && !state.qualityReport ? `<div class="dashboard-clear"><span class="spinner"></span><span><strong>Проверяем связи и результаты</strong><small>Ищем забытые и противоречивые записи.</small></span></div>` : qualityIssues.slice(0, 6).map(renderQualityCompact).join('') || `<div class="dashboard-clear">${icon('check')}<span><strong>Критичных пробелов нет</strong><small>Связи, результаты и актуальность знаний проверены.</small></span></div>`}</div>
 		</article>`,
 	};
-  blocks.capture = `<aside class="capture-panel dashboard-widget dashboard-widget-capture"><div><p class="eyebrow">Создать</p><h3>Быстрая фиксация</h3></div><div class="quick-actions">${layout.quickActions.map((key) => `<button type="button" class="quick-action" data-quick-create="${key}"><span class="quick-icon">${icon(typeMeta[key]?.icon || 'inbox')}</span><span><strong>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</strong></span>${icon('chevronRight')}</button>`).join('')}</div></aside>`;
-	const widgets = (preferences.dashboardWidgets || ['focus', 'capture', 'capacity', 'quality']).filter((key) => blocks[key]);
+  blocks.capture = `<aside class="capture-panel dashboard-widget dashboard-widget-capture"><div><p class="eyebrow">Создать</p><h3>Быстрая фиксация</h3></div><div class="quick-actions">${layout.quickActions.filter(projectAllowsType).map((key) => `<button type="button" class="quick-action" data-quick-create="${key}"><span class="quick-icon">${icon(typeMeta[key]?.icon || 'inbox')}</span><span><strong>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</strong></span>${icon('chevronRight')}</button>`).join('')}</div></aside>`;
+	const widgets = (preferences.dashboardWidgets || ['focus', 'capture', 'capacity', 'quality']).filter((key) => blocks[key] && (state.layoutDraft || key !== 'quality' || state.projectNavigation.enabledViews.includes('quality')));
   $('#main-content').innerHTML = `${state.layoutDraft ? renderLayoutEditorHeader() : `<div class="dashboard-config-row"><span><strong>${escapeHTML(activeWorkspace()?.name || 'Обзор')}</strong></span><button type="button" class="secondary" data-configure-dashboard>${icon('settings')} Настроить главную</button></div>`}<section class="dashboard-custom-grid ${state.layoutDraft ? 'layout-editing' : ''}">${widgets.map((key) => blocks[key]).join('')}</section>`;
   widgets.forEach((key) => {
     const block = $(`.dashboard-widget-${key}`); block.dataset.layoutWidget = key;
@@ -2215,6 +2195,7 @@ function navigateToView(view, options = {}) {
   rememberView();
   const changedView = normalized !== state.view;
 	state.view = normalized;
+  if (changedView) state.pageSearch = '';
   state.statusFilter = options.status || '';
   state.search = options.search || '';
 	state.ownerFilter = options.ownerId ? String(options.ownerId) : '';
@@ -2255,13 +2236,13 @@ function renderPersonLoad(user, tasks, capacity = null) {
 
 function renderPrinciples() {
   const groups = [
-    { kind: 'preference', title: 'Что нам подходит', copy: 'Положительные критерии выбора сфер и идей.', example: 'Например: спрос можно проверить без больших вложений.', icon: 'target' },
-    { kind: 'limitation', title: 'Чего избегаем', copy: 'Ограничения, которые идея не должна нарушать.', example: 'Например: бизнес не требует постоянной публичности основателя.', icon: 'archive' },
-    { kind: 'rule', title: 'Как принимаем решения', copy: 'Договорённости, к которым возвращаемся при разногласиях.', example: 'Например: контрольное решение принимает владелец направления.', icon: 'scale' },
+    { kind: 'preference', title: 'Критерии', copy: 'Требования к результату.', example: 'Критериев пока нет.', icon: 'target' },
+    { kind: 'limitation', title: 'Ограничения', copy: 'Бюджет, условия и запреты.', example: 'Ограничений пока нет.', icon: 'archive' },
+    { kind: 'rule', title: 'Правила', copy: 'Согласованный порядок работы.', example: 'Правил пока нет.', icon: 'scale' },
   ];
   const records = state.records.filter((record) => (['preference', 'limitation', 'rule'].includes(record.kind) || (record.type === 'criterion' && !record.kind)) && record.status !== 'archived');
   const reviewCount = records.filter((record) => knowledgeReviewState(record).tone === 'overdue').length;
-  $('#main-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">Основа отбора</p><h1>Правила и критерии</h1><p>Рабочие выводы, которые влияют на выбор идей и совместные решения.</p></div>${reviewCount ? `<div class="knowledge-review-summary" role="status">${icon('clock')} <span><strong>${reviewCount}</strong><small>требуют проверки</small></span></div>` : ''}</div><div class="principle-grid">${groups.map((group) => {
+  $('#main-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">Общие требования</p><h1>Правила и критерии</h1><p>Критерии, ограничения и правила проекта.</p></div>${reviewCount ? `<div class="knowledge-review-summary" role="status">${icon('clock')} <span><strong>${reviewCount}</strong><small>требуют проверки</small></span></div>` : ''}</div><div class="principle-grid">${groups.map((group) => {
     const items = records.filter((record) => record.kind === group.kind || (group.kind === 'preference' && record.type === 'criterion' && !record.kind));
     return `<section class="principle-column"><header><span class="type-icon">${icon(group.icon)}</span><div><h3>${group.title}</h3><p>${group.copy}</p></div><b>${items.length}</b></header><div class="principle-list">${items.map(renderPrincipleItem).join('') || `<div class="principle-empty"><p>${escapeHTML(group.example)}</p><button type="button" data-create-principle="${group.kind}">${icon('plus')} Добавить первый пункт</button></div>`}</div>${items.length ? `<button type="button" class="text-button principle-add" data-create-principle="${group.kind}">${icon('plus')} Добавить</button>` : ''}</section>`;
   }).join('')}</div>`;
@@ -2836,9 +2817,10 @@ function collectionFieldDisplay(field, value) {
 	return String(value);
 }
 
-function renderCollectionCard(record, collection) {
-	const visibleFields = collection.fields.filter((field) => field.showOnCard).map((field) => ({ field, value: collectionFieldDisplay(field, record.customFields?.[field.id]) })).filter((item) => item.value);
-	return `<article class="collection-card priority-${record.priority || 'normal'}" draggable="true" data-collection-card="${record.id}"><button type="button" data-open-record="${record.id}"><header><span>${record.type === 'task' ? icon('checkSquare') : icon(typeMeta[record.type]?.icon || 'fileText')}<small>${escapeHTML(collection.cardLabel)}</small></span><strong>${escapeHTML(record.title)}</strong></header>${record.description ? `<p>${escapeHTML(markdownPlain(record.description).slice(0, 150))}</p>` : ''}${visibleFields.length ? `<div class="collection-card-fields">${visibleFields.slice(0, 4).map(({ field, value }) => `<span class="field-tone-${field.fieldType === 'select' ? fieldOption(field, record.customFields?.[field.id])?.colorKey || 'neutral' : 'neutral'}"><small>${escapeHTML(field.name)}</small><b>${escapeHTML(value)}</b></span>`).join('')}</div>` : ''}<footer>${avatarMarkup(state.users.find((user) => user.id === record.ownerId) || { username: record.ownerUsername }, 'tiny')}<span><strong>${escapeHTML(record.ownerUsername)}</strong><small>${record.dueAt ? formatDate(record.dueAt) : 'Без срока'}</small></span></footer></button><label class="collection-stage-select"><span>Этап</span><select data-collection-stage="${record.id}" aria-label="Этап карточки ${escapeHTML(record.title)}">${collection.stages.map((stage) => `<option value="${stage.id}" ${record.stageId === stage.id ? 'selected' : ''}>${escapeHTML(stage.name)}</option>`).join('')}</select></label></article>`;
+function renderCollectionCard(record, collection, fields = null) {
+  const visible = (key) => !fields || fields.includes(key);
+  const visibleFields = collection.fields.filter((field) => fields ? fields.includes(`field:${field.id}`) : field.showOnCard).map((field) => ({field, value:collectionFieldDisplay(field,record.customFields?.[field.id])})).filter((item)=>item.value);
+  return `<article class="collection-card priority-${record.priority || 'normal'}" draggable="true" data-collection-card="${record.id}"><button type="button" data-open-record="${record.id}"><header><span>${icon(typeMeta[record.type]?.icon || 'fileText')}<small>${escapeHTML(collection.cardLabel)}</small></span><strong>${escapeHTML(record.title)}</strong></header>${visible('description') && record.description ? `<p>${escapeHTML(markdownPlain(record.description).slice(0,150))}</p>` : ''}${visibleFields.length ? `<div class="collection-card-fields">${visibleFields.slice(0,fields?visibleFields.length:4).map(({field,value})=>`<span class="field-tone-${field.fieldType === 'select' ? fieldOption(field, record.customFields?.[field.id])?.colorKey || 'neutral' : 'neutral'}"><small>${escapeHTML(field.name)}</small><b>${escapeHTML(value)}</b></span>`).join('')}</div>`:''}${visible('owner') || visible('due') ? `<footer>${visible('owner') ? avatarMarkup(state.users.find((user)=>user.id===record.ownerId)||{username:record.ownerUsername},'tiny'):''}<span>${visible('owner')?`<strong>${escapeHTML(record.ownerUsername)}</strong>`:''}${visible('due') && record.dueAt?`<small>${formatDate(record.dueAt)}</small>`:''}</span></footer>`:''}</button><label class="collection-stage-select"><span>Этап</span><select data-collection-stage="${record.id}" aria-label="Этап карточки ${escapeHTML(record.title)}">${collection.stages.map((stage)=>`<option value="${stage.id}" ${record.stageId===stage.id?'selected':''}>${escapeHTML(stage.name)}</option>`).join('')}</select></label></article>`;
 }
 
 function collectionFilterOptions(field) {
@@ -2883,10 +2865,10 @@ async function reloadCollections({ render = true } = {}) {
 	if (render && state.view === 'collections') renderCollections();
 }
 
-function bindCollectionBoard(collection) {
+function bindCollectionBoard(collection, rerender = renderCollections) {
 	bindOpenRecords();
 	$$('[data-collection-stage]').forEach((select) => select.addEventListener('change', async () => {
-		await moveCollectionRecord(select.dataset.collectionStage, select.value);
+		await moveCollectionRecord(select.dataset.collectionStage, select.value, rerender);
 	}));
 	let draggedID = '';
 	$$('[data-collection-card]').forEach((card) => {
@@ -2896,19 +2878,19 @@ function bindCollectionBoard(collection) {
 	$$('[data-collection-drop]').forEach((column) => {
 		column.addEventListener('dragover', (event) => { if (!draggedID) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; column.classList.add('drop-target'); });
 		column.addEventListener('dragleave', (event) => { if (!column.contains(event.relatedTarget)) column.classList.remove('drop-target'); });
-		column.addEventListener('drop', async (event) => { event.preventDefault(); column.classList.remove('drop-target'); const recordID = draggedID || event.dataTransfer.getData('text/plain'); if (recordID) await moveCollectionRecord(recordID, column.dataset.collectionDrop); });
+		column.addEventListener('drop', async (event) => { event.preventDefault(); column.classList.remove('drop-target'); const recordID = draggedID || event.dataTransfer.getData('text/plain'); if (recordID) await moveCollectionRecord(recordID, column.dataset.collectionDrop, rerender); });
 	});
 }
 
-async function moveCollectionRecord(recordID, stageID) {
+async function moveCollectionRecord(recordID, stageID, rerender = renderCollections) {
 	const record = state.records.find((item) => item.id === recordID);
 	if (!record || record.stageId === stageID) return;
 	try {
 		const updated = await api(`/api/records/${recordID}/stage`, { method: 'PUT', body: JSON.stringify({ stageId: stageID }) });
 		state.records = state.records.map((item) => item.id === updated.id ? updated : item);
 		state.detailCache.delete(updated.id);
-		renderCollections();
-	} catch (error) { toast(error.message, true); renderCollections(); }
+		rerender();
+	} catch (error) { toast(error.message, true); rerender(); }
 }
 
 function collectionFieldInput(field, value) {
@@ -2965,7 +2947,7 @@ function openCollectionCardDialog(collection, record = null, stageID = '') {
 			state.detailCache.delete(updated.id);
 			closeWorkspaceDialog();
 			if ($('#record-dialog').open && state.activeDetail?.record.id === updated.id) await openRecord(updated.id, { force: true });
-			else renderCollections();
+			else renderContent();
 			toast(record ? 'Поля сохранены' : 'Карточка создана');
 		} catch (error) { toast(error.message, true); }
 	});
@@ -3041,7 +3023,7 @@ async function refreshCollectionSettingsDialog() {
 function openCollectionSettingsDialog(collection) {
 	const dialog = $('#workspace-dialog');
 	const fieldTypes = [['text','Короткий текст'],['long_text','Большой текст'],['number','Число'],['money','Сумма'],['date','Дата'],['datetime','Дата и время'],['select','Один вариант'],['multi_select','Несколько вариантов'],['user','Участник'],['checkbox','Да / нет'],['url','Ссылка'],['email','Почта'],['phone','Телефон'],['relation','Связанная карточка']];
-	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell collection-settings-shell"><header><div><p class="eyebrow">Конструктор доски</p><h2>${escapeHTML(collection.name)}</h2><p>Новые этапы и поля сразу доступны всем участникам этой команды.</p></div><div class="collection-settings-header-actions"><button type="button" class="icon-button" data-edit-collection aria-label="Переименовать доску" title="Переименовать доску">${icon('edit')}</button><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></div></header><div class="collection-settings-grid"><section><header><div><strong>Этапы</strong><small>Колонки доски и состояние процесса</small></div></header><div class="collection-settings-list">${collectionSettingsStageRows(collection)}</div><form id="collection-stage-form" class="compact-settings-form"><input name="name" required maxlength="60" placeholder="Название нового этапа"><select name="category"><option value="active">Активная работа</option><option value="backlog">Ожидает начала</option><option value="review">Проверка</option><option value="done">Финальный этап</option></select><select name="colorKey"><option value="neutral">Нейтральный</option><option value="amber">Жёлтый</option><option value="blue">Синий</option><option value="green">Зелёный</option><option value="red">Красный</option><option value="violet">Фиолетовый</option></select><button type="submit" class="secondary">${icon('plus')} Этап</button></form></section><section><header><div><strong>Поля карточки</strong><small>Типизированные свойства для фильтрации и учёта</small></div></header><div class="collection-settings-list">${collectionSettingsFieldRows(collection, fieldTypes)}</div><form id="collection-field-form" class="compact-settings-form field-form"><input name="name" required maxlength="80" placeholder="Название поля"><select name="fieldType">${fieldTypes.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select><input name="options" placeholder="Варианты через запятую" hidden><label class="check"><input type="checkbox" name="required"> Обязательное</label><label class="check"><input type="checkbox" name="showOnCard" checked> Показывать на карточке</label><button type="submit" class="secondary">${icon('plus')} Поле</button></form></section></div></div>`;
+	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell collection-settings-shell"><header><div><p class="eyebrow">Конструктор доски</p><h2>${escapeHTML(collection.name)}</h2><p>Этапы и поля этой доски.</p></div><div class="collection-settings-header-actions"><button type="button" class="icon-button" data-edit-collection aria-label="Переименовать доску" title="Переименовать доску">${icon('edit')}</button><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></div></header><div class="collection-settings-grid"><section><header><div><strong>Этапы</strong><small>Колонки доски и состояние процесса</small></div></header><div class="collection-settings-list">${collectionSettingsStageRows(collection)}</div><form id="collection-stage-form" class="compact-settings-form"><input name="name" required maxlength="60" placeholder="Название нового этапа"><select name="category"><option value="active">Активная работа</option><option value="backlog">Ожидает начала</option><option value="review">Проверка</option><option value="done">Финальный этап</option></select><select name="colorKey"><option value="neutral">Нейтральный</option><option value="amber">Жёлтый</option><option value="blue">Синий</option><option value="green">Зелёный</option><option value="red">Красный</option><option value="violet">Фиолетовый</option></select><button type="submit" class="secondary">${icon('plus')} Этап</button></form></section><section><header><div><strong>Поля карточки</strong><small>Типизированные свойства для фильтрации и учёта</small></div></header><div class="collection-settings-list">${collectionSettingsFieldRows(collection, fieldTypes)}</div><form id="collection-field-form" class="compact-settings-form field-form"><input name="name" required maxlength="80" placeholder="Название поля"><select name="fieldType">${fieldTypes.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select><input name="options" placeholder="Варианты через запятую" hidden><label class="check"><input type="checkbox" name="required"> Обязательное</label><label class="check"><input type="checkbox" name="showOnCard" checked> Показывать на карточке</label><button type="submit" class="secondary">${icon('plus')} Поле</button></form></section></div></div>`;
 	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
 	enhanceSelects(dialog);
 	const fieldForm = $('#collection-field-form', dialog);
@@ -4907,10 +4889,12 @@ function renderRecordContent(detail) {
   const record = detail.record;
   const canEdit = record.editPolicy !== 'owner_only' || record.ownerId === state.me.id || record.authorId === state.me.id;
   const comparison = record.type === 'research' ? renderResearchComparison(record, canEdit) : '';
+  const visible = detail.sections.filter((section) => !section.hidden);
+  const hidden = detail.sections.filter((section) => section.hidden && section.content);
   const sections = state.recordEditMode
-    ? `<section class="accordion-stack content-stack">${detail.sections.map(renderSection).join('')}<details class="accordion"><summary><span>Добавить свой раздел</span><small>Только для этой карточки</small></summary><form id="custom-section-form" class="inline-editor"><input name="title" placeholder="Название раздела" required>${markdownEditor('content', 'Содержание', '', 5, 'Факты, позиции и выводы', 'custom-section')}<button class="secondary" type="submit">Добавить раздел</button></form></details></section>`
-    : `<section class="content-read-stack">${detail.sections.map(renderSectionRead).join('')}</section>`;
-  return `<div class="record-pane ${state.activeRecordTab === 'content' ? 'active' : ''}" data-record-pane="content">${comparison}${sections}</div>`;
+    ? `<section class="accordion-stack content-stack">${visible.map(renderSection).join('')}<details class="accordion"><summary><span>Добавить свой раздел</span><small>Только для этой карточки</small></summary><form id="custom-section-form" class="inline-editor"><input name="title" placeholder="Название раздела" required>${markdownEditor('content', 'Содержание', '', 5, 'Факты, позиции и выводы', 'custom-section')}<button class="secondary" type="submit">Добавить раздел</button></form></details></section>`
+    : `<section class="content-read-stack">${visible.map(renderSectionRead).join('')}</section>`;
+  return `<div class="record-pane ${state.activeRecordTab === 'content' ? 'active' : ''}" data-record-pane="content">${comparison}${sections}${hidden.length ? `<details class="hidden-record-sections"><summary>Скрытые блоки с сохранёнными данными (${hidden.length})</summary>${hidden.map(state.recordEditMode ? renderSection : renderSectionRead).join('')}</details>` : ''}</div>`;
 }
 
 function renderQuestionWorkflow(detail) {
@@ -5860,12 +5844,17 @@ async function mutateRecord(path, options, close = false, clearDraftOnSuccess = 
   }
 }
 
+function projectAllowsType(type) {
+  const module = { idea: 'idea', research: 'research', goal: 'goal', decision: 'outcomes', disagreement: 'outcomes', criterion: 'principles', document: 'document', risk: 'validation', hypothesis: 'validation', experiment: 'validation' }[type];
+  return !module || state.projectNavigation.enabledViews.includes(module);
+}
+
 function toggleCreateMenu() {
   const menu = $('#create-menu');
   menu.innerHTML = `
     <button type="button" data-create-type="inbox">${icon('inbox')}<span><strong>Входящее</strong><small>Сохранить мысль, не выбирая тип</small></span></button>
     <button type="button" data-create-type="idea">${icon('lightbulb')}<span><strong>Быстрая идея</strong><small>Сохранить мысль без оценки</small></span></button>
-    <button type="button" data-create-type="task">${icon('checkSquare')}<span><strong>Задача</strong><small>Себе или партнёру</small></span></button>
+    <button type="button" data-create-type="task">${icon('checkSquare')}<span><strong>Задача</strong><small>Участнику проекта</small></span></button>
     <button type="button" data-create-type="meeting">${icon('calendar')}<span><strong>Встреча</strong><small>Повестка, заметки и результаты</small></span></button>
     <button type="button" data-create-type="question_set">${icon('messages')}<span><strong>Карточка вопросов</strong><small>Несколько вопросов, личные ответы и итоги</small></span></button>
     <button type="button" data-create-type="research" data-create-mode="comparison">${icon('flask')}<span><strong>Сравнение вариантов</strong><small>Общие параметры, плюсы, минусы и оценка</small></span></button>
@@ -5875,6 +5864,7 @@ function toggleCreateMenu() {
     <button type="button" data-create-type="decision">${icon('scale')}<span><strong>Решение</strong><small>Выбор, основания и ответственный</small></span></button>
     <button type="button" data-create-type="goal">${icon('target')}<span><strong>Цель</strong><small>Результат, срок и прогресс</small></span></button>
     <button type="button" data-create-type="document">${icon('fileText')}<span><strong>Документ</strong><small>Материал или рабочая заметка</small></span></button>`;
+  $$('[data-create-type]', menu).forEach((button) => { if (!projectAllowsType(button.dataset.createType)) button.remove(); });
   menu.hidden = !menu.hidden;
   $$('[data-create-type]', menu).forEach((button) => button.addEventListener('click', (event) => {
     event.stopPropagation(); menu.hidden = true; openCreateDialog(button.dataset.createType, { comparisonMode: button.dataset.createMode === 'comparison' });
@@ -6331,16 +6321,34 @@ async function loadOlderHistory() {
 
 function renderStructure() {
   const configurableTypes = Object.entries(typeMeta).filter(([key]) => !['question_set', 'meeting', 'risk', 'hypothesis', 'experiment', 'inbox'].includes(key));
-  const selectedType = state.structureType || 'idea';
+  const selectedType = state.structureType || 'task';
   state.structureType = selectedType;
+  const admin = canConfigureWorkspace();
   const definitions = state.definitions.filter((definition) => definition.scopeType === selectedType || !definition.scopeType);
   const active = definitions.filter((definition) => definition.active).sort((a, b) => a.sortOrder - b.sortOrder);
   const hidden = definitions.filter((definition) => !definition.active).sort((a, b) => a.sortOrder - b.sortOrder);
-  $('#main-content').innerHTML = `<div class="page-heading template-heading"><div><p class="eyebrow">Настройки структуры</p><h1>Шаблоны карточек</h1><p>Перетащите блоки в нужный порядок. Это меняет только смысловую структуру новых и существующих карточек, а не их данные.</p></div></div><div class="template-editor"><aside>${configurableTypes.map(([key, meta]) => `<button type="button" data-structure-type="${key}" class="${selectedType === key ? 'active' : ''}">${icon(meta.icon)}<span>${meta.label}</span><b>${state.definitions.filter((definition) => definition.scopeType === key && definition.active).length}</b></button>`).join('')}</aside><section><header><div><p class="eyebrow">Содержание карточки</p><h2>${typeMeta[selectedType].label}</h2><p>Верхний блок появится первым во вкладке «Содержание».</p></div></header><div class="template-block-list" data-template-list>${active.map((definition) => `<article class="template-block" draggable="true" data-template-block="${definition.id}" data-scope-type="${definition.scopeType || ''}"><button type="button" class="drag-handle" aria-label="Перетащить блок «${escapeHTML(definition.name)}»" title="Перетащить блок">${icon('grip')}</button><div><strong>${escapeHTML(definition.name)}</strong><small>${definition.scopeType ? `Только ${typeMeta[definition.scopeType].label.toLowerCase()}` : 'Общий блок для всех карточек'}</small></div><span class="template-position">${icon('check')}</span></article>`).join('') || `<div class="guided-empty template-empty">${icon('settings')}<h3>Содержательных блоков пока нет</h3><p>Добавьте первый блок, чтобы карточка не превращалась в свободную заметку.</p></div>`}<div class="template-drop-actions"><button type="button" class="template-add" data-add-template-block>${icon('plus')}<span><strong>Добавить блок</strong><small>Новый смысловой раздел карточки</small></span></button><div class="template-trash" data-template-trash>${icon('trash')}<span><strong>Убрать из шаблона</strong><small>Блок можно восстановить позже</small></span></div></div></div>${hidden.length ? `<details class="hidden-template-blocks"><summary>Скрытые блоки <b>${hidden.length}</b></summary><div>${hidden.map((definition) => `<button type="button" data-restore-definition="${definition.id}">${icon('rotate')}<span><strong>${escapeHTML(definition.name)}</strong><small>Вернуть в шаблон</small></span></button>`).join('')}</div></details>` : ''}</section></div>`;
+  const scoped = active.filter((definition) => definition.scopeType === selectedType);
+  const actions = (definition) => {
+    if (!admin) return '';
+    const position = scoped.indexOf(definition);
+    return `<div class="template-actions">${position >= 0 ? `<button type="button" class="icon-button" data-definition-up="${definition.id}" title="Выше" aria-label="Выше: ${escapeHTML(definition.name)}" ${position === 0 ? 'disabled' : ''}>${icon('arrowUp')}</button><button type="button" class="icon-button" data-definition-down="${definition.id}" title="Ниже" aria-label="Ниже: ${escapeHTML(definition.name)}" ${position === scoped.length - 1 ? 'disabled' : ''}>${icon('arrowDown')}</button>` : ''}<button type="button" class="icon-button" data-rename-definition="${definition.id}" title="Переименовать" aria-label="Переименовать: ${escapeHTML(definition.name)}">${icon('edit')}</button><button type="button" class="secondary" data-hide-definition="${definition.id}">${icon('minus')} Скрыть</button></div>`;
+  };
+  $('#main-content').innerHTML = `<div class="page-heading template-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>Содержимое карточек</h1></div><button type="button" class="secondary" data-back-to-composer>${icon('arrowLeft')} Меню и страницы</button></div><div class="template-editor"><aside>${configurableTypes.map(([key, meta]) => `<button type="button" data-structure-type="${key}" class="${selectedType === key ? 'active' : ''}">${icon(meta.icon)}<span>${meta.label}</span><b>${state.definitions.filter((definition) => definition.scopeType === key && definition.active).length}</b></button>`).join('')}</aside><section><header><h2>${typeMeta[selectedType].label}</h2>${admin ? '' : '<p>Шаблоны изменяет администратор проекта.</p>'}</header><div class="template-block-list" data-template-list>${active.map((definition) => `<article class="template-block" draggable="${admin && Boolean(definition.scopeType)}" data-template-block="${definition.id}" data-scope-type="${definition.scopeType || ''}">${admin ? `<button type="button" class="drag-handle" aria-label="Перетащить блок «${escapeHTML(definition.name)}»" title="Перетащить блок">${icon('grip')}</button>` : ''}<div class="template-block-name"><strong>${escapeHTML(definition.name)}</strong><small>${definition.scopeType ? typeMeta[definition.scopeType].label : 'Во всех типах карточек'}</small></div>${actions(definition)}</article>`).join('') || '<p class="composer-access-note">В шаблоне нет блоков.</p>'}${admin ? `<div class="template-drop-actions"><button type="button" class="template-add" data-add-template-block>${icon('plus')} Добавить блок</button><div class="template-trash" data-template-trash>${icon('archive')} Скрыть блок</div></div>` : ''}</div>${hidden.length ? `<details class="hidden-template-blocks"><summary>Скрытые блоки <b>${hidden.length}</b></summary><div>${hidden.map((definition) => `<button type="button" data-restore-definition="${definition.id}" ${admin ? '' : 'disabled'}>${icon('rotate')}<span><strong>${escapeHTML(definition.name)}</strong><small>Вернуть в шаблон</small></span></button>`).join('')}</div></details>` : ''}</section></div>`;
+  $('[data-back-to-composer]').addEventListener('click', () => openNavigationSettings());
   $$('[data-structure-type]').forEach((button) => button.addEventListener('click', () => { state.structureType = button.dataset.structureType; renderStructure(); }));
-  $('[data-add-template-block]').addEventListener('click', async () => { const name = await askText({ title: `Новый блок для «${typeMeta[selectedType].label}»`, label: 'Название смыслового блока', required: true }); if (!name) return; try { await api('/api/section-definitions', { method: 'POST', body: JSON.stringify({ name, scopeType: selectedType, kind: 'universal' }) }); await loadData(true); state.structureType = selectedType; renderStructure(); toast('Блок добавлен'); } catch (error) { toast(error.message, true); } });
-  $$('[data-restore-definition]').forEach((button) => button.addEventListener('click', async () => { try { await api(`/api/section-definitions/${button.dataset.restoreDefinition}`, { method: 'PATCH', body: JSON.stringify({ active: true, reason: 'Пункт снова нужен в шаблоне' }) }); await loadData(true); state.structureType = selectedType; renderStructure(); toast('Блок возвращён'); } catch (error) { toast(error.message, true); } }));
-  bindTemplateDrag(selectedType);
+  const refresh = async () => { state.detailCache.clear(); state.definitions = await api('/api/section-definitions'); renderStructure(); };
+  const update = async (id, value) => { try { await api(`/api/section-definitions/${id}`, { method: 'PATCH', body: JSON.stringify(value) }); await refresh(); toast('Шаблон проекта сохранён'); } catch (error) { toast(error.message, true); } };
+  $('[data-add-template-block]')?.addEventListener('click', async () => { const name = await askText({ title: 'Новый блок', label: 'Название', required: true }); if (!name) return; try { await api('/api/section-definitions', { method: 'POST', body: JSON.stringify({ name, scopeType: selectedType, kind: 'universal' }) }); await refresh(); } catch (error) { toast(error.message, true); } });
+  $$('[data-hide-definition]').forEach((button) => button.addEventListener('click', () => update(button.dataset.hideDefinition, { active: false })));
+  $$('[data-restore-definition]').forEach((button) => button.addEventListener('click', () => update(button.dataset.restoreDefinition, { active: true })));
+  $$('[data-rename-definition]').forEach((button) => button.addEventListener('click', async () => { const definition = definitions.find((item) => item.id === button.dataset.renameDefinition); const name = await askText({ title: 'Название блока', label: 'Название', defaultValue: definition.name, required: true }); if (name && name !== definition.name) await update(definition.id, { name }); }));
+  $$('[data-definition-up], [data-definition-down]').forEach((button) => button.addEventListener('click', async () => {
+    const list = $('[data-template-list]'); const row = button.closest('[data-template-block]');
+    const rows = $$('[data-template-block]', list).filter((item) => item.dataset.scopeType === selectedType); const index = rows.indexOf(row);
+    if (button.hasAttribute('data-definition-up')) rows[index - 1]?.before(row); else rows[index + 1]?.after(row);
+    try { await saveTemplateOrder(selectedType, list); await refresh(); } catch (error) { toast(error.message, true); renderStructure(); }
+  }));
+  if (admin) bindTemplateDrag(selectedType);
 }
 
 async function saveTemplateOrder(scopeType, list) {
@@ -6542,7 +6550,7 @@ function finishOnboarding() {
 }
 
 // Only view state goes into browser history, never record bodies or account data.
-const routeFields = ['view', 'search', 'statusFilter', 'ownerFilter', 'personalTab', 'workScope', 'workType', 'workStatus', 'workstreamFilter', 'workOrder', 'workViewMode', 'ideaViewMode', 'workCalendarMonth', 'calendarMode', 'calendarYear', 'activeCollectionId', 'collectionSearch', 'collectionOwnerFilter', 'collectionFieldFilters', 'historyMode', 'historyScope', 'historyActor', 'historyType', 'notificationStatus', 'notificationPeriod'];
+const routeFields = ['view', 'search', 'statusFilter', 'ownerFilter', 'personalTab', 'workScope', 'workType', 'workStatus', 'workstreamFilter', 'workOrder', 'workViewMode', 'ideaViewMode', 'workCalendarMonth', 'calendarMode', 'calendarYear', 'activeCollectionId', 'collectionSearch', 'collectionOwnerFilter', 'collectionFieldFilters', 'historyMode', 'historyScope', 'historyActor', 'historyType', 'notificationStatus', 'notificationPeriod', 'pageSearch'];
 
 function viewSnapshot() {
   return { ...Object.fromEntries(routeFields.map((key) => [key, structuredClone(state[key])])), workspaceId: state.activeWorkspaceId, scrollY: window.scrollY };
@@ -6580,6 +6588,141 @@ async function restoreViewHistory(entry) {
   if (state.view === 'notifications') { state.notificationInbox = null; state.notificationError = ''; }
   render();
   requestAnimationFrame(() => window.scrollTo({ top: route.scrollY || 0, behavior: 'instant' }));
+}
+
+function closeTransientPanels(target = null) {
+  const selectors = '.workspace-switcher[open], .personal-create-menu[open], .work-filter-menu[open], .work-create-menu[open], .record-more-actions[open], .chat-header-more[open], .chat-composer-more[open]';
+  $$(selectors).forEach((panel) => { if (!target || !panel.contains(target)) panel.open = false; });
+  closeCustomSelects(target?.closest('.custom-select') || null);
+}
+
+function discardComposerChanges(dialog = $('#workspace-dialog')) {
+  if (dialog.dataset.composerDirty === 'true' && !confirm('Выйти без сохранения настроек?')) return false;
+  dialog.dataset.composerDirty = 'false';
+  return true;
+}
+
+function bindComposerForm(form) {
+  form.addEventListener('input', () => { $('#workspace-dialog').dataset.composerDirty = 'true'; });
+  form.addEventListener('change', () => { $('#workspace-dialog').dataset.composerDirty = 'true'; });
+}
+
+function openNavigationSettings(tab = 'menu') {
+  const dialog = $('#workspace-dialog');
+  if (!discardComposerChanges(dialog)) return;
+  const admin = canConfigureWorkspace();
+  const items = navigationCatalog();
+  const preferences = state.interfacePreferences;
+  const hidden = new Set(preferences.hiddenNavItems || []);
+  const hiddenGroups = new Set(preferences.hiddenNavGroups || []);
+  const tabs = [['menu', 'Моё меню'], ['modules', 'Разделы проекта'], ['pages', 'Свои страницы']];
+  let body = '';
+  if (tab === 'menu') body = `<form id="navigation-personal-form"><div class="composer-rows">${items.map((item, index) => `<div class="composer-menu-row" data-menu-key="${escapeHTML(item.key)}"><label class="check"><input type="checkbox" name="visibleItem" value="${escapeHTML(item.key)}" ${!hidden.has(item.key) && !hiddenGroups.has(item.group) ? 'checked' : ''}><span>${escapeHTML(item.label)}</span></label><button type="button" class="icon-button" data-menu-up aria-label="Выше: ${escapeHTML(item.label)}" title="Выше">${icon('arrowUp')}</button><button type="button" class="icon-button" data-menu-down aria-label="Ниже: ${escapeHTML(item.label)}" title="Ниже">${icon('arrowDown')}</button></div>`).join('')}</div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить моё меню</button><button type="button" class="secondary" data-reset-nav>По умолчанию</button></div></form>`;
+  if (tab === 'modules') body = `<form id="project-modules-form"><div class="composer-module-grid">${navItems.filter(([key]) => key !== 'personal').map(([key, label, iconName]) => `<label class="check module-option"><input type="checkbox" name="module" value="${key}" ${state.projectNavigation.enabledViews.includes(key) ? 'checked' : ''} ${admin ? '' : 'disabled'}><span>${icon(iconName)} ${escapeHTML(label)}</span></label>`).join('')}</div>${admin ? '<div class="form-actions"><button type="submit" class="primary">Сохранить разделы проекта</button></div>' : '<p class="composer-access-note">Состав разделов настраивает администратор проекта.</p>'}</form>`;
+  if (tab === 'pages') body = `${admin ? `<button type="button" class="primary" data-new-page>${icon('plus')} Создать страницу</button>` : ''}<div class="composer-page-list">${state.workspacePages.map((page) => `<article><div><strong>${escapeHTML(page.name)}</strong><small>${page.archived ? 'В архиве' : page.collectionId ? escapeHTML(state.collections.find((collection) => collection.id === page.collectionId)?.name || 'Доска недоступна') : 'Карточки проекта'} · ${page.viewMode === 'board' ? 'Доска' : 'Список'}</small></div>${admin ? `<button type="button" class="icon-button" data-configure-page="${page.id}" aria-label="Настроить страницу ${escapeHTML(page.name)}" title="Настроить">${icon('edit')}</button><button type="button" class="icon-button" data-archive-page="${page.id}" aria-label="${page.archived ? 'Восстановить' : 'Архивировать'} страницу ${escapeHTML(page.name)}" title="${page.archived ? 'Восстановить' : 'Архивировать'}">${icon(page.archived ? 'rotate' : 'archive')}</button>` : ''}</article>`).join('') || '<p class="composer-access-note">Своих страниц пока нет.</p>'}</div>`;
+  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>Меню и страницы</h2><p>${tab === 'menu' ? 'Ваше меню, только для вас' : 'Общие настройки этого проекта'}</p></div><button type="button" class="icon-button" data-close-composer aria-label="Закрыть">${icon('x')}</button></header><div class="segmented composer-tabs" role="tablist" aria-label="Настройка меню">${tabs.map(([key, label]) => `<button type="button" class="segment ${key === tab ? 'active' : ''}" role="tab" aria-selected="${key === tab}" data-composer-tab="${key}">${label}</button>`).join('')}</div>${body}<footer class="composer-shortcuts"><button type="button" class="text-button" data-composer-layout>${icon('dashboard')} Настроить главную</button><button type="button" class="text-button" data-composer-templates>${icon('settings')} Содержимое карточек</button></footer></div>`;
+  $('[data-close-composer]', dialog).addEventListener('click', closeWorkspaceDialog);
+  $$('[data-composer-tab]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings(button.dataset.composerTab)));
+  const leaveFor = (view, after) => {
+    if (!discardComposerChanges(dialog)) return;
+    state.afterOverlayClose = () => { navigateToView(view); after?.(); };
+    closeWorkspaceDialog();
+  };
+  $('[data-composer-layout]', dialog).addEventListener('click', () => leaveFor('dashboard', startLayoutEditor));
+  $('[data-composer-templates]', dialog).addEventListener('click', () => leaveFor('structure'));
+  const personalForm = $('#navigation-personal-form', dialog);
+  if (personalForm) {
+    bindComposerForm(personalForm);
+    $$('[data-menu-up], [data-menu-down]', personalForm).forEach((button) => button.addEventListener('click', () => {
+      const row = button.closest('[data-menu-key]');
+      if (button.hasAttribute('data-menu-up')) row.previousElementSibling?.before(row); else row.nextElementSibling?.after(row);
+      dialog.dataset.composerDirty = 'true';
+    }));
+    personalForm.addEventListener('submit', async (event) => {
+      event.preventDefault(); const button = $('button[type="submit"]', personalForm); button.disabled = true;
+      const visible = new Set(new FormData(personalForm).getAll('visibleItem'));
+      const next = { ...state.interfacePreferences, hiddenNavGroups: [], hiddenNavItems: [...(preferences.hiddenNavItems || []).filter((key) => !items.some((item) => item.key === key)), ...items.filter((item) => !visible.has(item.key)).map((item) => item.key)], navOrder: $$('[data-menu-key]', personalForm).map((row) => row.dataset.menuKey) };
+      try { await saveInterfacePreferences(next); dialog.dataset.composerDirty = 'false'; closeWorkspaceDialog(); renderNav(); toast('Ваше меню сохранено'); } catch (error) { button.disabled = false; toast(error.message, true); }
+    });
+    $('[data-reset-nav]', personalForm).addEventListener('click', async () => {
+      try { await saveInterfacePreferences({ ...state.interfacePreferences, hiddenNavGroups: [], collapsedNavGroups: [], hiddenNavItems: [], navOrder: [] }); dialog.dataset.composerDirty = 'false'; openNavigationSettings(); renderNav(); } catch (error) { toast(error.message, true); }
+    });
+  }
+  const modulesForm = $('#project-modules-form', dialog);
+  if (modulesForm) {
+    bindComposerForm(modulesForm);
+    modulesForm.addEventListener('submit', async (event) => {
+      event.preventDefault(); const button = $('button[type="submit"]', modulesForm); button.disabled = true;
+      try {
+        state.projectNavigation = await api('/api/workspace/navigation', { method: 'PUT', body: JSON.stringify({ enabledViews: new FormData(modulesForm).getAll('module') }) });
+        dialog.dataset.composerDirty = 'false'; closeWorkspaceDialog(); renderNav(); renderContent(); toast('Разделы проекта сохранены');
+      } catch (error) { button.disabled = false; toast(error.message, true); }
+    });
+  }
+  $('[data-new-page]', dialog)?.addEventListener('click', () => openWorkspacePageEditor());
+  $$('[data-configure-page]', dialog).forEach((button) => button.addEventListener('click', () => openWorkspacePageEditor(state.workspacePages.find((page) => page.id === button.dataset.configurePage))));
+  $$('[data-archive-page]', dialog).forEach((button) => button.addEventListener('click', async () => {
+    const page = state.workspacePages.find((item) => item.id === button.dataset.archivePage);
+    if (!page.archived && !confirm(`Архивировать страницу «${page.name}»? Карточки и данные сохранятся.`)) return;
+    button.disabled = true;
+    try { await api(`/api/workspace/pages/${page.id}`, { method: 'PATCH', body: JSON.stringify({ ...page, archived: !page.archived }) }); state.workspacePages = await api('/api/workspace/pages?includeArchived=true'); renderNav(); if (state.view === `page:${page.id}`) renderContent(); openNavigationSettings('pages'); } catch (error) { button.disabled = false; toast(error.message, true); }
+  }));
+  openModal(dialog);
+}
+
+function openWorkspacePageEditor(page = null) {
+  const dialog = $('#workspace-dialog');
+  if (!discardComposerChanges(dialog)) return;
+  const value = page || { name: '', collectionId: '', recordType: '', statusFilter: 'active', ownerFilter: 'all', viewMode: 'list', fields: ['description', 'owner', 'status', 'due'] };
+  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>${page ? 'Настройка страницы' : 'Новая страница'}</h2></div><button type="button" class="icon-button" data-page-editor-close aria-label="Закрыть">${icon('x')}</button></header><form id="workspace-page-form" class="card-form"><label>Название в меню<input name="name" value="${escapeHTML(value.name)}" required maxlength="80" placeholder="Например: Мои задачи"></label><div class="composer-field-grid"><label>Источник<select name="collectionId"><option value="">Все карточки проекта</option>${state.collections.map((collection) => `<option value="${collection.id}" ${value.collectionId === collection.id ? 'selected' : ''}>${escapeHTML(collection.name)}</option>`).join('')}</select></label><label>Тип карточек<select name="recordType"><option value="">Все типы</option>${Object.entries(typeMeta).map(([key, meta]) => `<option value="${key}" ${value.recordType === key ? 'selected' : ''}>${escapeHTML(meta.label)}</option>`).join('')}</select></label><label>Состояние<select name="statusFilter">${[['active','В работе'],['completed','Завершённые'],['all','Все, кроме архива']].map(([key,label]) => `<option value="${key}" ${value.statusFilter === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Ответственный<select name="ownerFilter"><option value="all">Все участники проекта</option><option value="me" ${value.ownerFilter === 'me' ? 'selected' : ''}>Назначено мне</option></select></label><label>Вид<select name="viewMode"><option value="list">Список</option><option value="board" ${value.viewMode === 'board' ? 'selected' : ''}>Доска по этапам</option></select></label></div><fieldset class="composer-fields"><legend>Отображаемые поля</legend><div data-page-fields></div></fieldset><div class="form-actions"><button type="submit" class="primary">${icon('check')} ${page ? 'Сохранить страницу' : 'Создать страницу'}</button><button type="button" class="secondary" data-page-editor-back>Назад</button></div></form></div>`;
+  const form = $('#workspace-page-form', dialog);
+  let fields = new Set(value.fields);
+  const syncFields = () => {
+    const collection = state.collections.find((item) => item.id === form.elements.collectionId.value);
+    const choices = [['description','Описание'],['owner','Ответственный'],['status','Состояние'],['due','Срок'], ...(collection?.fields || []).map((field) => [`field:${field.id}`,field.name])];
+    $('[data-page-fields]', form).innerHTML = choices.map(([key,label]) => `<label class="check"><input type="checkbox" name="field" value="${key}" ${fields.has(key) ? 'checked' : ''}><span>${escapeHTML(label)}</span></label>`).join('');
+    form.elements.viewMode.disabled = !collection;
+    if (!collection) form.elements.viewMode.value = 'list';
+    syncCustomSelect(form.elements.viewMode);
+  };
+  enhanceSelects(form); syncFields(); bindComposerForm(form);
+  form.elements.collectionId.addEventListener('change', () => { fields = new Set(new FormData(form).getAll('field')); syncFields(); });
+  $('[data-page-editor-close]', dialog).addEventListener('click', closeWorkspaceDialog);
+  $('[data-page-editor-back]', dialog).addEventListener('click', () => openNavigationSettings('pages'));
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault(); const button = $('button[type="submit"]',form); button.disabled=true;
+    const data = new FormData(form); const payload = { ...value, name:data.get('name'),collectionId:data.get('collectionId'),recordType:data.get('recordType'),statusFilter:data.get('statusFilter'),ownerFilter:data.get('ownerFilter'),viewMode:data.get('viewMode') || 'list',fields:data.getAll('field') };
+    try {
+      const saved = await api(`/api/workspace/pages${page ? `/${page.id}` : ''}`, { method: page ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
+      page = saved;
+      state.workspacePages = await api('/api/workspace/pages?includeArchived=true'); dialog.dataset.composerDirty='false';
+      state.afterOverlayClose = () => navigateToView(`page:${saved.id}`);
+      closeWorkspaceDialog(); renderNav(); toast('Страница сохранена');
+    } catch(error) { button.disabled=false; toast(error.message,true); }
+  });
+  openModal(dialog);
+}
+
+function workspacePageRecords(page, search = state.pageSearch) {
+  if (!page || page.archived) return [];
+  const query = (search || '').trim().toLowerCase();
+  return state.records.filter((record) => record.status !== 'archived' && (!page.collectionId || record.collectionId === page.collectionId) && (!page.recordType || record.type === page.recordType) && (page.ownerFilter !== 'me' || record.ownerId === state.me.id) && (page.statusFilter === 'all' || (page.statusFilter === 'active' ? isActiveRecord(record) : record.status === 'completed' || (isWorkRecord(record) && Number(record.progress) >= 100 && !['review', 'cancelled', 'rejected'].includes(record.status)))) && (!query || `${record.title} ${markdownPlain(record.description)}`.toLowerCase().includes(query)));
+}
+
+function renderWorkspacePage() {
+  const page = state.workspacePages.find((item) => `page:${item.id}` === state.view && !item.archived);
+  if (!page) { $('#main-content').innerHTML='<div class="guided-empty"><h2>Страница недоступна</h2><button type="button" class="secondary" data-page-library>Мои страницы</button></div>'; $('[data-page-library]').addEventListener('click',()=>openNavigationSettings('pages')); return; }
+  const records = workspacePageRecords(page);
+  const collection = state.collections.find((item) => item.id === page.collectionId);
+  const labels = {description:'Описание',owner:'Ответственный',status:'Состояние',due:'Срок'};
+  const fieldValue = (record,key) => key === 'owner' ? record.ownerUsername : key === 'status' ? statusLabel(record) : key === 'due' ? (record.dueAt ? formatDate(record.dueAt) : '') : collection?.fields.find((field)=>`field:${field.id}`===key) ? collectionFieldDisplay(collection.fields.find((field)=>`field:${field.id}`===key),record.customFields?.[key.slice(6)]) : '';
+  const list = `<section class="custom-page-list">${records.map((record)=>`<button type="button" class="custom-page-row" data-open-record="${record.id}"><span class="custom-page-title"><strong>${escapeHTML(record.title)}</strong>${page.fields.includes('description') && record.description ? `<span>${escapeHTML(markdownPlain(record.description))}</span>`:''}</span><span class="custom-page-fields">${page.fields.filter((key)=>key!=='description').map((key)=>`<span><small>${escapeHTML(labels[key] || collection?.fields.find((field)=>`field:${field.id}`===key)?.name || '')}</small><b>${escapeHTML(fieldValue(record,key) || '—')}</b></span>`).join('')}</span>${icon('chevronRight')}</button>`).join('') || '<p class="composer-access-note">Карточек по этим условиям нет.</p>'}</section>`;
+  const board = collection ? `<section class="collection-board">${collection.stages.map((stage)=>{const items=records.filter((record)=>record.stageId===stage.id || (!record.stageId && stage.id===collection.stages[0]?.id));return `<section class="collection-column tone-${stage.colorKey}" data-collection-drop="${stage.id}"><header><div><i></i><strong>${escapeHTML(stage.name)}</strong></div><span>${items.length}</span></header><div>${items.map((record)=>renderCollectionCard(record,collection,page.fields)).join('') || '<p class="collection-column-empty">Нет карточек</p>'}</div></section>`;}).join('')}</section>` : list;
+  $('#main-content').innerHTML=`<div class="page-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(page.name)}</h1><p>${recordsCountLabel(records.length)}</p></div><div class="custom-page-actions"><button type="button" class="primary" data-page-create>${icon('plus')} Добавить</button>${canConfigureWorkspace()?`<button type="button" class="secondary" data-page-configure>${icon('sliders')} Настроить страницу</button>`:''}</div></div><label class="custom-page-search">${icon('search')}<input type="search" value="${escapeHTML(state.pageSearch)}" placeholder="Найти на странице" aria-label="Найти на странице"></label>${page.viewMode==='board'?board:list}`;
+  $('[data-page-configure]')?.addEventListener('click',()=>openWorkspacePageEditor(page));
+  $('[data-page-create]').addEventListener('click',()=>collection?openCollectionCardDialog(collection):openCreateDialog(page.recordType||'task'));
+  $('.custom-page-search input').addEventListener('input',(event)=>{state.pageSearch=event.currentTarget.value;renderWorkspacePage(); const input=$('.custom-page-search input');input.focus();});
+  if (page.viewMode==='board' && collection) bindCollectionBoard(collection,renderWorkspacePage); else bindOpenRecords();
 }
 
 const widgetNames = { focus: 'Следующая работа', capture: 'Быстрая фиксация', capacity: 'Недельная загрузка', quality: 'Качество базы' };
@@ -6672,7 +6815,7 @@ function bindLayoutEditor() {
     state.layoutDraft.layout = readLayoutFields(header, interfaceLayout()); applyInterfaceLayout();
     const actions = $('.dashboard-widget-capture .quick-actions');
     if (actions) {
-      actions.innerHTML = interfaceLayout().quickActions.map((key) => `<button type="button" class="quick-action" data-quick-create="${key}"><span class="quick-icon">${icon(typeMeta[key]?.icon || 'inbox')}</span><span><strong>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</strong></span>${icon('chevronRight')}</button>`).join('');
+      actions.innerHTML = interfaceLayout().quickActions.filter(projectAllowsType).map((key) => `<button type="button" class="quick-action" data-quick-create="${key}"><span class="quick-icon">${icon(typeMeta[key]?.icon || 'inbox')}</span><span><strong>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</strong></span>${icon('chevronRight')}</button>`).join('');
       $$('[data-quick-create]', actions).forEach((button) => button.addEventListener('click', () => openCreateDialog(button.dataset.quickCreate)));
     }
   });

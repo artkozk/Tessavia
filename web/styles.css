@@ -3577,3 +3577,74 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
 @media (prefers-reduced-motion: no-preference) and (hover: none) {
   .icon-button:active, .segment:active { opacity: .72; transition: opacity .1s ease; }
 }
+
+/* Project composition uses the existing palette and keeps long labels inside their tracks. */
+.main-nav { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.project-nav-items { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.nav-configure { flex-shrink: 0; margin-top: 10px; border-top: 1px solid var(--sidebar-line, #43514c); border-radius: 0; }
+.navigation-settings-shell { width: 100%; max-width: 900px; margin-inline: auto; min-width: 0; }
+.navigation-settings-shell > header { display: flex; justify-content: space-between; gap: 12px; }
+.navigation-settings-shell > header > div { min-width: 0; }
+.navigation-settings-shell h2, .navigation-settings-shell strong, .navigation-settings-shell label { overflow-wrap: anywhere; }
+.navigation-settings-shell > header > button { flex-shrink: 0; }
+.composer-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-block: 18px; }
+.composer-tabs .segment { min-width: 0; white-space: normal; padding: 10px 8px; }
+.composer-menu-row { display: grid; grid-template-columns: minmax(0, 1fr) 40px 40px; gap: 6px; align-items: center; border-bottom: 1px solid var(--line); padding: 8px 0; }
+.composer-menu-row .icon-button { width: 40px; height: 40px; min-height: 40px; }
+.composer-menu-row .check, .composer-module-grid .check, .composer-fields .check { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 0; }
+.composer-menu-row .check input, .composer-module-grid .check input, .composer-fields .check input { width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; accent-color: var(--accent); }
+.composer-module-grid, .composer-field-grid, .composer-fields > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.module-option { padding-block: 12px; border-bottom: 1px solid var(--line); }
+.module-option > span { display: flex; gap: 8px; align-items: center; }
+.module-option .icon { flex-shrink: 0; }
+.composer-shortcuts { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.composer-access-note { color: var(--muted); padding-block: 20px; }
+.composer-page-list > article { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; align-items: center; gap: 8px; padding-block: 18px; border-bottom: 1px solid var(--line); }
+.composer-page-list > article > div { min-width: 0; display: grid; gap: 4px; }
+.composer-page-list small { color: var(--muted); overflow-wrap: anywhere; }
+.composer-fields { padding: 16px 0; border: 0; border-top: 1px solid var(--line); min-width: 0; }
+.composer-fields legend { font-weight: 600; margin-bottom: 12px; }
+.composer-field-grid > label { min-width: 0; }
+.custom-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.custom-page-search { display: flex; align-items: center; gap: 10px; padding: 0 12px; margin-bottom: 20px; border: 1px solid var(--line); border-radius: 6px; }
+.custom-page-search input { border: 0; background: transparent; min-width: 0; width: 100%; }
+.custom-page-row { width: 100%; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 18px; align-items: center; gap: 18px; padding: 20px 8px; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: transparent; border-radius: 0; }
+.custom-page-row:hover { background: var(--accent-soft); }
+.custom-page-title, .custom-page-fields, .custom-page-fields > span { min-width: 0; display: grid; gap: 6px; overflow-wrap: anywhere; }
+.custom-page-title > span { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.custom-page-fields { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px; }
+.custom-page-fields small { color: var(--muted); }
+.custom-page-fields b { font-weight: 500; }
+.collection-settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.workspace-editor-shell > header > .collection-settings-header-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: start; }
+.compact-settings-form .check { display: flex; gap: 8px; }
+.compact-settings-form .check input { width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; accent-color: var(--accent); }
+.compact-settings-form, .compact-settings-form.field-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.compact-settings-form:not(.field-form) > input[name=name] { grid-column: 1 / -1; }
+.compact-settings-form input, .compact-settings-form .custom-select { width: 100%; min-width: 0; }
+.compact-settings-form button { white-space: normal; }
+.template-block { grid-template-columns: 28px minmax(0, 1fr) auto; }
+.template-block-name { min-width: 0; overflow-wrap: anywhere; }
+.template-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.template-actions .icon-button { width: 36px; height: 36px; min-height: 36px; }
+.template-actions .secondary { min-height: 36px; padding: 6px 10px; }
+.hidden-record-sections { padding-block: 18px; border-top: 1px solid var(--line); }
+.hidden-record-sections > summary { cursor: pointer; color: var(--muted); padding-bottom: 16px; }
+@media (max-width: 900px) {
+  .collection-settings-grid { grid-template-columns: minmax(0, 1fr); }
+  .template-block { grid-template-columns: 28px minmax(0, 1fr); }
+  .template-actions { grid-column: 2; }
+}
+@media (max-width: 600px) {
+  .composer-tabs .segment { font-size: 12px; padding-inline: 4px; }
+  .composer-module-grid, .composer-field-grid { grid-template-columns: minmax(0, 1fr); }
+  .composer-fields > div { grid-template-columns: minmax(0, 1fr); }
+  .navigation-settings-shell .form-actions { display: flex; flex-wrap: wrap; }
+  .navigation-settings-shell .form-actions > button { max-width: 100%; white-space: normal; }
+  .custom-page-row { grid-template-columns: minmax(0, 1fr) 18px; gap: 12px; }
+  .custom-page-fields { grid-column: 1; }
+  .custom-page-row > .icon { grid-column: 2; grid-row: 1 / 3; }
+  .compact-settings-form, .compact-settings-form.field-form { grid-template-columns: minmax(0, 1fr); }
+  .template-actions .icon-button { width: 40px; height: 40px; min-height: 40px; }
+  .template-actions .secondary { min-height: 40px; }
+}

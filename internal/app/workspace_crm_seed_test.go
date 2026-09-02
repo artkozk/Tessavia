@@ -45,7 +45,7 @@ func TestFirstClientCRMSeedIsIdempotent(t *testing.T) {
 			t.Fatalf("verify CRM seed: %v", err)
 		}
 	}
-	if workspaces != 1 || members != 2 || collections != 1 || stages != 4 || fields != 2 || records != 10 || completed != 2 {
+	if workspaces != 1 || members != 1 || collections != 1 || stages != 4 || fields != 2 || records != 10 || completed != 2 {
 		t.Fatalf("seed counts workspaces=%d members=%d collections=%d stages=%d fields=%d records=%d completed=%d", workspaces, members, collections, stages, fields, records, completed)
 	}
 	rows, err := store.db.Query(`SELECT value_json FROM record_field_values WHERE field_id = 'crm-field-source-number'`)
