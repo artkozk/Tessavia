@@ -16,6 +16,7 @@ function harness() {
   const context = vm.createContext({ state, history, window, structuredClone, confirm: () => true, setSidebarOpen() {}, render() {}, requestAnimationFrame(fn) { fn(); }, async switchWorkspace(id) { state.activeWorkspaceId = id; } });
   vm.runInContext(source.slice(source.indexOf('const routeFields ='), source.indexOf('const widgetNames =')), context);
   vm.runInContext(source.slice(source.indexOf('function navigateToView('), source.indexOf('function metric(')), context);
+  vm.runInContext(source.slice(source.indexOf('function pageLayoutDirty('), source.indexOf('function startPageLayoutEditor(')), context);
   return { state, history, window, context, entries, run: (code) => vm.runInContext(code, context) };
 }
 

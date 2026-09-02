@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 )
 
 var interfaceNavGroups = map[string]bool{
@@ -29,16 +30,70 @@ type InterfacePreferences struct {
 }
 
 type InterfaceLayout struct {
-	ContentWidth   int            `json:"contentWidth"`
-	SidebarWidth   int            `json:"sidebarWidth"`
-	SidebarSide    string         `json:"sidebarSide"`
-	Density        string         `json:"density"`
-	WidgetSpans    map[string]int `json:"widgetSpans"`
-	ToolbarActions []string       `json:"toolbarActions"`
-	QuickActions   []string       `json:"quickActions"`
+	Pages          map[string]PageLayout `json:"pages"`
+	ContentWidth   int                   `json:"contentWidth"`
+	SidebarWidth   int                   `json:"sidebarWidth"`
+	SidebarSide    string                `json:"sidebarSide"`
+	Density        string                `json:"density"`
+	WidgetSpans    map[string]int        `json:"widgetSpans"`
+	ToolbarActions []string              `json:"toolbarActions"`
+	QuickActions   []string              `json:"quickActions"`
+}
+
+type PageLayout struct {
+	Order          []string       `json:"order"`
+	HiddenBlocks   []string       `json:"hiddenBlocks"`
+	HiddenFields   []string       `json:"hiddenFields"`
+	BlockSpans     map[string]int `json:"blockSpans"`
+	ContentWidth   int            `json:"contentWidth,omitempty"`
+	Density        string         `json:"density,omitempty"`
+	ToolbarActions *[]string      `json:"toolbarActions,omitempty"`
+}
+
+var pageLayoutKey = regexp.MustCompile(`^[a-zA-Z0-9_:-]{1,100}$`)
+
+func normalizePageLayouts(pages map[string]PageLayout) map[string]PageLayout {
+	result := make(map[string]PageLayout)
+	clean := func(values []string) []string {
+		allowed := make(map[string]bool)
+		for _, key := range values {
+			if len(allowed) < 100 && pageLayoutKey.MatchString(key) {
+				allowed[key] = true
+			}
+		}
+		return uniqueAllowedStrings(values, allowed)
+	}
+	for key, page := range pages {
+		if !pageLayoutKey.MatchString(key) {
+			continue
+		}
+		page.Order = clean(page.Order)
+		page.HiddenBlocks = clean(page.HiddenBlocks)
+		page.HiddenFields = clean(page.HiddenFields)
+		spans := make(map[string]int)
+		for block, span := range page.BlockSpans {
+			if len(spans) < 100 && pageLayoutKey.MatchString(block) && (span == 4 || span == 6 || span == 8 || span == 12) {
+				spans[block] = span
+			}
+		}
+		page.BlockSpans = spans
+		if page.ContentWidth != 0 {
+			page.ContentWidth = max(900, min(2200, page.ContentWidth))
+		}
+		if page.Density != "compact" && page.Density != "comfortable" {
+			page.Density = ""
+		}
+		if page.ToolbarActions != nil {
+			actions := uniqueAllowedStrings(*page.ToolbarActions, map[string]bool{"help": true, "notifications": true, "create": true})
+			page.ToolbarActions = &actions
+		}
+		result[key] = page
+	}
+	return result
 }
 
 func normalizeInterfaceLayout(layout InterfaceLayout) InterfaceLayout {
+	layout.Pages = normalizePageLayouts(layout.Pages)
 	if layout.ContentWidth == 0 {
 		layout.ContentWidth = 1500
 	}

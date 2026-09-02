@@ -967,7 +967,7 @@ function showAuth() {
 function clearPrivateClientState() {
   state.workspacePages = []; state.pageSearch = ''; state.projectNavigation = { enabledViews: ['dashboard', 'work', 'collections', 'chat'] };
   state.notificationInbox = null; state.unreadCount = null; state.notificationRequest += 1;
-  state.notificationLoading = false; state.layoutDraft = null;
+  state.notificationLoading = false; state.layoutDraft = null; state.pageLayoutDraft = null;
   state.viewHistoryInitialized = false;
   state.personal = null;
   state.personalLoading = false;
@@ -1003,6 +1003,7 @@ async function bootstrap() {
       enhanceSelects(node);
       bindDragScroll(node);
     }));
+    if (mutations.some((mutation) => mutation.target === $('#main-content') || $('#main-content')?.contains(mutation.target))) applyPageLayout();
   });
   interfaceObserver.observe(document.body, { childList: true, subtree: true });
   try {
@@ -1049,6 +1050,7 @@ async function loadData(silent = false) {
 
 async function switchWorkspace(workspaceID, { restoring = false, keepView = false } = {}) {
 	if (!workspaceID || workspaceID === state.activeWorkspaceId) return;
+  if (!leavePageLayoutEditor()) return;
   if (state.layoutDraft && !confirm('Выйти без сохранения раскладки?')) return;
   state.layoutDraft = null;
   if (!restoring && !keepView) rememberView();
@@ -1199,6 +1201,10 @@ function bindGlobalEvents() {
     if (!event.target.closest('.chat-header-more')) $('.chat-header-more[open]')?.removeAttribute('open');
     if (!event.target.closest('.chat-composer-more')) $('.chat-composer-more[open]')?.removeAttribute('open');
   });
+  document.addEventListener('click', (event) => {
+    const board = event.target.closest('[data-collection-tab]');
+    if (board && board.dataset.collectionTab !== state.activeCollectionId && !leavePageLayoutEditor()) { event.preventDefault(); event.stopImmediatePropagation(); }
+  }, true);
   $('#menu-button').addEventListener('click', () => setSidebarOpen(!$('.sidebar').classList.contains('open')));
   $('#sidebar-close').addEventListener('click', () => setSidebarOpen(false));
   $('#sidebar-backdrop').addEventListener('click', (event) => {
@@ -1237,7 +1243,7 @@ function bindGlobalEvents() {
       return;
     }
     if ($('.sidebar').classList.contains('open')) setSidebarOpen(false);
-    if (state.layoutDraft) {
+    if (state.layoutDraft || state.pageLayoutDraft) {
       history.pushState(state.layoutHistoryEntry, '');
       toast('Сохраните раскладку или нажмите «Отмена».');
       return;
@@ -1245,7 +1251,7 @@ function bindGlobalEvents() {
     restoreViewHistory(event.state).catch((error) => toast(error.message, true));
   });
   window.addEventListener('beforeunload', (event) => {
-    if (state.layoutDraft) { event.preventDefault(); event.returnValue = ''; }
+    if (state.layoutDraft || pageLayoutDirty()) { event.preventDefault(); event.returnValue = ''; }
     const dialog = [...$$('dialog[open]')].pop();
     if (!dialog) return;
     flushDialogDrafts(dialog);
@@ -1524,7 +1530,7 @@ async function refreshLiveData() {
     if (state.view === 'work' && state.workViewMode === 'calendar') await refreshPlanningCycles();
     const cycleChanged = previousCycleUpdate !== (state.activePlanningCycle?.updatedAt || '');
     const overlayOpen = Boolean(document.querySelector('dialog[open]')) || $('.sidebar').classList.contains('open');
-    if (!state.layoutDraft && !workspaceHasActiveInput() && !overlayOpen && state.view !== 'graph' && (result.changed || result.activityChanged || cycleChanged || state.view === 'notifications')) renderContent();
+    if (!state.layoutDraft && !state.pageLayoutDraft && !workspaceHasActiveInput() && !overlayOpen && state.view !== 'graph' && (result.changed || result.activityChanged || cycleChanged || state.view === 'notifications')) renderContent();
   } catch (_) {
     // A background refresh must not interrupt active work. Foreground API actions report their errors explicitly.
   } finally {
@@ -1864,7 +1870,8 @@ function openInterfaceSettings() {
     $('.layout-editor-header').scrollIntoView({ block: 'start', behavior: 'instant' });
     return;
   }
-  openNavigationSettings();
+  if (state.view === 'dashboard') startLayoutEditor();
+  else startPageLayoutEditor();
 }
 
 function renderContent() {
@@ -2297,6 +2304,7 @@ function renderQuality() {
 
 function navigateToView(view, options = {}) {
 	const normalized = ({ goals: 'goal', tasks: 'work', ideas: 'idea' })[view] || view;
+  if (!leavePageLayoutEditor()) return;
   if (state.layoutDraft && !confirm('Выйти без сохранения раскладки?')) return;
   state.layoutDraft = null;
   rememberView();
@@ -2927,7 +2935,7 @@ function collectionFieldDisplay(field, value) {
 function renderCollectionCard(record, collection, fields = null) {
   const visible = (key) => !fields || fields.includes(key);
   const visibleFields = collection.fields.filter((field) => fields ? fields.includes(`field:${field.id}`) : field.showOnCard).map((field) => ({field, value:collectionFieldDisplay(field,record.customFields?.[field.id])})).filter((item)=>item.value);
-  return `<article class="collection-card priority-${record.priority || 'normal'}" draggable="true" data-collection-card="${record.id}"><button type="button" data-open-record="${record.id}"><header><span>${icon(typeMeta[record.type]?.icon || 'fileText')}<small>${escapeHTML(collection.cardLabel)}</small></span><strong>${escapeHTML(record.title)}</strong></header>${visible('description') && record.description ? `<p>${escapeHTML(markdownPlain(record.description).slice(0,150))}</p>` : ''}${visibleFields.length ? `<div class="collection-card-fields">${visibleFields.slice(0,fields?visibleFields.length:4).map(({field,value})=>`<span class="field-tone-${field.fieldType === 'select' ? fieldOption(field, record.customFields?.[field.id])?.colorKey || 'neutral' : 'neutral'}"><small>${escapeHTML(field.name)}</small><b>${escapeHTML(value)}</b></span>`).join('')}</div>`:''}${visible('owner') || visible('due') ? `<footer>${visible('owner') ? avatarMarkup(state.users.find((user)=>user.id===record.ownerId)||{username:record.ownerUsername},'tiny'):''}<span>${visible('owner')?`<strong>${escapeHTML(record.ownerUsername)}</strong>`:''}${visible('due') && record.dueAt?`<small>${formatDate(record.dueAt)}</small>`:''}</span></footer>`:''}</button><label class="collection-stage-select"><span>Этап</span><select data-collection-stage="${record.id}" aria-label="Этап карточки ${escapeHTML(record.title)}">${collection.stages.map((stage)=>`<option value="${stage.id}" ${record.stageId===stage.id?'selected':''}>${escapeHTML(stage.name)}</option>`).join('')}</select></label></article>`;
+  return `<article class="collection-card priority-${record.priority || 'normal'}" draggable="true" data-collection-card="${record.id}"><button type="button" data-open-record="${record.id}"><header><span>${icon(typeMeta[record.type]?.icon || 'fileText')}<small>${escapeHTML(collection.cardLabel)}</small></span><strong>${escapeHTML(record.title)}</strong></header>${visible('description') && record.description ? `<p>${escapeHTML(markdownPlain(record.description).slice(0,150))}</p>` : ''}${visibleFields.length ? `<div class="collection-card-fields">${visibleFields.slice(0,fields?visibleFields.length:4).map(({field,value})=>`<span data-page-field="field:${field.id}" class="field-tone-${field.fieldType === 'select' ? fieldOption(field, record.customFields?.[field.id])?.colorKey || 'neutral' : 'neutral'}"><small>${escapeHTML(field.name)}</small><b>${escapeHTML(value)}</b></span>`).join('')}</div>`:''}${visible('owner') || visible('due') ? `<footer>${visible('owner') ? avatarMarkup(state.users.find((user)=>user.id===record.ownerId)||{username:record.ownerUsername},'tiny'):''}<span>${visible('owner')?`<strong>${escapeHTML(record.ownerUsername)}</strong>`:''}${visible('due') && record.dueAt?`<small>${formatDate(record.dueAt)}</small>`:''}</span></footer>`:''}</button><label class="collection-stage-select"><span>Этап</span><select data-collection-stage="${record.id}" aria-label="Этап карточки ${escapeHTML(record.title)}">${collection.stages.map((stage)=>`<option value="${stage.id}" ${record.stageId===stage.id?'selected':''}>${escapeHTML(stage.name)}</option>`).join('')}</select></label></article>`;
 }
 
 function collectionFilterOptions(field) {
@@ -6637,6 +6645,8 @@ function bindReorderList(list, rowSelector, onCommit) {
   if (!list) return;
   let drag = null;
   let busy = false;
+  const listeners = [];
+  const listen = (node, type, handler) => { node.addEventListener(type, handler); listeners.push(() => node.removeEventListener(type, handler)); };
   const rows = () => $$(rowSelector, list);
   const status = document.createElement('span');
   status.className = 'sr-only'; status.setAttribute('role', 'status'); list.append(status);
@@ -6654,14 +6664,14 @@ function bindReorderList(list, rowSelector, onCommit) {
     const handle = $('[data-reorder-handle]', row);
     if (!handle) return;
     handle.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
-    handle.addEventListener('pointerdown', (event) => {
+    listen(handle, 'pointerdown', (event) => {
       if (busy || event.button !== 0 || event.isPrimary === false) return;
       event.preventDefault(); handle.focus({ preventScroll: true });
       const order = rows();
       drag = { row, handle, order, anchor: order.at(-1).nextSibling, id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
       list.setPointerCapture(event.pointerId);
     });
-    handle.addEventListener('keydown', async (event) => {
+    listen(handle, 'keydown', async (event) => {
       if (busy || !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
       const order = rows(), index = order.indexOf(row), anchor = order.at(-1).nextSibling;
@@ -6672,7 +6682,7 @@ function bindReorderList(list, rowSelector, onCommit) {
       if (handle.isConnected) handle.focus({ preventScroll: true });
     });
   });
-  list.addEventListener('pointermove', (event) => {
+  listen(list, 'pointermove', (event) => {
     if (!drag || event.pointerId !== drag.id) return;
     if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return;
     drag.moved = true; drag.row.classList.add('reorder-dragging'); event.preventDefault();
@@ -6694,9 +6704,10 @@ function bindReorderList(list, rowSelector, onCommit) {
     if (event.type === 'pointercancel' || event.type === 'lostpointercapture') { restore(done.order, done.anchor); return; }
     if (done.moved) await commit(done.row, done.order, done.anchor);
   };
-  list.addEventListener('pointerup', finish);
-  list.addEventListener('pointercancel', finish);
-  list.addEventListener('lostpointercapture', finish);
+  listen(list, 'pointerup', finish);
+  listen(list, 'pointercancel', finish);
+  listen(list, 'lostpointercapture', finish);
+  return () => { drag = null; listeners.splice(0).forEach((remove) => remove()); status.remove(); };
 }
 
 function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
@@ -6712,7 +6723,7 @@ function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
   if (tab === 'menu') body = `${deviceSelector(device)}<form id="navigation-personal-form"><div class="composer-rows">${items.map((item) => `<div class="composer-menu-row" data-menu-key="${escapeHTML(item.key)}"><button type="button" class="drag-handle" data-reorder-handle aria-label="Переместить: ${escapeHTML(item.label)}" title="Переместить">${icon('grip')}</button><label class="check"><input type="checkbox" name="visibleItem" value="${escapeHTML(item.key)}" ${!hidden.has(item.key) && !hiddenGroups.has(item.group) ? 'checked' : ''}><span>${escapeHTML(item.label)}</span></label></div>`).join('')}</div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить меню ${device === 'mobile' ? 'телефона' : 'ПК'}</button><button type="button" class="secondary" data-reset-nav>По умолчанию</button></div></form>`;
   if (tab === 'modules') body = `<form id="project-modules-form"><div class="composer-module-grid">${navItems.filter(([key]) => key !== 'personal').map(([key, label, iconName]) => `<label class="check module-option"><input type="checkbox" name="module" value="${key}" ${state.projectNavigation.enabledViews.includes(key) ? 'checked' : ''} ${admin ? '' : 'disabled'}><span>${icon(iconName)} ${escapeHTML(label)}</span></label>`).join('')}</div>${admin ? '<div class="form-actions"><button type="submit" class="primary">Сохранить разделы проекта</button></div>' : '<p class="composer-access-note">Состав разделов настраивает администратор проекта.</p>'}</form>`;
   if (tab === 'pages') body = `${admin ? `<button type="button" class="primary" data-new-page>${icon('plus')} Создать страницу</button>` : ''}<div class="composer-page-list">${state.workspacePages.map((page) => `<article><div><strong>${escapeHTML(page.name)}</strong><small>${page.archived ? 'В архиве' : page.collectionId ? escapeHTML(state.collections.find((collection) => collection.id === page.collectionId)?.name || 'Доска недоступна') : 'Карточки проекта'} · ${page.viewMode === 'board' ? 'Доска' : 'Список'}</small></div>${admin ? `<button type="button" class="icon-button" data-configure-page="${page.id}" aria-label="Настроить страницу ${escapeHTML(page.name)}" title="Настроить">${icon('edit')}</button><button type="button" class="icon-button" data-archive-page="${page.id}" aria-label="${page.archived ? 'Восстановить' : 'Архивировать'} страницу ${escapeHTML(page.name)}" title="${page.archived ? 'Восстановить' : 'Архивировать'}">${icon(page.archived ? 'rotate' : 'archive')}</button>` : ''}</article>`).join('') || '<p class="composer-access-note">Своих страниц пока нет.</p>'}</div>`;
-  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>Меню и страницы</h2><p>${tab === 'menu' ? 'Ваше меню, только для вас' : 'Общие настройки этого проекта'}</p></div><button type="button" class="icon-button" data-close-composer aria-label="Закрыть">${icon('x')}</button></header><div class="segmented composer-tabs" role="tablist" aria-label="Настройка меню">${tabs.map(([key, label]) => `<button type="button" class="segment ${key === tab ? 'active' : ''}" role="tab" aria-selected="${key === tab}" data-composer-tab="${key}">${label}</button>`).join('')}</div>${body}<footer class="composer-shortcuts"><button type="button" class="text-button" data-composer-layout>${icon('dashboard')} Настроить главную</button><button type="button" class="text-button" data-composer-templates>${icon('settings')} Содержимое карточек</button></footer></div>`;
+  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>Меню и страницы</h2><p>${tab === 'menu' ? 'Ваше меню, только для вас' : 'Общие настройки этого проекта'}</p></div><button type="button" class="icon-button" data-close-composer aria-label="Закрыть">${icon('x')}</button></header><div class="segmented composer-tabs" role="tablist" aria-label="Настройка меню">${tabs.map(([key, label]) => `<button type="button" class="segment ${key === tab ? 'active' : ''}" role="tab" aria-selected="${key === tab}" data-composer-tab="${key}">${label}</button>`).join('')}</div>${body}<footer class="composer-shortcuts"><button type="button" class="text-button" data-composer-layout>${icon('sliders')} Настроить страницу</button><button type="button" class="text-button" data-composer-templates>${icon('settings')} Содержимое карточек</button></footer></div>`;
   $('[data-close-composer]', dialog).addEventListener('click', closeWorkspaceDialog);
   $$('[data-composer-tab]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings(button.dataset.composerTab, device)));
   $$('[data-interface-device]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings('menu', button.dataset.interfaceDevice)));
@@ -6721,7 +6732,7 @@ function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
     state.afterOverlayClose = () => { navigateToView(view); after?.(); };
     closeWorkspaceDialog();
   };
-  $('[data-composer-layout]', dialog).addEventListener('click', () => leaveFor('dashboard', () => startLayoutEditor(device)));
+  $('[data-composer-layout]', dialog).addEventListener('click', () => leaveFor(state.view, () => state.view === 'dashboard' ? startLayoutEditor(device) : startPageLayoutEditor(device)));
   $('[data-composer-templates]', dialog).addEventListener('click', () => leaveFor('structure'));
   const personalForm = $('#navigation-personal-form', dialog);
   if (personalForm) {
@@ -6805,9 +6816,9 @@ function renderWorkspacePage() {
   const collection = state.collections.find((item) => item.id === page.collectionId);
   const labels = {description:'Описание',owner:'Ответственный',status:'Состояние',due:'Срок'};
   const fieldValue = (record,key) => key === 'owner' ? record.ownerUsername : key === 'status' ? statusLabel(record) : key === 'due' ? (record.dueAt ? formatDate(record.dueAt) : '') : collection?.fields.find((field)=>`field:${field.id}`===key) ? collectionFieldDisplay(collection.fields.find((field)=>`field:${field.id}`===key),record.customFields?.[key.slice(6)]) : '';
-  const list = `<section class="custom-page-list">${records.map((record)=>`<button type="button" class="custom-page-row" data-open-record="${record.id}"><span class="custom-page-title"><strong>${escapeHTML(record.title)}</strong>${page.fields.includes('description') && record.description ? `<span>${escapeHTML(markdownPlain(record.description))}</span>`:''}</span><span class="custom-page-fields">${page.fields.filter((key)=>key!=='description').map((key)=>`<span><small>${escapeHTML(labels[key] || collection?.fields.find((field)=>`field:${field.id}`===key)?.name || '')}</small><b>${escapeHTML(fieldValue(record,key) || '—')}</b></span>`).join('')}</span>${icon('chevronRight')}</button>`).join('') || '<p class="composer-access-note">Карточек по этим условиям нет.</p>'}</section>`;
+  const list = `<section class="custom-page-list">${records.map((record)=>`<button type="button" class="custom-page-row" data-open-record="${record.id}"><span class="custom-page-title"><strong>${escapeHTML(record.title)}</strong>${page.fields.includes('description') && record.description ? `<span>${escapeHTML(markdownPlain(record.description))}</span>`:''}</span><span class="custom-page-fields">${page.fields.filter((key)=>key!=='description').map((key)=>`<span data-page-field="${escapeHTML(key)}"><small>${escapeHTML(labels[key] || collection?.fields.find((field)=>`field:${field.id}`===key)?.name || '')}</small><b>${escapeHTML(fieldValue(record,key) || '—')}</b></span>`).join('')}</span>${icon('chevronRight')}</button>`).join('') || '<p class="composer-access-note">Карточек по этим условиям нет.</p>'}</section>`;
   const board = collection ? `<section class="collection-board">${collection.stages.map((stage)=>{const items=records.filter((record)=>record.stageId===stage.id || (!record.stageId && stage.id===collection.stages[0]?.id));return `<section class="collection-column tone-${stage.colorKey}" data-collection-drop="${stage.id}"><header><div><i></i><strong>${escapeHTML(stage.name)}</strong></div><span>${items.length}</span></header><div>${items.map((record)=>renderCollectionCard(record,collection,page.fields)).join('') || '<p class="collection-column-empty">Нет карточек</p>'}</div></section>`;}).join('')}</section>` : list;
-  $('#main-content').innerHTML=`<div class="page-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(page.name)}</h1><p>${recordsCountLabel(records.length)}</p></div><div class="custom-page-actions"><button type="button" class="primary" data-page-create>${icon('plus')} Добавить</button>${canConfigureWorkspace()?`<button type="button" class="secondary" data-page-configure>${icon('sliders')} Настроить страницу</button>`:''}</div></div><label class="custom-page-search">${icon('search')}<input type="search" value="${escapeHTML(state.pageSearch)}" placeholder="Найти на странице" aria-label="Найти на странице"></label>${page.viewMode==='board'?board:list}`;
+  $('#main-content').innerHTML=`<div class="page-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(page.name)}</h1><p>${recordsCountLabel(records.length)}</p></div><div class="custom-page-actions"><button type="button" class="primary" data-page-create>${icon('plus')} Добавить</button>${canConfigureWorkspace()?`<button type="button" class="secondary" data-page-configure>${icon('sliders')} Источник и поля</button>`:''}</div></div><label class="custom-page-search">${icon('search')}<input type="search" value="${escapeHTML(state.pageSearch)}" placeholder="Найти на странице" aria-label="Найти на странице"></label>${page.viewMode==='board'?board:list}`;
   $('[data-page-configure]')?.addEventListener('click',()=>openWorkspacePageEditor(page));
   $('[data-page-create]').addEventListener('click',()=>collection?openCollectionCardDialog(collection):openCreateDialog(page.recordType||'task'));
   $('.custom-page-search input').addEventListener('input',(event)=>{state.pageSearch=event.currentTarget.value;renderWorkspacePage(); const input=$('.custom-page-search input');input.focus();});
@@ -6818,7 +6829,7 @@ const widgetNames = { focus: 'Следующая работа', capture: 'Быс
 const toolbarNames = { help: 'Помощь', notifications: 'Уведомления', create: 'Создание' };
 const toolbarSelectors = { help: '#onboarding-button', notifications: '#notification-button', create: '.create-control' };
 
-function interfaceLayout(preferences = state.layoutDraft || state.interfacePreferences) {
+function interfaceLayout(preferences = state.layoutDraft || (state.pageLayoutDraft ? state.interfaceProfiles[state.pageLayoutDraft.device] : state.interfacePreferences)) {
   const value = preferences?.layout || {};
   return { contentWidth: 1500, sidebarWidth: 238, sidebarSide: 'left', density: 'comfortable', ...value,
     widgetSpans: { focus: 8, capture: 4, capacity: 6, quality: 6, ...value.widgetSpans },
@@ -6827,13 +6838,15 @@ function interfaceLayout(preferences = state.layoutDraft || state.interfacePrefe
 }
 
 function applyInterfaceLayout() {
-  const layout = interfaceLayout();
+  const base = interfaceLayout();
+  const page = currentPageLayout();
+  const layout = state.layoutDraft ? base : { ...base, contentWidth: page.contentWidth || base.contentWidth, density: page.density || base.density, toolbarActions: page.toolbarActions || base.toolbarActions };
   const root = $('#app-root');
   root.style.setProperty('--content-width', `${layout.contentWidth}px`);
   root.style.setProperty('--sidebar-width', `${layout.sidebarWidth}px`);
   root.dataset.sidebarSide = layout.sidebarSide;
   root.dataset.density = layout.density;
-  root.dataset.layoutDevice = state.layoutDraft?.device || interfaceDevice();
+  root.dataset.layoutDevice = state.pageLayoutDraft?.device || state.layoutDraft?.device || interfaceDevice();
   Object.entries(toolbarSelectors).forEach(([key, selector]) => {
     const button = $(selector); const index = layout.toolbarActions.indexOf(key);
     button.hidden = index < 0; button.style.order = index + 1;
@@ -6867,6 +6880,7 @@ function bindLayoutFields(root, onChange = () => {}) {
 }
 
 function startLayoutEditor(device = interfaceDevice()) {
+  if (!leavePageLayoutEditor()) return;
   rememberView();
   state.layoutHistoryEntry = structuredClone(history.state);
   state.layoutDraft = structuredClone(state.interfaceProfiles[device] || state.interfacePreferences);
@@ -6915,7 +6929,7 @@ function bindLayoutEditor() {
     }
   });
   $('[data-layout-cancel]').addEventListener('click', () => { state.layoutDraft = null; render(); });
-  $('[data-layout-reset]').addEventListener('click', () => { state.layoutDraft = { ...state.layoutDraft, dashboardWidgets: Object.keys(widgetNames), layout: interfaceLayout({}) }; render(); });
+  $('[data-layout-reset]').addEventListener('click', () => { state.layoutDraft = { ...state.layoutDraft, dashboardWidgets: Object.keys(widgetNames), layout: { ...interfaceLayout({}), pages: state.layoutDraft.layout.pages } }; render(); });
   $('[data-layout-save]').addEventListener('click', async (event) => {
     const button = event.currentTarget; button.disabled = true;
     const workspaceID = state.activeWorkspaceId; const draft = state.layoutDraft;
@@ -6973,6 +6987,199 @@ function bindLayoutEditor() {
     };
     handle.addEventListener('pointerup', finish); handle.addEventListener('pointercancel', finish);
   });
+}
+
+function pageLayoutKey() {
+  return state.view === 'collections' && state.activeCollectionId ? `collection:${state.activeCollectionId}` : state.view;
+}
+
+function currentPageLayout() {
+  if (state.layoutDraft) return {};
+  const draft = state.pageLayoutDraft;
+  if (draft?.key === pageLayoutKey()) return draft.value;
+  return state.interfacePreferences?.layout?.pages?.[pageLayoutKey()] || {};
+}
+
+function pageLayoutCatalog() {
+  const block = (key, label, selector, required = false, span = 12) => ({ key, label, selector, required, span });
+  const field = (key, label, selector) => ({ key, label, selector });
+  const tableFields = [
+    field('description', 'Описание', '.record-table:not(.work-row) .record-title > span > small, .work-row .record-title > span > em, .kanban-card > button > p'),
+    field('owner', 'Ответственный', '.record-table > span:nth-child(2), .idea-kanban-card > button > span > small'),
+    field('status', 'Состояние и приоритет', '.record-table > span:nth-child(3), .kanban-card .priority'),
+    field('due', 'Дата и прогресс', '.record-table > span:nth-child(4), .kanban-card .deadline'),
+  ];
+  const heading = block('heading', 'Заголовок и создание', ':scope > .page-heading, :scope > .entity-list-heading, :scope > .work-title-row, :scope > .history-title');
+  const list = block('records', 'Карточки', ':scope > .table-panel, :scope > .work-kanban, :scope > .work-calendar, :scope > .idea-stage-board', true);
+  const catalog = {
+    work: [heading, block('filters', 'Поиск и фильтры', ':scope > .work-controls', true), block('summary', 'Сводка и представления', ':scope > .work-view-summary'), list],
+    personal: [heading, block('summary', 'Личная сводка', '.personal-summary'), block('tabs', 'Разделы', '.personal-tabs', true), block('habits', 'Привычки', '.personal-today-grid .personal-section:has(> .habit-list)', false, 6), block('plans', 'Ближайшие планы', '.personal-today-grid .personal-section:has(> .personal-list)', false, 6), block('life', 'Карта времени', '.personal-today-grid .life-section', false, 6), block('notes', 'Последние заметки', '.personal-today-grid .personal-section:has(> .personal-notes-preview)', false, 6)],
+    collections: [heading, block('search', 'Доски и поиск', '.collection-toolbar', true), block('filters', 'Фильтры', '.collection-filters', true), block('records', 'Доска', ':scope > .collection-board', true)],
+    principles: [heading, ...[['preference', 'Критерии'], ['limitation', 'Ограничения'], ['rule', 'Правила']].map(([key, label]) => block(key, label, `.principle-column:has([data-create-principle="${key}"])`, false, 4))],
+    validation: [heading, block('summary', 'Сводка проверок', '.validation-summary'), block('filters', 'Фильтры', '.validation-filter', true), block('records', 'Риски и проверки', '.validation-list', true)],
+    outcomes: [heading, block('filters', 'Фильтры результатов', '.outcome-filter', true), block('records', 'Решения и выводы', '.outcome-list', true)],
+    quality: [heading, block('summary', 'Сводка качества', '.quality-summary'), block('filters', 'Фильтры', '.quality-filters', true), block('records', 'Результаты проверки', '.quality-list', true)],
+    history: [heading, block('filters', 'Фильтры истории', '.history-controls', true), block('records', 'События', '.history-feed', true)],
+    notifications: [block('heading', 'Возврат и действия', '.notification-heading', true), block('filters', 'Статус и период', '.notification-filters', true), block('records', 'Уведомления', '.notification-list', true)],
+    chat: [block('digest', 'AI-выжимка', '.chat-digest')],
+    graph: [block('legend', 'Обозначения карты', '.graph-legend')],
+    structure: [heading, block('hidden', 'Скрытые блоки шаблона', '.hidden-template-blocks')],
+  };
+  let blocks = catalog[state.view] || [heading, block('filters', 'Поиск и фильтры', '.entity-list-controls', true), list];
+  let fields = typeMeta[state.view] || state.view === 'work' ? tableFields : [];
+  if (state.view === 'chat') fields = [field('voice', 'Запись голосового', '[data-chat-voice]'), field('ai', 'AI-выжимка в меню', '[data-chat-ai-digest]')];
+  if (state.view === 'graph') fields = [field('count', 'Количество объектов', '.graph-count'), field('zoom', 'Кнопки масштаба', '#graph-zoom-in, #graph-zoom-out')];
+  if (state.view === 'personal') fields = [field('noteDates', 'Дата заметки', '.personal-note footer time'), field('notePreview', 'Текст в списке заметок', '.personal-note .markdown-body')];
+  const customPage = state.workspacePages.find((item) => `page:${item.id}` === state.view);
+  const collection = state.view === 'collections' ? activeCollection() : customPage ? state.collections.find((item) => item.id === customPage.collectionId) : null;
+  if (customPage) blocks = [heading, block('filters', 'Поиск', '.custom-page-search', true), block('records', 'Карточки', '.custom-page-list, :scope > .collection-board', true)];
+  if (collection || customPage) fields = [
+    field('description', 'Описание', '.collection-card > button > p, .custom-page-title > span'),
+    field('owner', 'Ответственный', '.collection-card footer .avatar, .collection-card footer strong, [data-page-field="owner"]'),
+    field('due', 'Срок', '.collection-card footer small, [data-page-field="due"]'),
+    field('status', 'Состояние', '[data-page-field="status"]'),
+    ...(collection?.fields || []).map((item) => field(`field:${item.id}`, item.name, `[data-page-field="field:${CSS.escape(item.id)}"]`)),
+  ].filter((item) => !customPage || customPage.fields.includes(item.key));
+  if (collection && !customPage) fields = fields.filter((item) => item.key !== 'status');
+  return { blocks, fields };
+}
+
+function pageLayoutDirty() {
+  const draft = state.pageLayoutDraft;
+  return Boolean(draft && JSON.stringify(draft.value) !== draft.baseline);
+}
+
+function leavePageLayoutEditor() {
+  if (state.pageLayoutSaving) { toast('Дождитесь сохранения настроек'); return false; }
+  if (pageLayoutDirty() && !confirm('Выйти без сохранения настройки страницы?')) return false;
+  state.pageLayoutDraft = null;
+  return true;
+}
+
+function startPageLayoutEditor(device = interfaceDevice()) {
+  if (!leavePageLayoutEditor()) return;
+  $('.page-layout-editor')?.remove();
+  $$('.page-block-tools').forEach((node) => node.remove());
+  $$('[data-page-block]').forEach((node) => node.parentElement.pageReorderCleanup?.());
+  const key = pageLayoutKey();
+  const value = structuredClone(state.interfaceProfiles[device]?.layout?.pages?.[key] || {});
+  state.pageLayoutDraft = { key, device, value, baseline: JSON.stringify(value) };
+  rememberView(); state.layoutHistoryEntry = structuredClone(history.state);
+  applyInterfaceLayout(); applyPageLayout();
+  $('.page-layout-editor')?.scrollIntoView({ block: 'start', behavior: 'instant' });
+}
+
+function renderPageLayoutEditor(catalog) {
+  const draft = state.pageLayoutDraft, value = draft.value;
+  const title = $('#page-title').textContent;
+  const desktop = draft.device === 'desktop';
+  return `<section class="page-layout-editor"><header><h2>Настроить: ${escapeHTML(title)}</h2><div><button type="button" class="primary" data-page-layout-save>${icon('check')} Сохранить</button><button type="button" class="secondary" data-page-layout-cancel>Отмена</button><button type="button" class="icon-button" data-page-layout-reset title="Сбросить только эту страницу" aria-label="Сбросить только эту страницу">${icon('rotate')}</button></div></header>${deviceSelector(draft.device)}<details class="page-layout-options"><summary>Размеры, поля и действия</summary><div class="page-layout-options-grid"><label>Плотность<select name="pageDensity"><option value="">Как во всём интерфейсе</option><option value="comfortable" ${value.density === 'comfortable' ? 'selected' : ''}>Обычная</option><option value="compact" ${value.density === 'compact' ? 'selected' : ''}>Компактная</option></select></label>${desktop && !['chat', 'graph'].includes(state.view) ? `<label>Ширина страницы<select name="pageWidth">${[[0,'Как во всём интерфейсе'],[1000,'Узкая'],[1500,'Обычная'],[2200,'Широкая']].map(([n,label]) => `<option value="${n}" ${Number(value.contentWidth || 0) === n ? 'selected' : ''}>${label}</option>`).join('')}</select></label>` : ''}${catalog.fields.length ? `<fieldset><legend>Поля и элементы</legend>${catalog.fields.map((field) => `<label class="check"><input type="checkbox" data-page-field-toggle="${escapeHTML(field.key)}" ${value.hiddenFields?.includes(field.key) ? '' : 'checked'}><span>${escapeHTML(field.label)}</span></label>`).join('')}</fieldset>` : ''}<fieldset><legend>Верхняя панель</legend><label class="check"><input type="checkbox" data-page-toolbar-inherit ${value.toolbarActions ? '' : 'checked'}><span>Как во всём интерфейсе</span></label><div class="page-toolbar-order">${[...(value.toolbarActions || interfaceLayout().toolbarActions), ...Object.keys(toolbarNames).filter((key) => !(value.toolbarActions || interfaceLayout().toolbarActions).includes(key))].map((key) => `<div data-page-toolbar="${key}"><button type="button" class="drag-handle" data-reorder-handle ${value.toolbarActions ? '' : 'disabled'} title="Переместить" aria-label="Переместить: ${toolbarNames[key]}">${icon('grip')}</button><label class="check"><input type="checkbox" ${(value.toolbarActions || interfaceLayout().toolbarActions).includes(key) ? 'checked' : ''} ${value.toolbarActions ? '' : 'disabled'}><span>${toolbarNames[key]}</span></label></div>`).join('')}</div></fieldset></div></details><div class="page-layout-restore">${catalog.blocks.filter((block) => !block.required && value.hiddenBlocks?.includes(block.key)).map((block) => `<button type="button" class="secondary" data-page-block-restore="${block.key}">${icon('plus')} ${escapeHTML(block.label)}</button>`).join('')}</div></section>`;
+}
+
+function bindPageLayoutEditor(editor, catalog) {
+  const draft = state.pageLayoutDraft;
+  const refresh = () => { editor.remove(); applyInterfaceLayout(); applyPageLayout(); };
+  $('[data-page-layout-cancel]', editor).addEventListener('click', () => { state.pageLayoutDraft = null; editor.remove(); applyInterfaceLayout(); applyPageLayout(); });
+  $('[data-page-layout-reset]', editor).addEventListener('click', () => { draft.value = {}; refresh(); });
+  $$('[data-interface-device]', editor).forEach((button) => button.addEventListener('click', () => { if (button.dataset.interfaceDevice !== draft.device) startPageLayoutEditor(button.dataset.interfaceDevice); }));
+  $('[name="pageDensity"]', editor).addEventListener('change', (event) => { draft.value.density = event.target.value; applyInterfaceLayout(); });
+  $('[name="pageWidth"]', editor)?.addEventListener('change', (event) => { draft.value.contentWidth = Number(event.target.value); applyInterfaceLayout(); });
+  $$('[data-page-field-toggle]', editor).forEach((input) => input.addEventListener('change', () => { draft.value.hiddenFields = $$('[data-page-field-toggle]', editor).filter((item) => !item.checked).map((item) => item.dataset.pageFieldToggle); applyPageLayout(); }));
+  const toolbar = $('.page-toolbar-order', editor);
+  const updateToolbar = () => { draft.value.toolbarActions = $$('[data-page-toolbar]', toolbar).filter((row) => $('input', row).checked).map((row) => row.dataset.pageToolbar); applyInterfaceLayout(); };
+  $('[data-page-toolbar-inherit]', editor).addEventListener('change', (event) => { if (event.target.checked) delete draft.value.toolbarActions; else draft.value.toolbarActions = [...interfaceLayout().toolbarActions]; refresh(); });
+  $$('input', toolbar).forEach((input) => input.addEventListener('change', updateToolbar));
+  bindReorderList(toolbar, '[data-page-toolbar]', () => { if (draft.value.toolbarActions) updateToolbar(); });
+  $$('[data-page-block-restore]', editor).forEach((button) => button.addEventListener('click', () => { draft.value.hiddenBlocks = (draft.value.hiddenBlocks || []).filter((key) => key !== button.dataset.pageBlockRestore); refresh(); }));
+  $('[data-page-layout-save]', editor).addEventListener('click', async () => {
+    if (state.pageLayoutSaving) return;
+    state.pageLayoutSaving = true;
+    $('#main-content').inert = true;
+    const workspace = state.activeWorkspaceId;
+    $$('button, input, select', editor).forEach((item) => { item.disabled = true; });
+    try {
+      const preferences = structuredClone(state.interfaceProfiles[draft.device]);
+      preferences.layout.pages = { ...preferences.layout.pages, [draft.key]: structuredClone(draft.value) };
+      await saveInterfacePreferences(preferences);
+      if (workspace !== state.activeWorkspaceId || state.pageLayoutDraft !== draft) return;
+      state.pageLayoutDraft = null; editor.remove(); applyInterfaceLayout(); applyPageLayout(); toast('Настройка страницы сохранена');
+    } catch (error) { toast(error.message, true); refresh(); }
+    finally { state.pageLayoutSaving = false; $('#main-content').inert = false; }
+  });
+}
+
+function applyPageLayout() {
+  const root = $('#main-content');
+  if (!state.me || !root || state.layoutDraft) return;
+  if ($('.reorder-dragging', root)) return;
+  const draft = state.pageLayoutDraft;
+  // A board switch may be initiated by history or synchronization, outside navigation.
+  if (draft && draft.key !== pageLayoutKey()) { state.pageLayoutDraft = null; $('.page-layout-editor', root)?.remove(); }
+  applyInterfaceLayout();
+  const editing = Boolean(state.pageLayoutDraft), value = currentPageLayout(), catalog = pageLayoutCatalog();
+  const personalGrid = $('.personal-today-grid', root);
+  if (personalGrid && $('.personal-column', personalGrid)) {
+    $$('.personal-column > .personal-section', personalGrid).forEach((node) => personalGrid.append(node));
+    $$('.personal-column', personalGrid).forEach((node) => node.remove());
+  }
+  root.classList.toggle('page-layout-editing', editing);
+  root.classList.toggle('page-mobile-preview', editing && draft.device === 'mobile');
+  if (!editing) {
+    $$('[data-page-block]', root).forEach((node) => { node.parentElement.pageReorderCleanup?.(); node.parentElement.pageReorderDraft = null; });
+    $$('.page-block-tools', root).forEach((node) => node.remove());
+    $('.page-layout-editor', root)?.remove();
+  } else if (!$('.page-layout-editor', root)) {
+    root.insertAdjacentHTML('afterbegin', renderPageLayoutEditor(catalog));
+    bindPageLayoutEditor($('.page-layout-editor', root), catalog);
+  }
+  const groups = new Map();
+  const hidden = new Set(value.hiddenBlocks || []);
+  catalog.blocks.forEach((block) => {
+    const node = $(block.selector, root);
+    if (!node) return;
+    node.dataset.pageBlock = block.key;
+    node.classList.toggle('page-block-hidden', !block.required && hidden.has(block.key));
+    const parent = node.parentElement;
+    if (!groups.has(parent)) groups.set(parent, []);
+    groups.get(parent).push({ block, node });
+  });
+  groups.forEach((items, parent) => {
+    const order = [...new Set([...(value.order || []), ...catalog.blocks.map((block) => block.key)])];
+    const sorted = items.slice().sort((a, b) => order.indexOf(a.block.key) - order.indexOf(b.block.key));
+    const nodes = new Set(items.map((item) => item.node));
+    // Keep unmanaged siblings (headings, composers, pagination) in their original slots.
+    const current = [...parent.children].filter((node) => nodes.has(node));
+    sorted.forEach(({ node }, index) => {
+      if (current[index] === node) return;
+      parent.insertBefore(node, current[index]);
+      current.splice(current.indexOf(node), 1); current.splice(index, 0, node);
+    });
+    const flexible = parent.matches('.principle-grid, .personal-today-grid');
+    if (flexible) parent.classList.add('page-block-grid');
+    items.forEach(({ block, node }) => {
+      if (flexible) node.style.setProperty('--page-block-span', String(value.blockSpans?.[block.key] || block.span));
+      const size = $('[data-page-block-span]', node);
+      if (size && size.value !== String(value.blockSpans?.[block.key] || block.span)) size.value = String(value.blockSpans?.[block.key] || block.span);
+      if (!editing || $('.page-block-tools', node)) return;
+      node.insertAdjacentHTML('beforeend', `<div class="page-block-tools">${items.length > 1 ? `<button type="button" class="drag-handle" data-reorder-handle aria-label="Переместить: ${escapeHTML(block.label)}" title="Переместить">${icon('grip')}</button>` : ''}<strong>${escapeHTML(block.label)}</strong>${flexible && draft.device === 'desktop' ? `<select data-page-block-span aria-label="Ширина: ${escapeHTML(block.label)}">${[[4,'1/3'],[6,'1/2'],[8,'2/3'],[12,'Вся']].map(([span, label]) => `<option value="${span}" ${(value.blockSpans?.[block.key] || block.span) === span ? 'selected' : ''}>${label}</option>`).join('')}</select>` : ''}${!block.required ? `<button type="button" class="icon-button" data-page-block-hide title="Скрыть блок" aria-label="Скрыть: ${escapeHTML(block.label)}">${icon('minus')}</button>` : ''}</div>`);
+      $('[data-page-block-hide]', node)?.addEventListener('click', () => { if (state.pageLayoutSaving) return; draft.value.hiddenBlocks = [...new Set([...(draft.value.hiddenBlocks || []), block.key])]; $('.page-layout-editor', root)?.remove(); applyPageLayout(); });
+      $('[data-page-block-span]', node)?.addEventListener('change', (event) => { draft.value.blockSpans = { ...draft.value.blockSpans, [block.key]: Number(event.target.value) }; applyPageLayout(); });
+    });
+    if (editing && parent.pageReorderDraft !== draft && items.length > 1) {
+      parent.pageReorderCleanup?.();
+      parent.pageReorderDraft = draft;
+      parent.pageReorderCleanup = bindReorderList(parent, ':scope > [data-page-block]', () => {
+        if (state.pageLayoutSaving) return;
+        const keys = [...parent.children].filter((node) => nodes.has(node)).map((node) => node.dataset.pageBlock);
+        draft.value.order = [...(draft.value.order || []).filter((key) => !keys.includes(key)), ...keys];
+      });
+    }
+  });
+  catalog.fields.forEach((field) => $$(field.selector, root).forEach((node) => node.classList.toggle('page-field-hidden', value.hiddenFields?.includes(field.key) || false)));
+  if (state.view === 'work' || typeMeta[state.view]) {
+    const columns = ['minmax(180px, 2.2fr)', ...['owner', 'status', 'due'].filter((key) => !value.hiddenFields?.includes(key)).map(() => 'minmax(100px, 1fr)')];
+    $$('.record-table', root).forEach((row) => row.style.setProperty('--page-table-columns', columns.join(' ')));
+  }
 }
 
 bootstrap();

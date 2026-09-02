@@ -62,29 +62,65 @@ func TestInterfaceDevicesRemainIndependent(t *testing.T) {
 	requestJSON(t, client, "POST", server.URL+"/api/workspaces", map[string]any{"name": "Other project"}, 201, &second)
 	var saved InterfacePreferences
 	mobile := InterfacePreferences{HiddenNavItems: []string{"chat", "invalid"}, NavOrder: []string{"personal", "work"}, DashboardWidgets: []string{"focus"}, Layout: InterfaceLayout{Density: "compact", ToolbarActions: []string{}, QuickActions: []string{}}}
+	mobile.Layout.Pages = map[string]PageLayout{"work": {HiddenBlocks: []string{"summary"}, HiddenFields: []string{"owner"}, ContentWidth: 1200}, "idea": {Density: "comfortable"}}
 	requestWorkspaceJSON(t, client, "PUT", server.URL+"/api/interface/preferences?device=mobile", project.ID, mobile, 200, &saved)
 	if saved.Device != "mobile" || len(saved.HiddenNavItems) != 1 || len(saved.Layout.ToolbarActions) != 0 {
 		t.Fatalf("mobile normalization: %#v", saved)
 	}
+	saved = InterfacePreferences{}
 	requestWorkspaceJSON(t, client, "GET", server.URL+"/api/interface/preferences", project.ID, nil, 200, &saved)
 	if saved.Device != "desktop" || len(saved.HiddenNavItems) != 0 || len(saved.DashboardWidgets) != 4 {
 		t.Fatalf("mobile overwrote desktop: %#v", saved)
 	}
+	if len(saved.Layout.Pages) != 0 {
+		t.Fatal("mobile page settings leaked into desktop")
+	}
 	desktop := InterfacePreferences{DashboardWidgets: []string{"capacity", "quality"}, Layout: InterfaceLayout{ContentWidth: 1800}}
 	requestWorkspaceJSON(t, client, "PUT", server.URL+"/api/interface/preferences?device=desktop", project.ID, desktop, 200, &saved)
+	saved = InterfacePreferences{}
 	requestWorkspaceJSON(t, client, "GET", server.URL+"/api/interface/preferences?device=mobile", project.ID, nil, 200, &saved)
 	if saved.Device != "mobile" || saved.Layout.Density != "compact" || len(saved.HiddenNavItems) != 1 || len(saved.Layout.ToolbarActions) != 0 || len(saved.DashboardWidgets) != 1 {
 		t.Fatalf("desktop overwrote mobile: %#v", saved)
 	}
+	if saved.Layout.Pages["work"].ContentWidth != 1200 || saved.Layout.Pages["idea"].Density != "comfortable" {
+		t.Fatal("desktop write lost independent page settings")
+	}
+	saved = InterfacePreferences{}
 	requestWorkspaceJSON(t, client, "GET", server.URL+"/api/interface/preferences?device=mobile", second.ID, nil, 200, &saved)
 	if len(saved.HiddenNavItems) != 0 || len(saved.DashboardWidgets) != 4 {
 		t.Fatalf("project leak: %#v", saved)
 	}
+	if len(saved.Layout.Pages) != 0 {
+		t.Fatal("page settings leaked into another project")
+	}
+	saved = InterfacePreferences{}
 	requestJSON(t, other, "GET", server.URL+"/api/interface/preferences?device=mobile", nil, 200, &saved)
 	if len(saved.HiddenNavItems) != 0 || saved.Layout.Density != "comfortable" {
 		t.Fatalf("account leak: %#v", saved)
 	}
+	if len(saved.Layout.Pages) != 0 {
+		t.Fatal("page settings leaked into another account")
+	}
 	requestWorkspaceJSON(t, other, "GET", server.URL+"/api/interface/preferences?device=mobile", project.ID, nil, http.StatusForbidden, nil)
 	requestWorkspaceJSON(t, client, "GET", server.URL+"/api/interface/preferences?device=unknown", project.ID, nil, 400, nil)
 	requestWorkspaceJSON(t, client, "PUT", server.URL+"/api/interface/preferences?device=unknown", project.ID, mobile, 400, nil)
+}
+
+func TestPageLayoutNormalization(t *testing.T) {
+	actions := []string{"create", "create", "injected"}
+	pages := normalizePageLayouts(map[string]PageLayout{
+		"work": {Order: []string{"summary", "summary", "records", "<script>"}, HiddenFields: []string{"field:abc", "x\"onclick"}, ContentWidth: 99999, Density: "bad", ToolbarActions: &actions, BlockSpans: map[string]int{"summary": 6, "bad": 123}},
+		"chat": {}, "#evil": {},
+	})
+	if len(pages) != 2 || len(pages["work"].Order) != 2 || len(pages["work"].HiddenFields) != 1 || pages["work"].ContentWidth != 2200 || pages["work"].Density != "" || len(pages["work"].BlockSpans) != 1 {
+		t.Fatalf("unexpected normalization: %#v", pages)
+	}
+	if len(*pages["work"].ToolbarActions) != 1 || pages["chat"].ToolbarActions != nil {
+		t.Fatal("toolbar inheritance lost")
+	}
+	empty := []string{}
+	pages = normalizePageLayouts(map[string]PageLayout{"chat": {ToolbarActions: &empty}})
+	if pages["chat"].ToolbarActions == nil || len(*pages["chat"].ToolbarActions) != 0 {
+		t.Fatal("explicit empty toolbar must not inherit defaults")
+	}
 }
