@@ -5,6 +5,27 @@ import (
 	"testing"
 )
 
+func TestSidebarStylesTargetTheActualScrollableList(t *testing.T) {
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range []string{
+		".sidebar { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; }",
+		".project-nav-items { min-height: 0; overflow-x: hidden; overflow-y: auto;",
+		"scrollbar-width: thin; scrollbar-color: #52605a transparent;",
+		".project-nav-items::-webkit-scrollbar { width: 6px; background: transparent; }",
+		".project-nav-items::-webkit-scrollbar-track { background: transparent; }",
+		".project-nav-items::-webkit-scrollbar-button { display: none; width: 0; height: 0; }",
+		".project-nav-items { scrollbar-width: none; }",
+		".project-nav-items::-webkit-scrollbar { display: none; width: 0; }",
+	} {
+		if !bytes.Contains(styles, []byte(marker)) {
+			t.Fatalf("sidebar scroll styling missing: %s", marker)
+		}
+	}
+}
+
 func TestProgressIndicatorsDoNotRequireInlineStyles(t *testing.T) {
 	app, err := Files.ReadFile("app.js")
 	if err != nil {
@@ -200,7 +221,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260902-calendar-notes-1")) != 2 {
+	if bytes.Count(index, []byte("20260902-pages-profile-1")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }

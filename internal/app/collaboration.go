@@ -104,10 +104,12 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	setUserAvatar(&profile.User, avatarStoredName, avatarUpdatedAt)
 	since := time.Now().UTC().AddDate(0, 0, -29).Format("2006-01-02")
-	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(active_seconds), 0), COALESCE(SUM(interactions), 0) FROM user_activity_daily WHERE user_id = ? AND activity_date >= ?`, userID, since).
-		Scan(&profile.ActiveSeconds30Days, &profile.Interactions30Days)
-	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM activity WHERE actor_id = ? AND created_at >= ?`, userID, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339Nano)).Scan(&profile.Actions30Days)
-	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*), COALESCE(SUM(estimate_minutes), 0), COALESCE(SUM(actual_minutes), 0) FROM records WHERE owner_id = ? AND status = 'completed'`, userID).
+	if userID == currentUser(r).ID {
+		_ = s.store.db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(active_seconds), 0), COALESCE(SUM(interactions), 0) FROM user_activity_daily WHERE user_id = ? AND activity_date >= ?`, userID, since).
+			Scan(&profile.ActiveSeconds30Days, &profile.Interactions30Days)
+	}
+	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM activity WHERE actor_id = ? AND workspace_id = ? AND created_at >= ?`, userID, currentWorkspace(r).ID, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339Nano)).Scan(&profile.Actions30Days)
+	_ = s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*), COALESCE(SUM(estimate_minutes), 0), COALESCE(SUM(actual_minutes), 0) FROM records WHERE owner_id = ? AND workspace_id = ? AND status = 'completed'`, userID, currentWorkspace(r).ID).
 		Scan(&profile.CompletedRecords, &profile.EstimateMinutes, &profile.ActualMinutes)
 	if capacity, capacityErr := s.listTeamCapacity(r); capacityErr == nil {
 		for _, item := range capacity {
@@ -122,7 +124,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile.Activity = make([]UserActivityDay, 0)
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT activity_date, active_seconds, interactions, last_seen_at FROM user_activity_daily WHERE user_id = ? ORDER BY activity_date DESC LIMIT 30`, userID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT activity_date, active_seconds, interactions, last_seen_at FROM user_activity_daily WHERE user_id = ? AND user_id = ? ORDER BY activity_date DESC LIMIT 30`, userID, currentUser(r).ID)
 	if err == nil {
 		for rows.Next() {
 			var day UserActivityDay
@@ -137,7 +139,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listUserActivity(ctx context.Context, userID int64, limit int) ([]Activity, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT a.id, a.actor_id, u.username, a.entity_type, a.entity_id, a.action, a.details_json, a.reason, a.created_at FROM activity a JOIN users u ON u.id = a.actor_id WHERE a.actor_id = ? ORDER BY a.created_at DESC LIMIT ?`, userID, limit)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT a.id, a.actor_id, u.username, a.entity_type, a.entity_id, a.action, a.details_json, a.reason, a.created_at FROM activity a JOIN users u ON u.id = a.actor_id WHERE a.actor_id = ? AND a.workspace_id = ? ORDER BY a.created_at DESC LIMIT ?`, userID, workspaceIDFromContext(ctx), limit)
 	if err != nil {
 		return nil, err
 	}

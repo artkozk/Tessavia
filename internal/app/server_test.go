@@ -568,8 +568,12 @@ func TestCollaborationHierarchyActivityAndSuggestion(t *testing.T) {
 	}, http.StatusNoContent, nil)
 	var profile UserProfile
 	requestJSON(t, ownerClient, http.MethodGet, server.URL+"/api/users/"+strconv.FormatInt(partner.ID, 10)+"/profile", nil, http.StatusOK, &profile)
+	if profile.ActiveSeconds30Days != 0 || profile.Interactions30Days != 0 || len(profile.Activity) != 0 {
+		t.Fatalf("partner private activity leaked = %#v", profile)
+	}
+	requestJSON(t, partnerClient, http.MethodGet, server.URL+"/api/users/"+strconv.FormatInt(partner.ID, 10)+"/profile", nil, http.StatusOK, &profile)
 	if profile.ActiveSeconds30Days != 45 || profile.Interactions30Days != 12 || len(profile.Activity) != 1 {
-		t.Fatalf("partner activity profile = %#v", profile)
+		t.Fatalf("own activity missing = %#v", profile)
 	}
 
 	var suggestion RecordSuggestion

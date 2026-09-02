@@ -53,6 +53,7 @@ const iconPaths = {
 	reply: '<path d="m9 17-6-5 6-5v3h4a7 7 0 0 1 7 7v1a9 9 0 0 0-7-5H9Z"/>',
 	smile: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
 	video: '<path d="M15 10 21 7v10l-6-3Z"/><rect width="13" height="14" x="2" y="5" rx="2"/>',
+	camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/>',
 	copy: '<rect width="13" height="13" x="8" y="8" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
 	stop: '<rect width="12" height="12" x="6" y="6" rx="1"/>',
   lock: '<rect width="16" height="11" x="4" y="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
@@ -1100,10 +1101,12 @@ function latestTimestamp(items, field, fallback = '1970-01-01T00:00:00Z') {
 }
 
 async function syncProjectChanges({ renderCurrent = false, includeCompanions = true } = {}) {
+  const workspace = state.activeWorkspaceId;
   const query = new URLSearchParams({ recordsSince: state.syncRecordsSince, activitySince: state.syncActivitySince });
   const requests = [api(`/api/sync?${query}`)];
   if (includeCompanions) requests.push(api('/api/notifications'), api('/api/questions/pending'), api('/api/chat/threads'));
   const [changes, notifications, pendingQuestions, chatThreads] = await Promise.all(requests);
+  if (workspace !== state.activeWorkspaceId) return { changed: false, activityChanged: false };
   const recordsByID = new Map(state.records.map((record) => [record.id, record]));
   let changed = false;
   (changes.records || []).forEach((record) => {
@@ -1117,6 +1120,7 @@ async function syncProjectChanges({ renderCurrent = false, includeCompanions = t
   const newActivity = (changes.activity || []).filter((item) => !knownActivity.has(item.id) && (typeMeta[item.entityType] || ['section_definition', 'planning_cycle', 'workspace_page', 'workspace'].includes(item.entityType)));
   if (newActivity.some((item) => ['section_definition', 'workspace_page', 'workspace'].includes(item.entityType))) {
     const [definitions, projectNavigation, workspacePages] = await Promise.all([api('/api/section-definitions'), api('/api/workspace/navigation'), api('/api/workspace/pages?includeArchived=true')]);
+    if (workspace !== state.activeWorkspaceId) return { changed: false, activityChanged: false };
     Object.assign(state, { definitions, projectNavigation, workspacePages });
     state.detailCache.clear();
   }
@@ -1125,6 +1129,7 @@ async function syncProjectChanges({ renderCurrent = false, includeCompanions = t
   state.syncActivitySince = latestTimestamp(changes.activity || [], 'createdAt', state.syncActivitySince);
   if (includeCompanions) Object.assign(state, { notifications, pendingQuestions, chatThreads });
   if (changed || newActivity.length) {
+    state.contentRefreshPending = true;
     state.qualityReport = null;
     state.teamCapacity = null;
   }
@@ -1234,6 +1239,7 @@ function bindGlobalEvents() {
   bindSidebarSwipe();
   bindDialogDismissalEvents();
   $$('dialog').forEach((dialog) => dialog.addEventListener('close', () => {
+    queueMicrotask(refreshPendingContent);
     if (dialog.dataset.historyState === 'true' && history.state?.businessControlOverlay === dialog.id) {
       dialog.dataset.historyState = 'false';
       state.suppressOverlayPop = true;
@@ -1431,6 +1437,7 @@ function confirmUnsavedDialog(dialog) {
 }
 
 async function confirmDialogTransition(dialog) {
+  if (dialog.dataset.profileBusy === 'true') { toast('Дождитесь завершения сохранения профиля'); return false; }
   if (dialog.dataset.composerDirty === 'true') return discardComposerChanges(dialog);
   flushDialogDrafts(dialog);
   if (!dialogHasUnsavedChanges(dialog)) return true;
@@ -1540,6 +1547,13 @@ function workspaceHasActiveInput() {
   );
 }
 
+function refreshPendingContent() {
+  if (!state.contentRefreshPending || state.layoutDraft || state.pageLayoutDraft || state.view === 'graph' || state.view === 'chat' || workspaceHasActiveInput() || document.querySelector('dialog[open]') || $('.sidebar').classList.contains('open')) return;
+  const top = window.scrollY;
+  renderContent();
+  window.scrollTo({ top, behavior: 'instant' });
+}
+
 async function refreshLiveData() {
   if (!state.me || document.hidden || state.liveRefreshRunning) return;
   state.liveRefreshRunning = true;
@@ -1549,7 +1563,7 @@ async function refreshLiveData() {
     if (state.view === 'work' && state.workViewMode === 'calendar') await refreshPlanningCycles();
     const cycleChanged = previousCycleUpdate !== (state.activePlanningCycle?.updatedAt || '');
     const overlayOpen = Boolean(document.querySelector('dialog[open]')) || $('.sidebar').classList.contains('open');
-    if (!state.layoutDraft && !state.pageLayoutDraft && !workspaceHasActiveInput() && !overlayOpen && state.view !== 'graph' && (result.changed || result.activityChanged || cycleChanged || state.view === 'notifications')) renderContent();
+    if (!state.layoutDraft && !state.pageLayoutDraft && !workspaceHasActiveInput() && !overlayOpen && state.view !== 'graph' && (result.changed || result.activityChanged || cycleChanged || state.contentRefreshPending || state.view === 'notifications')) renderContent();
   } catch (_) {
     // A background refresh must not interrupt active work. Foreground API actions report their errors explicitly.
   } finally {
@@ -1901,6 +1915,7 @@ function openInterfaceSettings() {
 }
 
 function renderContent() {
+  state.contentRefreshPending = false;
   applyInterfaceLayout();
   const titles = Object.fromEntries(navItems);
   $('#main-content').classList.toggle('graph-main-content', state.view === 'graph');
@@ -3144,7 +3159,7 @@ function openCollectionCardDialog(collection, record = null, stageID = '', defau
 				updated = await api(`/api/records/${record.id}/custom-fields`, { method: 'PUT', body: JSON.stringify({ values: customFields }) });
 			} else {
 				const values = new FormData(form);
-				updated = await api('/api/records', { method: 'POST', body: JSON.stringify({ type: collection.defaultRecordType, title: values.get('title'), description: values.get('description'), ownerId: Number(values.get('ownerId')), priority: values.get('priority'), dueAt: values.get('dueAt') ? new Date(values.get('dueAt')).toISOString() : '', workstream: 'business', editPolicy: 'shared', collectionId: collection.id, stageId: values.get('stageId'), customFields }) });
+				updated = await api('/api/records', { method: 'POST', body: JSON.stringify({ type: defaults.recordType || collection.defaultRecordType, title: values.get('title'), description: values.get('description'), ownerId: Number(values.get('ownerId')), priority: values.get('priority'), dueAt: values.get('dueAt') ? new Date(values.get('dueAt')).toISOString() : '', workstream: 'business', editPolicy: 'shared', collectionId: collection.id, stageId: values.get('stageId'), customFields }) });
 			}
 			if (workspace !== state.activeWorkspaceId) return;
 			state.records = record ? state.records.map((item) => item.id === updated.id ? updated : item) : [updated, ...state.records];
@@ -3292,7 +3307,7 @@ function chatPresenceLabel(thread) {
 
 function chatThreadTitle(thread) {
 	if (!thread) return 'Диалог';
-	return thread.kind === 'team' ? (thread.partnerUsername || 'Партнёр') : thread.title;
+	return thread.kind === 'team' ? (thread.partnerUsername || 'Чат проекта') : thread.title;
 }
 
 function chatClientNonce() {
@@ -3866,7 +3881,7 @@ function graphRange(name, label, value, min = 0, max = 100) {
 
 function renderGraphSettings() {
   return `<aside id="graph-settings" class="graph-settings ${state.graphSettingsOpen ? 'open' : ''}" aria-label="Настройки карты" aria-hidden="${state.graphSettingsOpen ? 'false' : 'true'}" ${state.graphSettingsOpen ? '' : 'inert'}>
-    <header><div><p class="eyebrow">Graph View</p><h2>Настройки карты</h2></div><div><button type="button" class="text-button" data-reset-graph-settings>Сбросить</button><button type="button" class="icon-button" data-close-graph-settings aria-label="Закрыть">${icon('x')}</button></div></header>
+    <header><div><p class="eyebrow">Карта связей</p><h2>Настройки карты</h2></div><div><button type="button" class="text-button" data-reset-graph-settings>Сбросить</button><button type="button" class="icon-button" data-close-graph-settings aria-label="Закрыть">${icon('x')}</button></div></header>
     <div class="graph-settings-body">
       <section><h3>Фильтры</h3><label class="graph-setting-toggle"><input type="checkbox" data-graph-setting="showDiscussion" ${state.graphShowDiscussion ? 'checked' : ''}><span>Вопросы и ответы</span></label><label class="graph-setting-toggle"><input type="checkbox" data-graph-setting="showOrphans" ${state.graphShowOrphans ? 'checked' : ''}><span>Объекты без связей</span></label></section>
       <section><h3>Группы</h3><div class="graph-group-list">${graphGroups.map((group) => `<label class="graph-group-row"><input type="checkbox" data-graph-group="${group.key}" ${state.graphHiddenGroups.has(group.key) ? '' : 'checked'}><input type="color" data-graph-group-color="${group.key}" value="${escapeHTML(state.graphGroupColors[group.key] || group.color)}" aria-label="Цвет группы ${escapeHTML(group.label)}"><span>${escapeHTML(group.label)}</span></label>`).join('')}</div></section>
@@ -6129,10 +6144,13 @@ function openCreateDialog(initialType = 'idea', preset = {}) {
   if (initialType !== 'inbox') bindCreateSuggestion(createForm, initialType);
   $('#create-record-form').addEventListener('submit', async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget); const due = form.get('dueAt');
+    const submit = $('button[type="submit"]', event.currentTarget);
+    if (submit.disabled) return;
     if (initialType === 'decision' && !String(form.get('description') || '').trim()) {
       event.currentTarget.elements.description?.focus();
       return toast('Зафиксируйте содержание и основание решения', true);
     }
+    submit.disabled = true;
     try {
       const record = await api('/api/records', { method: 'POST', body: JSON.stringify({ type: form.get('type'), kind: form.get('kind'), title: form.get('title'), description: form.get('description'), ownerId: Number(form.get('ownerId')), dueAt: due ? new Date(due).toISOString() : '', priority: form.get('priority') || 'normal', workstream: form.get('workstream') || 'business', editPolicy: form.get('editPolicy') || 'shared', parentId: form.get('parentId') || '', isRoot: event.currentTarget.elements.isRoot.checked, estimateMinutes: Number(form.get('estimateMinutes')), businessDetails: businessDetailsFromForm(event.currentTarget, initialType) }) });
       let linkError = '';
@@ -6147,6 +6165,7 @@ function openCreateDialog(initialType = 'idea', preset = {}) {
       clearWorkingDraft(draftScope);
       closeDialogImmediately($('#create-dialog')); await syncProjectChanges(); toast(linkError || 'Карточка создана', Boolean(linkError)); await openRecord(record.id, { workspace: Boolean(preset.sourceRecordId), edit: true, tab: preset.comparisonMode ? 'content' : undefined });
     } catch (error) { toast(error.message, true); }
+    finally { submit.disabled = false; }
   });
   openModal($('#create-dialog'));
 }
@@ -6332,11 +6351,17 @@ function renderAvatarContent(node, user) {
 	node.innerHTML = user?.avatarUrl ? `<img src="${escapeHTML(user.avatarUrl)}" alt="">` : escapeHTML(userInitials(user));
 }
 
+function renderProfilePhotoEditor(user) {
+  return `<section class="profile-photo-editor"><button type="button" class="profile-avatar-picker" data-pick-avatar title="Изменить фото профиля" aria-label="Изменить фото профиля">${avatarMarkup(user, 'profile-avatar')}<span class="profile-camera" aria-hidden="true">${icon('camera')}</span></button><input id="profile-avatar-input" type="file" accept="image/jpeg,image/png" hidden><div><strong>Фото профиля</strong><small>JPEG или PNG · до 5 МБ</small><button type="button" class="quiet" data-delete-avatar ${user.avatarUrl ? '' : 'hidden'}>${icon('trash')} Удалить фото</button><progress id="profile-avatar-progress" max="100" value="0" aria-label="Загрузка фото" hidden></progress><small data-avatar-status role="status"></small></div></section>`;
+}
+
 function uploadProfileAvatar(file, onProgress) {
 	return new Promise((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
 		xhr.open('POST', '/api/me/avatar');
 		xhr.responseType = 'json';
+		xhr.timeout = 60000;
+		xhr.addEventListener('timeout', () => reject(new Error('Загрузка заняла слишком много времени. Попробуйте ещё раз.')));
 		xhr.upload.addEventListener('progress', (event) => {
 			if (event.lengthComputable) onProgress?.(Math.round(event.loaded * 100 / event.total));
 		});
@@ -6353,6 +6378,10 @@ function uploadProfileAvatar(file, onProgress) {
 
 async function openProfile(userId) {
   const dialog = $('#profile-dialog');
+  if (dialog.open && !await confirmDialogTransition(dialog)) return;
+  const requestId = String(Number(dialog.dataset.profileRequest || 0) + 1);
+  dialog.dataset.profileRequest = requestId;
+  dialog.dataset.composerDirty = 'false';
   const user = state.users.find((item) => item.id === Number(userId));
   $('#profile-dialog-content').innerHTML = `<div class="profile-loading"><span class="spinner"></span><strong>Загружаем активность ${escapeHTML(user?.username || '')}</strong></div>`;
   openModal(dialog);
@@ -6362,6 +6391,7 @@ async function openProfile(userId) {
       api(`/api/users/${userId}/profile`),
       ownProfile ? api('/api/personal/overview') : Promise.resolve(null),
     ]);
+    if (!dialog.open || dialog.dataset.profileRequest !== requestId) return;
     if (personal) state.personal = personal;
     const maxSeconds = Math.max(1, ...profile.activity.map((day) => day.activeSeconds));
     const accuracy = profile.estimateMinutes > 0 && profile.actualMinutes > 0 ? Math.round(profile.actualMinutes * 100 / profile.estimateMinutes) : 0;
@@ -6370,80 +6400,110 @@ async function openProfile(userId) {
     const capacityTone = !profile.weeklyCapacityMinutes ? 'unset' : profile.utilizationPercent > 100 ? 'overload' : profile.utilizationPercent >= 80 ? 'tight' : 'normal';
     const displayName = profile.user.displayName || profile.user.username;
     const settings = personal?.settings || { birthDate: null, lifeExpectancyYears: 100 };
-    $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Участник проекта</span><h2>${escapeHTML(displayName)}</h2><p>@${escapeHTML(profile.user.username)} · на платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body"><section class="profile-summary">${avatarMarkup(profile.user, 'profile-avatar')}<div><h3>${escapeHTML(displayName)}</h3><p>@${escapeHTML(profile.user.username)}</p>${profile.user.bio ? `<div class="profile-bio">${escapeHTML(profile.user.bio).replace(/\n/g, '<br>')}</div>` : ''}</div>${ownProfile ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить профиль</button>` : ''}</section>${ownProfile ? `<form id="profile-details-form" class="profile-editor" hidden><section class="profile-photo-editor">${avatarMarkup(profile.user, 'profile-avatar')}<div><strong>Фото профиля</strong><small>JPEG или PNG · до 5 МБ</small><div><label class="secondary profile-avatar-picker">${icon('edit')} Выбрать фото<input id="profile-avatar-input" type="file" accept="image/jpeg,image/png" hidden></label>${profile.user.avatarUrl ? `<button type="button" class="quiet" data-delete-avatar>${icon('trash')} Удалить</button>` : ''}</div><progress id="profile-avatar-progress" max="100" value="0" hidden></progress></div></section><div class="form-grid two"><label>Отображаемое имя<input name="displayName" maxlength="80" value="${escapeHTML(profile.user.displayName || '')}" placeholder="Как вас видят участники"></label><label>Логин<input name="username" maxlength="32" value="${escapeHTML(profile.user.username)}"></label></div><label>О себе<textarea name="bio" maxlength="800" rows="4" placeholder="Короткое публичное описание">${escapeHTML(profile.user.bio || '')}</textarea></label><div class="profile-private-fields"><div><span>${icon('lock')} Видно только вам</span><small>Эти данные используются только для личной карты времени.</small></div><div class="form-grid two"><label>Дата рождения<input name="birthDate" type="date" value="${escapeHTML(settings.birthDate || '')}"></label><label>Горизонт, лет<input name="lifeExpectancyYears" type="number" min="1" max="150" value="${settings.lifeExpectancyYears || 100}"></label></div></div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить профиль</button><button type="button" class="secondary" data-cancel-profile-edit>Отмена</button></div></form><details class="profile-security"><summary>${icon('lock')} Безопасность аккаунта</summary><form id="password-form"><div class="form-grid two"><label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label></div><button type="submit" class="secondary">Изменить пароль</button></form></details><section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Проверяем AI</strong><p>Локальный анализ доступен всегда.</p></div></section>` : ''}<div class="profile-metrics"><article><span>Активное время · 30 дней</span><strong>${durationLabel(profile.activeSeconds30Days)}</strong><small>Только взаимодействие с интерфейсом</small></article><article><span>Действия · 30 дней</span><strong>${profile.actions30Days}</strong><small>${interactionsCountLabel(profile.interactions30Days)} с UI</small></article><article><span>Завершено</span><strong>${profile.completedRecords}</strong><small>карточек с результатом</small></article><article><span>Факт к оценке</span><strong>${accuracy ? `${accuracy}%` : 'Нет данных'}</strong><small>${minutesLabel(profile.actualMinutes)} факт · ${minutesLabel(profile.estimateMinutes)} план</small></article></div><section class="estimate-insight ${insight.tone}">${icon('clock')}<div><strong>${escapeHTML(insight.title)}</strong><p>${escapeHTML(insight.text)}</p></div></section><section class="weekly-capacity capacity-${capacityTone}"><header><div><span>Рабочая неделя</span><h3>${profile.weeklyCapacityMinutes ? `${profile.utilizationPercent}% запланировано` : 'Ёмкость пока не задана'}</h3><p>${minutesLabel(profile.scheduledMinutes)} со сроком на этой неделе${profile.unscheduledMinutes ? ` · ${minutesLabel(profile.unscheduledMinutes)} без недельного слота` : ''}</p></div><strong>${profile.weeklyCapacityMinutes ? minutesLabel(profile.weeklyCapacityMinutes) : '—'}</strong></header><progress max="100" value="${Math.min(100, profile.utilizationPercent || 0)}"></progress>${ownProfile ? `<form id="capacity-form"><label>Доступно в неделю, часов<input name="hours" type="number" min="0" max="168" step="0.5" value="${capacityHours}"></label><button type="submit" class="secondary">Сохранить ёмкость</button></form>` : '<small>Ёмкость задаёт сам участник в своём профиле.</small>'}</section><section class="activity-chart"><header><h3>Активность по дням</h3><span>Последние 30 дней</span></header><div>${profile.activity.length ? profile.activity.slice().reverse().map((day) => `<span title="${escapeHTML(day.date)} · ${durationLabel(day.activeSeconds)} · ${interactionsCountLabel(day.interactions)}"><i data-level="${Math.max(1, Math.ceil(day.activeSeconds * 5 / maxSeconds))}"></i><small>${day.date.slice(8)}</small></span>`).join('') : `<p>Активность начнёт накапливаться после взаимодействия с новой версией.</p>`}</div></section><section class="profile-actions"><header><h3>Последние действия</h3><span>${profile.recentActions.length}</span></header><div class="activity-list">${profile.recentActions.map(renderActivityItem).join('') || emptyState('Действий пока нет.')}</div></section></div>`;
+    $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${ownProfile ? 'Мой аккаунт' : 'Участник проекта'}</span><h2>${ownProfile ? 'Профиль' : escapeHTML(displayName)}</h2><p>@${escapeHTML(profile.user.username)} · на платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body">${!ownProfile ? `<section class="profile-summary">${avatarMarkup(profile.user, 'profile-avatar')}<div><h3>${escapeHTML(displayName)}</h3><p>@${escapeHTML(profile.user.username)}</p>${profile.user.bio ? `<div class="profile-bio">${escapeHTML(profile.user.bio).replace(/\n/g, '<br>')}</div>` : ''}</div>${ownProfile ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить профиль</button>` : ''}</section>` : ''}${ownProfile ? `<form id="profile-details-form" class="profile-editor">${renderProfilePhotoEditor(profile.user)}<div class="form-grid two"><label>Отображаемое имя<input name="displayName" maxlength="80" value="${escapeHTML(profile.user.displayName || '')}" placeholder="Как вас видят участники"></label><label>Имя пользователя<input name="username" maxlength="32" value="${escapeHTML(profile.user.username)}"></label></div><label>О себе<textarea name="bio" maxlength="800" rows="4" placeholder="Короткое публичное описание">${escapeHTML(profile.user.bio || '')}</textarea></label><div class="profile-private-fields"><div><span>${icon('lock')} Видно только вам</span><small>Эти данные используются только для личной карты времени.</small></div><div class="form-grid two"><label>Дата рождения<input name="birthDate" type="date" value="${escapeHTML(settings.birthDate || '')}"></label><label>Горизонт, лет<input name="lifeExpectancyYears" type="number" min="1" max="150" value="${settings.lifeExpectancyYears || 100}"></label></div></div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить профиль</button><button type="button" class="secondary" data-cancel-profile-edit>Сбросить изменения</button></div></form><details class="profile-security"><summary>${icon('lock')} Безопасность аккаунта</summary><form id="password-form"><div class="form-grid two"><label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label></div><button type="submit" class="secondary">Изменить пароль</button></form></details><details class="profile-security"><summary>${icon('sparkles')} Состояние AI</summary><section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Проверяем AI</strong><p>Локальный анализ доступен всегда.</p></div></section></details>` : ''}${ownProfile ? '<details class="profile-security profile-activity-details"><summary>Активность и нагрузка</summary>' : ''}<div class="profile-metrics">${ownProfile ? `<article><span>Активное время · 30 дней</span><strong>${durationLabel(profile.activeSeconds30Days)}</strong><small>Только взаимодействие с интерфейсом</small></article><article><span>Действия в проекте · 30 дней</span><strong>${profile.actions30Days}</strong><small>${interactionsCountLabel(profile.interactions30Days)} с UI</small></article>` : ''}<article><span>Завершено</span><strong>${profile.completedRecords}</strong><small>карточек в этом проекте</small></article><article><span>Факт к оценке</span><strong>${accuracy ? `${accuracy}%` : 'Нет данных'}</strong><small>${minutesLabel(profile.actualMinutes)} факт · ${minutesLabel(profile.estimateMinutes)} план</small></article></div><section class="estimate-insight ${insight.tone}">${icon('clock')}<div><strong>${escapeHTML(insight.title)}</strong><p>${escapeHTML(insight.text)}</p></div></section><section class="weekly-capacity capacity-${capacityTone}"><header><div><span>Рабочая неделя</span><h3>${profile.weeklyCapacityMinutes ? `${profile.utilizationPercent}% запланировано` : 'Ёмкость пока не задана'}</h3><p>${minutesLabel(profile.scheduledMinutes)} со сроком на этой неделе${profile.unscheduledMinutes ? ` · ${minutesLabel(profile.unscheduledMinutes)} без недельного слота` : ''}</p></div><strong>${profile.weeklyCapacityMinutes ? minutesLabel(profile.weeklyCapacityMinutes) : '—'}</strong></header><progress max="100" value="${Math.min(100, profile.utilizationPercent || 0)}"></progress>${ownProfile ? `<form id="capacity-form"><label>Доступно в неделю, часов<input name="hours" type="number" min="0" max="168" step="0.5" value="${capacityHours}"></label><button type="submit" class="secondary">Сохранить ёмкость</button></form>` : '<small>Ёмкость задаёт сам участник в своём профиле.</small>'}</section>${ownProfile ? `<section class="activity-chart"><header><h3>Активность по дням</h3><span>Последние 30 дней</span></header><div>${profile.activity.length ? profile.activity.slice().reverse().map((day) => `<span title="${escapeHTML(day.date)} · ${durationLabel(day.activeSeconds)} · ${interactionsCountLabel(day.interactions)}"><i data-level="${Math.max(1, Math.ceil(day.activeSeconds * 5 / maxSeconds))}"></i><small>${day.date.slice(8)}</small></span>`).join('') : `<p>Активность начнёт накапливаться после взаимодействия с новой версией.</p>`}</div></section>` : ''}<section class="profile-actions"><header><h3>Действия в этом проекте</h3><span>${profile.recentActions.length}</span></header><div class="activity-list">${profile.recentActions.map(renderActivityItem).join('') || emptyState('Действий пока нет.')}</div></section>${ownProfile ? '</details>' : ''}</div>`;
     $$('[data-close-profile]').forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
-    $('[data-edit-profile]')?.addEventListener('click', () => { $('#profile-details-form', dialog).hidden = false; $('[data-edit-profile]', dialog).hidden = true; $('#profile-details-form input', dialog)?.focus(); });
-    $('[data-cancel-profile-edit]')?.addEventListener('click', () => { $('#profile-details-form', dialog).hidden = true; $('[data-edit-profile]', dialog).hidden = false; });
+    const forms = $$('form', dialog);
+    const formValues = (form) => JSON.stringify([...new FormData(form).entries()].filter(([key]) => key));
+    const baselines = new Map(forms.map((form) => [form, formValues(form)]));
+    const checkDirty = () => { dialog.dataset.composerDirty = String(forms.some((form) => formValues(form) !== baselines.get(form))); };
+    forms.forEach((form) => { form.addEventListener('input', checkDirty); form.addEventListener('change', checkDirty); });
+    const markSaved = (form) => { baselines.set(form, formValues(form)); checkDirty(); };
+    $('[data-cancel-profile-edit]', dialog)?.addEventListener('click', () => {
+      const form = $('#profile-details-form', dialog);
+      if (formValues(form) !== baselines.get(form) && !confirm('Сбросить несохранённые поля профиля? Фото останется без изменений.')) return;
+      form.reset(); checkDirty();
+    });
+    $('[data-pick-avatar]', dialog)?.addEventListener('click', () => $('#profile-avatar-input', dialog).click());
+    const syncAvatar = (user) => {
+      state.me = { ...state.me, ...user };
+      const own = state.users.find((item) => item.id === state.me.id);
+      if (own) Object.assign(own, user);
+      renderAvatarContent($('#user-avatar'), state.me);
+      renderAvatarContent($('.profile-photo-editor .avatar', dialog), state.me);
+      $('[data-delete-avatar]', dialog).hidden = !state.me.avatarUrl;
+    };
+		const setProfileBusy = (busy) => {
+      dialog.dataset.profileBusy = String(busy);
+      $$('button[type="submit"], [data-pick-avatar], [data-delete-avatar], [data-cancel-profile-edit]', dialog).forEach((button) => { button.disabled = busy; });
+      $$('input:not([type="file"]), textarea', dialog).forEach((input) => { input.readOnly = busy; });
+    };
 		$('#profile-avatar-input', dialog)?.addEventListener('change', async (event) => {
-			const file = event.currentTarget.files?.[0];
+			const input = event.currentTarget;
+			const file = input.files?.[0];
 			if (!file) return;
+			if (file.size > 5 * 1024 * 1024 || !['image/jpeg', 'image/png'].includes(file.type)) { input.value = ''; toast('Выберите JPEG или PNG размером до 5 МБ', true); return; }
 			const progress = $('#profile-avatar-progress', dialog);
-			const picker = $('.profile-avatar-picker', dialog);
-			progress.hidden = false; progress.value = 0; picker.classList.add('disabled');
+			progress.hidden = false; progress.value = 0; setProfileBusy(true);
+			$('[data-avatar-status]', dialog).textContent = 'Загружаем фото…';
 			try {
-				state.me = await uploadProfileAvatar(file, (value) => { progress.value = value; });
-				const ownIndex = state.users.findIndex((item) => item.id === state.me.id);
-				if (ownIndex >= 0) state.users[ownIndex] = { ...state.users[ownIndex], ...state.me };
-				renderAvatarContent($('#user-avatar'), state.me);
-				await openProfile(state.me.id);
+				const updated = await uploadProfileAvatar(file, (value) => { progress.value = value; });
+				syncAvatar(updated);
+				$('[data-avatar-status]', dialog).textContent = 'Фото обновлено';
 				toast('Фото профиля обновлено');
 			} catch (error) {
-				progress.hidden = true; picker.classList.remove('disabled'); event.currentTarget.value = '';
+				$('[data-avatar-status]', dialog).textContent = error.message;
 				toast(error.message, true);
-			}
+			} finally { progress.hidden = true; input.value = ''; setProfileBusy(false); }
 		});
 		$('[data-delete-avatar]', dialog)?.addEventListener('click', async (event) => {
-			event.currentTarget.disabled = true;
+			if (!confirm('Удалить фото профиля?')) return;
+			setProfileBusy(true);
 			try {
 				await api('/api/me/avatar', { method: 'DELETE' });
-				state.me.avatarUrl = '';
-				const own = state.users.find((item) => item.id === state.me.id);
-				if (own) own.avatarUrl = '';
-				renderAvatarContent($('#user-avatar'), state.me);
-				await openProfile(state.me.id);
+				syncAvatar({ avatarUrl: '' });
+				$('[data-avatar-status]', dialog).textContent = 'Фото удалено';
 				toast('Фото профиля удалено');
-			} catch (error) { event.currentTarget.disabled = false; toast(error.message, true); }
+			} catch (error) { toast(error.message, true); }
+      finally { setProfileBusy(false); }
 		});
     $('#profile-details-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const form = new FormData(event.currentTarget);
-      const submit = $('button[type="submit"]', event.currentTarget);
-      submit.disabled = true;
+      const node = event.currentTarget;
+      const form = new FormData(node);
+      if (dialog.dataset.profileBusy === 'true') return;
+      setProfileBusy(true);
       try {
         state.me = await api('/api/me', { method: 'PATCH', body: JSON.stringify({ username: form.get('username'), displayName: form.get('displayName'), bio: form.get('bio'), birthDate: form.get('birthDate'), lifeExpectancyYears: Number(form.get('lifeExpectancyYears')) }) });
         $('#user-name').textContent = state.me.username;
 			renderAvatarContent($('#user-avatar'), state.me);
         await loadData(true);
         await loadPersonal({ force: true });
-        await openProfile(state.me.id);
+        markSaved(node);
+        $$('input, textarea', node).forEach((input) => { if (input.type !== 'file') input.defaultValue = input.value; });
         toast('Профиль сохранён');
-      } catch (error) { submit.disabled = false; toast(error.message, true); }
+      } catch (error) { toast(error.message, true); }
+      finally { setProfileBusy(false); }
     });
     $('#password-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const form = new FormData(event.currentTarget);
-      const submit = $('button[type="submit"]', event.currentTarget);
-      submit.disabled = true;
+      const node = event.currentTarget;
+      const form = new FormData(node);
+      if (dialog.dataset.profileBusy === 'true') return;
+      setProfileBusy(true);
       try {
         await api('/api/me/password', { method: 'PUT', body: JSON.stringify({ currentPassword: form.get('currentPassword'), newPassword: form.get('newPassword') }) });
-        event.currentTarget.reset();
-        submit.disabled = false;
+        node.reset(); markSaved(node);
         toast('Пароль изменён, остальные сессии завершены');
-      } catch (error) { submit.disabled = false; toast(error.message, true); }
+      } catch (error) { toast(error.message, true); }
+      finally { setProfileBusy(false); }
     });
     $('#capacity-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const hours = Number(new FormData(event.currentTarget).get('hours') || 0);
+      const node = event.currentTarget;
+      if (dialog.dataset.profileBusy === 'true') return;
+      setProfileBusy(true);
+      const hours = Number(new FormData(node).get('hours') || 0);
       try {
         state.teamCapacity = await api(`/api/users/${profile.user.id}/capacity`, { method: 'PUT', body: JSON.stringify({ weeklyMinutes: Math.round(hours * 60) }) });
-        await openProfile(profile.user.id);
+        markSaved(node);
         toast('Недельная ёмкость сохранена');
       } catch (error) { toast(error.message, true); }
+      finally { setProfileBusy(false); }
     });
     const recentActions = new Map(profile.recentActions.map((item) => [item.id, item]));
     $$('[data-open-event]', dialog).forEach((button) => button.addEventListener('click', () => openActivity(button.dataset.openEvent, recentActions.get(button.dataset.openEvent))));
     if (ownProfile) api('/api/ai/health').then((health) => {
-			const node = $('#ai-provider-status', dialog); if (!node) return;
+			const node = $('#ai-provider-status', dialog); if (!node || !dialog.open || dialog.dataset.profileRequest !== requestId) return;
 			const externalProvider = health.provider === 'gemini' ? 'Gemini' : health.provider === 'groq' ? 'Groq' : 'Внешняя модель';
 			const provider = health.providerAvailable ? externalProvider : 'Локальный анализ активен';
 			const model = health.model ? ` · ${health.model}` : '';
@@ -6454,6 +6514,7 @@ async function openProfile(userId) {
 			node.innerHTML = `${icon('sparkles')}<div><strong>${escapeHTML(`${provider}${health.providerAvailable ? model : ''}`)}</strong><p>${escapeHTML(message)}</p></div>`;
 		}).catch(() => {});
   } catch (error) {
+    if (!dialog.open || dialog.dataset.profileRequest !== requestId) return;
     $('#profile-dialog-content').innerHTML = `<div class="record-load-error">${icon('help')}<h2>Профиль не загрузился</h2><p>${escapeHTML(error.message)}</p><button type="button" class="secondary" data-close-profile>Закрыть</button></div>`;
     $('[data-close-profile]').addEventListener('click', () => requestDialogClose(dialog));
   }
@@ -7041,7 +7102,7 @@ function openWorkspacePageEditor(page = null) {
   const dialog = $('#workspace-dialog');
   if (!discardComposerChanges(dialog)) return;
   const value = page || { name: '', collectionId: '', recordType: '', statusFilter: 'active', ownerFilter: 'all', viewMode: 'list', fields: ['description', 'owner', 'status', 'due'] };
-  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>${page ? 'Настройка страницы' : 'Новая страница'}</h2></div><button type="button" class="icon-button" data-page-editor-close aria-label="Закрыть">${icon('x')}</button></header><form id="workspace-page-form" class="card-form"><label>Название в меню<input name="name" value="${escapeHTML(value.name)}" required maxlength="80" placeholder="Например: Мои задачи"></label><div class="composer-field-grid"><label>Источник<select name="collectionId"><option value="">Все карточки проекта</option>${state.collections.map((collection) => `<option value="${collection.id}" ${value.collectionId === collection.id ? 'selected' : ''}>${escapeHTML(collection.name)}</option>`).join('')}</select></label><label>Тип карточек<select name="recordType"><option value="">Все типы</option>${Object.entries(typeMeta).map(([key, meta]) => `<option value="${key}" ${value.recordType === key ? 'selected' : ''}>${escapeHTML(meta.label)}</option>`).join('')}</select></label><label>Состояние<select name="statusFilter">${[['active','В работе'],['completed','Завершённые'],['all','Все, кроме архива']].map(([key,label]) => `<option value="${key}" ${value.statusFilter === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Ответственный<select name="ownerFilter"><option value="all">Все участники проекта</option><option value="me" ${value.ownerFilter === 'me' ? 'selected' : ''}>Назначено мне</option></select></label><label>Вид<select name="viewMode"><option value="list">Список</option><option value="board" ${value.viewMode === 'board' ? 'selected' : ''}>Доска по этапам</option></select></label></div><fieldset class="composer-fields"><legend>Отображаемые поля</legend><div data-page-fields></div></fieldset><div class="form-actions"><button type="submit" class="primary">${icon('check')} ${page ? 'Сохранить страницу' : 'Создать страницу'}</button><button type="button" class="secondary" data-page-editor-back>Назад</button></div></form></div>`;
+  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>${page ? 'Настройка страницы' : 'Новая страница'}</h2></div><button type="button" class="icon-button" data-page-editor-close aria-label="Закрыть">${icon('x')}</button></header><form id="workspace-page-form" class="card-form"><label>Название в меню<input name="name" value="${escapeHTML(value.name)}" required maxlength="80" placeholder="Например: Мои задачи"></label><div class="composer-field-grid"><label>Источник<select name="collectionId"><option value="">Все карточки проекта</option>${state.collections.map((collection) => `<option value="${collection.id}" ${value.collectionId === collection.id ? 'selected' : ''}>${escapeHTML(collection.name)}</option>`).join('')}</select></label><label>Состояние<select name="statusFilter">${[['active','В работе'],['completed','Завершённые'],['all','Все, кроме архива']].map(([key,label]) => `<option value="${key}" ${value.statusFilter === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Ответственный<select name="ownerFilter"><option value="all">Все участники проекта</option><option value="me" ${value.ownerFilter === 'me' ? 'selected' : ''}>Назначено мне</option></select></label><label>Вид<select name="viewMode"><option value="list">Список</option><option value="board" ${value.viewMode === 'board' ? 'selected' : ''}>Доска по этапам</option></select></label></div><fieldset class="composer-fields page-type-picker"><legend>Типы карточек</legend><label class="check"><input type="checkbox" name="allTypes" ${workspacePageTypes(value).length ? '' : 'checked'}><span>Все типы</span></label><div data-page-types>${Object.entries(typeMeta).map(([key, meta]) => `<label class="check"><input type="checkbox" name="recordTypes" value="${key}" ${workspacePageTypes(value).includes(key) ? 'checked' : ''}><span>${icon(meta.icon)} ${escapeHTML(meta.label)}</span></label>`).join('')}</div></fieldset><output class="page-source-preview" data-page-preview aria-live="polite"></output><fieldset class="composer-fields"><legend>Отображаемые поля</legend><div data-page-fields></div></fieldset><div class="form-actions"><button type="submit" class="primary">${icon('check')} ${page ? 'Сохранить страницу' : 'Создать страницу'}</button><button type="button" class="secondary" data-page-editor-back>Назад</button></div></form></div>`;
   const form = $('#workspace-page-form', dialog);
   let fields = new Set(value.fields);
   const syncFields = () => {
@@ -7053,12 +7114,22 @@ function openWorkspacePageEditor(page = null) {
     syncCustomSelect(form.elements.viewMode);
   };
   enhanceSelects(form); syncFields(); bindComposerForm(form);
+  const syncTypes = () => {
+    const all = form.elements.allTypes.checked;
+    $$('[name="recordTypes"]', form).forEach((input) => { input.disabled = all; });
+    const selected = all ? [] : new FormData(form).getAll('recordTypes');
+    const preview = workspacePageRecords({ ...value, collectionId: form.elements.collectionId.value, recordTypes: selected, ownerFilter: form.elements.ownerFilter.value, statusFilter: form.elements.statusFilter.value }, '');
+    const summary = all ? 'Все типы' : selected.map((key) => typeMeta[key].label).join(' + ');
+    $('[data-page-preview]', form).textContent = summary ? summary + ' · ' + recordsCountLabel(preview.length) : 'Выберите хотя бы один тип';
+    form.elements.allTypes.setCustomValidity(!all && !selected.length ? 'Выберите типы карточек или «Все типы»' : '');
+  };
+  form.addEventListener('change', syncTypes); syncTypes();
   form.elements.collectionId.addEventListener('change', () => { fields = new Set(new FormData(form).getAll('field')); syncFields(); });
   $('[data-page-editor-close]', dialog).addEventListener('click', closeWorkspaceDialog);
   $('[data-page-editor-back]', dialog).addEventListener('click', () => openNavigationSettings('pages'));
   form.addEventListener('submit', async (event) => {
     event.preventDefault(); const button = $('button[type="submit"]',form); button.disabled=true;
-    const data = new FormData(form); const payload = { ...value, name:data.get('name'),collectionId:data.get('collectionId'),recordType:data.get('recordType'),statusFilter:data.get('statusFilter'),ownerFilter:data.get('ownerFilter'),viewMode:data.get('viewMode') || 'list',fields:data.getAll('field') };
+    const data = new FormData(form); const payload = { ...value, name:data.get('name'),collectionId:data.get('collectionId'),recordType:'',recordTypes:data.has('allTypes') ? [] : data.getAll('recordTypes'),statusFilter:data.get('statusFilter'),ownerFilter:data.get('ownerFilter'),viewMode:data.get('viewMode') || 'list',fields:data.getAll('field') };
     try {
       const saved = await api(`/api/workspace/pages${page ? `/${page.id}` : ''}`, { method: page ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
       page = saved;
@@ -7070,10 +7141,15 @@ function openWorkspacePageEditor(page = null) {
   openModal(dialog);
 }
 
+function workspacePageTypes(page) {
+  return Array.isArray(page?.recordTypes) ? page.recordTypes : page?.recordType ? [page.recordType] : [];
+}
+
 function workspacePageRecords(page, search = state.pageSearch) {
   if (!page || page.archived) return [];
   const query = (search || '').trim().toLowerCase();
-  return state.records.filter((record) => record.status !== 'archived' && (!page.collectionId || record.collectionId === page.collectionId) && (!page.recordType || record.type === page.recordType) && (page.ownerFilter !== 'me' || record.ownerId === state.me.id) && (page.statusFilter === 'all' || (page.statusFilter === 'active' ? isActiveRecord(record) : record.status === 'completed' || (isWorkRecord(record) && Number(record.progress) >= 100 && !['review', 'cancelled', 'rejected'].includes(record.status)))) && (!query || `${record.title} ${markdownPlain(record.description)}`.toLowerCase().includes(query)));
+  const types = workspacePageTypes(page);
+  return state.records.filter((record) => record.status !== 'archived' && (!page.collectionId || record.collectionId === page.collectionId) && (!types.length || types.includes(record.type)) && (page.ownerFilter !== 'me' || record.ownerId === state.me.id) && (page.statusFilter === 'all' || (page.statusFilter === 'active' ? isActiveRecord(record) : record.status === 'completed' || (isWorkRecord(record) && Number(record.progress) >= 100 && !['review', 'cancelled', 'rejected'].includes(record.status)))) && (!query || `${record.title} ${markdownPlain(record.description)}`.toLowerCase().includes(query)));
 }
 
 function renderWorkspacePage() {
@@ -7081,13 +7157,24 @@ function renderWorkspacePage() {
   if (!page) { $('#main-content').innerHTML='<div class="guided-empty"><h2>Страница недоступна</h2><button type="button" class="secondary" data-page-library>Мои страницы</button></div>'; $('[data-page-library]').addEventListener('click',()=>openNavigationSettings('pages')); return; }
   const records = workspacePageRecords(page);
   const collection = state.collections.find((item) => item.id === page.collectionId);
+  const selectedTypes = workspacePageTypes(page);
+  const createTypes = selectedTypes.length ? selectedTypes : collection ? [collection.defaultRecordType] : Object.keys(typeMeta).filter(projectAllowsType);
   const labels = {description:'Описание',owner:'Ответственный',status:'Состояние',due:'Срок'};
   const fieldValue = (record,key) => key === 'owner' ? record.ownerUsername : key === 'status' ? statusLabel(record) : key === 'due' ? (record.dueAt ? formatDate(record.dueAt) : '') : collection?.fields.find((field)=>`field:${field.id}`===key) ? collectionFieldDisplay(collection.fields.find((field)=>`field:${field.id}`===key),record.customFields?.[key.slice(6)]) : '';
-  const list = `<section class="custom-page-list">${records.map((record)=>`<button type="button" class="custom-page-row" data-open-record="${record.id}"><span class="custom-page-title"><strong>${escapeHTML(record.title)}</strong>${page.fields.includes('description') && record.description ? `<span>${escapeHTML(markdownPlain(record.description))}</span>`:''}</span><span class="custom-page-fields">${page.fields.filter((key)=>key!=='description').map((key)=>`<span data-page-field="${escapeHTML(key)}"><small>${escapeHTML(labels[key] || collection?.fields.find((field)=>`field:${field.id}`===key)?.name || '')}</small><b>${escapeHTML(fieldValue(record,key) || '—')}</b></span>`).join('')}</span>${icon('chevronRight')}</button>`).join('') || '<p class="composer-access-note">Карточек по этим условиям нет.</p>'}</section>`;
+  const list = `<section class="custom-page-list">${records.map((record)=>`<button type="button" class="custom-page-row" data-open-record="${record.id}"><span class="custom-page-title"><small class="custom-page-kind">${icon(typeMeta[record.type]?.icon || 'fileText')}${escapeHTML(typeMeta[record.type]?.singular || record.type)}</small><strong>${escapeHTML(record.title)}</strong>${page.fields.includes('description') && record.description ? `<span>${escapeHTML(markdownPlain(record.description))}</span>`:''}</span><span class="custom-page-fields">${page.fields.filter((key)=>key!=='description').map((key)=>`<span data-page-field="${escapeHTML(key)}"><small>${escapeHTML(labels[key] || collection?.fields.find((field)=>`field:${field.id}`===key)?.name || '')}</small><b>${escapeHTML(fieldValue(record,key) || '—')}</b></span>`).join('')}</span>${icon('chevronRight')}</button>`).join('') || '<p class="composer-access-note">Карточек по этим условиям нет.</p>'}</section>`;
   const board = collection ? `<section class="collection-board">${collection.stages.map((stage)=>{const items=records.filter((record)=>record.stageId===stage.id || (!record.stageId && stage.id===collection.stages[0]?.id));return `<section class="collection-column tone-${stage.colorKey}" data-collection-drop="${stage.id}"><header><div><i></i><strong>${escapeHTML(stage.name)}</strong></div><span>${items.length}</span></header><div>${items.map((record)=>renderCollectionCard(record,collection,page.fields)).join('') || '<p class="collection-column-empty">Нет карточек</p>'}</div></section>`;}).join('')}</section>` : list;
-  $('#main-content').innerHTML=`<div class="page-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(page.name)}</h1><p>${recordsCountLabel(records.length)}</p></div><div class="custom-page-actions"><button type="button" class="primary" data-page-create>${icon('plus')} Добавить</button>${canConfigureWorkspace()?`<button type="button" class="secondary" data-page-configure>${icon('sliders')} Источник и поля</button>`:''}</div></div><label class="custom-page-search">${icon('search')}<input type="search" value="${escapeHTML(state.pageSearch)}" placeholder="Найти на странице" aria-label="Найти на странице"></label>${page.viewMode==='board'?board:list}`;
+  $('#main-content').innerHTML=`<div class="page-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(page.name)}</h1><p>${recordsCountLabel(records.length)}</p></div><div class="custom-page-actions">${createTypes.length > 1 ? `<label class="page-create-type"><span class="sr-only">Тип новой карточки</span><select data-page-create-type aria-label="Тип новой карточки">${createTypes.map((key) => `<option value="${key}" ${state.pageCreateTypes?.[page.id] === key ? 'selected' : ''}>${escapeHTML(typeMeta[key]?.singular || key)}</option>`).join('')}</select></label>` : ''}<button type="button" class="primary" data-page-create>${icon('plus')} Добавить</button>${canConfigureWorkspace()?`<button type="button" class="secondary" data-page-configure>${icon('sliders')} Источник и поля</button>`:''}</div></div><label class="custom-page-search">${icon('search')}<input type="search" value="${escapeHTML(state.pageSearch)}" placeholder="Найти на странице" aria-label="Найти на странице"></label>${page.viewMode==='board'?board:list}`;
   $('[data-page-configure]')?.addEventListener('click',()=>openWorkspacePageEditor(page));
-  $('[data-page-create]').addEventListener('click',()=>collection?openCollectionCardDialog(collection):openCreateDialog(page.recordType||'task'));
+  enhanceSelects($('.custom-page-actions'));
+  $('[data-page-create-type]')?.addEventListener('change', (event) => {
+    state.pageCreateTypes ||= {};
+    state.pageCreateTypes[page.id] = event.currentTarget.value;
+  });
+  $('[data-page-create]').addEventListener('click', () => {
+    const recordType = $('[data-page-create-type]')?.value || createTypes[0] || 'task';
+    if (collection) openCollectionCardDialog(collection, null, '', { recordType });
+    else openCreateDialog(recordType);
+  });
   $('.custom-page-search input').addEventListener('input',(event)=>{state.pageSearch=event.currentTarget.value;renderWorkspacePage(); const input=$('.custom-page-search input');input.focus();});
   if (page.viewMode==='board' && collection) bindCollectionBoard(collection,renderWorkspacePage); else bindOpenRecords();
 }

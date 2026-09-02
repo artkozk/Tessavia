@@ -1189,7 +1189,7 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 		"activity":               {`SELECT * FROM activity WHERE workspace_id = ?`, workspaceArg},
 		"activityUndos":          {`SELECT u.* FROM activity_undos u JOIN activity a ON a.id = u.activity_id WHERE a.workspace_id = ?`, workspaceArg},
 	}
-	payload := map[string]any{"schemaVersion": 14, "workspaceId": workspaceID, "exportedAt": nowText(), "exportedBy": currentUser(r).Username, "tables": map[string]any{}}
+	payload := map[string]any{"schemaVersion": 15, "workspaceId": workspaceID, "exportedAt": nowText(), "exportedBy": currentUser(r).Username, "tables": map[string]any{}}
 	data := payload["tables"].(map[string]any)
 	for name, item := range tables {
 		rows, err := exportRows(r.Context(), s.store.db, item.query, item.args...)

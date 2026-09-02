@@ -133,7 +133,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .user-button small, .quiet { color: var(--muted); }
 .quiet { border: 0; background: transparent; padding: 7px; }
 .avatar { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-style: normal; font-weight: 700; }
-.avatar img { width: 100%; height: 100%; display: block; border-radius: inherit; object-fit: cover; }
+.avatar { position: relative; overflow: hidden; }
+.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: inherit; object-fit: cover; }
 .avatar.tiny { width: 27px; height: 27px; }
 
 .workspace { min-width: 0; }
@@ -2565,7 +2566,7 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
 }
 
 @media (max-width: 820px) {
-  .sidebar { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+  .sidebar { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; }
   .main-nav { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 18px; scrollbar-width: thin; scrollbar-color: #52605a transparent; }
   .sidebar-footer { position: relative; background: var(--nav); box-shadow: 0 -12px 24px rgba(15,20,18,.18); }
 
@@ -3025,6 +3026,34 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
 .profile-photo-editor > div > div { display: flex; flex-wrap: wrap; gap: 7px; padding-top: 3px; }
 .profile-avatar-picker { width: fit-content; cursor: pointer; }
 .profile-avatar-picker.disabled { pointer-events: none; opacity: .48; }
+.profile-editor .profile-photo-editor { grid-template-columns: 80px minmax(0, 1fr); align-items: center; }
+.profile-photo-editor > input[hidden] { display: none; }
+.profile-photo-editor .profile-avatar-picker { position: relative; width: 76px; height: 76px; padding: 0; border: 0; border-radius: 50%; background: transparent; }
+.profile-avatar-picker .profile-avatar { width: 76px; height: 76px; font-size: 24px; }
+.profile-avatar-picker .profile-camera { position: absolute; right: -1px; bottom: 0; display: grid; place-items: center; width: 28px; height: 28px; color: var(--accent); background: var(--surface); border: 2px solid var(--line); border-radius: 50%; }
+.profile-camera .icon { width: 15px; height: 15px; }
+.profile-avatar-picker:hover .profile-camera { background: var(--accent-soft); }
+.profile-avatar-picker:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.profile-photo-editor [data-delete-avatar] { width: fit-content; min-height: 36px; padding-inline: 0; }
+.profile-editor .profile-private-fields { padding: 16px 0; border: 0; border-top: 1px solid var(--line); background: transparent; }
+.profile-editor > .form-actions { position: sticky; bottom: 0; padding: 12px 0 max(12px, env(safe-area-inset-bottom)); background: var(--surface); z-index: 1; }
+.profile-body, .profile-body .form-grid > label { min-width: 0; }
+.profile-activity-details > summary { margin-bottom: 16px; }
+.page-type-picker [data-page-types] { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 2px 12px; }
+.page-type-picker .check { min-height: 40px; }
+.page-type-picker .check .icon { width: 16px; height: 16px; vertical-align: middle; color: var(--muted); }
+.page-type-picker label:has(input:disabled) { opacity: .55; }
+.page-source-preview { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.page-create-type { min-width: 0; width: 180px; }
+.custom-page-kind { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 400; }
+.custom-page-kind .icon { width: 14px; height: 14px; flex: none; }
+@media (max-width: 600px) {
+  .profile-editor .form-grid.two, .profile-security .form-grid.two { grid-template-columns: minmax(0, 1fr); }
+  .profile-body .profile-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-editor > .form-actions { flex-wrap: wrap; }
+  .custom-page-actions { width: 100%; flex-wrap: wrap; }
+  .page-create-type { flex: 1 1 150px; }
+}
 .profile-photo-editor progress { width: min(320px, 100%); height: 5px; margin-top: 5px; accent-color: var(--accent); }
 .profile-private-fields { display: grid; gap: 12px; padding: 14px; border-left: 2px solid var(--accent); background: var(--accent-soft); }
 .profile-private-fields > div:first-child { display: grid; gap: 3px; }
@@ -3580,7 +3609,20 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
 
 /* Project composition uses the existing palette and keeps long labels inside their tracks. */
 .main-nav { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.project-nav-items { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.project-nav-items { min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #52605a transparent; }
+.project-nav-items::-webkit-scrollbar { width: 6px; background: transparent; }
+.project-nav-items::-webkit-scrollbar-track { background: transparent; }
+.project-nav-items::-webkit-scrollbar-thumb { background: #52605a; border-radius: 3px; }
+.project-nav-items::-webkit-scrollbar-thumb:hover { background: #75857c; }
+.project-nav-items::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+/* Chromium's standard scrollbar properties override its more precise pseudo-element sizing. */
+@supports selector(::-webkit-scrollbar) {
+  .project-nav-items { scrollbar-width: auto; scrollbar-color: auto; }
+}
+@media (max-width: 820px), (hover: none) {
+  .project-nav-items { scrollbar-width: none; }
+  .project-nav-items::-webkit-scrollbar { display: none; width: 0; }
+}
 .nav-configure { flex-shrink: 0; margin-top: 10px; border-top: 1px solid var(--sidebar-line, #43514c); border-radius: 0; }
 .navigation-settings-shell { width: 100%; max-width: 900px; margin-inline: auto; min-width: 0; }
 .navigation-settings-shell > header { display: flex; justify-content: space-between; gap: 12px; }
@@ -3606,6 +3648,12 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
 .composer-fields legend { font-weight: 600; margin-bottom: 12px; }
 .composer-field-grid > label { min-width: 0; }
 .custom-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.page-heading:has(.custom-page-actions) > div:first-child { min-width: 0; }
+@media (max-width: 600px) {
+  .page-heading:has(.custom-page-actions) { flex-direction: column; align-items: stretch; }
+  .page-heading > .custom-page-actions { display: flex; width: 100%; }
+  .custom-page-actions [data-page-configure] { flex: 1 1 100%; }
+}
 .custom-page-search { display: flex; align-items: center; gap: 10px; padding: 0 12px; margin-bottom: 20px; border: 1px solid var(--line); border-radius: 6px; }
 .custom-page-search input { border: 0; background: transparent; min-width: 0; width: 100%; }
 .custom-page-row { width: 100%; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 18px; align-items: center; gap: 18px; padding: 20px 8px; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: transparent; border-radius: 0; }

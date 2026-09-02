@@ -7,7 +7,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, 'app.js'), '
 function harness() {
   const state = { me: {id: 1}, pageSearch: '', records: [], workspacePages: [], projectNavigation: {enabledViews: ['work']}, interfacePreferences: {navOrder: []} };
   const context = vm.createContext({state, navItems: [['personal','Personal'],['work','Work'],['idea','Ideas']], markdownPlain: value => value || '', isWorkRecord: record => record.type === 'task'});
-  for (const [start,end] of [['function isActiveRecord(', 'function sortWorkRecords('], ['function navigationCatalog(', 'function navCount('], ['function projectAllowsType(', 'function toggleCreateMenu('], ['function workspacePageRecords(', 'function renderWorkspacePage(']]) {
+  for (const [start,end] of [['function isActiveRecord(', 'function sortWorkRecords('], ['function navigationCatalog(', 'function navCount('], ['function projectAllowsType(', 'function toggleCreateMenu('], ['function workspacePageTypes(', 'function renderWorkspacePage(']]) {
     vm.runInContext(source.slice(source.indexOf(start), source.indexOf(end)), context);
   }
   return {state, run: code => vm.runInContext(code, context)};
@@ -53,6 +53,38 @@ test('outside press closes temporary menus without closing a working editor', ()
   assert.equal(panel.open,true);
   vm.runInContext('closeTransientPanels()',context);
   assert.equal(panel.open,false);
+});
+
+test('mixed page uses inclusive types, intersects board and preserves legacy/all sources', () => {
+  const h = harness();
+  h.state.records = [
+    {id:'task', type:'task', title:'Alpha', status:'planned', ownerId:1, collectionId:'a'},
+    {id:'research', type:'research', title:'Beta', status:'planned', ownerId:1, collectionId:'a'},
+    {id:'idea', type:'idea', title:'Gamma', status:'new', ownerId:1, collectionId:'a'},
+    {id:'other', type:'task', title:'Delta', status:'planned', ownerId:2, collectionId:'b'},
+    {id:'archive', type:'research', status:'archived', ownerId:1, collectionId:'a'},
+  ];
+  h.run('var page = {recordTypes:["task","research"], collectionId:"a", statusFilter:"all"}');
+  assert.equal(h.run('workspacePageRecords(page).map(r=>r.id).join(",")'), 'task,research');
+  assert.equal(h.run('workspacePageRecords(page,"beta").map(r=>r.id).join(",")'), 'research');
+  assert.equal(h.run('workspacePageRecords({...page, recordTypes:[], recordType:"task"}).length'), 3);
+  assert.equal(h.run('workspacePageRecords({recordType:"research",statusFilter:"all"}).map(r=>r.id).join(",")'), 'research');
+  assert.equal(h.run('workspacePageRecords({...page,collectionId:"",ownerFilter:"me"}).length'), 2);
+});
+
+test('deferred record updates become visible after closing the editor, without replacing another draft', () => {
+  const state = {contentRefreshPending:true, view:'page:test'};
+  let rendered = 0, overlay = true;
+  const context = vm.createContext({state, workspaceHasActiveInput:()=>false, document:{querySelector:()=>overlay}, $:()=>({classList:{contains:()=>false}}), window:{scrollY:125,scrollTo:position=>assert.equal(position.top,125)}, renderContent:()=>{rendered++;state.contentRefreshPending=false;}});
+  vm.runInContext(source.slice(source.indexOf('function refreshPendingContent('),source.indexOf('async function refreshLiveData(')),context);
+  vm.runInContext('refreshPendingContent()',context);
+  assert.equal(rendered,0);
+  overlay=false;
+  vm.runInContext('refreshPendingContent()',context);
+  assert.equal(rendered,1);
+  state.contentRefreshPending=true; state.pageLayoutDraft={};
+  vm.runInContext('refreshPendingContent()',context);
+  assert.equal(rendered,1);
 });
 
 test('unsaved composer settings require explicit discard', () => {

@@ -126,7 +126,7 @@ func TestProjectComposerIsolationAndHiddenContent(t *testing.T) {
 		Tables        map[string][]map[string]any `json:"tables"`
 	}
 	req(ownerClient, "GET", "/api/export", second.ID, nil, 200, &exported)
-	if exported.SchemaVersion != 14 || len(exported.Tables["workspacePages"]) != 0 || len(exported.Tables["sectionOverrides"]) != 0 {
+	if exported.SchemaVersion != 15 || len(exported.Tables["workspacePages"]) != 0 || len(exported.Tables["sectionOverrides"]) != 0 {
 		t.Fatal("export leaked composer settings", exported)
 	}
 	for _, definition := range exported.Tables["sectionDefinitions"] {

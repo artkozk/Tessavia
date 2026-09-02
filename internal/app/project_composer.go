@@ -25,6 +25,7 @@ type WorkspacePage struct {
 	Name         string   `json:"name"`
 	CollectionID string   `json:"collectionId"`
 	RecordType   string   `json:"recordType"`
+	RecordTypes  []string `json:"recordTypes"`
 	StatusFilter string   `json:"statusFilter"`
 	OwnerFilter  string   `json:"ownerFilter"`
 	ViewMode     string   `json:"viewMode"`
@@ -103,7 +104,7 @@ func (s *Server) navigationKeys(ctx context.Context, workspaceID string) (map[st
 }
 
 func (s *Server) handleListWorkspacePages(w http.ResponseWriter, r *http.Request) {
-	query := `SELECT id, name, COALESCE(collection_id,''), record_type, status_filter, owner_filter, view_mode, fields_json, sort_order, archived_at IS NOT NULL FROM workspace_pages WHERE workspace_id = ?`
+	query := `SELECT id, name, COALESCE(collection_id,''), record_type, record_types_json, status_filter, owner_filter, view_mode, fields_json, sort_order, archived_at IS NOT NULL FROM workspace_pages WHERE workspace_id = ?`
 	if r.URL.Query().Get("includeArchived") != "true" {
 		query += ` AND archived_at IS NULL`
 	}
@@ -116,12 +117,12 @@ func (s *Server) handleListWorkspacePages(w http.ResponseWriter, r *http.Request
 	result := []WorkspacePage{}
 	for rows.Next() {
 		var page WorkspacePage
-		var fields string
-		if err := rows.Scan(&page.ID, &page.Name, &page.CollectionID, &page.RecordType, &page.StatusFilter, &page.OwnerFilter, &page.ViewMode, &fields, &page.SortOrder, &page.Archived); err != nil {
+		var fields, types string
+		if err := rows.Scan(&page.ID, &page.Name, &page.CollectionID, &page.RecordType, &types, &page.StatusFilter, &page.OwnerFilter, &page.ViewMode, &fields, &page.SortOrder, &page.Archived); err != nil {
 			writeError(w, 500, "Не удалось прочитать страницу")
 			return
 		}
-		if json.Unmarshal([]byte(fields), &page.Fields) != nil {
+		if json.Unmarshal([]byte(fields), &page.Fields) != nil || json.Unmarshal([]byte(types), &page.RecordTypes) != nil {
 			writeError(w, 500, "Настройки страницы повреждены")
 			return
 		}
@@ -152,12 +153,40 @@ func (s *Server) handleSaveWorkspacePage(w http.ResponseWriter, r *http.Request)
 		writeError(w, 400, "Доска не найдена в этом проекте")
 		return
 	}
-	if input.RecordType != "" {
-		if _, ok := recordTypes[input.RecordType]; !ok {
-			writeError(w, 400, "Неизвестный тип карточек")
+	if input.RecordTypes == nil && input.RecordType != "" {
+		input.RecordTypes = []string{input.RecordType}
+	}
+	if input.RecordTypes == nil && r.Method == http.MethodPatch {
+		// A legacy client must not erase a mixed source when renaming or archiving it.
+		var rawTypes string
+		err := s.store.db.QueryRowContext(r.Context(), `SELECT record_types_json FROM workspace_pages WHERE id=? AND workspace_id=?`, r.PathValue("id"), workspace.ID).Scan(&rawTypes)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, 404, "Страница не найдена")
+			return
+		}
+		if err != nil || json.Unmarshal([]byte(rawTypes), &input.RecordTypes) != nil {
+			writeError(w, 500, "Не удалось прочитать типы страницы")
 			return
 		}
 	}
+	selectedTypes := []string{}
+	seenTypes := map[string]bool{}
+	for _, kind := range input.RecordTypes {
+		if _, ok := recordTypes[kind]; !ok {
+			writeError(w, 400, "Неизвестный тип карточек")
+			return
+		}
+		if !seenTypes[kind] {
+			selectedTypes = append(selectedTypes, kind)
+			seenTypes[kind] = true
+		}
+	}
+	input.RecordTypes = selectedTypes
+	input.RecordType = ""
+	if len(selectedTypes) == 1 {
+		input.RecordType = selectedTypes[0]
+	}
+	rawTypes, _ := json.Marshal(selectedTypes)
 	if input.StatusFilter == "" {
 		input.StatusFilter = "active"
 	}
@@ -249,10 +278,10 @@ func (s *Server) handleSaveWorkspacePage(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		input.Archived = false
-		_, err = tx.ExecContext(r.Context(), `INSERT INTO workspace_pages(id,workspace_id,name,collection_id,record_type,status_filter,owner_filter,view_mode,fields_json,sort_order,created_by,created_at,updated_at) VALUES(?,?,?,NULLIF(?,''),?,?,?,?,?,?,?,?,?)`, input.ID, workspace.ID, input.Name, input.CollectionID, input.RecordType, input.StatusFilter, input.OwnerFilter, input.ViewMode, string(raw), input.SortOrder, currentUser(r).ID, now, now)
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO workspace_pages(id,workspace_id,name,collection_id,record_type,record_types_json,status_filter,owner_filter,view_mode,fields_json,sort_order,created_by,created_at,updated_at) VALUES(?,?,?,NULLIF(?,''),?,?,?,?,?,?,?,?,?,?)`, input.ID, workspace.ID, input.Name, input.CollectionID, input.RecordType, string(rawTypes), input.StatusFilter, input.OwnerFilter, input.ViewMode, string(raw), input.SortOrder, currentUser(r).ID, now, now)
 	} else {
 		var result sql.Result
-		result, err = tx.ExecContext(r.Context(), `UPDATE workspace_pages SET name=?,collection_id=NULLIF(?,''),record_type=?,status_filter=?,owner_filter=?,view_mode=?,fields_json=?,archived_at=CASE WHEN ? THEN COALESCE(archived_at,?) ELSE NULL END,updated_at=? WHERE id=? AND workspace_id=?`, input.Name, input.CollectionID, input.RecordType, input.StatusFilter, input.OwnerFilter, input.ViewMode, string(raw), input.Archived, now, now, input.ID, workspace.ID)
+		result, err = tx.ExecContext(r.Context(), `UPDATE workspace_pages SET name=?,collection_id=NULLIF(?,''),record_type=?,record_types_json=?,status_filter=?,owner_filter=?,view_mode=?,fields_json=?,archived_at=CASE WHEN ? THEN COALESCE(archived_at,?) ELSE NULL END,updated_at=? WHERE id=? AND workspace_id=?`, input.Name, input.CollectionID, input.RecordType, string(rawTypes), input.StatusFilter, input.OwnerFilter, input.ViewMode, string(raw), input.Archived, now, now, input.ID, workspace.ID)
 		if err == nil {
 			if count, _ := result.RowsAffected(); count == 0 {
 				writeError(w, 404, "Страница не найдена")
