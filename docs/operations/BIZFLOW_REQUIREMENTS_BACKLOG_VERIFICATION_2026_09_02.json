@@ -1,0 +1,39 @@
+{
+  "verifiedAt": "2026-09-02T17:05:48.904045+00:00",
+  "integrityCheck": "ok",
+  "recordsBefore": 79,
+  "recordsAfter": 147,
+  "projectBefore": 69,
+  "projectAfter": 137,
+  "createdTypes": {
+    "goal": 7,
+    "task": 61
+  },
+  "updatedExistingRecords": 9,
+  "unrelatedRecordChanges": 0,
+  "deletedRecords": 0,
+  "auditRecords": 76,
+  "notificationDelta": 0,
+  "chatMessageDelta": 0,
+  "temporarySessionsRemaining": 0,
+  "index": {
+    "rootSummaryVerified": true,
+    "relatedLinksVerified": [
+      {
+        "sourceId": "3d81cdb847c8fcfdb329639c22f3067a",
+        "targetId": "a9020000000000000000000000000003",
+        "linkId": "a3edeba59c92d6a1dbe22981c95c111b"
+      },
+      {
+        "sourceId": "1168ce733dc42915ee54c9dd8d6b773f",
+        "targetId": "a9020000000000000000000000000002",
+        "linkId": "e7d39299ca5bd072a3f9eacd941f75a7"
+      },
+      {
+        "sourceId": "1168ce733dc42915ee54c9dd8d6b773f",
+        "targetId": "a9020000000000000000000000000004",
+        "linkId": "092f2b9043c3f9fb8d64517456d6732d"
+      }
+    ]
+  }
+}
