@@ -3631,6 +3631,35 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
 .hidden-record-sections { padding-block: 18px; border-top: 1px solid var(--line); }
 .hidden-record-sections > summary { cursor: pointer; color: var(--muted); padding-bottom: 16px; }
 
+/* Popovers escape scroll clipping and stacking contexts without moving form controls. */
+.custom-select-menu[popover] { position: fixed; inset: auto; margin: 0; box-sizing: border-box; }
+.custom-select-menu[popover]:not(:popover-open) { display: none; }
+.custom-select-menu[popover]:popover-open { display: grid; }
+.custom-select.open:has(> [popover])::after { display: none; }
+.custom-select-menu[popover]::backdrop { background: transparent; }
+.interface-device-tabs { width: fit-content; margin-block: 16px; }
+.composer-menu-row, .layout-action-order > div { grid-template-columns: 40px minmax(0, 1fr); }
+[data-reorder-handle] { width: 40px; height: 44px; min-height: 44px; touch-action: none; cursor: grab; flex: 0 0 40px; }
+.reorder-dragging { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); opacity: .85; }
+.reorder-dragging [data-reorder-handle] { cursor: grabbing; }
+.template-block-list .template-block { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; min-height: 68px; }
+.template-block > .template-actions { display: flex; flex-wrap: nowrap; gap: 4px; grid-column: 3; grid-row: 1; }
+.template-block > .template-block-name { grid-column: 2; grid-row: 1; }
+.template-block .drag-handle { grid-column: 1; grid-row: 1; touch-action: none; }
+.app-shell[data-layout-device=mobile] .dashboard-custom-grid { grid-template-columns: minmax(0, 1fr); }
+.app-shell[data-layout-device=mobile] .dashboard-custom-grid > .dashboard-widget { grid-column: 1 / -1; }
+.app-shell[data-layout-device=mobile] .widget-edit-tools { justify-content: space-between; }
+.app-shell[data-layout-device=mobile] .layout-editing { width: 100%; max-width: 520px; margin-inline: auto; }
+@media (max-width: 820px) {
+  .template-block > .template-actions .icon-button { width: 40px; height: 44px; min-height: 44px; }
+  .template-heading { flex-direction: column; align-items: stretch; gap: 12px; }
+  .template-heading > .secondary { align-self: flex-start; max-width: 100%; }
+  .template-block-list .template-block { gap: 6px; }
+  .app-shell[data-density=compact] .nav-item { min-height: 44px; padding-block: 8px; }
+  .app-shell[data-density=compact] .focus-record { padding-block: 10px; }
+  .app-shell[data-density=compact] .dashboard-widget { padding-block: 16px; }
+}
+
 /* The note is one writing surface; its fields retain separate storage and draft tracking. */
 .personal-note-form { grid-template-rows: minmax(min-content, 1fr) auto; background: transparent; }
 .personal-note-sheet { display: flex; flex-direction: column; min-width: 0; background: transparent; }

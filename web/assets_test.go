@@ -62,7 +62,8 @@ func TestRefinedInteractionAssetsAreEmbedded(t *testing.T) {
 		[]byte("function graphHierarchyDescendants"),
 		[]byte("function saveGraphPositions"),
 		[]byte("function bindTemplateDrag"),
-		[]byte("pointerDrag"),
+		[]byte("function bindReorderList"),
+		[]byte("menu.showPopover()"),
 		[]byte("sidebar-close"),
 		[]byte("/api/section-definitions/reorder"),
 	} {
@@ -199,7 +200,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260902-note-sheet-1")) {
+	if !bytes.Contains(index, []byte("20260902-device-layout-1")) {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }

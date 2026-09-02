@@ -163,6 +163,7 @@ const state = {
   me: null, users: [], records: [], notifications: [], activity: [], definitions: [], pendingQuestions: [],
 	workspaces: [], activeWorkspaceId: localStorage.getItem('bizflow-active-workspace') || '', collections: [], activeCollectionId: '', collectionSearch: '', collectionOwnerFilter: '', collectionFieldFilters: {}, personal: null, personalLoading: false, personalTab: 'today', personalSuggestionTimer: null,
 	interfacePreferences: { hiddenNavGroups: [], collapsedNavGroups: [], dashboardWidgets: ['focus', 'capture', 'capacity', 'quality'] }, teamDetail: null,
+	interfaceProfiles: {},
 	registrationChallenge: null, pendingInviteToken: new URLSearchParams(location.search).get('invite') || '',
   view: 'dashboard', search: '', statusFilter: '', ownerFilter: '', authMode: 'login', activeDetail: null,
   activeRecordTab: 'overview', activeActivity: null, historyMode: 'feed', activeRecordRequest: 0,
@@ -510,6 +511,8 @@ function bindMarkdownViews(root = document) {
 function closeCustomSelects(except = null) {
   $$('.custom-select.open').forEach((control) => {
     if (control !== except) {
+      const menu = control.querySelector('.custom-select-menu');
+      if (menu?.matches(':popover-open')) menu.hidePopover();
       control.classList.remove('open');
       control.classList.remove('drop-up');
       control.querySelector('.custom-select-trigger')?.setAttribute('aria-expanded', 'false');
@@ -518,20 +521,26 @@ function closeCustomSelects(except = null) {
 }
 
 function positionCustomSelectMenu(control) {
-  control.classList.remove('drop-up');
-  if (window.matchMedia('(max-width: 820px)').matches) return;
   const trigger = $('.custom-select-trigger', control);
   const menu = $('.custom-select-menu', control);
-  const dialog = control.closest('dialog');
   if (!trigger || !menu) return;
+  if (!menu.matches(':popover-open')) menu.showPopover();
+  const viewport = window.visualViewport;
+  const viewportTop = viewport?.offsetTop || 0;
+  const viewportHeight = viewport?.height || window.innerHeight;
+  const viewportWidth = viewport?.width || window.innerWidth;
+  if (window.matchMedia('(max-width: 820px)').matches) {
+    Object.assign(menu.style, { left: '12px', right: 'auto', top: 'auto', bottom: `${Math.max(12, window.innerHeight - viewportTop - viewportHeight + 12)}px`, width: `${viewportWidth - 24}px`, maxHeight: `${Math.min(360, viewportHeight * .55)}px` });
+    return;
+  }
   const triggerRect = trigger.getBoundingClientRect();
-  const dialogRect = dialog?.getBoundingClientRect();
-  const topBoundary = Math.max(12, dialogRect?.top || 0);
-  const bottomBoundary = Math.min(window.innerHeight - 12, dialogRect?.bottom || window.innerHeight);
-  const menuHeight = Math.min(menu.scrollHeight || 260, 260) + 8;
+  const topBoundary = viewportTop + 12;
+  const bottomBoundary = viewportTop + viewportHeight - 12;
   const availableAbove = triggerRect.top - topBoundary;
   const availableBelow = bottomBoundary - triggerRect.bottom;
-  control.classList.toggle('drop-up', availableBelow < menuHeight && availableAbove > availableBelow);
+  const above = availableBelow < 260 && availableAbove > availableBelow;
+  const height = Math.max(44, Math.min(260, (above ? availableAbove : availableBelow) - 6));
+  Object.assign(menu.style, { left: `${Math.max(12, Math.min(triggerRect.left, viewportWidth - Math.max(180, triggerRect.width) - 12))}px`, right: 'auto', bottom: 'auto', width: `${Math.min(viewportWidth - 24, Math.max(180, triggerRect.width))}px`, maxHeight: `${height}px`, top: `${above ? triggerRect.top - Math.min(menu.scrollHeight, height) - 6 : triggerRect.bottom + 6}px` });
 }
 
 function syncCustomSelect(select) {
@@ -549,6 +558,7 @@ function syncCustomSelect(select) {
 }
 
 function enhanceSelect(select) {
+  if (!('showPopover' in HTMLElement.prototype)) return;
   if (select.dataset.enhanced === 'true' || select.multiple || select.closest('.custom-select')) return;
   select.dataset.enhanced = 'true';
   const control = document.createElement('div');
@@ -556,6 +566,8 @@ function enhanceSelect(select) {
   select.parentNode.insertBefore(control, select);
   control.appendChild(select);
   select.classList.add('custom-select-native');
+  select.setAttribute('aria-hidden', 'true');
+  select.tabIndex = -1;
   const trigger = document.createElement('button');
   trigger.type = 'button';
   trigger.className = 'custom-select-trigger';
@@ -564,6 +576,10 @@ function enhanceSelect(select) {
   trigger.innerHTML = `<span></span>${icon('chevronRight')}`;
   const menu = document.createElement('div');
   menu.className = 'custom-select-menu';
+  menu.setAttribute('popover', 'manual');
+  menu.id = `select-menu-${crypto.randomUUID()}`;
+  trigger.setAttribute('aria-controls', menu.id);
+  trigger.setAttribute('aria-label', select.getAttribute('aria-label') || select.closest('label')?.childNodes[0]?.textContent.trim() || 'Выберите');
   menu.setAttribute('role', 'listbox');
   [...select.options].forEach((sourceOption) => {
     const option = document.createElement('button');
@@ -595,7 +611,7 @@ function enhanceSelect(select) {
       positionCustomSelectMenu(control);
       $('.custom-select-option.selected', control)?.focus({ preventScroll: true });
     } else {
-      control.classList.remove('drop-up');
+      if (menu.matches(':popover-open')) menu.hidePopover();
     }
   });
   trigger.addEventListener('keydown', (event) => {
@@ -621,9 +637,13 @@ function enhanceSelect(select) {
       event.stopPropagation();
       closeCustomSelects();
       trigger.focus();
+    } else if (event.key === 'Tab') {
+      closeCustomSelects();
+      trigger.focus();
     }
   });
   select.addEventListener('change', () => syncCustomSelect(select));
+  control.closest('dialog')?.addEventListener('close', () => { if (menu.matches(':popover-open')) menu.hidePopover(); });
   syncCustomSelect(select);
 }
 
@@ -954,6 +974,7 @@ function clearPrivateClientState() {
   state.workspaces = [];
 	state.collections = [];
 	state.interfacePreferences = { hiddenNavGroups: [], collapsedNavGroups: [], dashboardWidgets: ['focus', 'capture', 'capacity', 'quality'] };
+	state.interfaceProfiles = {};
 	state.teamDetail = null;
 	state.activeCollectionId = '';
   state.personalTab = 'today';
@@ -1002,11 +1023,13 @@ async function loadData(silent = false) {
 		state.activeWorkspaceId = teamWorkspaces.find((workspace) => workspace.id === 'bizflow-team')?.id || teamWorkspaces[0]?.id || workspaces[0]?.id || '';
 	}
 	if (state.activeWorkspaceId) localStorage.setItem('bizflow-active-workspace', state.activeWorkspaceId);
-  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads, planning, collections, interfacePreferences, projectNavigation, workspacePages] = await Promise.all([
+  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads, planning, collections, desktopPreferences, mobilePreferences, projectNavigation, workspacePages] = await Promise.all([
     api('/api/users'), api('/api/records?includeArchived=true'), api('/api/notifications'),
-		api('/api/activity?limit=200'), api('/api/section-definitions'), api('/api/questions/pending'), api('/api/saved-views'), api('/api/chat/threads'), api('/api/planning/cycles'), api('/api/collections'), api('/api/interface/preferences'),
+		api('/api/activity?limit=200'), api('/api/section-definitions'), api('/api/questions/pending'), api('/api/saved-views'), api('/api/chat/threads'), api('/api/planning/cycles'), api('/api/collections'), api('/api/interface/preferences?device=desktop'), api('/api/interface/preferences?device=mobile'),
     api('/api/workspace/navigation'), api('/api/workspace/pages?includeArchived=true'),
   ]);
+  state.interfaceProfiles = { desktop: desktopPreferences, mobile: mobilePreferences };
+  const interfacePreferences = state.interfaceProfiles[interfaceDevice()];
   const projectActivity = activity.filter((item) => typeMeta[item.entityType] || ['section_definition', 'planning_cycle', 'workspace_page', 'workspace'].includes(item.entityType));
   const recordsByID = new Map(records.map((record) => [record.id, record]));
   state.detailCache.forEach((detail, id) => {
@@ -1231,6 +1254,13 @@ function bindGlobalEvents() {
     event.returnValue = '';
   });
   let rememberTimer;
+  document.addEventListener('scroll', (event) => {
+    if (event.target instanceof Element && event.target.closest('.custom-select-menu')) return;
+    $$('.custom-select.open').forEach((control) => {
+      const box = $('.custom-select-trigger', control).getBoundingClientRect();
+      if (box.bottom < 0 || box.top > innerHeight) closeCustomSelects(); else positionCustomSelectMenu(control);
+    });
+  }, { capture: true, passive: true });
   window.addEventListener('scroll', () => {
     clearTimeout(rememberTimer);
     rememberTimer = setTimeout(rememberView, 160);
@@ -1241,6 +1271,13 @@ function bindGlobalEvents() {
     $$('dialog[open]').forEach(flushDialogDrafts);
   });
   window.addEventListener('resize', () => {
+    const preferences = state.interfaceProfiles[interfaceDevice()];
+    if (preferences && state.interfacePreferences !== preferences) {
+      state.interfacePreferences = preferences;
+      renderNav();
+      if (state.layoutDraft) applyInterfaceLayout(); else renderContent();
+    }
+    $$('.custom-select.open').forEach(positionCustomSelectMenu);
     setSidebarOpen($('.sidebar').classList.contains('open'));
     clearTimeout(state.graphResizeTimer);
     state.graphResizeTimer = setTimeout(() => {
@@ -1774,12 +1811,20 @@ function renderNotificationBadge() {
   badge.hidden = unread === 0;
 }
 
-function navigationCatalog() {
+function interfaceDevice() {
+  return window.matchMedia('(max-width: 820px)').matches ? 'mobile' : 'desktop';
+}
+
+function deviceSelector(device) {
+  return `<div class="segmented interface-device-tabs" role="group" aria-label="Устройство">${[['desktop', 'ПК'], ['mobile', 'Телефон']].map(([key, label]) => `<button type="button" class="segment ${device === key ? 'active' : ''}" aria-pressed="${device === key}" data-interface-device="${key}">${label}</button>`).join('')}</div>`;
+}
+
+function navigationCatalog(preferences = state.interfacePreferences) {
   const enabled = new Set(state.projectNavigation.enabledViews || []);
   const builtin = navItems.filter(([key]) => key === 'personal' || enabled.has(key)).map(([key, label, iconName, group]) => ({ key, label, iconName, group }));
   const pages = state.workspacePages.filter((page) => !page.archived).map((page) => ({ key: `page:${page.id}`, label: page.name, iconName: page.viewMode === 'board' ? 'network' : 'fileText', group: 'Свои страницы' }));
   const items = [...builtin, ...pages];
-  const order = state.interfacePreferences.navOrder || [];
+  const order = preferences.navOrder || [];
   const positions = new Map(items.map((item, index) => [item.key, order.includes(item.key) ? order.indexOf(item.key) : order.length + index]));
   return items.sort((a, b) => positions.get(a.key) - positions.get(b.key));
 }
@@ -1803,7 +1848,14 @@ function renderNav() {
 }
 
 async function saveInterfacePreferences(preferences = state.interfacePreferences) {
-	state.interfacePreferences = await api('/api/interface/preferences', { method: 'PUT', body: JSON.stringify(preferences) });
+  const device = preferences.device || interfaceDevice();
+  const workspace = state.activeWorkspaceId;
+  const saved = await api(`/api/interface/preferences?device=${device}`, { method: 'PUT', body: JSON.stringify(preferences) });
+  if (workspace === state.activeWorkspaceId) {
+    state.interfaceProfiles[device] = saved;
+    state.interfacePreferences = state.interfaceProfiles[interfaceDevice()];
+  }
+  return saved;
 }
 
 function openInterfaceSettings() {
@@ -1888,7 +1940,7 @@ function renderDashboard() {
   bindOpenRecords();
   $$('[data-quick-create]').forEach((button) => button.addEventListener('click', () => openCreateDialog(button.dataset.quickCreate)));
   $$('[data-go]').forEach((button) => button.addEventListener('click', () => { navigateToView(button.dataset.go); }));
-	$('[data-configure-dashboard]')?.addEventListener('click', startLayoutEditor);
+	$('[data-configure-dashboard]')?.addEventListener('click', () => startLayoutEditor());
   if (state.layoutDraft) bindLayoutEditor();
   loadDashboardInsights();
 }
@@ -6382,11 +6434,9 @@ function renderStructure() {
   const definitions = state.definitions.filter((definition) => definition.scopeType === selectedType || !definition.scopeType);
   const active = definitions.filter((definition) => definition.active).sort((a, b) => a.sortOrder - b.sortOrder);
   const hidden = definitions.filter((definition) => !definition.active).sort((a, b) => a.sortOrder - b.sortOrder);
-  const scoped = active.filter((definition) => definition.scopeType === selectedType);
   const actions = (definition) => {
     if (!admin) return '';
-    const position = scoped.indexOf(definition);
-    return `<div class="template-actions">${position >= 0 ? `<button type="button" class="icon-button" data-definition-up="${definition.id}" title="Выше" aria-label="Выше: ${escapeHTML(definition.name)}" ${position === 0 ? 'disabled' : ''}>${icon('arrowUp')}</button><button type="button" class="icon-button" data-definition-down="${definition.id}" title="Ниже" aria-label="Ниже: ${escapeHTML(definition.name)}" ${position === scoped.length - 1 ? 'disabled' : ''}>${icon('arrowDown')}</button>` : ''}<button type="button" class="icon-button" data-rename-definition="${definition.id}" title="Переименовать" aria-label="Переименовать: ${escapeHTML(definition.name)}">${icon('edit')}</button><button type="button" class="secondary" data-hide-definition="${definition.id}">${icon('minus')} Скрыть</button></div>`;
+    return `<div class="template-actions"><button type="button" class="icon-button" data-rename-definition="${definition.id}" title="Переименовать" aria-label="Переименовать: ${escapeHTML(definition.name)}">${icon('edit')}</button><button type="button" class="icon-button" data-hide-definition="${definition.id}" title="Скрыть блок" aria-label="Скрыть: ${escapeHTML(definition.name)}">${icon('minus')}</button></div>`;
   };
   $('#main-content').innerHTML = `<div class="page-heading template-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>Содержимое карточек</h1></div><button type="button" class="secondary" data-back-to-composer>${icon('arrowLeft')} Меню и страницы</button></div><div class="template-editor"><aside>${configurableTypes.map(([key, meta]) => `<button type="button" data-structure-type="${key}" class="${selectedType === key ? 'active' : ''}">${icon(meta.icon)}<span>${meta.label}</span><b>${state.definitions.filter((definition) => definition.scopeType === key && definition.active).length}</b></button>`).join('')}</aside><section><header><h2>${typeMeta[selectedType].label}</h2>${admin ? '' : '<p>Шаблоны изменяет администратор проекта.</p>'}</header><div class="template-block-list" data-template-list>${active.map((definition) => `<article class="template-block" draggable="${admin && Boolean(definition.scopeType)}" data-template-block="${definition.id}" data-scope-type="${definition.scopeType || ''}">${admin ? `<button type="button" class="drag-handle" aria-label="Перетащить блок «${escapeHTML(definition.name)}»" title="Перетащить блок">${icon('grip')}</button>` : ''}<div class="template-block-name"><strong>${escapeHTML(definition.name)}</strong><small>${definition.scopeType ? typeMeta[definition.scopeType].label : 'Во всех типах карточек'}</small></div>${actions(definition)}</article>`).join('') || '<p class="composer-access-note">В шаблоне нет блоков.</p>'}${admin ? `<div class="template-drop-actions"><button type="button" class="template-add" data-add-template-block>${icon('plus')} Добавить блок</button><div class="template-trash" data-template-trash>${icon('archive')} Скрыть блок</div></div>` : ''}</div>${hidden.length ? `<details class="hidden-template-blocks"><summary>Скрытые блоки <b>${hidden.length}</b></summary><div>${hidden.map((definition) => `<button type="button" data-restore-definition="${definition.id}" ${admin ? '' : 'disabled'}>${icon('rotate')}<span><strong>${escapeHTML(definition.name)}</strong><small>Вернуть в шаблон</small></span></button>`).join('')}</div></details>` : ''}</section></div>`;
   $('[data-back-to-composer]').addEventListener('click', () => openNavigationSettings());
@@ -6397,19 +6447,15 @@ function renderStructure() {
   $$('[data-hide-definition]').forEach((button) => button.addEventListener('click', () => update(button.dataset.hideDefinition, { active: false })));
   $$('[data-restore-definition]').forEach((button) => button.addEventListener('click', () => update(button.dataset.restoreDefinition, { active: true })));
   $$('[data-rename-definition]').forEach((button) => button.addEventListener('click', async () => { const definition = definitions.find((item) => item.id === button.dataset.renameDefinition); const name = await askText({ title: 'Название блока', label: 'Название', defaultValue: definition.name, required: true }); if (name && name !== definition.name) await update(definition.id, { name }); }));
-  $$('[data-definition-up], [data-definition-down]').forEach((button) => button.addEventListener('click', async () => {
-    const list = $('[data-template-list]'); const row = button.closest('[data-template-block]');
-    const rows = $$('[data-template-block]', list).filter((item) => item.dataset.scopeType === selectedType); const index = rows.indexOf(row);
-    if (button.hasAttribute('data-definition-up')) rows[index - 1]?.before(row); else rows[index + 1]?.after(row);
-    try { await saveTemplateOrder(selectedType, list); await refresh(); } catch (error) { toast(error.message, true); renderStructure(); }
-  }));
   if (admin) bindTemplateDrag(selectedType);
 }
 
 async function saveTemplateOrder(scopeType, list) {
+  const workspace = state.activeWorkspaceId;
   const orderedIds = $$('[data-template-block]', list).filter((row) => row.dataset.scopeType === scopeType).map((row) => row.dataset.templateBlock);
   if (!orderedIds.length) return;
   await api('/api/section-definitions/reorder', { method: 'POST', body: JSON.stringify({ scopeType, orderedIds }) });
+  if (workspace !== state.activeWorkspaceId) return;
   orderedIds.forEach((id, index) => {
     const definition = state.definitions.find((item) => item.id === id);
     if (definition) definition.sortOrder = (index + 1) * 10;
@@ -6418,92 +6464,17 @@ async function saveTemplateOrder(scopeType, list) {
 
 function bindTemplateDrag(scopeType) {
   const list = $('[data-template-list]');
-  const trash = $('[data-template-trash]');
-  if (!list || !trash) return;
-  let dragged = null;
-  let droppedInTrash = false;
-  let pointerDrag = null;
-  const clearTargets = () => $$('[data-template-block]', list).forEach((row) => row.classList.remove('drop-before', 'drop-after'));
-  const begin = (row) => {
-    dragged = row; droppedInTrash = false;
-    row.classList.add('dragging'); list.classList.add('is-dragging');
-  };
-  const finish = async () => {
-    if (!dragged) return;
-    const moved = dragged;
-    list.classList.remove('is-dragging'); trash.classList.remove('active'); clearTargets();
-    document.body.classList.remove('template-pointer-drag');
-    moved.classList.remove('dragging'); dragged = null;
-    if (droppedInTrash) { droppedInTrash = false; return; }
-    try { await saveTemplateOrder(scopeType, list); toast('Порядок блоков сохранён'); } catch (error) { toast(error.message, true); renderStructure(); }
-  };
-  const hideDragged = async () => {
-    if (!dragged) return;
-    const id = dragged.dataset.templateBlock;
-    droppedInTrash = true; trash.classList.remove('active'); dragged.classList.add('removing');
-    try {
-      await api(`/api/section-definitions/${id}`, { method: 'PATCH', body: JSON.stringify({ active: false, reason: 'Блок убран из шаблона через зону удаления' }) });
-      await loadData(true); state.structureType = scopeType; renderStructure(); toast('Блок скрыт. Его можно вернуть ниже списка');
-    } catch (error) { droppedInTrash = false; toast(error.message, true); renderStructure(); }
-  };
+  $('[data-template-trash]', list)?.remove();
   $$('[data-template-block]', list).forEach((row) => {
-    row.addEventListener('dragstart', (event) => {
-      if (row.dataset.scopeType !== scopeType) { event.preventDefault(); return; }
-      begin(row);
-      event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', row.dataset.templateBlock);
-    });
-    row.addEventListener('dragover', (event) => {
-      if (!dragged || row === dragged) return;
-      event.preventDefault(); clearTargets();
-      const before = event.clientY < row.getBoundingClientRect().top + row.offsetHeight / 2;
-      row.classList.add(before ? 'drop-before' : 'drop-after');
-      list.insertBefore(dragged, before ? row : row.nextSibling);
-    });
-    row.addEventListener('dragend', finish);
+    row.draggable = false;
     const handle = $('.drag-handle', row);
-    handle?.addEventListener('pointerdown', (event) => {
-      if (event.pointerType === 'mouse' || row.dataset.scopeType !== scopeType) return;
-      event.preventDefault(); begin(row); document.body.classList.add('template-pointer-drag');
-      pointerDrag = { id: event.pointerId, handle };
-      handle.setPointerCapture?.(event.pointerId);
-    });
-    handle?.addEventListener('pointermove', (event) => {
-      if (!pointerDrag || pointerDrag.id !== event.pointerId || !dragged) return;
-      event.preventDefault();
-      const target = document.elementFromPoint(event.clientX, event.clientY);
-      const overTrash = target?.closest('[data-template-trash]');
-      trash.classList.toggle('active', Boolean(overTrash));
-      if (overTrash) { clearTargets(); return; }
-      const targetRow = target?.closest('[data-template-block]');
-      if (!targetRow || targetRow === dragged || !list.contains(targetRow)) return;
-      clearTargets();
-      const before = event.clientY < targetRow.getBoundingClientRect().top + targetRow.offsetHeight / 2;
-      targetRow.classList.add(before ? 'drop-before' : 'drop-after');
-      list.insertBefore(dragged, before ? targetRow : targetRow.nextSibling);
-    });
-    const endPointerDrag = async (event) => {
-      if (!pointerDrag || pointerDrag.id !== event.pointerId) return;
-      const remove = trash.classList.contains('active');
-      pointerDrag.handle.releasePointerCapture?.(event.pointerId); pointerDrag = null;
-      if (remove) await hideDragged(); else await finish();
-    };
-    handle?.addEventListener('pointerup', endPointerDrag);
-    handle?.addEventListener('pointercancel', async () => { pointerDrag = null; await finish(); });
-    handle?.addEventListener('keydown', async (event) => {
-      if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
-      event.preventDefault();
-      const sibling = event.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling;
-      if (!sibling?.matches('[data-template-block]')) return;
-      if (event.key === 'ArrowUp') list.insertBefore(row, sibling); else list.insertBefore(sibling, row);
-      try { await saveTemplateOrder(scopeType, list); renderStructure(); toast('Порядок блоков сохранён'); } catch (error) { toast(error.message, true); }
-    });
+    if (!handle) return;
+    handle.disabled = row.dataset.scopeType !== scopeType;
+    if (!handle.disabled) handle.dataset.reorderHandle = '';
   });
-  trash.addEventListener('dragover', (event) => { if (!dragged) return; event.preventDefault(); trash.classList.add('active'); event.dataTransfer.dropEffect = 'move'; });
-  trash.addEventListener('dragleave', () => trash.classList.remove('active'));
-  trash.addEventListener('drop', async (event) => {
-    event.preventDefault();
-    if (!dragged) return;
-    await hideDragged();
+  bindReorderList(list, `[data-template-block][data-scope-type="${scopeType}"]`, async () => {
+    await saveTemplateOrder(scopeType, list);
+    toast('Порядок блоков сохранён');
   });
 }
 
@@ -6662,45 +6633,108 @@ function bindComposerForm(form) {
   form.addEventListener('change', () => { $('#workspace-dialog').dataset.composerDirty = 'true'; });
 }
 
-function openNavigationSettings(tab = 'menu') {
+function bindReorderList(list, rowSelector, onCommit) {
+  if (!list) return;
+  let drag = null;
+  let busy = false;
+  const rows = () => $$(rowSelector, list);
+  const status = document.createElement('span');
+  status.className = 'sr-only'; status.setAttribute('role', 'status'); list.append(status);
+  const restore = (order, anchor) => order.forEach((row) => list.insertBefore(row, anchor));
+  const commit = async (row, order, anchor) => {
+    if (rows().every((item, index) => item === order[index])) return;
+    busy = true;
+    try {
+      await onCommit();
+      status.textContent = `Позиция ${rows().indexOf(row) + 1} из ${rows().length}`;
+    } catch (error) { if (list.isConnected) restore(order, anchor); toast(error.message, true); }
+    finally { busy = false; }
+  };
+  rows().forEach((row) => {
+    const handle = $('[data-reorder-handle]', row);
+    if (!handle) return;
+    handle.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
+    handle.addEventListener('pointerdown', (event) => {
+      if (busy || event.button !== 0 || event.isPrimary === false) return;
+      event.preventDefault(); handle.focus({ preventScroll: true });
+      const order = rows();
+      drag = { row, handle, order, anchor: order.at(-1).nextSibling, id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+      list.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener('keydown', async (event) => {
+      if (busy || !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const order = rows(), index = order.indexOf(row), anchor = order.at(-1).nextSibling;
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? order.length - 1 : index + (event.key === 'ArrowUp' ? -1 : 1);
+      if (!order[next] || next === index) return;
+      if (next < index) order[next].before(row); else order[next].after(row);
+      await commit(row, order, anchor);
+      if (handle.isConnected) handle.focus({ preventScroll: true });
+    });
+  });
+  list.addEventListener('pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return;
+    drag.moved = true; drag.row.classList.add('reorder-dragging'); event.preventDefault();
+    const target = rows().find((row) => { const box = row.getBoundingClientRect(); return row !== drag.row && event.clientY >= box.top && event.clientY <= box.bottom; });
+    if (target) {
+      const box = target.getBoundingClientRect();
+      if (event.clientY < box.top + box.height / 2) target.before(drag.row); else target.after(drag.row);
+    }
+    const scroller = list.closest('dialog') || document.scrollingElement;
+    const box = list.closest('dialog')?.getBoundingClientRect() || { top: 0, bottom: innerHeight };
+    if (event.clientY < box.top + 60) scroller.scrollBy(0, -18);
+    if (event.clientY > Math.min(box.bottom, innerHeight) - 60) scroller.scrollBy(0, 18);
+  });
+  const finish = async (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const done = drag; drag = null;
+    if (list.hasPointerCapture(event.pointerId)) list.releasePointerCapture(event.pointerId);
+    done.row.classList.remove('reorder-dragging');
+    if (event.type === 'pointercancel' || event.type === 'lostpointercapture') { restore(done.order, done.anchor); return; }
+    if (done.moved) await commit(done.row, done.order, done.anchor);
+  };
+  list.addEventListener('pointerup', finish);
+  list.addEventListener('pointercancel', finish);
+  list.addEventListener('lostpointercapture', finish);
+}
+
+function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
   const dialog = $('#workspace-dialog');
   if (!discardComposerChanges(dialog)) return;
   const admin = canConfigureWorkspace();
-  const items = navigationCatalog();
-  const preferences = state.interfacePreferences;
+  const preferences = state.interfaceProfiles[device] || state.interfacePreferences;
+  const items = navigationCatalog(preferences);
   const hidden = new Set(preferences.hiddenNavItems || []);
   const hiddenGroups = new Set(preferences.hiddenNavGroups || []);
   const tabs = [['menu', 'Моё меню'], ['modules', 'Разделы проекта'], ['pages', 'Свои страницы']];
   let body = '';
-  if (tab === 'menu') body = `<form id="navigation-personal-form"><div class="composer-rows">${items.map((item, index) => `<div class="composer-menu-row" data-menu-key="${escapeHTML(item.key)}"><label class="check"><input type="checkbox" name="visibleItem" value="${escapeHTML(item.key)}" ${!hidden.has(item.key) && !hiddenGroups.has(item.group) ? 'checked' : ''}><span>${escapeHTML(item.label)}</span></label><button type="button" class="icon-button" data-menu-up aria-label="Выше: ${escapeHTML(item.label)}" title="Выше">${icon('arrowUp')}</button><button type="button" class="icon-button" data-menu-down aria-label="Ниже: ${escapeHTML(item.label)}" title="Ниже">${icon('arrowDown')}</button></div>`).join('')}</div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить моё меню</button><button type="button" class="secondary" data-reset-nav>По умолчанию</button></div></form>`;
+  if (tab === 'menu') body = `${deviceSelector(device)}<form id="navigation-personal-form"><div class="composer-rows">${items.map((item) => `<div class="composer-menu-row" data-menu-key="${escapeHTML(item.key)}"><button type="button" class="drag-handle" data-reorder-handle aria-label="Переместить: ${escapeHTML(item.label)}" title="Переместить">${icon('grip')}</button><label class="check"><input type="checkbox" name="visibleItem" value="${escapeHTML(item.key)}" ${!hidden.has(item.key) && !hiddenGroups.has(item.group) ? 'checked' : ''}><span>${escapeHTML(item.label)}</span></label></div>`).join('')}</div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить меню ${device === 'mobile' ? 'телефона' : 'ПК'}</button><button type="button" class="secondary" data-reset-nav>По умолчанию</button></div></form>`;
   if (tab === 'modules') body = `<form id="project-modules-form"><div class="composer-module-grid">${navItems.filter(([key]) => key !== 'personal').map(([key, label, iconName]) => `<label class="check module-option"><input type="checkbox" name="module" value="${key}" ${state.projectNavigation.enabledViews.includes(key) ? 'checked' : ''} ${admin ? '' : 'disabled'}><span>${icon(iconName)} ${escapeHTML(label)}</span></label>`).join('')}</div>${admin ? '<div class="form-actions"><button type="submit" class="primary">Сохранить разделы проекта</button></div>' : '<p class="composer-access-note">Состав разделов настраивает администратор проекта.</p>'}</form>`;
   if (tab === 'pages') body = `${admin ? `<button type="button" class="primary" data-new-page>${icon('plus')} Создать страницу</button>` : ''}<div class="composer-page-list">${state.workspacePages.map((page) => `<article><div><strong>${escapeHTML(page.name)}</strong><small>${page.archived ? 'В архиве' : page.collectionId ? escapeHTML(state.collections.find((collection) => collection.id === page.collectionId)?.name || 'Доска недоступна') : 'Карточки проекта'} · ${page.viewMode === 'board' ? 'Доска' : 'Список'}</small></div>${admin ? `<button type="button" class="icon-button" data-configure-page="${page.id}" aria-label="Настроить страницу ${escapeHTML(page.name)}" title="Настроить">${icon('edit')}</button><button type="button" class="icon-button" data-archive-page="${page.id}" aria-label="${page.archived ? 'Восстановить' : 'Архивировать'} страницу ${escapeHTML(page.name)}" title="${page.archived ? 'Восстановить' : 'Архивировать'}">${icon(page.archived ? 'rotate' : 'archive')}</button>` : ''}</article>`).join('') || '<p class="composer-access-note">Своих страниц пока нет.</p>'}</div>`;
   $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>Меню и страницы</h2><p>${tab === 'menu' ? 'Ваше меню, только для вас' : 'Общие настройки этого проекта'}</p></div><button type="button" class="icon-button" data-close-composer aria-label="Закрыть">${icon('x')}</button></header><div class="segmented composer-tabs" role="tablist" aria-label="Настройка меню">${tabs.map(([key, label]) => `<button type="button" class="segment ${key === tab ? 'active' : ''}" role="tab" aria-selected="${key === tab}" data-composer-tab="${key}">${label}</button>`).join('')}</div>${body}<footer class="composer-shortcuts"><button type="button" class="text-button" data-composer-layout>${icon('dashboard')} Настроить главную</button><button type="button" class="text-button" data-composer-templates>${icon('settings')} Содержимое карточек</button></footer></div>`;
   $('[data-close-composer]', dialog).addEventListener('click', closeWorkspaceDialog);
-  $$('[data-composer-tab]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings(button.dataset.composerTab)));
+  $$('[data-composer-tab]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings(button.dataset.composerTab, device)));
+  $$('[data-interface-device]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings('menu', button.dataset.interfaceDevice)));
   const leaveFor = (view, after) => {
     if (!discardComposerChanges(dialog)) return;
     state.afterOverlayClose = () => { navigateToView(view); after?.(); };
     closeWorkspaceDialog();
   };
-  $('[data-composer-layout]', dialog).addEventListener('click', () => leaveFor('dashboard', startLayoutEditor));
+  $('[data-composer-layout]', dialog).addEventListener('click', () => leaveFor('dashboard', () => startLayoutEditor(device)));
   $('[data-composer-templates]', dialog).addEventListener('click', () => leaveFor('structure'));
   const personalForm = $('#navigation-personal-form', dialog);
   if (personalForm) {
     bindComposerForm(personalForm);
-    $$('[data-menu-up], [data-menu-down]', personalForm).forEach((button) => button.addEventListener('click', () => {
-      const row = button.closest('[data-menu-key]');
-      if (button.hasAttribute('data-menu-up')) row.previousElementSibling?.before(row); else row.nextElementSibling?.after(row);
-      dialog.dataset.composerDirty = 'true';
-    }));
+    bindReorderList($('.composer-rows', personalForm), '[data-menu-key]', () => { dialog.dataset.composerDirty = 'true'; });
     personalForm.addEventListener('submit', async (event) => {
       event.preventDefault(); const button = $('button[type="submit"]', personalForm); button.disabled = true;
       const visible = new Set(new FormData(personalForm).getAll('visibleItem'));
-      const next = { ...state.interfacePreferences, hiddenNavGroups: [], hiddenNavItems: [...(preferences.hiddenNavItems || []).filter((key) => !items.some((item) => item.key === key)), ...items.filter((item) => !visible.has(item.key)).map((item) => item.key)], navOrder: $$('[data-menu-key]', personalForm).map((row) => row.dataset.menuKey) };
+      const next = { ...preferences, device, hiddenNavGroups: [], hiddenNavItems: [...(preferences.hiddenNavItems || []).filter((key) => !items.some((item) => item.key === key)), ...items.filter((item) => !visible.has(item.key)).map((item) => item.key)], navOrder: $$('[data-menu-key]', personalForm).map((row) => row.dataset.menuKey) };
       try { await saveInterfacePreferences(next); dialog.dataset.composerDirty = 'false'; closeWorkspaceDialog(); renderNav(); toast('Ваше меню сохранено'); } catch (error) { button.disabled = false; toast(error.message, true); }
     });
     $('[data-reset-nav]', personalForm).addEventListener('click', async () => {
-      try { await saveInterfacePreferences({ ...state.interfacePreferences, hiddenNavGroups: [], collapsedNavGroups: [], hiddenNavItems: [], navOrder: [] }); dialog.dataset.composerDirty = 'false'; openNavigationSettings(); renderNav(); } catch (error) { toast(error.message, true); }
+      try { await saveInterfacePreferences({ ...preferences, device, hiddenNavGroups: [], collapsedNavGroups: [], hiddenNavItems: [], navOrder: [] }); dialog.dataset.composerDirty = 'false'; openNavigationSettings('menu', device); renderNav(); } catch (error) { toast(error.message, true); }
     });
   }
   const modulesForm = $('#project-modules-form', dialog);
@@ -6799,6 +6833,7 @@ function applyInterfaceLayout() {
   root.style.setProperty('--sidebar-width', `${layout.sidebarWidth}px`);
   root.dataset.sidebarSide = layout.sidebarSide;
   root.dataset.density = layout.density;
+  root.dataset.layoutDevice = state.layoutDraft?.device || interfaceDevice();
   Object.entries(toolbarSelectors).forEach(([key, selector]) => {
     const button = $(selector); const index = layout.toolbarActions.indexOf(key);
     button.hidden = index < 0; button.style.order = index + 1;
@@ -6808,49 +6843,49 @@ function applyInterfaceLayout() {
   if (ordered.some((button, index) => actions.children[index] !== button)) ordered.forEach((button) => actions.append(button));
 }
 
-function renderLayoutFields(layout) {
+function renderLayoutFields(layout, device = state.layoutDraft?.device || interfaceDevice()) {
   const ordered = [...layout.toolbarActions, ...Object.keys(toolbarNames).filter((key) => !layout.toolbarActions.includes(key))];
-  return `<details class="layout-options"><summary>Размеры, меню и кнопки</summary><div class="layout-options-grid"><label>Ширина рабочей области <output data-width-output>${layout.contentWidth} px</output><input type="range" name="contentWidth" min="900" max="2200" step="50" value="${layout.contentWidth}"></label><label>Ширина меню <output data-sidebar-output>${layout.sidebarWidth} px</output><input type="range" name="sidebarWidth" min="196" max="340" step="2" value="${layout.sidebarWidth}"></label><label>Меню на компьютере<select name="sidebarSide"><option value="left" ${layout.sidebarSide === 'left' ? 'selected' : ''}>Слева</option><option value="right" ${layout.sidebarSide === 'right' ? 'selected' : ''}>Справа</option></select></label><label>Плотность<select name="density"><option value="comfortable" ${layout.density === 'comfortable' ? 'selected' : ''}>Обычная</option><option value="compact" ${layout.density === 'compact' ? 'selected' : ''}>Компактная</option></select></label><fieldset><legend>Кнопки верхней панели</legend><div class="layout-action-order">${ordered.map((key) => `<div data-toolbar-action="${key}"><label class="check"><input type="checkbox" name="toolbarAction" value="${key}" ${layout.toolbarActions.includes(key) ? 'checked' : ''}><span>${toolbarNames[key]}</span></label><button type="button" class="icon-button" data-toolbar-up title="Раньше" aria-label="${toolbarNames[key]}: раньше">${icon('arrowUp')}</button><button type="button" class="icon-button" data-toolbar-down title="Позже" aria-label="${toolbarNames[key]}: позже">${icon('arrowDown')}</button></div>`).join('')}</div></fieldset><fieldset><legend>Быстрая фиксация</legend><div class="layout-quick-options">${['inbox', 'idea', 'task', 'question_set', 'research', 'decision', 'document', 'goal'].map((key) => `<label class="check"><input type="checkbox" name="quickAction" value="${key}" ${layout.quickActions.includes(key) ? 'checked' : ''}><span>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</span></label>`).join('')}</div></fieldset></div></details>`;
+  const desktopFields = device === 'desktop' ? `<label>Ширина рабочей области <output data-width-output>${layout.contentWidth} px</output><input type="range" name="contentWidth" min="900" max="2200" step="50" value="${layout.contentWidth}"></label><label>Ширина меню <output data-sidebar-output>${layout.sidebarWidth} px</output><input type="range" name="sidebarWidth" min="196" max="340" step="2" value="${layout.sidebarWidth}"></label><label>Расположение меню<select name="sidebarSide"><option value="left" ${layout.sidebarSide === 'left' ? 'selected' : ''}>Слева</option><option value="right" ${layout.sidebarSide === 'right' ? 'selected' : ''}>Справа</option></select></label>` : '';
+  return `<details class="layout-options"><summary>${device === 'mobile' ? 'Плотность и кнопки' : 'Размеры, меню и кнопки'}</summary><div class="layout-options-grid">${desktopFields}<label>Плотность<select name="density"><option value="comfortable" ${layout.density === 'comfortable' ? 'selected' : ''}>Обычная</option><option value="compact" ${layout.density === 'compact' ? 'selected' : ''}>Компактная</option></select></label><fieldset><legend>Кнопки верхней панели</legend><div class="layout-action-order">${ordered.map((key) => `<div data-toolbar-action="${key}"><button type="button" class="drag-handle" data-reorder-handle title="Переместить" aria-label="Переместить: ${toolbarNames[key]}">${icon('grip')}</button><label class="check"><input type="checkbox" name="toolbarAction" value="${key}" ${layout.toolbarActions.includes(key) ? 'checked' : ''}><span>${toolbarNames[key]}</span></label></div>`).join('')}</div></fieldset><fieldset><legend>Быстрая фиксация</legend><div class="layout-quick-options">${['inbox', 'idea', 'task', 'question_set', 'research', 'decision', 'document', 'goal'].map((key) => `<label class="check"><input type="checkbox" name="quickAction" value="${key}" ${layout.quickActions.includes(key) ? 'checked' : ''}><span>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</span></label>`).join('')}</div></fieldset></div></details>`;
 }
 
 function readLayoutFields(root, layout) {
-  return { ...layout, contentWidth: Number($('[name="contentWidth"]', root).value), sidebarWidth: Number($('[name="sidebarWidth"]', root).value), sidebarSide: $('[name="sidebarSide"]', root).value, density: $('[name="density"]', root).value,
+  return { ...layout, contentWidth: Number($('[name="contentWidth"]', root)?.value || layout.contentWidth), sidebarWidth: Number($('[name="sidebarWidth"]', root)?.value || layout.sidebarWidth), sidebarSide: $('[name="sidebarSide"]', root)?.value || layout.sidebarSide, density: $('[name="density"]', root).value,
     toolbarActions: $$('[data-toolbar-action]', root).filter((row) => $('input', row).checked).map((row) => row.dataset.toolbarAction),
     quickActions: $$('[name="quickAction"]:checked', root).map((input) => input.value) };
 }
 
 function bindLayoutFields(root, onChange = () => {}) {
   const changed = () => {
-    $('[data-width-output]', root).textContent = `${$('[name="contentWidth"]', root).value} px`;
-    $('[data-sidebar-output]', root).textContent = `${$('[name="sidebarWidth"]', root).value} px`;
+    if ($('[data-width-output]', root)) $('[data-width-output]', root).textContent = `${$('[name="contentWidth"]', root).value} px`;
+    if ($('[data-sidebar-output]', root)) $('[data-sidebar-output]', root).textContent = `${$('[name="sidebarWidth"]', root).value} px`;
     onChange();
   };
   $$('.layout-options input', root).forEach((input) => input.addEventListener('input', changed));
   $$('.layout-options select', root).forEach((input) => input.addEventListener('change', changed));
-  $$('[data-toolbar-up], [data-toolbar-down]', root).forEach((button) => button.addEventListener('click', () => {
-    const row = button.closest('[data-toolbar-action]');
-    if (button.hasAttribute('data-toolbar-up') && row.previousElementSibling) row.previousElementSibling.before(row);
-    else if (button.hasAttribute('data-toolbar-down') && row.nextElementSibling) row.nextElementSibling.after(row);
-    changed();
-  }));
+  bindReorderList($('.layout-action-order', root), '[data-toolbar-action]', changed);
 }
 
-function startLayoutEditor() {
+function startLayoutEditor(device = interfaceDevice()) {
   rememberView();
   state.layoutHistoryEntry = structuredClone(history.state);
-  state.layoutDraft = structuredClone(state.interfacePreferences);
+  state.layoutDraft = structuredClone(state.interfaceProfiles[device] || state.interfacePreferences);
+  state.layoutDraft.device = device;
   state.layoutDraft.layout = interfaceLayout(state.layoutDraft);
+  state.layoutBaseline = JSON.stringify(state.layoutDraft);
+  applyInterfaceLayout();
   renderDashboard();
 }
 
 function renderLayoutEditorHeader() {
   const missing = Object.keys(widgetNames).filter((key) => !state.layoutDraft.dashboardWidgets.includes(key));
-  return `<section class="layout-editor-header"><div class="layout-editor-actions"><h2>Настройка главной</h2><button type="button" class="primary" data-layout-save>${icon('check')} Сохранить</button><button type="button" class="secondary" data-layout-cancel>Отмена</button><button type="button" class="icon-button" data-layout-reset title="Раскладка по умолчанию" aria-label="Раскладка по умолчанию">${icon('rotate')}</button></div>${renderLayoutFields(interfaceLayout())}${missing.length ? `<div class="layout-add-blocks">${missing.map((key) => `<button type="button" class="secondary" data-layout-add="${key}">${icon('plus')} ${widgetNames[key]}</button>`).join('')}</div>` : ''}<span class="sr-only" role="status" id="layout-move-status"></span></section>`;
+  return `<section class="layout-editor-header"><div class="layout-editor-actions"><h2>Настройка главной</h2><button type="button" class="primary" data-layout-save>${icon('check')} Сохранить</button><button type="button" class="secondary" data-layout-cancel>Отмена</button><button type="button" class="icon-button" data-layout-reset title="Раскладка по умолчанию" aria-label="Раскладка по умолчанию">${icon('rotate')}</button></div>${deviceSelector(state.layoutDraft.device)}${renderLayoutFields(interfaceLayout())}${missing.length ? `<div class="layout-add-blocks">${missing.map((key) => `<button type="button" class="secondary" data-layout-add="${key}">${icon('plus')} ${widgetNames[key]}</button>`).join('')}</div>` : ''}<span class="sr-only" role="status" id="layout-move-status"></span></section>`;
 }
 
 function renderWidgetControls(key) {
   const span = interfaceLayout().widgetSpans[key];
-  return `<div class="widget-edit-tools"><button type="button" class="icon-button widget-move-handle" data-widget-drag="${key}" title="Переместить блок" aria-label="Переместить: ${widgetNames[key]}">${icon('grip')}</button><label>Ширина на ПК<select data-widget-span="${key}">${[[4, '1/3'], [6, '1/2'], [8, '2/3'], [12, 'Вся']].map(([value, label]) => `<option value="${value}" ${span === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><button type="button" class="icon-button" data-layout-move="${key}" data-delta="-1" aria-label="${widgetNames[key]}: выше" title="Выше">${icon('arrowUp')}</button><button type="button" class="icon-button" data-layout-move="${key}" data-delta="1" aria-label="${widgetNames[key]}: ниже" title="Ниже">${icon('arrowDown')}</button><button type="button" class="icon-button" data-layout-hide="${key}" title="Скрыть блок" aria-label="Скрыть: ${widgetNames[key]}">${icon('x')}</button></div><button type="button" class="widget-resize-handle" data-widget-resize="${key}" title="Изменить ширину" aria-label="Изменить ширину: ${widgetNames[key]}">${icon('chevronRight')}</button>`;
+  const desktop = (state.layoutDraft?.device || interfaceDevice()) === 'desktop';
+  return `<div class="widget-edit-tools"><button type="button" class="icon-button widget-move-handle" data-widget-drag="${key}" title="Переместить блок" aria-label="Переместить: ${widgetNames[key]}" aria-keyshortcuts="ArrowUp ArrowDown">${icon('grip')}</button>${desktop ? `<label>Ширина<select data-widget-span="${key}">${[[4, '1/3'], [6, '1/2'], [8, '2/3'], [12, 'Вся']].map(([value, label]) => `<option value="${value}" ${span === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>` : ''}<button type="button" class="icon-button" data-layout-hide="${key}" title="Скрыть блок" aria-label="Скрыть: ${widgetNames[key]}">${icon('x')}</button></div>${desktop ? `<button type="button" class="widget-resize-handle" data-widget-resize="${key}" title="Изменить ширину" aria-label="Изменить ширину: ${widgetNames[key]}">${icon('chevronRight')}</button>` : ''}`;
 }
 
 function moveLayoutWidget(key, target, after = false) {
@@ -6866,6 +6901,11 @@ function moveLayoutWidget(key, target, after = false) {
 
 function bindLayoutEditor() {
   const header = $('.layout-editor-header');
+  $$('[data-interface-device]', header).forEach((button) => button.addEventListener('click', () => {
+    if (button.dataset.interfaceDevice === state.layoutDraft.device) return;
+    if (JSON.stringify(state.layoutDraft) !== state.layoutBaseline && !confirm('Сменить устройство без сохранения раскладки?')) return;
+    startLayoutEditor(button.dataset.interfaceDevice); applyInterfaceLayout();
+  }));
   bindLayoutFields(header, () => {
     state.layoutDraft.layout = readLayoutFields(header, interfaceLayout()); applyInterfaceLayout();
     const actions = $('.dashboard-widget-capture .quick-actions');
@@ -6881,9 +6921,8 @@ function bindLayoutEditor() {
     const workspaceID = state.activeWorkspaceId; const draft = state.layoutDraft;
     state.layoutDraft.layout = readLayoutFields(header, interfaceLayout());
     try {
-      const saved = await api('/api/interface/preferences', { method: 'PUT', body: JSON.stringify(draft) });
+      await saveInterfacePreferences(draft);
       if (workspaceID !== state.activeWorkspaceId || draft !== state.layoutDraft) return;
-      state.interfacePreferences = saved;
       state.layoutDraft = null; render(); toast('Раскладка сохранена');
     } catch (error) { toast(error.message, true); button.disabled = false; }
   });
@@ -6893,8 +6932,10 @@ function bindLayoutEditor() {
     state.layoutDraft.dashboardWidgets = state.layoutDraft.dashboardWidgets.filter((key) => key !== button.dataset.layoutHide); renderDashboard();
   }));
   $$('[data-widget-span]').forEach((select) => select.addEventListener('change', () => { state.layoutDraft.layout.widgetSpans[select.dataset.widgetSpan] = Number(select.value); select.closest('[data-layout-widget]').style.setProperty('--widget-span', select.value); }));
-  $$('[data-layout-move]').forEach((button) => button.addEventListener('click', () => {
-    const key = button.dataset.layoutMove; const delta = Number(button.dataset.delta); const order = state.layoutDraft.dashboardWidgets;
+  $$('[data-widget-drag]').forEach((button) => button.addEventListener('keydown', (event) => {
+    if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const key = button.dataset.widgetDrag; const delta = event.key === 'ArrowUp' ? -1 : 1; const order = state.layoutDraft.dashboardWidgets;
     const target = order[order.indexOf(key) + delta]; if (target) moveLayoutWidget(key, target, delta > 0);
   }));
   $$('[data-widget-drag], [data-widget-resize]').forEach((handle) => {
