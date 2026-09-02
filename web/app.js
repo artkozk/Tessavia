@@ -33,6 +33,7 @@ const iconPaths = {
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   x: '<path d="m18 6-12 12M6 6l12 12"/>',
   chevronRight: '<path d="m9 18 6-6-6-6"/>',
+  arrowLeft: '<path d="m12 19-7-7 7-7M5 12h14"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
   archive: '<path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/>',
@@ -156,6 +157,8 @@ const navItems = [
 ];
 
 const state = {
+  notificationInbox: null, notificationStatus: 'unread', notificationPeriod: 'all', unreadCount: null,
+  notificationRequest: 0, notificationLoading: false, notificationError: '', layoutDraft: null,
   me: null, users: [], records: [], notifications: [], activity: [], definitions: [], pendingQuestions: [],
 	workspaces: [], activeWorkspaceId: localStorage.getItem('bizflow-active-workspace') || '', collections: [], activeCollectionId: '', collectionSearch: '', collectionOwnerFilter: '', collectionFieldFilters: {}, personal: null, personalLoading: false, personalTab: 'today', personalSuggestionTimer: null,
 	interfacePreferences: { hiddenNavGroups: [], collapsedNavGroups: [], dashboardWidgets: ['focus', 'capture', 'capacity', 'quality'] }, teamDetail: null,
@@ -917,6 +920,7 @@ async function api(path, options = {}) {
     error.status = response.status;
     throw error;
   }
+  if (response.headers.has('X-Unread-Count')) state.unreadCount = Number(response.headers.get('X-Unread-Count'));
   return data;
 }
 
@@ -935,6 +939,9 @@ function showAuth() {
 }
 
 function clearPrivateClientState() {
+  state.notificationInbox = null; state.unreadCount = null; state.notificationRequest += 1;
+  state.notificationLoading = false; state.layoutDraft = null;
+  state.viewHistoryInitialized = false;
   state.personal = null;
   state.personalLoading = false;
   state.workspaces = [];
@@ -1005,11 +1012,16 @@ async function loadData(silent = false) {
   state.qualityReport = null;
   state.teamCapacity = null;
   state.historyLoadedAll = activity.length < 200;
+  initializeViewHistory();
   render();
 }
 
-async function switchWorkspace(workspaceID) {
+async function switchWorkspace(workspaceID, { restoring = false, keepView = false } = {}) {
 	if (!workspaceID || workspaceID === state.activeWorkspaceId) return;
+  if (state.layoutDraft && !confirm('Выйти без сохранения раскладки?')) return;
+  state.layoutDraft = null;
+  if (!restoring && !keepView) rememberView();
+  const previousView = state.view;
 	state.activeWorkspaceId = workspaceID;
 	localStorage.setItem('bizflow-active-workspace', workspaceID);
 	state.activeCollectionId = '';
@@ -1023,9 +1035,10 @@ async function switchWorkspace(workspaceID) {
 	state.researchComparisons.clear();
 	state.syncRecordsSince = '1970-01-01T00:00:00Z';
 	state.syncActivitySince = '1970-01-01T00:00:00Z';
-	state.view = 'dashboard';
+	state.view = keepView ? previousView : 'dashboard';
 	setSidebarOpen(false);
 	await loadData();
+  if (!restoring && !keepView) pushViewHistory();
 }
 
 function latestTimestamp(items, field, fallback = '1970-01-01T00:00:00Z') {
@@ -1090,7 +1103,7 @@ function bindGlobalEvents() {
     if (state.view === 'personal') openPersonalEditor('note');
     else toggleCreateMenu();
   });
-  $('#notification-button').addEventListener('click', () => { state.view = 'notifications'; render(); });
+  $('#notification-button').addEventListener('click', () => navigateToView('notifications'));
   $('#onboarding-button').addEventListener('click', () => openOnboarding(0));
 	$('#interface-settings-button').addEventListener('click', () => openInterfaceSettings());
   const globalSearchInput = $('#global-search-input');
@@ -1163,13 +1176,17 @@ function bindGlobalEvents() {
       history.back();
     }
   }));
-  window.addEventListener('popstate', () => {
-    if (state.suppressOverlayPop) { state.suppressOverlayPop = false; return; }
+  window.addEventListener('popstate', (event) => {
+    if (state.suppressOverlayPop) {
+      state.suppressOverlayPop = false;
+      const afterClose = state.afterOverlayClose; state.afterOverlayClose = null; afterClose?.();
+      return;
+    }
     const dialog = [...$$('dialog[open]')].pop();
     if (dialog) {
       flushDialogDrafts(dialog);
       if (protectedWorkspaceDialogs.has(dialog.id)) {
-        history.pushState({ businessControlOverlay: dialog.id }, '');
+        history.pushState({ ...history.state, businessControlOverlay: dialog.id }, '');
         dialog.dataset.historyState = 'true';
         signalProtectedDialog(dialog, dialogHasUnsavedChanges(dialog)
           ? 'Есть несохранённые изменения. Сохраните их или закройте окно кнопкой ×.'
@@ -1181,8 +1198,15 @@ function bindGlobalEvents() {
       return;
     }
     if ($('.sidebar').classList.contains('open')) setSidebarOpen(false);
+    if (state.layoutDraft) {
+      history.pushState(state.layoutHistoryEntry, '');
+      toast('Сохраните раскладку или нажмите «Отмена».');
+      return;
+    }
+    restoreViewHistory(event.state).catch((error) => toast(error.message, true));
   });
   window.addEventListener('beforeunload', (event) => {
+    if (state.layoutDraft) { event.preventDefault(); event.returnValue = ''; }
     const dialog = [...$$('dialog[open]')].pop();
     if (!dialog) return;
     flushDialogDrafts(dialog);
@@ -1190,6 +1214,12 @@ function bindGlobalEvents() {
     event.preventDefault();
     event.returnValue = '';
   });
+  let rememberTimer;
+  window.addEventListener('scroll', () => {
+    clearTimeout(rememberTimer);
+    rememberTimer = setTimeout(rememberView, 160);
+  }, { passive: true });
+  document.addEventListener('change', () => setTimeout(rememberView, 0));
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) return;
     $$('dialog[open]').forEach(flushDialogDrafts);
@@ -1241,8 +1271,9 @@ function setSidebarOpen(open) {
 
 function openModal(dialog) {
   if (dialog.open) return;
+  rememberView();
   dialog.showModal();
-  history.pushState({ businessControlOverlay: dialog.id }, '');
+  history.pushState({ ...history.state, businessControlOverlay: dialog.id }, '');
   dialog.dataset.historyState = 'true';
 }
 
@@ -1374,9 +1405,11 @@ function bindSidebarSwipe() {
   let startY = 0;
   let deltaX = 0;
   let horizontal = false;
-  const finish = () => {
-    if (pointerId === null) return;
-    const shouldClose = horizontal && deltaX < -64;
+  let suppressClick = false;
+  const finish = (event) => {
+    if (pointerId === null || event.pointerId !== pointerId) return;
+    const shouldClose = event.type !== 'pointercancel' && horizontal && deltaX < -64;
+    if (sidebar.hasPointerCapture?.(pointerId)) sidebar.releasePointerCapture(pointerId);
     pointerId = null;
     sidebar.classList.remove('dragging');
     sidebar.style.removeProperty('transform');
@@ -1384,19 +1417,23 @@ function bindSidebarSwipe() {
     if (shouldClose) setSidebarOpen(false);
   };
   sidebar.addEventListener('pointerdown', (event) => {
-    if (!event.isPrimary || !sidebar.classList.contains('open') || !window.matchMedia('(max-width: 820px)').matches) return;
+    if (!event.isPrimary || event.button !== 0 || !sidebar.classList.contains('open') || !window.matchMedia('(max-width: 820px)').matches) return;
     pointerId = event.pointerId;
     startX = event.clientX;
     startY = event.clientY;
     deltaX = 0;
     horizontal = false;
-    sidebar.setPointerCapture?.(pointerId);
+    suppressClick = false;
   });
   sidebar.addEventListener('pointermove', (event) => {
     if (event.pointerId !== pointerId) return;
     const moveX = event.clientX - startX;
     const moveY = event.clientY - startY;
-    if (!horizontal && Math.abs(moveX) > 10) horizontal = Math.abs(moveX) > Math.abs(moveY);
+    if (!horizontal && Math.abs(moveX) > 10 && Math.abs(moveX) > Math.abs(moveY)) {
+      horizontal = true;
+      suppressClick = true;
+      sidebar.setPointerCapture?.(pointerId);
+    }
     if (!horizontal) return;
     event.preventDefault();
     deltaX = Math.min(0, moveX);
@@ -1406,6 +1443,11 @@ function bindSidebarSwipe() {
   });
   sidebar.addEventListener('pointerup', finish);
   sidebar.addEventListener('pointercancel', finish);
+  sidebar.addEventListener('click', (event) => {
+    if (!suppressClick || event.detail === 0) return;
+    suppressClick = false;
+    event.preventDefault(); event.stopPropagation();
+  }, true);
 }
 
 function workspaceHasActiveInput() {
@@ -1425,7 +1467,7 @@ async function refreshLiveData() {
     if (state.view === 'work' && state.workViewMode === 'calendar') await refreshPlanningCycles();
     const cycleChanged = previousCycleUpdate !== (state.activePlanningCycle?.updatedAt || '');
     const overlayOpen = Boolean(document.querySelector('dialog[open]')) || $('.sidebar').classList.contains('open');
-    if (!workspaceHasActiveInput() && !overlayOpen && state.view !== 'graph' && (result.changed || result.activityChanged || cycleChanged || state.view === 'notifications')) renderContent();
+    if (!state.layoutDraft && !workspaceHasActiveInput() && !overlayOpen && state.view !== 'graph' && (result.changed || result.activityChanged || cycleChanged || state.view === 'notifications')) renderContent();
   } catch (_) {
     // A background refresh must not interrupt active work. Foreground API actions report their errors explicitly.
   } finally {
@@ -1539,7 +1581,7 @@ async function submitAuth(event) {
 			state.pendingInviteToken = '';
 			const url = new URL(location.href);
 			url.searchParams.delete('invite');
-			history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+			history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
 		}
     clearPrivateClientState();
     state.me = authenticatedUser;
@@ -1690,7 +1732,7 @@ function openJoinTeamDialog({ token = '', code = '' } = {}) {
 		try {
 			await api('/api/invitations/accept', { method: 'POST', body: JSON.stringify({ token, code: form.get('code') || '' }) });
 			state.pendingInviteToken = '';
-			const url = new URL(location.href); url.searchParams.delete('invite'); history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+			const url = new URL(location.href); url.searchParams.delete('invite'); history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
 			closeWorkspaceDialog(); await loadData(); toast('Команда добавлена');
 		} catch (error) { submit.disabled = false; toast(error.message, true); }
 	});
@@ -1705,7 +1747,7 @@ function maybeOpenPendingInvitation() {
 }
 
 function renderNotificationBadge() {
-  const unread = state.notifications.filter((item) => !item.readAt).length;
+  const unread = state.unreadCount ?? state.notifications.filter((item) => !item.readAt).length;
   const badge = $('#notification-badge');
   badge.textContent = unread > 99 ? '99+' : String(unread);
   badge.hidden = unread === 0;
@@ -1749,11 +1791,16 @@ function renderNav() {
 	}));
 }
 
-async function saveInterfacePreferences() {
-	state.interfacePreferences = await api('/api/interface/preferences', { method: 'PUT', body: JSON.stringify(state.interfacePreferences) });
+async function saveInterfacePreferences(preferences = state.interfacePreferences) {
+	state.interfacePreferences = await api('/api/interface/preferences', { method: 'PUT', body: JSON.stringify(preferences) });
 }
 
 function openInterfaceSettings() {
+  if (state.layoutDraft) {
+    $('.layout-options').open = true;
+    $('.layout-editor-header').scrollIntoView({ block: 'start', behavior: 'instant' });
+    return;
+  }
 	const dialog = $('#workspace-dialog');
 	const groups = [...new Set(navItems.map((item) => item[3]))];
 	const hidden = new Set(state.interfacePreferences.hiddenNavGroups || []);
@@ -1763,22 +1810,29 @@ function openInterfaceSettings() {
 	Object.keys(widgetLabels).forEach((key) => { if (!order.includes(key)) order.push(key); });
 	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell interface-settings-shell"><header><div><p class="eyebrow">Личная настройка</p><h2>Интерфейс этого проекта</h2><p>Изменения видны только вам и не затрагивают коллег.</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="interface-settings-form"><div class="interface-settings-grid"><section><div class="section-heading"><div><h3>Боковое меню</h3><p>Скрывайте лишнее, не теряя доступ к настройке.</p></div></div><div class="interface-nav-options">${groups.map((group) => `<article><label class="check"><input type="checkbox" name="visibleGroup" value="${escapeHTML(group)}" ${hidden.has(group) ? '' : 'checked'}><span><strong>${escapeHTML(group)}</strong><small>${navItems.filter((item) => item[3] === group).length} пунктов</small></span></label><label class="check compact-check"><input type="checkbox" name="collapsedGroup" value="${escapeHTML(group)}" ${collapsed.has(group) ? 'checked' : ''}><span>Сворачивать по умолчанию</span></label></article>`).join('')}</div></section><section><div class="section-heading"><div><h3>Главная страница</h3><p>Оставьте нужные блоки и задайте порядок.</p></div></div><div class="dashboard-widget-options" data-dashboard-widget-list>${order.map((key) => `<article data-dashboard-widget="${key}"><span>${icon(key === 'focus' ? 'target' : key === 'capture' ? 'plus' : key === 'capacity' ? 'users' : 'shield')}</span><label class="check"><input type="checkbox" name="dashboardWidget" value="${key}" ${(state.interfacePreferences.dashboardWidgets || []).includes(key) ? 'checked' : ''}><span><strong>${widgetLabels[key][0]}</strong><small>${widgetLabels[key][1]}</small></span></label><div><button type="button" class="icon-button" data-widget-up aria-label="Поднять блок" title="Поднять">${icon('arrowUp')}</button><button type="button" class="icon-button" data-widget-down aria-label="Опустить блок" title="Опустить">${icon('arrowDown')}</button></div></article>`).join('')}</div></section></div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить интерфейс</button><button type="button" class="secondary" data-reset-interface>${icon('rotate')} По умолчанию</button></div></form></div>`;
 	$('[data-close-workspace-dialog]', dialog).addEventListener('click', closeWorkspaceDialog);
+  $('#interface-settings-form', dialog).insertAdjacentHTML('afterbegin', `<section class="layout-settings-section"><button type="button" class="secondary" data-open-layout-editor>${icon('dashboard')} Раскладка на главной</button>${renderLayoutFields(interfaceLayout())}</section>`);
+  $('[data-open-layout-editor]', dialog).addEventListener('click', () => {
+    state.afterOverlayClose = () => { navigateToView('dashboard'); startLayoutEditor(); };
+    closeWorkspaceDialog();
+  });
+  bindLayoutFields($('#interface-settings-form', dialog));
 	$$('[data-widget-up]', dialog).forEach((button) => button.addEventListener('click', () => { const row = button.closest('[data-dashboard-widget]'); if (row.previousElementSibling) row.parentElement.insertBefore(row, row.previousElementSibling); }));
 	$$('[data-widget-down]', dialog).forEach((button) => button.addEventListener('click', () => { const row = button.closest('[data-dashboard-widget]'); if (row.nextElementSibling) row.parentElement.insertBefore(row.nextElementSibling, row); }));
 	$('[data-reset-interface]', dialog).addEventListener('click', async () => {
-		state.interfacePreferences = { hiddenNavGroups: [], collapsedNavGroups: [], dashboardWidgets: ['focus', 'capture', 'capacity', 'quality'] };
-		try { await saveInterfacePreferences(); closeWorkspaceDialog(); render(); toast('Интерфейс восстановлен'); } catch (error) { toast(error.message, true); }
+		const preferences = { hiddenNavGroups: [], collapsedNavGroups: [], dashboardWidgets: ['focus', 'capture', 'capacity', 'quality'] };
+		try { await saveInterfacePreferences(preferences); closeWorkspaceDialog(); render(); toast('Интерфейс восстановлен'); } catch (error) { toast(error.message, true); }
 	});
 	$('#interface-settings-form', dialog).addEventListener('submit', async (event) => {
 		event.preventDefault(); const form = new FormData(event.currentTarget); const visible = new Set(form.getAll('visibleGroup')); const widgets = $$('[data-dashboard-widget]', event.currentTarget).filter((row) => $('input[name="dashboardWidget"]', row).checked).map((row) => row.dataset.dashboardWidget);
 		const hiddenNavGroups = groups.filter((group) => !visible.has(group));
-		state.interfacePreferences = { hiddenNavGroups, collapsedNavGroups: form.getAll('collapsedGroup'), dashboardWidgets: widgets };
-		try { await saveInterfacePreferences(); if (hiddenNavGroups.includes(navItems.find((item) => item[0] === state.view)?.[3])) state.view = 'dashboard'; closeWorkspaceDialog(); render(); toast('Интерфейс сохранён'); } catch (error) { toast(error.message, true); }
+		const preferences = { hiddenNavGroups, collapsedNavGroups: form.getAll('collapsedGroup'), dashboardWidgets: widgets, layout: readLayoutFields(event.currentTarget, interfaceLayout()) };
+		try { await saveInterfacePreferences(preferences); if (hiddenNavGroups.includes(navItems.find((item) => item[0] === state.view)?.[3])) state.view = 'dashboard'; closeWorkspaceDialog(); render(); toast('Интерфейс сохранён'); } catch (error) { toast(error.message, true); }
 	});
 	openModal(dialog);
 }
 
 function renderContent() {
+  applyInterfaceLayout();
   const titles = Object.fromEntries(navItems);
   $('#main-content').classList.toggle('graph-main-content', state.view === 'graph');
   if (state.view !== 'graph' && state.graphInstance) {
@@ -1807,6 +1861,8 @@ function renderContent() {
 }
 
 function renderDashboard() {
+  const preferences = state.layoutDraft || state.interfacePreferences;
+  const layout = interfaceLayout(preferences);
   const work = state.records.filter((record) => isWorkRecord(record) && isActiveRecord(record));
   const myWork = work.filter((record) => record.ownerId === state.me.id);
   const attention = myWork.filter((record) => ['overdue', 'urgent'].includes(deadlineState(record).className) || ['high', 'critical'].includes(record.priority));
@@ -1836,12 +1892,19 @@ function renderDashboard() {
         <div class="compact-list quality-compact-list">${state.dashboardInsightsLoading && !state.qualityReport ? `<div class="dashboard-clear"><span class="spinner"></span><span><strong>Проверяем связи и результаты</strong><small>Ищем забытые и противоречивые записи.</small></span></div>` : qualityIssues.slice(0, 6).map(renderQualityCompact).join('') || `<div class="dashboard-clear">${icon('check')}<span><strong>Критичных пробелов нет</strong><small>Связи, результаты и актуальность знаний проверены.</small></span></div>`}</div>
 		</article>`,
 	};
-	const widgets = (state.interfacePreferences?.dashboardWidgets || ['focus', 'capture', 'capacity', 'quality']).filter((key) => blocks[key]);
-  $('#main-content').innerHTML = `<div class="dashboard-config-row"><span><strong>${escapeHTML(activeWorkspace()?.name || 'Обзор')}</strong><small>Ваша главная страница</small></span><button type="button" class="secondary" data-configure-dashboard>${icon('settings')} Настроить главную</button></div><section class="dashboard-custom-grid widget-count-${widgets.length}">${widgets.map((key) => blocks[key]).join('')}</section>`;
+  blocks.capture = `<aside class="capture-panel dashboard-widget dashboard-widget-capture"><div><p class="eyebrow">Создать</p><h3>Быстрая фиксация</h3></div><div class="quick-actions">${layout.quickActions.map((key) => `<button type="button" class="quick-action" data-quick-create="${key}"><span class="quick-icon">${icon(typeMeta[key]?.icon || 'inbox')}</span><span><strong>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</strong></span>${icon('chevronRight')}</button>`).join('')}</div></aside>`;
+	const widgets = (preferences.dashboardWidgets || ['focus', 'capture', 'capacity', 'quality']).filter((key) => blocks[key]);
+  $('#main-content').innerHTML = `${state.layoutDraft ? renderLayoutEditorHeader() : `<div class="dashboard-config-row"><span><strong>${escapeHTML(activeWorkspace()?.name || 'Обзор')}</strong></span><button type="button" class="secondary" data-configure-dashboard>${icon('settings')} Настроить главную</button></div>`}<section class="dashboard-custom-grid ${state.layoutDraft ? 'layout-editing' : ''}">${widgets.map((key) => blocks[key]).join('')}</section>`;
+  widgets.forEach((key) => {
+    const block = $(`.dashboard-widget-${key}`); block.dataset.layoutWidget = key;
+    block.style.setProperty('--widget-span', layout.widgetSpans[key]);
+    if (state.layoutDraft) block.insertAdjacentHTML('afterbegin', renderWidgetControls(key));
+  });
   bindOpenRecords();
   $$('[data-quick-create]').forEach((button) => button.addEventListener('click', () => openCreateDialog(button.dataset.quickCreate)));
   $$('[data-go]').forEach((button) => button.addEventListener('click', () => { navigateToView(button.dataset.go); }));
-	$('[data-configure-dashboard]')?.addEventListener('click', openInterfaceSettings);
+	$('[data-configure-dashboard]')?.addEventListener('click', startLayoutEditor);
+  if (state.layoutDraft) bindLayoutEditor();
   loadDashboardInsights();
 }
 
@@ -2116,7 +2179,7 @@ async function loadDashboardInsights(force = false) {
   } finally {
     state.dashboardInsightsLoading = false;
   }
-  if (state.view === 'dashboard') renderDashboard();
+  if (state.view === 'dashboard' && !state.layoutDraft) renderDashboard();
   else if (state.view === 'quality') renderQuality();
 }
 
@@ -2147,10 +2210,16 @@ function renderQuality() {
 
 function navigateToView(view, options = {}) {
 	const normalized = ({ goals: 'goal', tasks: 'work', ideas: 'idea' })[view] || view;
+  if (state.layoutDraft && !confirm('Выйти без сохранения раскладки?')) return;
+  state.layoutDraft = null;
+  rememberView();
+  const changedView = normalized !== state.view;
 	state.view = normalized;
   state.statusFilter = options.status || '';
   state.search = options.search || '';
 	state.ownerFilter = options.ownerId ? String(options.ownerId) : '';
+  if (changedView) pushViewHistory();
+  if (normalized === 'notifications') { state.notificationInbox = null; state.notificationError = ''; }
 	setSidebarOpen(false);
 	window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   render();
@@ -6376,9 +6445,68 @@ function bindTemplateDrag(scopeType) {
 }
 
 function renderNotifications() {
-  $('#main-content').innerHTML = `<div class="list-toolbar"><div><p class="eyebrow">Личный кабинет</p><h3>Уведомления</h3></div><button type="button" class="secondary" id="read-all" ${state.notifications.some((item) => !item.readAt) ? '' : 'disabled'}>Прочитать все</button></div><section class="section-panel"><div class="notification-list">${state.notifications.map((item) => `<button type="button" class="notification ${item.readAt ? '' : 'unread'}" data-notification-id="${item.id}" data-entity-id="${escapeHTML(item.entityId || '')}"><i></i><span><strong>${escapeHTML(item.title)}</strong><p>${escapeHTML(item.body)}</p><small>${formatDate(item.createdAt, true)}</small></span></button>`).join('') || emptyState('Уведомлений пока нет.')}</div></section>`;
-  $('#read-all').addEventListener('click', async () => { await api('/api/notifications/read-all', { method: 'POST' }); await syncProjectChanges({ renderCurrent: true }); });
-  $$('[data-notification-id]').forEach((button) => button.addEventListener('click', async () => { await api(`/api/notifications/${button.dataset.notificationId}/read`, { method: 'POST' }); if (button.dataset.entityId) await openRecord(button.dataset.entityId); await syncProjectChanges(); }));
+  const items = state.notificationInbox?.items || [];
+  let day = '';
+  const rows = items.map((item) => {
+    const label = formatDate(item.createdAt);
+    const heading = day === label ? '' : `<h3 class="notification-day">${escapeHTML(label)}</h3>`;
+    day = label;
+    return `${heading}<article class="notification-row ${item.readAt ? '' : 'unread'}"><button type="button" class="notification" data-open-notification="${escapeHTML(item.id)}"><i></i><span><strong>${escapeHTML(item.title)}</strong><p>${escapeHTML(item.body)}</p><small>${formatDate(item.createdAt, true)}</small></span></button><button type="button" class="icon-button" data-notification-read="${escapeHTML(item.id)}" title="${item.readAt ? 'Отметить непрочитанным' : 'Отметить прочитанным'}" aria-label="${item.readAt ? 'Отметить непрочитанным' : 'Отметить прочитанным'}">${icon(item.readAt ? 'rotate' : 'check')}</button></article>`;
+  }).join('');
+  $('#main-content').innerHTML = `<section class="notification-inbox"><header class="notification-heading"><button type="button" class="secondary" data-notification-back>${icon('arrowLeft')} Назад</button><button type="button" class="text-button" id="read-all" ${state.unreadCount ? '' : 'disabled'}>${icon('check')} Прочитать все</button></header><div class="notification-filters"><div class="segmented" role="tablist" aria-label="Статус уведомлений">${[['unread', 'Новые'], ['read', 'Прочитанные'], ['all', 'Все']].map(([key, label]) => `<button type="button" role="tab" aria-selected="${state.notificationStatus === key}" class="segment ${state.notificationStatus === key ? 'active' : ''}" data-notification-status="${key}">${label}${key === 'unread' && state.unreadCount ? ` (${state.unreadCount})` : ''}</button>`).join('')}</div><label>Период<select id="notification-period">${[['all', 'За всё время'], ['today', 'Сегодня'], ['week', 'Последние 7 дней'], ['older', 'Раньше этой недели']].map(([key, label]) => `<option value="${key}" ${state.notificationPeriod === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div><div class="notification-list" aria-live="polite" aria-busy="${state.notificationLoading}">${rows || (!state.notificationLoading && !state.notificationError ? emptyState(state.notificationStatus === 'unread' ? 'Новых уведомлений нет.' : 'За этот период уведомлений нет.') : '')}</div>${state.notificationLoading ? '<p class="notification-loading">Загрузка...</p>' : ''}${state.notificationError ? `<div class="notification-error" role="alert"><p>${escapeHTML(state.notificationError)}</p><button type="button" class="secondary" data-notification-retry>Повторить</button></div>` : ''}${state.notificationInbox?.nextCursor && !state.notificationLoading ? '<button type="button" class="secondary" data-notification-more>Загрузить ещё</button>' : ''}</section>`;
+  $('[data-notification-back]').addEventListener('click', () => { if ((history.state?.businessControlDepth || 0) > 0) history.back(); else navigateToView('dashboard'); });
+  $$('[data-notification-status]').forEach((button) => button.addEventListener('click', () => { state.notificationStatus = button.dataset.notificationStatus; loadNotificationInbox(); }));
+  $('#notification-period').addEventListener('change', (event) => { state.notificationPeriod = event.target.value; loadNotificationInbox(); });
+  $('[data-notification-more]')?.addEventListener('click', () => loadNotificationInbox(true));
+  $('[data-notification-retry]')?.addEventListener('click', () => loadNotificationInbox(Boolean(items.length)));
+  $('#read-all').addEventListener('click', async (event) => {
+    event.currentTarget.disabled = true;
+    try { await api('/api/notifications/read-all', { method: 'POST' }); await loadNotificationInbox(); } catch (error) { toast(error.message, true); renderNotifications(); }
+  });
+  $$('[data-notification-read]').forEach((button) => button.addEventListener('click', async () => {
+    const item = items.find((entry) => entry.id === button.dataset.notificationRead); button.disabled = true;
+    try { await api(`/api/notifications/${item.id}/${item.readAt ? 'unread' : 'read'}`, { method: 'POST' }); await loadNotificationInbox(); } catch (error) { toast(error.message, true); button.disabled = false; }
+  }));
+  $$('[data-open-notification]').forEach((button) => button.addEventListener('click', async () => {
+    const item = items.find((entry) => entry.id === button.dataset.openNotification); button.disabled = true;
+    try {
+      await api(`/api/notifications/${item.id}/read`, { method: 'POST' });
+      if (item.entityId) {
+        if (item.workspaceId && item.workspaceId !== state.activeWorkspaceId) await switchWorkspace(item.workspaceId, { keepView: true });
+        await openRecord(item.entityId);
+      }
+      await loadNotificationInbox();
+    } catch (error) { toast(error.message, true); button.disabled = false; }
+  }));
+  if (!state.notificationInbox && !state.notificationLoading && !state.notificationError) loadNotificationInbox();
+}
+
+async function loadNotificationInbox(append = false) {
+  if (state.view === 'notifications') rememberView();
+  const request = ++state.notificationRequest;
+  const accountID = state.me?.id;
+  const query = new URLSearchParams({ status: state.notificationStatus });
+  if (append && state.notificationInbox?.nextCursor) query.set('cursor', state.notificationInbox.nextCursor);
+  const boundary = new Date(); boundary.setHours(0, 0, 0, 0);
+  if (state.notificationPeriod === 'week') boundary.setDate(boundary.getDate() - 6);
+  if (state.notificationPeriod === 'older') boundary.setDate(boundary.getDate() - (boundary.getDay() + 6) % 7);
+  if (state.notificationPeriod !== 'all') query.set(state.notificationPeriod === 'older' ? 'before' : 'since', boundary.toISOString());
+  if (!append) state.notificationInbox = null;
+  state.notificationLoading = true; state.notificationError = '';
+  if (state.view === 'notifications') renderNotifications();
+  try {
+    const page = await api(`/api/notifications/inbox?${query}`);
+    if (request !== state.notificationRequest || accountID !== state.me?.id) return;
+    const previous = append ? state.notificationInbox?.items || [] : [];
+    state.notificationInbox = { ...page, items: [...new Map([...previous, ...page.items].map((item) => [item.id, item])).values()] };
+    state.unreadCount = page.unreadCount;
+  } catch (error) { if (request === state.notificationRequest) state.notificationError = error.message; }
+  finally {
+    if (request === state.notificationRequest) {
+      state.notificationLoading = false; renderNotificationBadge();
+      if (state.view === 'notifications') renderNotifications();
+    }
+  }
 }
 
 const onboardingSteps = [
@@ -6411,6 +6539,201 @@ function openOnboarding(step = 0) {
 function finishOnboarding() {
   try { localStorage.setItem(onboardingKey(), new Date().toISOString()); } catch (_) {}
   if ($('#onboarding-dialog').open) closeDialogImmediately($('#onboarding-dialog'));
+}
+
+// Only view state goes into browser history, never record bodies or account data.
+const routeFields = ['view', 'search', 'statusFilter', 'ownerFilter', 'personalTab', 'workScope', 'workType', 'workStatus', 'workstreamFilter', 'workOrder', 'workViewMode', 'ideaViewMode', 'workCalendarMonth', 'calendarMode', 'calendarYear', 'activeCollectionId', 'collectionSearch', 'collectionOwnerFilter', 'collectionFieldFilters', 'historyMode', 'historyScope', 'historyActor', 'historyType', 'notificationStatus', 'notificationPeriod'];
+
+function viewSnapshot() {
+  return { ...Object.fromEntries(routeFields.map((key) => [key, structuredClone(state[key])])), workspaceId: state.activeWorkspaceId, scrollY: window.scrollY };
+}
+
+function initializeViewHistory() {
+  if (state.viewHistoryInitialized) return;
+  state.viewHistoryInitialized = true;
+  if (history.state?.businessControlAccount === state.me?.id && history.state?.businessControlView) {
+    const route = history.state.businessControlView;
+    if (route.workspaceId === state.activeWorkspaceId) routeFields.forEach((key) => { if (Object.hasOwn(route, key)) state[key] = structuredClone(route[key]); });
+    const entry = { ...history.state }; delete entry.businessControlOverlay;
+    history.replaceState(entry, ''); history.scrollRestoration = 'manual';
+    return;
+  }
+  history.replaceState({ businessControlAccount: state.me?.id, businessControlDepth: 0, businessControlView: viewSnapshot() }, '');
+  history.scrollRestoration = 'manual';
+}
+
+function rememberView() {
+  if (!state.me || history.state?.businessControlOverlay) return;
+  history.replaceState({ ...history.state, businessControlAccount: state.me.id, businessControlView: viewSnapshot() }, '');
+}
+
+function pushViewHistory() {
+  history.pushState({ businessControlAccount: state.me?.id, businessControlDepth: (history.state?.businessControlDepth || 0) + 1, businessControlView: { ...viewSnapshot(), scrollY: 0 } }, '');
+}
+
+async function restoreViewHistory(entry) {
+  if (!entry?.businessControlView || entry.businessControlAccount !== state.me?.id) return;
+  state.layoutDraft = null;
+  const route = entry.businessControlView;
+  if (route.workspaceId !== state.activeWorkspaceId) await switchWorkspace(route.workspaceId, { restoring: true });
+  routeFields.forEach((key) => { if (Object.hasOwn(route, key)) state[key] = structuredClone(route[key]); });
+  if (state.view === 'notifications') { state.notificationInbox = null; state.notificationError = ''; }
+  render();
+  requestAnimationFrame(() => window.scrollTo({ top: route.scrollY || 0, behavior: 'instant' }));
+}
+
+const widgetNames = { focus: 'Следующая работа', capture: 'Быстрая фиксация', capacity: 'Недельная загрузка', quality: 'Качество базы' };
+const toolbarNames = { help: 'Помощь', notifications: 'Уведомления', create: 'Создание' };
+const toolbarSelectors = { help: '#onboarding-button', notifications: '#notification-button', create: '.create-control' };
+
+function interfaceLayout(preferences = state.layoutDraft || state.interfacePreferences) {
+  const value = preferences?.layout || {};
+  return { contentWidth: 1500, sidebarWidth: 238, sidebarSide: 'left', density: 'comfortable', ...value,
+    widgetSpans: { focus: 8, capture: 4, capacity: 6, quality: 6, ...value.widgetSpans },
+    toolbarActions: value.toolbarActions || ['help', 'notifications', 'create'],
+    quickActions: value.quickActions || ['inbox', 'idea', 'task', 'question_set'] };
+}
+
+function applyInterfaceLayout() {
+  const layout = interfaceLayout();
+  const root = $('#app-root');
+  root.style.setProperty('--content-width', `${layout.contentWidth}px`);
+  root.style.setProperty('--sidebar-width', `${layout.sidebarWidth}px`);
+  root.dataset.sidebarSide = layout.sidebarSide;
+  root.dataset.density = layout.density;
+  Object.entries(toolbarSelectors).forEach(([key, selector]) => {
+    const button = $(selector); const index = layout.toolbarActions.indexOf(key);
+    button.hidden = index < 0; button.style.order = index + 1;
+  });
+  const actions = $('.topbar-actions');
+  const ordered = [$('#interface-settings-button'), ...layout.toolbarActions.map((key) => $(toolbarSelectors[key])), ...Object.keys(toolbarSelectors).filter((key) => !layout.toolbarActions.includes(key)).map((key) => $(toolbarSelectors[key]))];
+  if (ordered.some((button, index) => actions.children[index] !== button)) ordered.forEach((button) => actions.append(button));
+}
+
+function renderLayoutFields(layout) {
+  const ordered = [...layout.toolbarActions, ...Object.keys(toolbarNames).filter((key) => !layout.toolbarActions.includes(key))];
+  return `<details class="layout-options"><summary>Размеры, меню и кнопки</summary><div class="layout-options-grid"><label>Ширина рабочей области <output data-width-output>${layout.contentWidth} px</output><input type="range" name="contentWidth" min="900" max="2200" step="50" value="${layout.contentWidth}"></label><label>Ширина меню <output data-sidebar-output>${layout.sidebarWidth} px</output><input type="range" name="sidebarWidth" min="196" max="340" step="2" value="${layout.sidebarWidth}"></label><label>Меню на компьютере<select name="sidebarSide"><option value="left" ${layout.sidebarSide === 'left' ? 'selected' : ''}>Слева</option><option value="right" ${layout.sidebarSide === 'right' ? 'selected' : ''}>Справа</option></select></label><label>Плотность<select name="density"><option value="comfortable" ${layout.density === 'comfortable' ? 'selected' : ''}>Обычная</option><option value="compact" ${layout.density === 'compact' ? 'selected' : ''}>Компактная</option></select></label><fieldset><legend>Кнопки верхней панели</legend><div class="layout-action-order">${ordered.map((key) => `<div data-toolbar-action="${key}"><label class="check"><input type="checkbox" name="toolbarAction" value="${key}" ${layout.toolbarActions.includes(key) ? 'checked' : ''}><span>${toolbarNames[key]}</span></label><button type="button" class="icon-button" data-toolbar-up title="Раньше" aria-label="${toolbarNames[key]}: раньше">${icon('arrowUp')}</button><button type="button" class="icon-button" data-toolbar-down title="Позже" aria-label="${toolbarNames[key]}: позже">${icon('arrowDown')}</button></div>`).join('')}</div></fieldset><fieldset><legend>Быстрая фиксация</legend><div class="layout-quick-options">${['inbox', 'idea', 'task', 'question_set', 'research', 'decision', 'document', 'goal'].map((key) => `<label class="check"><input type="checkbox" name="quickAction" value="${key}" ${layout.quickActions.includes(key) ? 'checked' : ''}><span>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</span></label>`).join('')}</div></fieldset></div></details>`;
+}
+
+function readLayoutFields(root, layout) {
+  return { ...layout, contentWidth: Number($('[name="contentWidth"]', root).value), sidebarWidth: Number($('[name="sidebarWidth"]', root).value), sidebarSide: $('[name="sidebarSide"]', root).value, density: $('[name="density"]', root).value,
+    toolbarActions: $$('[data-toolbar-action]', root).filter((row) => $('input', row).checked).map((row) => row.dataset.toolbarAction),
+    quickActions: $$('[name="quickAction"]:checked', root).map((input) => input.value) };
+}
+
+function bindLayoutFields(root, onChange = () => {}) {
+  const changed = () => {
+    $('[data-width-output]', root).textContent = `${$('[name="contentWidth"]', root).value} px`;
+    $('[data-sidebar-output]', root).textContent = `${$('[name="sidebarWidth"]', root).value} px`;
+    onChange();
+  };
+  $$('.layout-options input', root).forEach((input) => input.addEventListener('input', changed));
+  $$('.layout-options select', root).forEach((input) => input.addEventListener('change', changed));
+  $$('[data-toolbar-up], [data-toolbar-down]', root).forEach((button) => button.addEventListener('click', () => {
+    const row = button.closest('[data-toolbar-action]');
+    if (button.hasAttribute('data-toolbar-up') && row.previousElementSibling) row.previousElementSibling.before(row);
+    else if (button.hasAttribute('data-toolbar-down') && row.nextElementSibling) row.nextElementSibling.after(row);
+    changed();
+  }));
+}
+
+function startLayoutEditor() {
+  rememberView();
+  state.layoutHistoryEntry = structuredClone(history.state);
+  state.layoutDraft = structuredClone(state.interfacePreferences);
+  state.layoutDraft.layout = interfaceLayout(state.layoutDraft);
+  renderDashboard();
+}
+
+function renderLayoutEditorHeader() {
+  const missing = Object.keys(widgetNames).filter((key) => !state.layoutDraft.dashboardWidgets.includes(key));
+  return `<section class="layout-editor-header"><div class="layout-editor-actions"><h2>Настройка главной</h2><button type="button" class="primary" data-layout-save>${icon('check')} Сохранить</button><button type="button" class="secondary" data-layout-cancel>Отмена</button><button type="button" class="icon-button" data-layout-reset title="Раскладка по умолчанию" aria-label="Раскладка по умолчанию">${icon('rotate')}</button></div>${renderLayoutFields(interfaceLayout())}${missing.length ? `<div class="layout-add-blocks">${missing.map((key) => `<button type="button" class="secondary" data-layout-add="${key}">${icon('plus')} ${widgetNames[key]}</button>`).join('')}</div>` : ''}<span class="sr-only" role="status" id="layout-move-status"></span></section>`;
+}
+
+function renderWidgetControls(key) {
+  const span = interfaceLayout().widgetSpans[key];
+  return `<div class="widget-edit-tools"><button type="button" class="icon-button widget-move-handle" data-widget-drag="${key}" title="Переместить блок" aria-label="Переместить: ${widgetNames[key]}">${icon('grip')}</button><label>Ширина на ПК<select data-widget-span="${key}">${[[4, '1/3'], [6, '1/2'], [8, '2/3'], [12, 'Вся']].map(([value, label]) => `<option value="${value}" ${span === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><button type="button" class="icon-button" data-layout-move="${key}" data-delta="-1" aria-label="${widgetNames[key]}: выше" title="Выше">${icon('arrowUp')}</button><button type="button" class="icon-button" data-layout-move="${key}" data-delta="1" aria-label="${widgetNames[key]}: ниже" title="Ниже">${icon('arrowDown')}</button><button type="button" class="icon-button" data-layout-hide="${key}" title="Скрыть блок" aria-label="Скрыть: ${widgetNames[key]}">${icon('x')}</button></div><button type="button" class="widget-resize-handle" data-widget-resize="${key}" title="Изменить ширину" aria-label="Изменить ширину: ${widgetNames[key]}">${icon('chevronRight')}</button>`;
+}
+
+function moveLayoutWidget(key, target, after = false) {
+  const order = state.layoutDraft.dashboardWidgets.filter((item) => item !== key);
+  const index = order.indexOf(target);
+  if (index < 0) return;
+  order.splice(index + Number(after), 0, key);
+  state.layoutDraft.dashboardWidgets = order;
+  renderDashboard();
+  $(`[data-widget-drag="${key}"]`)?.focus({ preventScroll: true });
+  $('#layout-move-status').textContent = `${widgetNames[key]}: позиция ${order.indexOf(key) + 1}`;
+}
+
+function bindLayoutEditor() {
+  const header = $('.layout-editor-header');
+  bindLayoutFields(header, () => {
+    state.layoutDraft.layout = readLayoutFields(header, interfaceLayout()); applyInterfaceLayout();
+    const actions = $('.dashboard-widget-capture .quick-actions');
+    if (actions) {
+      actions.innerHTML = interfaceLayout().quickActions.map((key) => `<button type="button" class="quick-action" data-quick-create="${key}"><span class="quick-icon">${icon(typeMeta[key]?.icon || 'inbox')}</span><span><strong>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</strong></span>${icon('chevronRight')}</button>`).join('');
+      $$('[data-quick-create]', actions).forEach((button) => button.addEventListener('click', () => openCreateDialog(button.dataset.quickCreate)));
+    }
+  });
+  $('[data-layout-cancel]').addEventListener('click', () => { state.layoutDraft = null; render(); });
+  $('[data-layout-reset]').addEventListener('click', () => { state.layoutDraft = { ...state.layoutDraft, dashboardWidgets: Object.keys(widgetNames), layout: interfaceLayout({}) }; render(); });
+  $('[data-layout-save]').addEventListener('click', async (event) => {
+    const button = event.currentTarget; button.disabled = true;
+    const workspaceID = state.activeWorkspaceId; const draft = state.layoutDraft;
+    state.layoutDraft.layout = readLayoutFields(header, interfaceLayout());
+    try {
+      const saved = await api('/api/interface/preferences', { method: 'PUT', body: JSON.stringify(draft) });
+      if (workspaceID !== state.activeWorkspaceId || draft !== state.layoutDraft) return;
+      state.interfacePreferences = saved;
+      state.layoutDraft = null; render(); toast('Раскладка сохранена');
+    } catch (error) { toast(error.message, true); button.disabled = false; }
+  });
+  $$('[data-layout-add]').forEach((button) => button.addEventListener('click', () => { state.layoutDraft.dashboardWidgets.push(button.dataset.layoutAdd); renderDashboard(); }));
+  $$('[data-layout-hide]').forEach((button) => button.addEventListener('click', () => {
+    if (state.layoutDraft.dashboardWidgets.length === 1) { toast('Оставьте хотя бы один блок'); return; }
+    state.layoutDraft.dashboardWidgets = state.layoutDraft.dashboardWidgets.filter((key) => key !== button.dataset.layoutHide); renderDashboard();
+  }));
+  $$('[data-widget-span]').forEach((select) => select.addEventListener('change', () => { state.layoutDraft.layout.widgetSpans[select.dataset.widgetSpan] = Number(select.value); select.closest('[data-layout-widget]').style.setProperty('--widget-span', select.value); }));
+  $$('[data-layout-move]').forEach((button) => button.addEventListener('click', () => {
+    const key = button.dataset.layoutMove; const delta = Number(button.dataset.delta); const order = state.layoutDraft.dashboardWidgets;
+    const target = order[order.indexOf(key) + delta]; if (target) moveLayoutWidget(key, target, delta > 0);
+  }));
+  $$('[data-widget-drag], [data-widget-resize]').forEach((handle) => {
+    let drag = null;
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      const key = handle.dataset.widgetDrag || handle.dataset.widgetResize;
+      drag = { key, pointer: event.pointerId, x: event.clientX, y: event.clientY, span: interfaceLayout().widgetSpans[key], target: '', after: false };
+      handle.setPointerCapture(event.pointerId); handle.closest('[data-layout-widget]').classList.add('layout-dragging');
+    });
+    handle.addEventListener('pointermove', (event) => {
+      if (!drag || drag.pointer !== event.pointerId) return;
+      if (handle.hasAttribute('data-widget-resize')) {
+        const columns = $('.dashboard-custom-grid').getBoundingClientRect().width / 12;
+        const requested = drag.span + (event.clientX - drag.x) / columns;
+        const span = [4, 6, 8, 12].reduce((best, item) => Math.abs(item - requested) < Math.abs(best - requested) ? item : best, 4);
+        state.layoutDraft.layout.widgetSpans[drag.key] = span;
+        handle.closest('[data-layout-widget]').style.setProperty('--widget-span', span);
+        return;
+      }
+      const target = $$('[data-layout-widget]').find((block) => { const box = block.getBoundingClientRect(); return block.dataset.layoutWidget !== drag.key && event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom; });
+      $$('[data-layout-widget]').forEach((block) => block.classList.toggle('layout-drop-target', block === target));
+      drag.target = target?.dataset.layoutWidget || '';
+      if (target) { const box = target.getBoundingClientRect(); drag.after = event.clientY > box.top + box.height / 2; }
+      if (event.clientY > innerHeight - 70) window.scrollBy(0, 18);
+      if (event.clientY < 100) window.scrollBy(0, -18);
+    });
+    const finish = (event) => {
+      if (!drag || drag.pointer !== event.pointerId) return;
+      const done = drag; drag = null;
+      $$('[data-layout-widget]').forEach((block) => block.classList.remove('layout-dragging', 'layout-drop-target'));
+      if (event.type === 'pointercancel') { state.layoutDraft.layout.widgetSpans[done.key] = done.span; renderDashboard(); return; }
+      if (done.target) moveLayoutWidget(done.key, done.target, done.after);
+      else if (handle.hasAttribute('data-widget-resize')) renderDashboard();
+    };
+    handle.addEventListener('pointerup', finish); handle.addEventListener('pointercancel', finish);
+  });
 }
 
 bootstrap();

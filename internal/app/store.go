@@ -165,14 +165,15 @@ type Proof struct {
 }
 
 type Notification struct {
-	ID         string  `json:"id"`
-	Type       string  `json:"type"`
-	Title      string  `json:"title"`
-	Body       string  `json:"body"`
-	EntityType *string `json:"entityType"`
-	EntityID   *string `json:"entityId"`
-	ReadAt     *string `json:"readAt"`
-	CreatedAt  string  `json:"createdAt"`
+	WorkspaceID string  `json:"workspaceId,omitempty"`
+	ID          string  `json:"id"`
+	Type        string  `json:"type"`
+	Title       string  `json:"title"`
+	Body        string  `json:"body"`
+	EntityType  *string `json:"entityType"`
+	EntityID    *string `json:"entityId"`
+	ReadAt      *string `json:"readAt"`
+	CreatedAt   string  `json:"createdAt"`
 }
 
 type Activity struct {

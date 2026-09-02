@@ -177,6 +177,8 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/section-definitions/reorder", s.requireAuth(http.HandlerFunc(s.handleReorderDefinitions)))
 	s.mux.Handle("PATCH /api/section-definitions/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdateDefinition)))
 	s.mux.Handle("GET /api/notifications", s.requireAuth(http.HandlerFunc(s.handleNotifications)))
+	s.mux.Handle("GET /api/notifications/inbox", s.requireAuth(http.HandlerFunc(s.handleNotificationInbox)))
+	s.mux.Handle("POST /api/notifications/{id}/unread", s.requireAuth(http.HandlerFunc(s.handleUnreadNotification)))
 	s.mux.Handle("POST /api/notifications/read-all", s.requireAuth(http.HandlerFunc(s.handleReadAllNotifications)))
 	s.mux.Handle("POST /api/notifications/{id}/read", s.requireAuth(http.HandlerFunc(s.handleReadNotification)))
 	s.mux.Handle("GET /api/activity", s.requireAuth(http.HandlerFunc(s.handleActivity)))
@@ -3164,43 +3166,24 @@ func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
 	if err := s.ensureDeadlineNotifications(r.Context()); err != nil {
 		log.Printf("deadline notifications: %v", err)
 	}
-	user := currentUser(r)
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, type, title, body, entity_type, entity_id, read_at, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 200`, user.ID)
+	page, err := s.notificationPage(r, 200, false)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить уведомления")
 		return
 	}
-	defer rows.Close()
-	notifications := make([]Notification, 0)
-	for rows.Next() {
-		var n Notification
-		var entityType, entityID, readAt sql.NullString
-		if err := rows.Scan(&n.ID, &n.Type, &n.Title, &n.Body, &entityType, &entityID, &readAt, &n.CreatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "Не удалось прочитать уведомления")
-			return
-		}
-		if entityType.Valid {
-			n.EntityType = &entityType.String
-		}
-		if entityID.Valid {
-			n.EntityID = &entityID.String
-		}
-		if readAt.Valid {
-			n.ReadAt = &readAt.String
-		}
-		notifications = append(notifications, n)
-	}
-	writeJSON(w, http.StatusOK, notifications)
+	w.Header().Set("X-Unread-Count", strconv.Itoa(page.UnreadCount))
+	writeJSON(w, http.StatusOK, page.Items)
 }
 
 func (s *Server) handleReadNotification(w http.ResponseWriter, r *http.Request) {
-	user := currentUser(r)
-	_, _ = s.store.db.ExecContext(r.Context(), `UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE id = ? AND user_id = ?`, nowText(), r.PathValue("id"), user.ID)
-	w.WriteHeader(http.StatusNoContent)
+	s.setNotificationRead(w, r, true)
 }
 func (s *Server) handleReadAllNotifications(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
-	_, _ = s.store.db.ExecContext(r.Context(), `UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE user_id = ?`, nowText(), user.ID)
+	if _, err := s.store.db.ExecContext(r.Context(), `UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE user_id = ?`, nowText(), user.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось отметить уведомления")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
