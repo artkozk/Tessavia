@@ -308,7 +308,12 @@ function openNotebook({ title, value = '', onSave = null }) {
 }
 
 function richTextToMarkdown(root) {
-  const children = (node) => [...node.childNodes].map(serialize).join('');
+  const children = (node) => [...node.childNodes].reduce((result, child) => {
+    // Browsers can leave plain text before the block created by Enter.
+    const block = child.nodeType === Node.ELEMENT_NODE && /^(p|div|h[1-6]|blockquote|pre|ul|ol)$/.test(child.tagName.toLowerCase());
+    const separator = block && result && !result.endsWith('\n') ? '\n\n' : '';
+    return result + separator + serialize(child);
+  }, '');
   const serialize = (node) => {
     if (node.nodeType === Node.TEXT_NODE) return String(node.nodeValue || '').replace(/\u00a0/g, ' ');
     if (node.nodeType !== Node.ELEMENT_NODE) return '';
@@ -2055,6 +2060,45 @@ function openPersonalTarget(type, id) {
   openPersonalEditor(type, id);
 }
 
+function personalNoteSheet(item) {
+  return `<section class="personal-note-sheet" aria-label="Заметка"><div class="personal-note-title-row"><textarea name="title" rows="1" maxlength="240" aria-label="Название" placeholder="Название" enterkeyhint="next">${escapeHTML(item?.title || '')}</textarea><label class="personal-note-pin" title="Закрепить заметку"><input class="sr-only" type="checkbox" name="pinned" aria-label="Закрепить заметку" ${item?.pinned ? 'checked' : ''}><span>${icon('bookmark')}</span></label></div>${markdownEditor('body', 'Текст заметки', item?.body || '', 6, 'Заметка...', 'personal-note', { compact: true, history: true, ai: false, expand: false })}</section>`;
+}
+
+function bindPersonalNoteSheet(form) {
+  const title = form.elements.title;
+  const body = $('.markdown-rich-editor', form);
+  body.setAttribute('aria-label', 'Текст заметки');
+  const resizeTitle = () => { title.style.height = 'auto'; title.style.height = `${title.scrollHeight}px`; };
+  const enterBody = (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
+    const enter = event.type === 'keydown' ? event.key === 'Enter' : ['insertParagraph', 'insertLineBreak'].includes(event.inputType);
+    if (!enter) return;
+    event.preventDefault();
+    event.stopPropagation();
+    body.focus();
+    const range = document.createRange();
+    range.selectNodeContents(body);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+  title.addEventListener('keydown', enterBody);
+  title.addEventListener('beforeinput', enterBody);
+  title.addEventListener('input', resizeTitle);
+  if (typeof ResizeObserver !== 'undefined') {
+    let previousWidth = 0;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === previousWidth) return;
+      previousWidth = entry.contentRect.width;
+      resizeTitle();
+    });
+    observer.observe(title);
+    form.closest('dialog').addEventListener('close', () => observer.disconnect(), { once: true });
+  }
+  return resizeTitle;
+}
+
 function openPersonalEditor(kind, id = '') {
   const item = id ? findPersonalItem(kind, id) : null;
   const dialog = $('#personal-dialog');
@@ -2062,20 +2106,25 @@ function openPersonalEditor(kind, id = '') {
   const labels = { note: 'Заметка', plan: 'План', habit: 'Привычка' };
   const title = labels[kind] || labels.note;
   const body = kind === 'note'
-    ? `${markdownEditor('body', 'Текст', item?.body || '', 13, 'Начните писать. Выделяйте главное, добавляйте заголовки и списки.', 'personal-note', { compact: true, history: true, ai: false, expand: false })}<label class="personal-pin-toggle"><input type="checkbox" name="pinned" ${item?.pinned ? 'checked' : ''}><span>${icon('bookmark')}<span><strong>Закрепить</strong><small>Показывать заметку первой</small></span></span></label>`
+    ? personalNoteSheet(item)
     : kind === 'plan'
       ? `${markdownEditor('notes', 'Описание', item?.notes || '', 11, 'Опишите план обычным текстом или составьте список шагов.', 'personal-plan', { compact: true, history: true, ai: false, expand: false })}<details class="personal-plan-date" ${item?.dueAt ? 'open' : ''}><summary>${icon('calendar')}<span><strong>${item?.dueAt ? 'Срок' : 'Добавить срок'}</strong><small>${item?.dueAt ? escapeHTML(formatDate(item.dueAt, true)) : 'Необязательно'}</small></span>${icon('chevronRight')}</summary><div><label>Дата и время<input type="datetime-local" name="dueAt" value="${escapeHTML(toLocalInput(item?.dueAt || ''))}"></label><button type="button" class="text-button" data-clear-personal-due ${item?.dueAt ? '' : 'hidden'}>Убрать срок</button></div></details>`
       : `<div class="form-grid two"><label>Режим<select name="scheduleKind"><option value="daily" ${(item?.scheduleKind || 'daily') === 'daily' ? 'selected' : ''}>Каждый день</option><option value="weekdays" ${item?.scheduleKind === 'weekdays' ? 'selected' : ''}>По будням</option><option value="weekly_target" ${item?.scheduleKind === 'weekly_target' ? 'selected' : ''}>Цель на неделю</option></select></label><label>Дней в неделю<input type="number" name="targetPerWeek" min="1" max="7" value="${item?.targetPerWeek || 7}"></label></div><div class="form-grid two"><label>Единица<input name="unit" maxlength="32" value="${escapeHTML(item?.unit || 'раз')}"></label><label>Начало<input type="date" name="startDate" value="${escapeHTML(item?.startDate || localISODate())}" ${item ? 'disabled' : ''}></label></div>`;
   const newHeading = kind === 'habit' ? 'Новая привычка' : kind === 'plan' ? 'Новый план' : 'Новая заметка';
   const titleField = kind === 'habit'
     ? `<label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}" placeholder="Например: читать 20 минут"></label>`
-    : `<label class="personal-title-field"><span>Название <small>необязательно</small></span><input name="title" maxlength="240" value="${escapeHTML(item?.title || '')}" placeholder="Система возьмёт его из первой строки"></label>`;
-  content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
+    : kind === 'note' ? '' : `<label class="personal-title-field"><span>Название <small>необязательно</small></span><input name="title" maxlength="240" value="${escapeHTML(item?.title || '')}" placeholder="Система возьмёт его из первой строки"></label>`;
+  content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind === 'note' ? 'personal-note-form' : ''}" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
   $$('[data-close-personal]', dialog).forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
   const editorForm = $('#personal-editor-form', dialog);
   const draftScope = `personal:${state.me.id}:${kind}:${item?.id || 'new'}`;
   bindWorkingDraft(editorForm, draftScope);
+  if (kind === 'note') {
+    const editor = $('.markdown-editor', editorForm);
+    editor.append($('.markdown-toolbar', editor));
+  }
   bindMarkdownEditors(dialog);
+  const resizeNoteTitle = kind === 'note' ? bindPersonalNoteSheet(editorForm) : null;
   const dueInput = $('input[name="dueAt"]', editorForm);
   dueInput?.addEventListener('input', () => { $('[data-clear-personal-due]', editorForm).hidden = !dueInput.value; });
   $('[data-clear-personal-due]', editorForm)?.addEventListener('click', () => {
@@ -2114,7 +2163,13 @@ function openPersonalEditor(kind, id = '') {
     } catch (error) { toast(error.message, true); }
   });
   openModal(dialog);
-  if (!item && kind !== 'habit') requestAnimationFrame(() => $('.markdown-rich-editor', editorForm)?.focus({ preventScroll: true }));
+  requestAnimationFrame(() => {
+    resizeNoteTitle?.();
+    if (!item && kind !== 'habit') {
+      const focus = kind === 'note' && !editorForm.elements.body.value ? editorForm.elements.title : $('.markdown-rich-editor', editorForm);
+      focus?.focus({ preventScroll: true });
+    }
+  });
 }
 
 function openPersonalLinkDialog(sourceType, sourceID, sourceTitle) {

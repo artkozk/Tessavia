@@ -199,7 +199,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260902-project-composer-1")) {
+	if !bytes.Contains(index, []byte("20260902-note-sheet-1")) {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }
@@ -211,6 +211,8 @@ func TestPersonalWritingExperienceAssetsAreEmbedded(t *testing.T) {
 	}
 	for _, marker := range [][]byte{
 		[]byte("function renderPersonalCreateMenu"),
+		[]byte("function personalNoteSheet"),
+		[]byte("function bindPersonalNoteSheet"),
 		[]byte("history: true, ai: false, expand: false"),
 		[]byte("personal-plan-date"),
 		[]byte("Новая личная заметка"),
