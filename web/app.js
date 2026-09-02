@@ -144,6 +144,7 @@ const graphSettingDefaults = {
 const navItems = [
   ['personal', 'Личное', 'lock', 'Личное'],
   ['dashboard', 'Обзор', 'dashboard', 'Работа'], ['work', 'Работа', 'checkSquare', 'Работа'],
+  ['calendar', 'Календарь', 'calendar', 'Работа'],
 	['collections', 'Доски', 'network', 'Работа'],
 	['chat', 'Чат', 'messages', 'Работа'],
   ['principles', 'Правила и критерии', 'bookOpen', 'Основа'], ['goal', 'Цели', 'target', 'Основа'],
@@ -157,7 +158,8 @@ const navItems = [
 ];
 
 const state = {
-  projectNavigation: { enabledViews: ['dashboard', 'work', 'collections', 'chat'] }, workspacePages: [], pageSearch: '',
+  projectNavigation: { enabledViews: ['dashboard', 'work', 'calendar', 'collections', 'chat'] }, workspacePages: [], pageSearch: '',
+  calendarScope: 'project', calendarDisplay: 'month', calendarMonth: '', calendarDay: '', calendarCollection: '', calendarOwner: '', calendarStatus: 'active', calendarColorBy: 'stage',
   notificationInbox: null, notificationStatus: 'unread', notificationPeriod: 'all', unreadCount: null,
   notificationRequest: 0, notificationLoading: false, notificationError: '', layoutDraft: null,
   me: null, users: [], records: [], notifications: [], activity: [], definitions: [], pendingQuestions: [],
@@ -1070,6 +1072,7 @@ async function switchWorkspace(workspaceID, { restoring = false, keepView = fals
   state.layoutDraft = null;
   if (!restoring && !keepView) rememberView();
   const previousView = state.view;
+  state.calendarCollection = ''; state.calendarOwner = ''; state.calendarStatus = 'active';
 	state.activeWorkspaceId = workspaceID;
 	localStorage.setItem('bizflow-active-workspace', workspaceID);
 	state.activeCollectionId = '';
@@ -1155,6 +1158,7 @@ function bindGlobalEvents() {
   $('#new-record-button').addEventListener('click', (event) => {
     event.stopPropagation();
     if (state.view === 'personal') openPersonalEditor('note');
+    else if (state.view === 'calendar') createCalendarEntry();
     else toggleCreateMenu();
   });
   $('#notification-button').addEventListener('click', () => navigateToView('notifications'));
@@ -1719,6 +1723,9 @@ function openWorkspaceCreateDialog() {
 	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
 	$('#workspace-create-form', dialog).addEventListener('submit', async (event) => {
 		event.preventDefault();
+		const submit = $('button[type="submit"]', event.currentTarget);
+		if (submit.disabled) return;
+		submit.disabled = true;
 		const form = new FormData(event.currentTarget);
 		try {
 			const workspace = await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name: form.get('name'), description: form.get('description') }) });
@@ -1728,7 +1735,7 @@ function openWorkspaceCreateDialog() {
 			state.view = 'collections';
 			await loadData();
 			toast('Команда и первый проект созданы');
-		} catch (error) { toast(error.message, true); }
+		} catch (error) { submit.disabled = false; toast(error.message, true); }
 	});
 	openModal(dialog);
 }
@@ -1848,6 +1855,7 @@ function navigationCatalog(preferences = state.interfacePreferences) {
   const items = [...builtin, ...pages];
   const order = preferences.navOrder || [];
   const positions = new Map(items.map((item, index) => [item.key, order.includes(item.key) ? order.indexOf(item.key) : order.length + index]));
+  if (enabled.has('calendar') && !order.includes('calendar') && order.includes('work')) positions.set('calendar', order.indexOf('work') + 0.5);
   return items.sort((a, b) => positions.get(a.key) - positions.get(b.key));
 }
 
@@ -1866,6 +1874,8 @@ function renderNav() {
   const items = navigationCatalog().filter((item) => !hidden.has(item.key) && !groups.has(item.group));
   $('#main-nav').innerHTML = `<div class="project-nav-items">${items.map((item) => { const count = navCount(item.key); return `<button type="button" class="nav-item ${state.view === item.key ? 'active' : ''}" data-view="${escapeHTML(item.key)}" title="${escapeHTML(item.label)}">${icon(item.iconName)}<span>${escapeHTML(item.label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`; }).join('')}</div><button type="button" class="nav-item nav-configure" data-configure-navigation>${icon('sliders')}<span>Настроить меню</span></button>`;
   $$('[data-view]', $('#main-nav')).forEach((button) => button.addEventListener('click', () => navigateToView(button.dataset.view)));
+  $('#main-nav').insertAdjacentHTML('beforeend', `<button type="button" class="nav-item" data-teams-directory>${icon('users')}<span>Команды и проекты</span></button>`);
+  $('[data-teams-directory]').addEventListener('click', () => { setSidebarOpen(false); openTeamsDirectory(); });
   $('[data-configure-navigation]').addEventListener('click', () => { setSidebarOpen(false); openNavigationSettings(); });
 }
 
@@ -1905,6 +1915,7 @@ function renderContent() {
   createButton.title = personalCreate ? 'Новая личная заметка' : 'Создать';
   if (state.view.startsWith('page:')) { $('#page-title').textContent = state.workspacePages.find((page) => `page:${page.id}` === state.view)?.name || 'Страница'; return renderWorkspacePage(); }
   if (state.view === 'personal') return renderPersonal();
+  if (state.view === 'calendar') return renderCalendarPage();
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'work') return renderWorkList();
 	if (state.view === 'collections') return renderCollections();
@@ -1969,22 +1980,27 @@ function renderDashboard() {
 }
 
 async function loadPersonal({ force = false } = {}) {
-  if (state.personalLoading || (state.personal && !force)) return;
+  if (state.personalLoading) { await state.personalLoadPromise.catch(() => {}); if (!force) return; }
+  if (!force && (state.personal || state.personalError)) return;
   state.personalLoading = true;
-  if (state.view === 'personal') renderPersonal();
+  state.personalError = '';
+  state.personalLoadPromise = api('/api/personal/overview');
   try {
-    state.personal = await api('/api/personal/overview');
+    state.personal = await state.personalLoadPromise;
   } catch (error) {
+    state.personalError = error.message;
     toast(`Личное пространство не загрузилось: ${error.message}`, true);
   } finally {
     state.personalLoading = false;
   }
   renderNav();
   if (state.view === 'personal') renderPersonal();
+  if (state.view === 'calendar') renderCalendarPage();
 }
 
 function renderPersonal() {
   if (!state.personal) {
+    if (state.personalError) return renderPersonalLoadError();
     $('#main-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">Только для вас</p><h1>Личное пространство</h1></div></div><div class="personal-loading"><span class="spinner"></span><strong>${state.personalLoading ? 'Загружаем личные данные' : 'Открываем пространство'}</strong></div>`;
     loadPersonal();
     return;
@@ -1998,11 +2014,13 @@ function renderPersonal() {
       <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>Личное пространство</h1><p>${escapeHTML(state.me.displayName || state.me.username)}</p></div>
       ${renderPersonalCreateMenu()}
     </div>
-    <section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.length}</strong><small>отмечено</small></article><article><span>Открытые планы</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt).length} со сроком</small></article><article><span>Заметки</span><strong>${data.notes.length}</strong><small>${data.notes.filter((note) => note.pinned).length} закреплено</small></article></section>
+    <section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.length}</strong><small>отмечено</small></article><article><span>Открытые планы</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate).length} с датой</small></article><article><span>Заметки</span><strong>${data.notes.length}</strong><small>${data.notes.filter((note) => note.pinned).length} закреплено</small></article></section>
     <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}</div>
     <div class="personal-content">${renderPersonalTab(data)}</div>`;
   $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; renderPersonal(); }));
   bindPersonalInteractions();
+  $('.personal-heading').insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-personal-calendar>${icon('calendar')} Календарь</button>`);
+  $('[data-personal-calendar]').addEventListener('click', () => openCalendar('personal'));
 }
 
 function renderPersonalCreateMenu() {
@@ -2043,7 +2061,7 @@ function renderPlanRow(plan, links) {
   const ownLinks = personalLinksFor(links, 'plan', plan.id);
   const done = plan.status === 'done';
   const notes = markdownPlain(plan.notes).trim();
-  const summary = [plan.dueAt ? formatDate(plan.dueAt, true) : '', notes && notes !== plan.title ? notes.slice(0, 90) : ''].filter(Boolean).join(' · ');
+  const summary = [personalPlanDateLabel(plan), notes && notes !== plan.title ? notes.slice(0, 90) : ''].filter(Boolean).join(' · ');
   return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
@@ -2066,7 +2084,16 @@ function renderLifeMap(settings) {
 }
 
 function personalLinksFor(links, sourceType, sourceID) {
-  return (links || []).filter((link) => link.sourceType === sourceType && link.sourceId === sourceID);
+  const result = [], seen = new Set();
+  for (const link of links || []) {
+    const forward = link.sourceType === sourceType && link.sourceId === sourceID;
+    const reverse = link.targetType === sourceType && link.targetId === sourceID;
+    if (!forward && !reverse) continue;
+    const item = forward ? link : { ...link, targetType: link.sourceType, targetId: link.sourceId, targetTitle: link.sourceTitle, targetWorkspaceId: '' };
+    const key = `${item.targetType}:${item.targetId}`;
+    if (!seen.has(key)) { result.push(item); seen.add(key); }
+  }
+  return result;
 }
 
 function renderPersonalLinkChips(links) {
@@ -2094,7 +2121,7 @@ function lastDates(count) {
 
 function bindPersonalInteractions() {
   $$('[data-personal-tab-jump]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTabJump; renderPersonal(); }));
-  $$('[data-personal-edit]').forEach((button) => button.addEventListener('click', () => openPersonalEditor(button.dataset.personalEdit, button.dataset.personalId)));
+  $$('[data-personal-edit]').forEach((button) => button.addEventListener('click', () => openPersonalTarget(button.dataset.personalEdit, button.dataset.personalId)));
   $$('[data-personal-create]').forEach((button) => button.addEventListener('click', () => {
     button.closest('details')?.removeAttribute('open');
     openPersonalEditor(button.dataset.personalCreate);
@@ -2115,7 +2142,7 @@ async function togglePersonalPlan(id) {
   const plan = findPersonalItem('plan', id);
   if (!plan) return;
   try {
-    await api(`/api/personal/plans/${id}`, { method: 'PATCH', body: JSON.stringify({ title: plan.title, notes: plan.notes || '', dueAt: plan.dueAt || '', status: plan.status === 'done' ? 'planned' : 'done' }) });
+    await api(`/api/personal/plans/${id}`, { method: 'PATCH', body: JSON.stringify({ title: plan.title, notes: plan.notes || '', expectedUpdatedAt: plan.updatedAt, status: plan.status === 'done' ? 'planned' : 'done' }) });
     await loadPersonal({ force: true });
   } catch (error) { toast(error.message, true); }
 }
@@ -2130,8 +2157,17 @@ async function toggleHabitCheckin(id, date) {
   } catch (error) { toast(error.message, true); }
 }
 
-function openPersonalTarget(type, id) {
-  if (type === 'record') return openRecord(id);
+async function openPersonalTarget(type, id) {
+  if (type === 'record') {
+    const link = state.personal?.links.find((item) => item.targetType === 'record' && item.targetId === id);
+    if (link?.targetWorkspaceId && link.targetWorkspaceId !== state.activeWorkspaceId) {
+      await requestDialogClose($('#personal-dialog'));
+      await switchWorkspace(link.targetWorkspaceId, { keepView: true });
+      if (state.activeWorkspaceId !== link.targetWorkspaceId) return;
+    }
+    return openRecord(id);
+  }
+  if (type === 'plan') return openPersonalPlanDetails(id);
   openPersonalEditor(type, id);
 }
 
@@ -2174,7 +2210,7 @@ function bindPersonalNoteSheet(form) {
   return resizeTitle;
 }
 
-function openPersonalEditor(kind, id = '') {
+function openPersonalEditor(kind, id = '', context = {}) {
   const item = id ? findPersonalItem(kind, id) : null;
   const dialog = $('#personal-dialog');
   const content = $('#personal-dialog-content');
@@ -2183,16 +2219,16 @@ function openPersonalEditor(kind, id = '') {
   const body = kind === 'note'
     ? personalNoteSheet(item)
     : kind === 'plan'
-      ? `${markdownEditor('notes', 'Описание', item?.notes || '', 11, 'Опишите план обычным текстом или составьте список шагов.', 'personal-plan', { compact: true, history: true, ai: false, expand: false })}<details class="personal-plan-date" ${item?.dueAt ? 'open' : ''}><summary>${icon('calendar')}<span><strong>${item?.dueAt ? 'Срок' : 'Добавить срок'}</strong><small>${item?.dueAt ? escapeHTML(formatDate(item.dueAt, true)) : 'Необязательно'}</small></span>${icon('chevronRight')}</summary><div><label>Дата и время<input type="datetime-local" name="dueAt" value="${escapeHTML(toLocalInput(item?.dueAt || ''))}"></label><button type="button" class="text-button" data-clear-personal-due ${item?.dueAt ? '' : 'hidden'}>Убрать срок</button></div></details>`
+      ? `${markdownEditor('notes', 'Описание', item?.notes || '', 6, 'Описание...', 'personal-plan', { compact: true, history: true, ai: false, expand: false })}${personalPlanDateFields(item || { startDate: context.date || '', endDate: context.date || '' })}`
       : `<div class="form-grid two"><label>Режим<select name="scheduleKind"><option value="daily" ${(item?.scheduleKind || 'daily') === 'daily' ? 'selected' : ''}>Каждый день</option><option value="weekdays" ${item?.scheduleKind === 'weekdays' ? 'selected' : ''}>По будням</option><option value="weekly_target" ${item?.scheduleKind === 'weekly_target' ? 'selected' : ''}>Цель на неделю</option></select></label><label>Дней в неделю<input type="number" name="targetPerWeek" min="1" max="7" value="${item?.targetPerWeek || 7}"></label></div><div class="form-grid two"><label>Единица<input name="unit" maxlength="32" value="${escapeHTML(item?.unit || 'раз')}"></label><label>Начало<input type="date" name="startDate" value="${escapeHTML(item?.startDate || localISODate())}" ${item ? 'disabled' : ''}></label></div>`;
   const newHeading = kind === 'habit' ? 'Новая привычка' : kind === 'plan' ? 'Новый план' : 'Новая заметка';
   const titleField = kind === 'habit'
     ? `<label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}" placeholder="Например: читать 20 минут"></label>`
     : kind === 'note' ? '' : `<label class="personal-title-field"><span>Название <small>необязательно</small></span><input name="title" maxlength="240" value="${escapeHTML(item?.title || '')}" placeholder="Система возьмёт его из первой строки"></label>`;
   content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind === 'note' ? 'personal-note-form' : ''}" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
-  $$('[data-close-personal]', dialog).forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
+  $$('[data-close-personal]', dialog).forEach((button) => button.addEventListener('click', async () => { if (await requestDialogClose(dialog) && context.planId) openPersonalPlanDetails(context.planId); }));
   const editorForm = $('#personal-editor-form', dialog);
-  const draftScope = `personal:${state.me.id}:${kind}:${item?.id || 'new'}`;
+  const draftScope = `personal:${state.me.id}:${kind}:${item?.id || context.planId || 'new'}`;
   bindWorkingDraft(editorForm, draftScope);
   if (kind === 'note') {
     const editor = $('.markdown-editor', editorForm);
@@ -2200,18 +2236,23 @@ function openPersonalEditor(kind, id = '') {
   }
   bindMarkdownEditors(dialog);
   const resizeNoteTitle = kind === 'note' ? bindPersonalNoteSheet(editorForm) : null;
-  const dueInput = $('input[name="dueAt"]', editorForm);
-  dueInput?.addEventListener('input', () => { $('[data-clear-personal-due]', editorForm).hidden = !dueInput.value; });
-  $('[data-clear-personal-due]', editorForm)?.addEventListener('click', () => {
-    dueInput.value = '';
-    dueInput.dispatchEvent(new Event('input', { bubbles: true }));
-  });
+  if (kind === 'plan') bindPersonalPlanDates(editorForm);
+  if (item && kind === 'note') {
+    $('.personal-note-sheet', editorForm).insertAdjacentHTML('afterend', renderPersonalLinkChips(personalLinksFor(state.personal.links, kind, id)));
+    $$('[data-personal-target-type]', editorForm).forEach((button) => button.addEventListener('click', async () => { if (await requestDialogClose(dialog)) openPersonalTarget(button.dataset.personalTargetType, button.dataset.personalTargetId); }));
+  }
+  let saving = false;
   editorForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (saving) return;
     const form = new FormData(event.currentTarget);
     let payload;
-    if (kind === 'note') payload = { title: form.get('title'), body: form.get('body'), pinned: form.get('pinned') === 'on' };
-    else if (kind === 'plan') payload = { title: form.get('title'), notes: form.get('notes'), dueAt: form.get('dueAt') ? new Date(form.get('dueAt')).toISOString() : '', ...(item ? { status: item.status } : {}) };
+    if (kind === 'note') payload = { title: form.get('title'), body: form.get('body'), pinned: form.get('pinned') === 'on', ...(!item && context.planId ? { linkPlanId: context.planId } : {}) };
+    else if (kind === 'plan') {
+      const mode = form.get('dateMode');
+      if (mode === 'days' && !form.get('startDate') || mode === 'time' && !form.get('dueAt')) { toast('Укажите дату или выберите «Без даты»', true); return; }
+      payload = { title: form.get('title'), notes: form.get('notes'), dueAt: mode === 'time' ? new Date(form.get('dueAt')).toISOString() : '', startDate: mode === 'days' ? form.get('startDate') : '', endDate: mode === 'days' ? form.get('endDate') : '', colorKey: form.get('colorKey'), ...(item ? { status: item.status, expectedUpdatedAt: item.updatedAt } : {}) };
+    }
     else payload = { title: form.get('title'), scheduleKind: form.get('scheduleKind'), targetPerWeek: Number(form.get('targetPerWeek')), unit: form.get('unit'), ...(item ? {} : { startDate: form.get('startDate') }) };
     if (kind !== 'habit' && !String(payload.title || '').trim() && !String(kind === 'note' ? payload.body : payload.notes || '').trim()) {
       toast('Напишите текст или укажите название', true);
@@ -2219,14 +2260,18 @@ function openPersonalEditor(kind, id = '') {
       return;
     }
     const submit = $('button[type="submit"]', event.currentTarget);
+    saving = true;
     submit.disabled = true;
     try {
-      await api(`/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}${item ? `/${item.id}` : ''}`, { method: item ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
+      const saved = await api(`/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}${item ? `/${item.id}` : ''}`, { method: item ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
       clearWorkingDraftFor(editorForm);
-      await requestDialogClose(dialog);
+      const stillHere = editorForm.isConnected && dialog.open;
+      if (stillHere) await requestDialogClose(dialog);
       await loadPersonal({ force: true });
+      if (stillHere && !dialog.open && (context.planId || kind === 'plan')) openPersonalPlanDetails(context.planId || saved.id);
       toast(`${title} ${kind === 'plan' ? 'сохранён' : 'сохранена'}`);
-    } catch (error) { submit.disabled = false; toast(error.message, true); }
+    } catch (error) { toast(error.message, true); }
+    finally { saving = false; submit.disabled = false; }
   });
   $('[data-archive-personal]', dialog)?.addEventListener('click', async () => {
     try {
@@ -2247,33 +2292,51 @@ function openPersonalEditor(kind, id = '') {
   });
 }
 
-function openPersonalLinkDialog(sourceType, sourceID, sourceTitle) {
+function openPersonalLinkDialog(sourceType, sourceID, sourceTitle, context = {}) {
   const dialog = $('#personal-dialog');
   $('#personal-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon('link')} Личная связь</span><h2>${escapeHTML(sourceTitle)}</h2><p>Начните вводить название связанной карточки или личной записи.</p></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><div class="dialog-form personal-link-dialog"><label>Найти связь<input id="personal-link-search" type="search" autocomplete="off" autofocus placeholder="Например: отдых на даче"></label><div id="personal-link-results" class="personal-link-results"><p>Совпадения появятся здесь.</p></div></div>`;
   $('[data-close-personal]', dialog).addEventListener('click', () => requestDialogClose(dialog));
   const input = $('#personal-link-search', dialog);
+  let version = 0, saving = false;
+  const localItems = () => (context.notesOnly ? ['note'] : ['note', 'plan', 'habit']).flatMap((type) => (state.personal?.[type === 'habit' ? 'habits' : `${type}s`] || []).map((item) => ({ type, id: item.id, title: item.title, subtitle: type === 'note' ? 'Личная заметка' : type === 'plan' ? 'Личный план' : 'Привычка' })));
+  const showResults = (items) => {
+    const resultsNode = $('#personal-link-results', dialog);
+    const linked = new Set(personalLinksFor(state.personal.links, sourceType, sourceID).map((item) => `${item.targetType}:${item.targetId}`));
+    items = items.filter((item) => !(item.type === sourceType && item.id === sourceID) && !linked.has(`${item.type}:${item.id}`));
+    resultsNode.innerHTML = items.map((item) => `<button type="button" data-link-target-type="${item.type}" data-link-target-id="${item.id}"><span>${icon('link')}</span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.subtitle)}</small></button>`).join('') || '<p>Подходящих записей не найдено.</p>';
+    $$('[data-link-target-id]', resultsNode).forEach((button) => button.addEventListener('click', async () => {
+      if (saving) return;
+      saving = true; resultsNode.inert = true;
+      try {
+        await api('/api/personal/links', { method: 'POST', body: JSON.stringify({ sourceType, sourceId: sourceID, targetType: button.dataset.linkTargetType, targetId: button.dataset.linkTargetId, relationType: 'related' }) });
+        const stillHere = input.isConnected && dialog.open;
+        if (stillHere) await requestDialogClose(dialog);
+        await loadPersonal({ force: true });
+        if (stillHere && !dialog.open && context.returnPlanId) openPersonalPlanDetails(context.returnPlanId);
+        toast('Связь добавлена');
+      } catch (error) { toast(error.message, true); }
+      finally { saving = false; resultsNode.inert = false; }
+    }));
+  };
   input.addEventListener('input', () => {
     clearTimeout(state.personalSuggestionTimer);
+    const request = ++version;
     const query = input.value.trim();
-    if (query.length < 2) { $('#personal-link-results', dialog).innerHTML = '<p>Введите не меньше двух символов.</p>'; return; }
+    if (query.length < 2 || context.notesOnly) { showResults(localItems().filter((item) => item.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()))); return; }
     state.personalSuggestionTimer = setTimeout(async () => {
       const resultsNode = $('#personal-link-results', dialog);
       resultsNode.innerHTML = '<span class="spinner"></span>';
       try {
         const items = (await api(`/api/personal/suggestions?q=${encodeURIComponent(query)}`)).filter((item) => !(item.type === sourceType && item.id === sourceID));
-        resultsNode.innerHTML = items.map((item) => `<button type="button" data-link-target-type="${item.type}" data-link-target-id="${item.id}"><span>${icon(item.type === 'record' ? 'network' : item.type === 'habit' ? 'checkSquare' : item.type === 'plan' ? 'calendar' : 'edit')}</span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.subtitle)}</small>${icon('chevronRight')}</button>`).join('') || '<p>Подходящих записей не найдено.</p>';
-        $$('[data-link-target-id]', resultsNode).forEach((button) => button.addEventListener('click', async () => {
-          button.disabled = true;
-          try {
-            await api('/api/personal/links', { method: 'POST', body: JSON.stringify({ sourceType, sourceId: sourceID, targetType: button.dataset.linkTargetType, targetId: button.dataset.linkTargetId, relationType: 'related' }) });
-            requestDialogClose(dialog);
-            await loadPersonal({ force: true });
-            toast('Связь добавлена');
-          } catch (error) { button.disabled = false; toast(error.message, true); }
-        }));
-      } catch (error) { resultsNode.innerHTML = `<p class="form-error">${escapeHTML(error.message)}</p>`; }
+        if (request === version && input.isConnected && dialog.open) showResults(items);
+      } catch (error) { if (request === version && input.isConnected) resultsNode.innerHTML = `<p class="form-error">${escapeHTML(error.message)}</p>`; }
     }, 220);
   });
+  showResults(localItems());
+  if (context.returnPlanId) {
+    $('[data-close-personal]', dialog).insertAdjacentHTML('beforebegin', `<button type="button" class="text-button" data-link-back>${icon('arrowLeft')} К плану</button>`);
+    $('[data-link-back]', dialog).addEventListener('click', () => openPersonalPlanDetails(context.returnPlanId));
+  }
   openModal(dialog);
 }
 
@@ -2978,6 +3041,10 @@ function renderCollections() {
 	state.activeCollectionId = collection.id;
 	const records = collectionRecords(collection.id);
 	$('#main-content').innerHTML = `<div class="page-heading collection-page-heading"><div><p class="eyebrow">${escapeHTML(workspace?.name || 'Команда')} · Конструктор процессов</p><h1>${escapeHTML(collection.name)}</h1><p>${escapeHTML(collection.description || `${collection.cardLabel}: настраиваемые этапы и поля`)}</p></div><div><button type="button" class="primary" data-create-collection-card>${icon('plus')} ${escapeHTML(collection.cardLabel)}</button>${canConfigureWorkspace() ? `<button type="button" class="secondary" data-configure-collection>${icon('settings')} Настроить</button>` : ''}</div></div><section class="collection-toolbar"><nav class="collection-tabs" aria-label="Доски">${state.collections.map((item) => `<button type="button" class="${item.id === collection.id ? 'active' : ''}" data-collection-tab="${item.id}"><span>${icon('network')}</span><strong>${escapeHTML(item.name)}</strong><small>${state.records.filter((record) => record.collectionId === item.id && record.status !== 'archived').length}</small></button>`).join('')}${canConfigureWorkspace() ? `<button type="button" class="collection-tab-add" data-create-collection title="Новая доска" aria-label="Новая доска">${icon('plus')}</button>` : ''}</nav><label class="collection-search">${icon('search')}<input type="search" value="${escapeHTML(state.collectionSearch)}" placeholder="Найти на доске" aria-label="Найти карточку на доске"></label></section>${renderCollectionFilters(collection)}<section class="collection-board" aria-label="Доска ${escapeHTML(collection.name)}">${collection.stages.map((stage) => { const items = records.filter((record) => record.stageId === stage.id || (!record.stageId && stage.id === collection.stages[0]?.id)); return `<section class="collection-column tone-${stage.colorKey}" data-collection-drop="${stage.id}"><header><div><i></i><strong>${escapeHTML(stage.name)}</strong></div><span>${items.length}</span></header><div>${items.map((record) => renderCollectionCard(record, collection)).join('') || '<p class="collection-column-empty">Перетащите карточку сюда</p>'}</div><button type="button" class="collection-add-card" data-create-at-stage="${stage.id}">${icon('plus')} Добавить</button></section>`; }).join('')}</section>`;
+  const addBoard = $('[data-create-collection]');
+  if (addBoard) addBoard.innerHTML = `${icon('plus')}<strong>Новая доска</strong>`;
+  $('.collection-toolbar').insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-board-calendar>${icon('calendar')} Календарь</button>`);
+  $('[data-board-calendar]').addEventListener('click', () => openCalendar('project', collection.id));
 	$$('[data-collection-tab]').forEach((button) => button.addEventListener('click', () => { state.activeCollectionId = button.dataset.collectionTab; state.collectionSearch = ''; state.collectionOwnerFilter = ''; state.collectionFieldFilters = {}; renderCollections(); }));
 	$$('[data-create-collection]').forEach((button) => button.addEventListener('click', openCollectionCreateDialog));
 	$('[data-configure-collection]')?.addEventListener('click', () => openCollectionSettingsDialog(collection));
@@ -3054,17 +3121,22 @@ function customFieldsFromForm(form, fields) {
 	return values;
 }
 
-function openCollectionCardDialog(collection, record = null, stageID = '') {
+function openCollectionCardDialog(collection, record = null, stageID = '', defaults = {}) {
+	const workspace = state.activeWorkspaceId;
 	const dialog = $('#workspace-dialog');
 	const fields = collection.fields || [];
 	const content = $('#workspace-dialog-content');
 	const editingFields = Boolean(record);
 	content.innerHTML = `<div class="workspace-editor-shell collection-card-editor"><header><div><p class="eyebrow">${escapeHTML(collection.name)}</p><h2>${editingFields ? 'Поля карточки' : `Новая ${collection.cardLabel.toLowerCase()}`}</h2><p>${editingFields ? escapeHTML(record.title) : 'Заполните только нужное сейчас. Остальные поля можно дополнить позже.'}</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="collection-card-form" class="card-form">${editingFields ? '' : `<label>Название<input name="title" required maxlength="240" placeholder="Что нужно сделать"></label><label>Описание<textarea name="description" rows="4" placeholder="Контекст, ожидаемый результат или детали"></textarea></label><div class="form-grid three"><label>Этап<select name="stageId">${collection.stages.map((stage) => `<option value="${stage.id}" ${(stageID || collection.stages[0]?.id) === stage.id ? 'selected' : ''}>${escapeHTML(stage.name)}</option>`).join('')}</select></label><label>Ответственный<select name="ownerId">${userOptions(state.me.id)}</select></label><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === 'normal' ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>`}<section class="collection-custom-fields"><header><strong>Поля доски</strong><small>${fields.length ? `${fields.length} настроено` : 'Поля пока не добавлены'}</small></header>${fields.length ? `<div class="form-grid two">${fields.map((field) => collectionFieldInput(field, record?.customFields?.[field.id])).join('')}</div>` : '<p class="muted">Карточка будет использовать основные поля BizFlow. Администратор может добавить тип, номер, канал, клиента, сумму или другие свойства в настройках доски.</p>'}</section><div class="form-actions"><button type="submit" class="primary">${icon('check')} ${editingFields ? 'Сохранить поля' : 'Создать карточку'}</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
 	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
+	if (!record) $('.collection-custom-fields', content).insertAdjacentHTML('beforebegin', `<label>Срок <small>необязательно</small><input type="datetime-local" name="dueAt" value="${escapeHTML(defaults.dueAt || '')}"></label>`);
 	enhanceSelects(dialog);
 	$('#collection-card-form', dialog).addEventListener('submit', async (event) => {
 		event.preventDefault();
 		const form = event.currentTarget;
+		const submit = $('button[type="submit"]', form);
+		if (submit.disabled) return;
+		submit.disabled = true;
 		const customFields = customFieldsFromForm(form, fields);
 		try {
 			let updated;
@@ -3072,26 +3144,36 @@ function openCollectionCardDialog(collection, record = null, stageID = '') {
 				updated = await api(`/api/records/${record.id}/custom-fields`, { method: 'PUT', body: JSON.stringify({ values: customFields }) });
 			} else {
 				const values = new FormData(form);
-				updated = await api('/api/records', { method: 'POST', body: JSON.stringify({ type: collection.defaultRecordType, title: values.get('title'), description: values.get('description'), ownerId: Number(values.get('ownerId')), priority: values.get('priority'), workstream: 'business', editPolicy: 'shared', collectionId: collection.id, stageId: values.get('stageId'), customFields }) });
+				updated = await api('/api/records', { method: 'POST', body: JSON.stringify({ type: collection.defaultRecordType, title: values.get('title'), description: values.get('description'), ownerId: Number(values.get('ownerId')), priority: values.get('priority'), dueAt: values.get('dueAt') ? new Date(values.get('dueAt')).toISOString() : '', workstream: 'business', editPolicy: 'shared', collectionId: collection.id, stageId: values.get('stageId'), customFields }) });
 			}
+			if (workspace !== state.activeWorkspaceId) return;
 			state.records = record ? state.records.map((item) => item.id === updated.id ? updated : item) : [updated, ...state.records];
 			state.detailCache.delete(updated.id);
-			closeWorkspaceDialog();
+			if (form.isConnected) closeWorkspaceDialog();
 			if ($('#record-dialog').open && state.activeDetail?.record.id === updated.id) await openRecord(updated.id, { force: true });
 			else renderContent();
 			toast(record ? 'Поля сохранены' : 'Карточка создана');
 		} catch (error) { toast(error.message, true); }
+		finally { submit.disabled = false; }
 	});
 	openModal(dialog);
 }
 
 function openCollectionCreateDialog() {
+	const workspace = state.activeWorkspaceId;
 	const dialog = $('#workspace-dialog');
 	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Команда')}</p><h2>Новая доска</h2><p>Этапы и поля можно менять без разработки. Связи и история остаются общими для всей команды.</p></div><button type="button" class="icon-button" data-close-workspace-dialog>${icon('x')}</button></header><form id="collection-create-form" class="card-form"><label>Название доски<input name="name" required maxlength="100" placeholder="Например: CRM"></label><label>Описание<textarea name="description" rows="3" maxlength="800" placeholder="Какой процесс ведём на этой доске"></textarea></label><label>Как называть карточку<input name="cardLabel" maxlength="40" value="Задача" placeholder="Лид, сделка, кандидат, заявка"></label><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать доску</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
 	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
 	$('#collection-create-form', dialog).addEventListener('submit', async (event) => {
-		event.preventDefault(); const form = new FormData(event.currentTarget);
-		try { const created = await api('/api/collections', { method: 'POST', body: JSON.stringify({ name: form.get('name'), description: form.get('description'), cardLabel: form.get('cardLabel'), defaultRecordType: 'task' }) }); state.activeCollectionId = created.id; closeWorkspaceDialog(); await reloadCollections(); toast('Доска создана'); } catch (error) { toast(error.message, true); }
+		event.preventDefault(); const element = event.currentTarget, form = new FormData(element), submit = $('button[type="submit"]', element);
+		if (submit.disabled) return;
+		submit.disabled = true;
+		try {
+			const created = await api('/api/collections', { method: 'POST', body: JSON.stringify({ name: form.get('name'), description: form.get('description'), cardLabel: form.get('cardLabel'), defaultRecordType: 'task' }) });
+			if (workspace !== state.activeWorkspaceId) return;
+			state.activeCollectionId = created.id; if (element.isConnected) closeWorkspaceDialog(); await reloadCollections(); toast('Доска создана');
+		} catch (error) { toast(error.message, true); }
+		finally { submit.disabled = false; }
 	});
 	openModal(dialog);
 }
@@ -6601,6 +6683,7 @@ function finishOnboarding() {
 
 // Only view state goes into browser history, never record bodies or account data.
 const routeFields = ['view', 'search', 'statusFilter', 'ownerFilter', 'personalTab', 'workScope', 'workType', 'workStatus', 'workstreamFilter', 'workOrder', 'workViewMode', 'ideaViewMode', 'workCalendarMonth', 'calendarMode', 'calendarYear', 'activeCollectionId', 'collectionSearch', 'collectionOwnerFilter', 'collectionFieldFilters', 'historyMode', 'historyScope', 'historyActor', 'historyType', 'notificationStatus', 'notificationPeriod', 'pageSearch'];
+routeFields.push('calendarScope', 'calendarDisplay', 'calendarMonth', 'calendarDay', 'calendarCollection', 'calendarOwner', 'calendarStatus', 'calendarColorBy');
 
 function viewSnapshot() {
   return { ...Object.fromEntries(routeFields.map((key) => [key, structuredClone(state[key])])), workspaceId: state.activeWorkspaceId, scrollY: window.scrollY };
@@ -7198,6 +7281,7 @@ function pageLayoutCatalog() {
   const heading = block('heading', 'Заголовок и создание', ':scope > .page-heading, :scope > .entity-list-heading, :scope > .work-title-row, :scope > .history-title');
   const list = block('records', 'Карточки', ':scope > .table-panel, :scope > .work-kanban, :scope > .work-calendar, :scope > .idea-stage-board', true);
   const catalog = {
+    calendar: [heading, block('filters', 'Вид и фильтры', '.planner-controls', true), block('month', 'Календарь и расписание', '.planner-body', true), block('undated', 'Без даты', '.planner-undated')],
     work: [heading, block('filters', 'Поиск и фильтры', ':scope > .work-controls', true), block('summary', 'Сводка и представления', ':scope > .work-view-summary'), list],
     personal: [heading, block('summary', 'Личная сводка', '.personal-summary'), block('tabs', 'Разделы', '.personal-tabs', true), block('habits', 'Привычки', '.personal-today-grid .personal-section:has(> .habit-list)', false, 6), block('plans', 'Ближайшие планы', '.personal-today-grid .personal-section:has(> .personal-list)', false, 6), block('life', 'Карта времени', '.personal-today-grid .life-section', false, 6), block('notes', 'Последние заметки', '.personal-today-grid .personal-section:has(> .personal-notes-preview)', false, 6)],
     collections: [heading, block('search', 'Доски и поиск', '.collection-toolbar', true), block('filters', 'Фильтры', '.collection-filters', true), block('records', 'Доска', ':scope > .collection-board', true)],
@@ -7368,6 +7452,181 @@ function applyPageLayout() {
     const columns = ['minmax(180px, 2.2fr)', ...['owner', 'status', 'due'].filter((key) => !value.hiddenFields?.includes(key)).map(() => 'minmax(100px, 1fr)')];
     $$('.record-table', root).forEach((row) => row.style.setProperty('--page-table-columns', columns.join(' ')));
   }
+}
+
+function calendarColors() {
+  return [['green', 'Зелёный'], ['blue', 'Синий'], ['amber', 'Жёлтый'], ['purple', 'Фиолетовый'], ['red', 'Красный'], ['neutral', 'Серый']];
+}
+
+function personalPlanDateFields(plan) {
+  const mode = plan.startDate ? 'days' : plan.dueAt ? 'time' : 'none';
+  return `<div class="plan-date-fields"><label>Когда<select name="dateMode">${[['none', 'Без даты'], ['days', 'День или период'], ['time', 'Дата и время']].map(([key, label]) => `<option value="${key}" ${mode === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label><div class="form-grid two" data-plan-dates="days"><label>Начало<input type="date" name="startDate" value="${escapeHTML(plan.startDate || '')}"></label><label>Окончание<input type="date" name="endDate" value="${escapeHTML(plan.endDate || '')}"></label></div><label data-plan-dates="time">Дата и время<input type="datetime-local" name="dueAt" value="${escapeHTML(toLocalInput(plan.dueAt || ''))}"></label><fieldset class="plan-color-picker"><legend>Цвет</legend>${calendarColors().map(([key, label]) => `<label title="${label}"><input type="radio" name="colorKey" value="${key}" ${(plan.colorKey || 'green') === key ? 'checked' : ''} aria-label="${label}"><span class="planner-tone-${key}"></span></label>`).join('')}</fieldset></div>`;
+}
+
+function bindPersonalPlanDates(form) {
+  const update = () => $$('[data-plan-dates]', form).forEach((node) => { node.hidden = node.dataset.planDates !== form.elements.dateMode.value; });
+  form.elements.dateMode.addEventListener('change', update);
+  form.elements.startDate.addEventListener('change', () => { if (!form.elements.endDate.value || form.elements.endDate.value < form.elements.startDate.value) form.elements.endDate.value = form.elements.startDate.value; });
+  update();
+}
+
+function personalPlanDateLabel(plan) {
+  if (!plan.startDate) return plan.dueAt ? formatDate(plan.dueAt, true) : 'Без даты';
+  const label = (value) => dateFromKey(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  return plan.endDate && plan.endDate !== plan.startDate ? `${label(plan.startDate)} - ${label(plan.endDate)}` : label(plan.startDate);
+}
+
+function openPersonalPlanDetails(id) {
+  const plan = findPersonalItem('plan', id);
+  if (!plan) { toast('План недоступен', true); return; }
+  const dialog = $('#personal-dialog'), content = $('#personal-dialog-content');
+  const links = personalLinksFor(state.personal.links, 'plan', id);
+  const notes = links.filter((link) => link.targetType === 'note').map((link) => ({ link, note: findPersonalItem('note', link.targetId) })).filter((item) => item.note);
+  content.innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon('lock')} Личный план</span><h2>${escapeHTML(plan.title)}</h2><p>${escapeHTML(personalPlanDateLabel(plan))}</p></div><button type="button" class="icon-button" data-plan-close aria-label="Закрыть">${icon('x')}</button></div><div class="dialog-form plan-hub"><div class="plan-hub-actions"><button type="button" class="secondary" data-plan-edit>${icon('edit')} Изменить</button><button type="button" class="secondary" data-plan-complete>${icon(plan.status === 'done' ? 'rotate' : 'check')} ${plan.status === 'done' ? 'Вернуть в планы' : 'Выполнено'}</button></div>${plan.notes ? `<div class="markdown-body">${renderMarkdown(plan.notes)}</div>` : ''}<section class="plan-hub-notes"><header><h3>Заметки <small>${notes.length}</small></h3><div><button type="button" class="secondary" data-plan-new-note>${icon('plus')} Заметка</button><button type="button" class="text-button" data-plan-link-note>${icon('link')} Связать</button></div></header>${notes.map(({ link, note }) => `<article><header><h4>${escapeHTML(note.title)}</h4><div><button type="button" class="icon-button" data-plan-note="${note.id}" title="Редактировать заметку" aria-label="Редактировать заметку">${icon('edit')}</button><button type="button" class="icon-button" data-unlink-note="${link.id}" title="Убрать связь с планом" aria-label="Убрать связь с планом">${icon('x')}</button></div></header><div class="markdown-body">${renderMarkdown(note.body)}</div></article>`).join('') || '<p class="muted">Связанных заметок пока нет.</p>'}</section>${renderPersonalLinkChips(links.filter((link) => link.targetType !== 'note'))}</div>`;
+  $('[data-plan-close]', content).addEventListener('click', () => requestDialogClose(dialog));
+  $('[data-plan-edit]', content).addEventListener('click', () => openPersonalEditor('plan', id));
+  $('[data-plan-new-note]', content).addEventListener('click', () => openPersonalEditor('note', '', { planId: id }));
+  $('[data-plan-link-note]', content).addEventListener('click', () => openPersonalLinkDialog('plan', id, plan.title, { notesOnly: true, returnPlanId: id }));
+  $$('[data-plan-note]', content).forEach((button) => button.addEventListener('click', () => openPersonalEditor('note', button.dataset.planNote, { planId: id })));
+  const completeButton = $('[data-plan-complete]', content);
+  if (plan.status !== 'done') completeButton.innerHTML = `${icon('check')} Завершить`;
+  completeButton.addEventListener('click', async () => { completeButton.disabled = true; await togglePersonalPlan(id); if (completeButton.isConnected && dialog.open) openPersonalPlanDetails(id); });
+  $$('[data-unlink-note]', content).forEach((button) => button.addEventListener('click', async () => {
+    if (!confirm('Убрать связь? Сама заметка останется в личном пространстве.')) return;
+    button.disabled = true;
+    try { await api(`/api/personal/links/${button.dataset.unlinkNote}`, { method: 'DELETE' }); await loadPersonal({ force: true }); if (button.isConnected && dialog.open) openPersonalPlanDetails(id); } catch (error) { button.disabled = false; toast(error.message, true); }
+  }));
+  $$('[data-personal-target-type]', content).forEach((button) => button.addEventListener('click', () => openPersonalTarget(button.dataset.personalTargetType, button.dataset.personalTargetId)));
+  openModal(dialog);
+}
+
+function openTeamsDirectory() {
+  const dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
+  const teams = new Map();
+  state.workspaces.filter((item) => item.teamId).forEach((item) => { if (!teams.has(item.teamId)) teams.set(item.teamId, []); teams.get(item.teamId).push(item); });
+  content.innerHTML = `<div class="workspace-editor-shell teams-directory"><header><h2>Команды и проекты</h2><button type="button" class="icon-button" data-directory-close aria-label="Закрыть">${icon('x')}</button></header><div class="plan-hub-actions"><button type="button" class="primary" data-directory-create>${icon('plus')} Новая команда</button><button type="button" class="secondary" data-directory-join>${icon('link')} Присоединиться</button></div>${[...teams.entries()].map(([id, projects]) => `<section><header><h3>${escapeHTML(projects[0].teamName)}</h3><button type="button" class="secondary" data-directory-team="${id}">${icon('users')} Участники и проекты</button></header>${projects.map((project) => `<button type="button" class="directory-project" data-directory-project="${project.id}">${icon(project.id === state.activeWorkspaceId ? 'check' : 'network')}<span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || '')}</small></span>${icon('chevronRight')}</button>`).join('')}</section>`).join('') || '<p class="muted">Команд пока нет.</p>'}</div>`;
+  $('[data-directory-close]').addEventListener('click', closeWorkspaceDialog);
+  $('[data-directory-create]').addEventListener('click', openWorkspaceCreateDialog);
+  $('[data-directory-join]').addEventListener('click', () => openJoinTeamDialog());
+  $$('[data-directory-team]').forEach((button) => button.addEventListener('click', () => openTeamSettings(button.dataset.directoryTeam)));
+  $$('[data-directory-project]').forEach((button) => button.addEventListener('click', async () => { closeWorkspaceDialog(); await switchWorkspace(button.dataset.directoryProject); navigateToView('collections'); }));
+  openModal(dialog);
+}
+
+function openCalendar(scope = 'project', collectionID = '') {
+  if (!leavePageLayoutEditor()) return;
+  state.calendarScope = scope; state.calendarCollection = collectionID; state.calendarOwner = ''; state.calendarStatus = 'active';
+  navigateToView('calendar');
+}
+
+function plannerRange(item, personal) {
+  if (personal && item.startDate) return [item.startDate, item.endDate || item.startDate];
+  if (!item.dueAt) return ['', ''];
+  const key = localDateKey(new Date(item.dueAt));
+  return [key, key];
+}
+
+function plannerMatchesDay(item, day, personal) {
+  const [start, end] = plannerRange(item, personal);
+  return Boolean(start && start <= day && end >= day);
+}
+
+function plannerItems() {
+  const personal = state.calendarScope === 'personal';
+  return (personal ? state.personal?.plans || [] : state.records.filter((item) => isWorkRecord(item) || item.collectionId)).filter((item) => {
+    if (item.status === 'archived' || item.status === 'cancelled') return false;
+    const done = personal ? item.status === 'done' : !isActiveRecord(item);
+    if (state.calendarStatus === 'active' && done || state.calendarStatus === 'done' && !done) return false;
+    return personal || ((!state.calendarCollection || item.collectionId === state.calendarCollection) && (!state.calendarOwner || String(item.ownerId) === state.calendarOwner));
+  });
+}
+
+function plannerTone(item) {
+  let color = item.colorKey || 'green';
+  if (state.calendarScope !== 'personal') {
+    const stage = state.collections.find((board) => board.id === item.collectionId)?.stages.find((value) => value.id === item.stageId);
+    color = state.calendarColorBy === 'priority' ? ({ critical: 'red', high: 'amber', normal: 'green', low: 'neutral' })[item.priority] : stage?.colorKey || 'blue';
+  }
+  return calendarColors().some(([key]) => key === color) ? color : 'neutral';
+}
+
+function plannerEntry(item) {
+  const personal = state.calendarScope === 'personal';
+  const subtitle = personal ? personalPlanDateLabel(item) : `${item.ownerUsername || ''}${item.dueAt ? ` · ${formatDate(item.dueAt, true)}` : ' · Без срока'}`;
+  return `<button type="button" class="planner-entry planner-tone-${plannerTone(item)}" data-planner-entry="${item.id}"><i></i><span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(subtitle)}</small></span>${icon('chevronRight')}</button>`;
+}
+
+function renderCalendarPage() {
+  const personal = state.calendarScope === 'personal';
+  if (personal && !state.personal && state.personalError) return renderPersonalLoadError();
+  if (personal && !state.personal) { $('#main-content').innerHTML = '<p>Загружаем личный календарь...</p>'; loadPersonal(); return; }
+  state.calendarMonth ||= localISODate().slice(0, 7);
+  state.calendarDay ||= localISODate();
+  const month = dateFromKey(`${state.calendarMonth}-01`), today = localISODate();
+  const start = addCalendarDays(month, -(month.getDay() + 6) % 7);
+  const days = Array.from({ length: 42 }, (_, index) => localDateKey(addCalendarDays(start, index)));
+  const items = plannerItems(), forDay = (key) => items.filter((item) => plannerMatchesDay(item, key, personal));
+  const selected = forDay(state.calendarDay), undated = items.filter((item) => !plannerRange(item, personal)[0]);
+  const option = (key, label, value) => `<option value="${escapeHTML(key)}" ${String(value) === String(key) ? 'selected' : ''}>${escapeHTML(label)}</option>`;
+  const monthDays = days.filter((key) => key.startsWith(state.calendarMonth));
+  const agenda = monthDays.filter((key) => forDay(key).length).map((key) => `<section><h3>${escapeHTML(dateFromKey(key).toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }))}</h3>${forDay(key).map(plannerEntry).join('')}</section>`).join('');
+  $('#main-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Только для вас' : activeWorkspace()?.name || 'Проект')}</p><h1>Календарь</h1></div><button type="button" class="primary" data-planner-create>${icon('plus')} ${personal ? 'План' : 'Карточка'}</button></div><section class="planner-controls"><div class="planner-switches"><div class="segmented" aria-label="Пространство календаря">${[['personal', 'Личное'], ['project', 'Проект']].map(([key, label]) => `<button type="button" class="segment ${state.calendarScope === key ? 'active' : ''}" aria-pressed="${state.calendarScope === key}" data-planner-scope="${key}">${label}</button>`).join('')}</div><div class="segmented" aria-label="Вид календаря">${[['month', 'Месяц'], ['agenda', 'Расписание']].map(([key, label]) => `<button type="button" class="segment ${state.calendarDisplay === key ? 'active' : ''}" data-planner-display="${key}">${label}</button>`).join('')}</div>${!personal ? `<button type="button" class="text-button" data-planner-cycle>12 недель и год ${icon('chevronRight')}</button>` : ''}</div><div class="planner-filters">${!personal ? `<label>Доска<select data-planner-filter="calendarCollection">${option('', 'Все доски', state.calendarCollection)}${state.collections.map((board) => option(board.id, board.name, state.calendarCollection)).join('')}</select></label><label>Ответственный<select data-planner-filter="calendarOwner">${option('', 'Все', state.calendarOwner)}${state.users.map((user) => option(user.id, user.username, state.calendarOwner)).join('')}</select></label>` : ''}<label>Состояние<select data-planner-filter="calendarStatus">${[['active', 'Открытые'], ['done', 'Завершённые'], ['all', 'Все']].map(([key, label]) => option(key, label, state.calendarStatus)).join('')}</select></label>${!personal ? `<label>Цвет<select data-planner-filter="calendarColorBy">${option('stage', 'По этапу доски', state.calendarColorBy)}${option('priority', 'По приоритету', state.calendarColorBy)}</select></label>` : ''}<button type="button" class="text-button" data-planner-reset>Сбросить</button></div></section><section class="planner-body"><header class="planner-period"><button type="button" class="icon-button" data-planner-shift="-1" aria-label="Предыдущий месяц">${icon('arrowLeft')}</button><label><span class="sr-only">Месяц</span><input type="month" data-planner-month value="${state.calendarMonth}" min="1900-01" max="9998-12"></label><button type="button" class="icon-button" data-planner-shift="1" aria-label="Следующий месяц">${icon('chevronRight')}</button><button type="button" class="text-button" data-planner-today>Сегодня</button></header>${state.calendarDisplay === 'agenda' ? `<div class="planner-agenda">${agenda || '<p class="muted">В этом месяце записей по выбранным фильтрам нет.</p>'}</div>` : `<div class="planner-month"><div class="planner-weekdays">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => `<span>${day}</span>`).join('')}</div><div class="planner-grid">${days.map((key) => { const entries = forDay(key); return `<button type="button" data-planner-day="${key}" class="planner-day ${!key.startsWith(state.calendarMonth) ? 'outside' : ''} ${key === today ? 'today' : ''} ${key === state.calendarDay ? 'selected' : ''}" aria-pressed="${key === state.calendarDay}" aria-label="${key}: ${entries.length} записей"><b>${Number(key.slice(-2))}</b><span class="planner-day-preview">${entries.slice(0, 2).map((item) => `<span class="planner-mini planner-tone-${plannerTone(item)}">${escapeHTML(item.title)}</span>`).join('')}${entries.length > 2 ? `<small>+${entries.length - 2}</small>` : ''}</span><span class="planner-day-dots" aria-hidden="true">${entries.slice(0, 3).map((item) => `<i class="planner-tone-${plannerTone(item)}"></i>`).join('')}${entries.length > 3 ? `<small>+${entries.length - 3}</small>` : ''}</span></button>`; }).join('')}</div></div><section class="planner-selected"><header><h2>${escapeHTML(dateFromKey(state.calendarDay).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' }))}</h2><div><button type="button" class="text-button" data-planner-create>${icon('plus')} ${personal ? 'План' : 'Карточка'}</button>${!personal ? `<button type="button" class="text-button" data-planner-assign>${icon('link')} Назначить карточку</button>` : ''}</div></header>${selected.map(plannerEntry).join('') || '<p class="muted">На этот день записей по выбранным фильтрам нет.</p>'}</section>`}</section><details class="planner-undated"><summary>Без даты <b>${undated.length}</b></summary>${undated.map(plannerEntry).join('') || '<p class="muted">Записей без даты нет.</p>'}</details>`;
+  const root = $('#main-content');
+  $$('[data-planner-scope]', root).forEach((button) => button.addEventListener('click', () => { state.calendarScope = button.dataset.plannerScope; renderCalendarPage(); }));
+  $$('[data-planner-display]', root).forEach((button) => button.addEventListener('click', () => { state.calendarDisplay = button.dataset.plannerDisplay; renderCalendarPage(); }));
+  $$('[data-planner-filter]', root).forEach((select) => select.addEventListener('change', () => { state[select.dataset.plannerFilter] = select.value; renderCalendarPage(); }));
+  $$('[data-planner-entry]', root).forEach((button) => button.addEventListener('click', () => personal ? openPersonalPlanDetails(button.dataset.plannerEntry) : openRecord(button.dataset.plannerEntry)));
+  $$('[data-planner-create]', root).forEach((button) => button.addEventListener('click', createCalendarEntry));
+  $$('[data-planner-day]', root).forEach((button) => button.addEventListener('click', () => { state.calendarDay = button.dataset.plannerDay; renderCalendarPage(); if (interfaceDevice() === 'mobile') $('.planner-selected')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }));
+  $$('[data-planner-shift]', root).forEach((button) => button.addEventListener('click', () => { const next = new Date(month); next.setMonth(next.getMonth() + Number(button.dataset.plannerShift)); state.calendarMonth = localDateKey(next).slice(0, 7); state.calendarDay = `${state.calendarMonth}-01`; renderCalendarPage(); }));
+  $('[data-planner-month]', root).addEventListener('change', (event) => { if (!event.target.value || !event.target.validity.valid) return; state.calendarMonth = event.target.value; state.calendarDay = `${state.calendarMonth}-01`; renderCalendarPage(); });
+  $('[data-planner-today]', root).addEventListener('click', () => { state.calendarMonth = today.slice(0, 7); state.calendarDay = today; renderCalendarPage(); });
+  $('[data-planner-reset]', root).addEventListener('click', () => { state.calendarCollection = ''; state.calendarOwner = ''; state.calendarStatus = 'all'; renderCalendarPage(); });
+  $('[data-planner-assign]', root)?.addEventListener('click', openCalendarCardPicker);
+  $('[data-planner-cycle]', root)?.addEventListener('click', async () => { state.workViewMode = 'calendar'; await refreshPlanningCycles(); navigateToView('work'); });
+  enhanceSelects(root);
+  applyPageLayout();
+}
+
+function createCalendarEntry() {
+  const date = state.calendarDay || localISODate();
+  if (state.calendarScope === 'personal') return openPersonalEditor('plan', '', { date });
+  const collection = state.collections.find((item) => item.id === state.calendarCollection);
+  if (collection) return openCollectionCardDialog(collection, null, '', { dueAt: `${date}T18:00` });
+  openCreateDialog('task', { dueAt: `${date}T18:00` });
+}
+
+function openCalendarCardPicker() {
+  const workspace = state.activeWorkspaceId, dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
+  content.innerHTML = `<div class="workspace-editor-shell"><header><h2>Назначить срок карточке</h2><button type="button" class="icon-button" data-picker-close aria-label="Закрыть">${icon('x')}</button></header><label>Дата и время<input type="datetime-local" data-picker-date value="${state.calendarDay || localISODate()}T18:00"></label><label>Карточка<input type="search" data-picker-search placeholder="Найти по названию"></label><div class="personal-link-results" data-picker-results></div></div>`;
+  $('[data-picker-close]', content).addEventListener('click', closeWorkspaceDialog);
+  const search = $('[data-picker-search]', content), results = $('[data-picker-results]', content), dateInput = $('[data-picker-date]', content);
+  let saving = false;
+  const show = () => {
+    const items = plannerItems().filter((item) => isActiveRecord(item) && item.title.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase()));
+    results.innerHTML = items.map((item) => `<button type="button" data-schedule-card="${item.id}"><strong>${escapeHTML(item.title)}</strong><small>${item.dueAt ? `Срок: ${escapeHTML(formatDate(item.dueAt, true))}` : 'Без срока'}</small></button>`).join('') || '<p>Доступных карточек по выбранным фильтрам нет.</p>';
+    $$('[data-schedule-card]', results).forEach((button) => button.addEventListener('click', async () => {
+      if (saving) return;
+      if (!dateInput.value || !dateInput.validity.valid) { toast('Укажите дату и время', true); return; }
+      const record = items.find((item) => item.id === button.dataset.scheduleCard);
+      saving = true; results.inert = true;
+      try {
+        const updated = await api(`/api/records/${record.id}`, { method: 'PATCH', body: JSON.stringify({ dueAt: new Date(dateInput.value).toISOString(), expectedUpdatedAt: record.updatedAt, reason: 'Срок назначен в календаре' }) });
+        if (workspace !== state.activeWorkspaceId) return;
+        state.records = state.records.map((item) => item.id === updated.id ? updated : item); state.detailCache.delete(updated.id);
+        if (button.isConnected) closeWorkspaceDialog();
+        if (state.view === 'calendar') renderCalendarPage();
+        toast('Срок карточки сохранён');
+      } catch (error) { toast(error.message, true); }
+      finally { saving = false; results.inert = false; }
+    }));
+  };
+  search.addEventListener('input', show); show(); openModal(dialog);
+}
+
+function renderPersonalLoadError() {
+  $('#main-content').innerHTML = `<div class="guided-empty"><h2>Не удалось загрузить личные данные</h2><p>${escapeHTML(state.personalError || '')}</p><button type="button" class="secondary" data-retry-personal>Повторить</button></div>`;
+  $('[data-retry-personal]').addEventListener('click', () => loadPersonal({ force: true }));
 }
 
 bootstrap();

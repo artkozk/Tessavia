@@ -40,6 +40,9 @@ type PersonalPlan struct {
 	Title       string  `json:"title"`
 	Notes       string  `json:"notes"`
 	DueAt       *string `json:"dueAt"`
+	StartDate   string  `json:"startDate"`
+	EndDate     string  `json:"endDate"`
+	ColorKey    string  `json:"colorKey"`
 	Status      string  `json:"status"`
 	CompletedAt *string `json:"completedAt"`
 	CreatedAt   string  `json:"createdAt"`
@@ -69,14 +72,16 @@ type PersonalHabit struct {
 }
 
 type PersonalLink struct {
-	ID           string `json:"id"`
-	SourceType   string `json:"sourceType"`
-	SourceID     string `json:"sourceId"`
-	TargetType   string `json:"targetType"`
-	TargetID     string `json:"targetId"`
-	TargetTitle  string `json:"targetTitle"`
-	RelationType string `json:"relationType"`
-	CreatedAt    string `json:"createdAt"`
+	ID                string `json:"id"`
+	SourceType        string `json:"sourceType"`
+	SourceID          string `json:"sourceId"`
+	SourceTitle       string `json:"sourceTitle"`
+	TargetType        string `json:"targetType"`
+	TargetID          string `json:"targetId"`
+	TargetTitle       string `json:"targetTitle"`
+	TargetWorkspaceID string `json:"targetWorkspaceId,omitempty"`
+	RelationType      string `json:"relationType"`
+	CreatedAt         string `json:"createdAt"`
 }
 
 type PersonalOverview struct {
@@ -180,7 +185,7 @@ func (s *Server) listPersonalNotes(r *http.Request, ownerID int64) ([]PersonalNo
 }
 
 func (s *Server) listPersonalPlans(r *http.Request, ownerID int64) ([]PersonalPlan, error) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, notes, due_at, status, completed_at, created_at, updated_at FROM personal_plans WHERE owner_id = ? AND status <> 'archived' ORDER BY CASE status WHEN 'planned' THEN 0 ELSE 1 END, due_at IS NULL, due_at, updated_at DESC`, ownerID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, notes, due_at, status, completed_at, created_at, updated_at, start_date, end_date, color_key FROM personal_plans WHERE owner_id = ? AND status <> 'archived' ORDER BY CASE status WHEN 'planned' THEN 0 ELSE 1 END, due_at IS NULL, due_at, updated_at DESC`, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +193,7 @@ func (s *Server) listPersonalPlans(r *http.Request, ownerID int64) ([]PersonalPl
 	items := make([]PersonalPlan, 0)
 	for rows.Next() {
 		var item PersonalPlan
-		if err := rows.Scan(&item.ID, &item.Title, &item.Notes, &item.DueAt, &item.Status, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Title, &item.Notes, &item.DueAt, &item.Status, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt, &item.StartDate, &item.EndDate, &item.ColorKey); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -304,24 +309,31 @@ func (s *Server) listPersonalLinks(r *http.Request, ownerID int64) ([]PersonalLi
 		return nil, err
 	}
 	rows.Close()
-	for index := range items {
-		items[index].TargetTitle = s.personalTargetTitle(r, ownerID, items[index].TargetType, items[index].TargetID)
+	visible := make([]PersonalLink, 0, len(items))
+	for _, item := range items {
+		item.SourceTitle = s.personalTargetTitle(r, ownerID, item.SourceType, item.SourceID)
+		item.TargetTitle = s.personalTargetTitle(r, ownerID, item.TargetType, item.TargetID)
+		if item.SourceTitle == "" || item.TargetTitle == "" {
+			continue
+		}
+		if item.TargetType == "record" {
+			_ = s.store.db.QueryRowContext(r.Context(), `SELECT workspace_id FROM records WHERE id = ?`, item.TargetID).Scan(&item.TargetWorkspaceID)
+		}
+		visible = append(visible, item)
 	}
-	return items, nil
+	return visible, nil
 }
 
 func (s *Server) personalTargetTitle(r *http.Request, ownerID int64, targetType, targetID string) string {
 	var title string
 	queries := map[string]string{
-		"record": `SELECT title FROM records WHERE id = ? AND status <> 'archived'`,
+		"record": `SELECT r.title FROM records r JOIN workspaces w ON w.id = r.workspace_id JOIN workspace_members m ON m.workspace_id = w.id WHERE r.id = ? AND r.status <> 'archived' AND w.archived_at IS NULL AND m.user_id = ? AND m.status = 'active'`,
 		"note":   `SELECT title FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`,
 		"plan":   `SELECT title FROM personal_plans WHERE id = ? AND owner_id = ? AND status <> 'archived'`,
 		"habit":  `SELECT title FROM personal_habits WHERE id = ? AND owner_id = ? AND archived_at IS NULL`,
 	}
 	query := queries[targetType]
-	if targetType == "record" {
-		_ = s.store.db.QueryRowContext(r.Context(), query, targetID).Scan(&title)
-	} else if query != "" {
+	if query != "" {
 		_ = s.store.db.QueryRowContext(r.Context(), query, targetID, ownerID).Scan(&title)
 	}
 	return title
@@ -329,9 +341,10 @@ func (s *Server) personalTargetTitle(r *http.Request, ownerID int64, targetType,
 
 func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Title  string `json:"title"`
-		Body   string `json:"body"`
-		Pinned bool   `json:"pinned"`
+		Title      string `json:"title"`
+		Body       string `json:"body"`
+		Pinned     bool   `json:"pinned"`
+		LinkPlanID string `json:"linkPlanId"`
 	}
 	if !decodeJSON(w, r, &input) || !validatePersonalText(w, &input.Title, input.Body) {
 		return
@@ -342,7 +355,30 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 	}
 	now := nowText()
 	user := currentUser(r)
-	_, err := s.store.db.ExecContext(r.Context(), `INSERT INTO personal_notes(id, owner_id, title, body, pinned, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, now)
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, 500, "Не удалось сохранить заметку")
+		return
+	}
+	defer tx.Rollback()
+	if input.LinkPlanID != "" {
+		var found int
+		if tx.QueryRowContext(r.Context(), `SELECT 1 FROM personal_plans WHERE id = ? AND owner_id = ? AND status <> 'archived'`, input.LinkPlanID, user.ID).Scan(&found) != nil {
+			writeError(w, 404, "План не найден")
+			return
+		}
+	}
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_notes(id, owner_id, title, body, pinned, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, now)
+	if err == nil && input.LinkPlanID != "" {
+		linkID, ok := newPersonalID(w)
+		if !ok {
+			return
+		}
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_links(id, owner_id, source_type, source_id, target_type, target_id, relation_type, created_at) VALUES(?, ?, 'note', ?, 'plan', ?, 'related', ?)`, linkID, user.ID, id, input.LinkPlanID, now)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить заметку")
 		return
@@ -374,17 +410,13 @@ func (s *Server) handleArchivePersonalNote(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Title string `json:"title"`
-		Notes string `json:"notes"`
-		DueAt string `json:"dueAt"`
-	}
+	var input personalPlanInput
 	if !decodeJSON(w, r, &input) || !validatePersonalText(w, &input.Title, input.Notes) {
 		return
 	}
-	dueAt, err := normalizeDueAt(input.DueAt)
+	plan, err := input.calendarFields(PersonalPlan{ColorKey: "green"})
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Некорректный срок")
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	id, ok := newPersonalID(w)
@@ -393,21 +425,17 @@ func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request
 	}
 	now := nowText()
 	user := currentUser(r)
-	_, err = s.store.db.ExecContext(r.Context(), `INSERT INTO personal_plans(id, owner_id, title, notes, due_at, status, created_at, updated_at) VALUES(?, ?, ?, ?, ?, 'planned', ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Notes), dueAt, now, now)
+	_, err = s.store.db.ExecContext(r.Context(), `INSERT INTO personal_plans(id, owner_id, title, notes, due_at, status, created_at, updated_at, start_date, end_date, color_key) VALUES(?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, now, now, plan.StartDate, plan.EndDate, plan.ColorKey)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить план")
 		return
 	}
-	writeJSON(w, http.StatusCreated, PersonalPlan{ID: id, Title: input.Title, Notes: strings.TrimSpace(input.Notes), DueAt: dueAt, Status: "planned", CreatedAt: now, UpdatedAt: now})
+	plan.ID, plan.Title, plan.Notes, plan.Status, plan.CreatedAt, plan.UpdatedAt = id, input.Title, strings.TrimSpace(input.Notes), "planned", now, now
+	writeJSON(w, http.StatusCreated, plan)
 }
 
 func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Title  string `json:"title"`
-		Notes  string `json:"notes"`
-		DueAt  string `json:"dueAt"`
-		Status string `json:"status"`
-	}
+	var input personalPlanInput
 	if !decodeJSON(w, r, &input) || !validatePersonalText(w, &input.Title, input.Notes) {
 		return
 	}
@@ -415,23 +443,37 @@ func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "Некорректное состояние плана")
 		return
 	}
-	dueAt, err := normalizeDueAt(input.DueAt)
+	user := currentUser(r)
+	var current PersonalPlan
+	err := s.store.db.QueryRowContext(r.Context(), `SELECT due_at, start_date, end_date, color_key, completed_at, created_at, updated_at FROM personal_plans WHERE id = ? AND owner_id = ? AND status <> 'archived'`, r.PathValue("id"), user.ID).Scan(&current.DueAt, &current.StartDate, &current.EndDate, &current.ColorKey, &current.CompletedAt, &current.CreatedAt, &current.UpdatedAt)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Некорректный срок")
+		writeError(w, 404, "План не найден")
 		return
 	}
-	user := currentUser(r)
+	if input.ExpectedUpdatedAt != "" && input.ExpectedUpdatedAt != current.UpdatedAt {
+		writeError(w, 409, "План изменён в другом окне. Откройте актуальную версию.")
+		return
+	}
+	plan, err := input.calendarFields(current)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	now := nowText()
 	var completedAt *string
 	if input.Status == "done" {
-		completedAt = &now
+		completedAt = current.CompletedAt
+		if completedAt == nil {
+			completedAt = &now
+		}
 	}
-	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_plans SET title = ?, notes = ?, due_at = ?, status = ?, completed_at = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND status <> 'archived'`, input.Title, strings.TrimSpace(input.Notes), dueAt, input.Status, completedAt, now, r.PathValue("id"), user.ID)
+	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_plans SET title = ?, notes = ?, due_at = ?, status = ?, completed_at = ?, updated_at = ?, start_date = ?, end_date = ?, color_key = ? WHERE id = ? AND owner_id = ? AND status <> 'archived' AND updated_at = ?`, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, input.Status, completedAt, now, plan.StartDate, plan.EndDate, plan.ColorKey, r.PathValue("id"), user.ID, current.UpdatedAt)
 	if err != nil || affectedRows(result) == 0 {
-		writeError(w, http.StatusNotFound, "План не найден")
+		writeError(w, http.StatusConflict, "План изменён. Откройте актуальную версию.")
 		return
 	}
-	writeJSON(w, http.StatusOK, PersonalPlan{ID: r.PathValue("id"), Title: input.Title, Notes: strings.TrimSpace(input.Notes), DueAt: dueAt, Status: input.Status, CompletedAt: completedAt, UpdatedAt: now})
+	plan.ID, plan.Title, plan.Notes, plan.Status, plan.CompletedAt, plan.UpdatedAt = r.PathValue("id"), input.Title, strings.TrimSpace(input.Notes), input.Status, completedAt, now
+	writeJSON(w, http.StatusOK, plan)
 }
 
 func (s *Server) handleArchivePersonalPlan(w http.ResponseWriter, r *http.Request) {
@@ -575,12 +617,12 @@ func (s *Server) handlePersonalSuggestions(w http.ResponseWriter, r *http.Reques
 	}
 	user := currentUser(r)
 	items := make([]PersonalSuggestion, 0)
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, CASE WHEN business_kind <> '' THEN business_kind WHEN subtype = 'question_set' THEN 'question_set' ELSE type END, title FROM records WHERE status NOT IN ('archived', 'cancelled') ORDER BY updated_at DESC LIMIT 250`)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT r.id, CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' ELSE r.type END, r.title, w.name FROM records r JOIN workspaces w ON w.id = r.workspace_id JOIN workspace_members m ON m.workspace_id = w.id WHERE r.status NOT IN ('archived', 'cancelled') AND w.archived_at IS NULL AND m.user_id = ? AND m.status = 'active' ORDER BY r.updated_at DESC LIMIT 250`, user.ID)
 	if err == nil {
 		for rows.Next() {
-			var id, recordType, title string
-			if rows.Scan(&id, &recordType, &title) == nil {
-				items = append(items, PersonalSuggestion{Type: "record", ID: id, Title: title, Subtitle: personalRecordTypeLabel(recordType)})
+			var id, recordType, title, workspace string
+			if rows.Scan(&id, &recordType, &title, &workspace) == nil {
+				items = append(items, PersonalSuggestion{Type: "record", ID: id, Title: title, Subtitle: workspace + " · " + personalRecordTypeLabel(recordType)})
 			}
 		}
 		rows.Close()
@@ -651,12 +693,24 @@ func (s *Server) handleCreatePersonalLink(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "Некорректная связь")
 		return
 	}
+	// Related links are undirected in the personal workspace; retries reuse the same edge.
+	var existing PersonalLink
+	err := s.store.db.QueryRowContext(r.Context(), `SELECT id, source_type, source_id, target_type, target_id, relation_type, created_at FROM personal_links WHERE owner_id = ? AND active = 1 AND relation_type = ? AND ((source_type = ? AND source_id = ? AND target_type = ? AND target_id = ?) OR (? = 'related' AND source_type = ? AND source_id = ? AND target_type = ? AND target_id = ?)) LIMIT 1`, user.ID, input.RelationType, input.SourceType, input.SourceID, input.TargetType, input.TargetID, input.RelationType, input.TargetType, input.TargetID, input.SourceType, input.SourceID).Scan(&existing.ID, &existing.SourceType, &existing.SourceID, &existing.TargetType, &existing.TargetID, &existing.RelationType, &existing.CreatedAt)
+	if err == nil {
+		existing.TargetTitle = s.personalTargetTitle(r, user.ID, existing.TargetType, existing.TargetID)
+		writeJSON(w, http.StatusOK, existing)
+		return
+	}
+	if err != sql.ErrNoRows {
+		writeError(w, 500, "Не удалось проверить связь")
+		return
+	}
 	id, ok := newPersonalID(w)
 	if !ok {
 		return
 	}
 	now := nowText()
-	_, err := s.store.db.ExecContext(r.Context(), `INSERT INTO personal_links(id, owner_id, source_type, source_id, target_type, target_id, relation_type, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, id, user.ID, input.SourceType, input.SourceID, input.TargetType, input.TargetID, input.RelationType, now)
+	_, err = s.store.db.ExecContext(r.Context(), `INSERT INTO personal_links(id, owner_id, source_type, source_id, target_type, target_id, relation_type, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, id, user.ID, input.SourceType, input.SourceID, input.TargetType, input.TargetID, input.RelationType, now)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			writeError(w, http.StatusConflict, "Такая связь уже существует")
@@ -716,8 +770,7 @@ func (s *Server) personalTargetExists(r *http.Request, ownerID int64, targetType
 	if targetType != "record" {
 		return s.personalEntityExists(r, ownerID, targetType, targetID)
 	}
-	var exists int
-	return s.store.db.QueryRowContext(r.Context(), `SELECT 1 FROM records WHERE id = ? AND status <> 'archived'`, targetID).Scan(&exists) == nil
+	return s.personalTargetTitle(r, ownerID, targetType, targetID) != ""
 }
 
 func validatePersonalText(w http.ResponseWriter, title *string, body string) bool {

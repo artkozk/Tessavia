@@ -28,7 +28,7 @@ func TestProjectComposerIsolationAndHiddenContent(t *testing.T) {
 	}
 	var navigation ProjectNavigation
 	req(ownerClient, "GET", "/api/workspace/navigation", first.ID, nil, 200, &navigation)
-	if len(navigation.EnabledViews) != 4 {
+	if len(navigation.EnabledViews) != 5 {
 		t.Fatalf("default modules: %+v", navigation)
 	}
 	req(memberClient, "PUT", "/api/workspace/navigation", first.ID, map[string]any{"enabledViews": []string{"idea"}}, 403, nil)
@@ -37,7 +37,7 @@ func TestProjectComposerIsolationAndHiddenContent(t *testing.T) {
 		t.Fatal(navigation)
 	}
 	req(ownerClient, "GET", "/api/workspace/navigation", second.ID, nil, 200, &navigation)
-	if len(navigation.EnabledViews) != 4 {
+	if len(navigation.EnabledViews) != 5 {
 		t.Fatal("modules leaked between projects")
 	}
 

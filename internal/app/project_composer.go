@@ -10,7 +10,7 @@ import (
 )
 
 var projectViewKeys = map[string]bool{
-	"dashboard": true, "work": true, "collections": true, "chat": true,
+	"dashboard": true, "work": true, "collections": true, "chat": true, "calendar": true,
 	"principles": true, "goal": true, "idea": true, "research": true,
 	"validation": true, "outcomes": true, "document": true, "graph": true,
 	"quality": true, "history": true, "structure": true,
@@ -36,9 +36,9 @@ type WorkspacePage struct {
 func (s *Server) handleProjectNavigation(w http.ResponseWriter, r *http.Request) {
 	workspace := currentWorkspace(r)
 	if r.Method == http.MethodGet {
-		result := ProjectNavigation{EnabledViews: []string{"dashboard", "work", "collections", "chat"}}
+		result := ProjectNavigation{EnabledViews: []string{"dashboard", "work", "calendar", "collections", "chat"}}
 		if workspace.Kind == "personal" {
-			result.EnabledViews = []string{"dashboard", "work", "collections"}
+			result.EnabledViews = []string{"dashboard", "work", "calendar", "collections"}
 		}
 		var raw string
 		err := s.store.db.QueryRowContext(r.Context(), `SELECT enabled_views_json FROM workspace_navigation WHERE workspace_id = ?`, workspace.ID).Scan(&raw)
