@@ -200,7 +200,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if !bytes.Contains(index, []byte("20260902-presets-1")) {
+	if bytes.Count(index, []byte("20260902-calendar-notes-1")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }
