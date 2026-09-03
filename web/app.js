@@ -38,6 +38,7 @@ const iconPaths = {
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   x: '<path d="m18 6-12 12M6 6l12 12"/>',
   chevronRight: '<path d="m9 18 6-6-6-6"/>',
+  chevronLeft: '<path d="m15 18-6-6 6-6"/>',
   arrowLeft: '<path d="m12 19-7-7 7-7M5 12h14"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
@@ -2109,7 +2110,11 @@ async function openTeamSettings(teamID, tab = 'members') {
       (manager ? '<form id="team-settings-form" class="card-form"><label>Название команды<input name="name" required maxlength="100" value="' + escapeHTML(team.name) + '"></label><label>Описание<textarea name="description" rows="3" maxlength="800">' + escapeHTML(team.description) + '</textarea></label><button type="submit" class="primary">' + icon('check') + ' Сохранить</button></form>' : '') +
       '<div class="team-lifecycle-actions">' + (owner ? '<button type="button" class="secondary" data-team-transfer>' + icon('users') + ' Передать владение</button><button type="button" class="secondary danger-text" data-team-delete>' + icon('trash') + ' Удалить команду</button>' : '<button type="button" class="secondary danger-text" data-team-leave>' + icon('arrowLeft') + ' Выйти из команды</button>') + '</div></section><footer><button type="button" class="text-button" data-team-directory>' + icon('arrowLeft') + ' Все команды</button></footer></div>';
     const shell = content.firstElementChild;
-    $('[data-close-workspace-dialog]',shell).addEventListener('click',closeWorkspaceDialog);
+    $('[data-close-workspace-dialog]',shell).addEventListener('click', event => {
+      event.stopPropagation();
+      closeCustomSelects();
+      closeWorkspaceDialog();
+  });
     $('[data-team-directory]',shell).addEventListener('click',openTeamsDirectory);
     $$('[data-team-tab]',shell).forEach(button=>button.addEventListener('click',()=>{
       closeCustomSelects();
@@ -3095,10 +3100,11 @@ function renderWorkKanban(records) {
 		{ key: 'postponed', label: 'Отложено', statuses: ['postponed'] },
 		{ key: 'cancelled', label: 'Отменено', statuses: ['cancelled', 'rejected', 'archived'] },
 	];
-	return `<section class="work-kanban" data-drag-scroll="true">${columns.map((column) => {
+	return `<section class="work-kanban" data-drag-scroll="true" data-work-scroll="board">${columns.map((column) => {
 		const items = records.filter((record) => column.statuses.includes(record.status));
+		const page = boardWindow(items, column.key);
 		const empty = column.key === 'review' ? 'Отправьте задачу после результата и доказательства' : 'Перетащите карточку сюда';
-		return `<div class="kanban-column" data-kanban-status="${column.key}"><header><strong>${column.label}</strong><span>${items.length}</span></header><div>${items.map((record) => { const movable = !['question_set', 'inbox'].includes(record.type); const blockers = activeBlockers(record); return `<article class="kanban-card ${blockers.length ? 'has-blockers' : ''}" draggable="${movable}" data-kanban-record="${record.id}"><button type="button" data-open-record="${record.id}"><span><i class="type-icon type-${record.type}">${icon(typeMeta[record.type].icon)}</i><small>${escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(workstreamLabels[record.workstream || 'business'])}</small></span><strong>${escapeHTML(record.title)}</strong><p>${escapeHTML(markdownPlain(record.description, 'Без дополнительного контекста'))}</p>${blockers.length ? `<div class="kanban-blocker">${icon('lock')}<span><small>Ждёт завершения</small><strong>${escapeHTML(blockers[0].title)}</strong></span></div>` : ''}<footer>${record.type === 'inbox' ? `<em class="inbox-state">Нужно разобрать</em>` : `<em class="priority priority-${record.priority || 'normal'}">${icon('flag')} ${priorityLabels[record.priority || 'normal']}</em><span class="deadline ${deadlineState(record).className}">${escapeHTML(deadlineState(record).label)}</span>`}</footer></button>${movable ? `<button type="button" class="kanban-move" data-kanban-move="${record.id}" aria-label="Переместить карточку" title="Переместить">${icon('grip')}</button>` : ''}</article>`; }).join('') || `<div class="kanban-empty">${empty}</div>`}</div></div>`;
+		return `<div class="kanban-column" data-kanban-status="${column.key}"><header><strong>${column.label}</strong><span>${items.length}</span></header><div class="board-column-scroll" data-work-scroll="${column.key}" tabindex="0" aria-label="Карточки: ${column.label}">${page.items.map((record) => { const movable = !['question_set', 'inbox'].includes(record.type); const blockers = activeBlockers(record); return `<article class="kanban-card ${blockers.length ? 'has-blockers' : ''}" draggable="${movable}" data-kanban-record="${record.id}"><button type="button" data-open-record="${record.id}"><span><i class="type-icon type-${record.type}">${icon(typeMeta[record.type].icon)}</i><small>${escapeHTML(typeMeta[record.type].singular)} · ${escapeHTML(workstreamLabels[record.workstream || 'business'])}</small></span><strong>${escapeHTML(record.title)}</strong><p>${escapeHTML(markdownPlain(record.description, 'Без дополнительного контекста'))}</p>${blockers.length ? `<div class="kanban-blocker">${icon('lock')}<span><small>Ждёт завершения</small><strong>${escapeHTML(blockers[0].title)}</strong></span></div>` : ''}<footer>${record.type === 'inbox' ? `<em class="inbox-state">Нужно разобрать</em>` : `<em class="priority priority-${record.priority || 'normal'}">${icon('flag')} ${priorityLabels[record.priority || 'normal']}</em><span class="deadline ${deadlineState(record).className}">${escapeHTML(deadlineState(record).label)}</span>`}</footer></button>${movable ? `<button type="button" class="kanban-move" data-kanban-move="${record.id}" aria-label="Переместить карточку" title="Переместить">${icon('grip')}</button>` : ''}</article>`; }).join('') || `<div class="kanban-empty">${empty}</div>`}${renderBoardMore(page, column.key)}</div></div>`;
 	}).join('')}</section>`;
 }
 
@@ -3544,12 +3550,91 @@ function bindCalendarControls() {
   bindCalendarDnD();
 }
 
+function currentWorkWindow() {
+  const scope = `${state.me?.id || ''}:${state.activeWorkspaceId || ''}`;
+  const filters = state.view === 'collections'
+    ? [state.activeCollectionId, state.collectionSearch, state.collectionOwnerFilter, state.collectionFieldFilters]
+    : [state.workViewMode, state.workCollection, state.workScope, state.ownerFilter, state.workType, state.workstreamFilter, state.workStatus, state.workOrder, state.search];
+  const key = JSON.stringify([scope, state.view, filters]);
+  if (state.workWindow?.key !== key) {
+    const size = state.workWindow?.scope === scope ? state.workWindow.size : 25;
+    state.workWindow = { key, scope, page: 1, size, limits: {}, scroll: {} };
+  }
+  return state.workWindow;
+}
+
+function workPage(records) {
+  const window = currentWorkWindow();
+  const pages = Math.max(1, Math.ceil(records.length / window.size));
+  window.page = Math.min(pages, Math.max(1, window.page));
+  const offset = (window.page - 1) * window.size;
+  return { items: records.slice(offset, offset + window.size), pages, page: window.page, size: window.size, from: records.length ? offset + 1 : 0, to: Math.min(records.length, offset + window.size), total: records.length };
+}
+
+function renderWorkPagination(page) {
+  return `<nav class="work-pagination" aria-label="Страницы работы"><span role="status">${page.from}–${page.to} из ${page.total}</span><label>На странице<select data-work-page-size>${[10,25,50].map(size => `<option value="${size}" ${size === page.size ? 'selected' : ''}>${size}</option>`).join('')}</select></label><div class="work-page-navigation"><button type="button" class="icon-button" data-work-page="${page.page - 1}" aria-label="Предыдущая страница" ${page.page === 1 ? 'disabled' : ''}>${icon('chevronLeft')}</button><form data-work-page-jump><label>Страница <input type="number" name="page" min="1" max="${page.pages}" value="${page.page}" aria-label="Номер страницы" required> из ${page.pages}</label><button type="submit" class="text-button">Перейти</button></form><button type="button" class="icon-button" data-work-page="${page.page + 1}" aria-label="Следующая страница" ${page.page === page.pages ? 'disabled' : ''}>${icon('chevronRight')}</button></div></nav>`;
+}
+
+function boardWindow(items, key) {
+  const limit = currentWorkWindow().limits[key] || 20;
+  return { items: items.slice(0, limit), remaining: Math.max(0, items.length - limit), count: Math.min(limit, items.length), total: items.length };
+}
+
+function renderBoardMore(page, key) {
+  return page.remaining ? `<button type="button" class="secondary board-show-more" data-board-more="${key}">Показать ещё ${Math.min(20, page.remaining)}<small>${page.count} из ${page.total}</small></button>` : '';
+}
+
+function rememberWorkScroll() {
+  const root = $('#main-content'), window = currentWorkWindow();
+  if (root.dataset.workWindowKey !== window.key) return;
+  $$('[data-work-scroll]', root).forEach(node => { window.scroll[node.dataset.workScroll] = [node.scrollLeft, node.scrollTop]; });
+}
+
+function bindWorkWindow(rerender) {
+  const root = $('#main-content'), window = currentWorkWindow();
+  root.dataset.workWindowKey = window.key;
+  $$('[data-work-scroll]', root).forEach(node => {
+    const position = window.scroll[node.dataset.workScroll];
+    if (position) { node.scrollLeft = position[0]; node.scrollTop = position[1]; }
+  });
+  // The page layout observer can reparent blocks after this render.
+  requestAnimationFrame(() => {
+    if (state.workWindow !== window || root.dataset.workWindowKey !== window.key) return;
+    $$('[data-work-scroll]', root).forEach(node => {
+      const position = window.scroll[node.dataset.workScroll];
+      if (position) { node.scrollLeft = position[0]; node.scrollTop = position[1]; }
+    });
+  });
+  const go = page => {
+    window.page = page;
+    rerender();
+    window.scroll.list = [0, 0];
+    const list = $('[data-work-scroll="list"]', root); if (list) list.scrollTop = 0;
+    $('[name="page"]', root)?.focus();
+  };
+  $$('[data-work-page]', root).forEach(button => button.addEventListener('click', () => go(Number(button.dataset.workPage))));
+  $('[data-work-page-jump]', root)?.addEventListener('submit', event => { event.preventDefault(); go(Number(event.currentTarget.elements.page.value)); });
+  $('[data-work-page-size]', root)?.addEventListener('change', event => {
+    const size = Number(event.target.value); if (![10,25,50].includes(size)) return;
+    window.size = size; go(1);
+  });
+  $$('[data-board-more]', root).forEach(button => button.addEventListener('click', () => {
+    const key = button.dataset.boardMore;
+    window.limits[key] = (window.limits[key] || 20) + 20;
+    rerender();
+    const next = $(`[data-board-more="${CSS.escape(key)}"]`, root);
+    (next || $(`[data-work-scroll="${CSS.escape(key)}"]`, root))?.focus({preventScroll:true});
+  }));
+}
+
+
 function renderWorkBody(records) {
   const collection = state.collections.find((item) => item.id === state.workCollection);
   if (state.workViewMode === 'kanban' && collection) return renderWorkCollectionBoard(records, collection);
   if (state.workViewMode === 'kanban') return renderWorkKanban(records);
   if (state.workViewMode === 'calendar') return renderWorkCalendar(records);
-  return `<section class="table-panel work-table-panel"><div class="record-table work-header"><span>Работа</span><span>Ответственный</span><span>Состояние</span><span>Срок / прогресс</span></div><div class="record-rows">${records.map(renderWorkRow).join('') || `<div class="guided-empty work-empty">${icon('checkSquare')}<h3>В этом фильтре работы нет</h3><p>Измените фильтр или создайте следующий конкретный шаг.</p></div>`}</div></section>`;
+  const page = workPage(records);
+  return `<section class="table-panel work-table-panel"><div class="record-table work-header"><span>Работа</span><span>Ответственный</span><span>Состояние</span><span>Срок / прогресс</span></div><div class="record-rows" data-work-scroll="list" tabindex="0" aria-label="Записи текущей страницы">${page.items.map(renderWorkRow).join('') || `<div class="guided-empty work-empty">${icon('checkSquare')}<h3>В этом фильтре работы нет</h3><p>Измените фильтр или создайте следующий конкретный шаг.</p></div>`}</div>${renderWorkPagination(page)}</section>`;
 }
 
 function currentWorkViewPayload() {
@@ -3564,6 +3649,7 @@ function renderWorkList() {
   if (!state.collections.some((item) => item.id === state.workCollection)) state.workCollection = '';
   const records = state.workViewMode === 'calendar' ? calendarRecordPool() : filteredWorkRecords();
   const activeFilters = workFilterCount();
+  rememberWorkScroll();
   $('#main-content').innerHTML = `
     <div class="work-title-row"><div><p class="eyebrow">Единая очередь</p><h1>Работа команды</h1><p><strong>${records.length}</strong> ${recordsCountLabel(records.length).replace(/^\d+\s*/, '')} в текущем представлении</p></div><details class="work-create-menu"><summary class="primary">${icon('plus')} Создать работу</summary><div>${[['inbox', 'Входящее'], ['task', 'Задача'], ['question_set', 'Вопросы'], ['meeting', 'Встреча'], ['research', 'Сравнение вариантов'], ['experiment', 'Эксперимент']].map(([type, label]) => `<button type="button" data-work-create="${type}" ${type === 'research' ? 'data-work-mode="comparison"' : ''}>${icon(typeMeta[type].icon)}<span>${label}</span></button>`).join('')}</div></details></div>
     <section class="work-controls" aria-label="Фильтры рабочей очереди">
@@ -3633,6 +3719,7 @@ function renderWorkList() {
   }
   if (state.workViewMode === 'calendar') bindCalendarControls();
   if (state.workViewMode !== 'kanban' || !state.workCollection) bindOpenRecords();
+  bindWorkWindow(renderWorkList);
 }
 
 function activeCollection() {
@@ -3641,29 +3728,29 @@ function activeCollection() {
 
 function renderWorkBoardToolbar() {
   const collection = state.collections.find((item) => item.id === state.workCollection);
-  return `<section class="work-board-toolbar"><label>Доска<select data-work-collection><option value="">Вся работа проекта</option>${state.collections.map((item) => `<option value="${item.id}" ${item.id === state.workCollection ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select></label><label>Состояние<select data-work-visible-status>${[['active', 'Активные'], ['completed', 'Завершённые'], ['all', 'Все'], ['overdue', 'Просроченные'], ['archived', 'Архив']].map(([key, label]) => `<option value="${key}" ${state.workStatus === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label>${canConfigureWorkspace() ? `<button type="button" class="secondary" data-work-board-settings>${icon('settings')} Поля и этапы</button><button type="button" class="icon-button" data-work-board-create aria-label="Новая доска" title="Новая доска">${icon('plus')}</button>` : ''}${collection ? `<button type="button" class="secondary" data-work-board-attach>${icon('link')} Добавить существующую</button>` : ''}</section>`;
+  return `<section class="work-board-toolbar"><label>Доска<select data-work-collection><option value="">Вся работа проекта</option>${state.collections.map((item) => `<option value="${item.id}" ${item.id === state.workCollection ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select></label><label>Состояние<select data-work-visible-status>${[['active', 'Активные'], ['completed', 'Завершённые'], ['all', 'Все'], ['overdue', 'Просроченные'], ['archived', 'Архив']].map(([key, label]) => `<option value="${key}" ${state.workStatus === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label>${!collection || canConfigureWorkspace() ? `<button type="button" class="secondary" data-work-board-settings>${icon('settings')} ${collection ? 'Поля и колонки' : 'Настроить вид'}</button>` : ''}${canConfigureWorkspace() ? `<button type="button" class="icon-button" data-work-board-create aria-label="Новая доска" title="Новая доска">${icon('plus')}</button>` : ''}${collection ? `<button type="button" class="secondary" data-work-board-attach>${icon('link')} Добавить существующую</button>` : ''}</section>`;
 }
 
 function bindWorkBoardToolbar() {
   $('[data-work-collection]').addEventListener('change', (event) => { state.workCollection = event.target.value; state.workType = 'all'; state.workStatus = 'all'; renderWorkList(); });
   $('[data-work-visible-status]').addEventListener('change', (event) => { state.workStatus = event.target.value; renderWorkList(); });
   $('[data-work-board-create]')?.addEventListener('click', openCollectionCreateDialog);
-  $('[data-work-board-settings]')?.addEventListener('click', async () => {
-    let collection = state.collections.find((item) => item.id === state.workCollection);
-    if (!collection && !state.collections.length) return openCollectionCreateDialog();
-    if (!collection) {
-      const id = await askChoice({ title: 'Поля и этапы', label: 'Доска', choices: state.collections.map((item) => ({ value: item.id, label: item.name })) });
-      collection = state.collections.find((item) => item.id === id);
+  $('[data-work-board-settings]')?.addEventListener('click', () => {
+    const collection = state.collections.find((item) => item.id === state.workCollection);
+    if (collection) openCollectionSettingsDialog(collection);
+    else {
+      startPageLayoutEditor();
+      const options = $('.page-layout-options'); if (options) options.open = true;
     }
-    if (collection) { state.workCollection = collection.id; renderWorkList(); openCollectionSettingsDialog(collection); }
   });
   $('[data-work-board-attach]')?.addEventListener('click', () => openExistingCardPicker(state.collections.find((item) => item.id === state.workCollection)));
 }
 
 function renderWorkCollectionBoard(records, collection) {
-  return `<section class="collection-board" aria-label="Доска ${escapeHTML(collection.name)}">${collection.stages.map((stage) => {
-    const items = records.filter((record) => record.stageId === stage.id);
-    return `<section class="collection-column tone-${stage.colorKey}" data-collection-drop="${stage.id}"><header><div><i></i><strong>${escapeHTML(stage.name)}</strong></div><span>${items.length}</span></header><div>${items.map((record) => renderCollectionCard(record, collection)).join('')}</div><button type="button" class="collection-add-card" data-create-at-stage="${stage.id}">${icon('plus')} Добавить</button></section>`;
+  return `<section class="collection-board" data-work-scroll="board" aria-label="Доска ${escapeHTML(collection.name)}">${collection.stages.map((stage) => {
+    const items = records.filter((record) => record.stageId === stage.id || (!record.stageId && stage.id === collection.stages[0]?.id));
+    const page = boardWindow(items, stage.id);
+    return `<section class="collection-column tone-${stage.colorKey}" data-collection-drop="${stage.id}"><header><div><i></i><strong title="${escapeHTML(stage.name)}">${escapeHTML(stage.name)}</strong></div><span>${items.length}</span></header><div class="board-column-scroll" data-work-scroll="${stage.id}" tabindex="0" aria-label="Карточки: ${escapeHTML(stage.name)}">${page.items.map((record) => renderCollectionCard(record, collection)).join('') || '<p class="collection-column-empty">Перетащите карточку сюда</p>'}${renderBoardMore(page, stage.id)}</div><button type="button" class="collection-add-card" data-create-at-stage="${stage.id}">${icon('plus')} Добавить</button></section>`;
   }).join('')}</section>`;
 }
 
@@ -3725,6 +3812,8 @@ function openAssignRecordBoard(record, collectionID = '') {
 
 function collectionRecords(collectionID = state.activeCollectionId) {
 	const query = state.collectionSearch.trim().toLowerCase();
+  const fieldIDs = new Set((state.collections.find(item => item.id === collectionID)?.fields || []).map(field => field.id));
+  Object.keys(state.collectionFieldFilters).forEach(id => { if (!fieldIDs.has(id)) delete state.collectionFieldFilters[id]; });
 	return state.records.filter((record) => {
 		if (record.collectionId !== collectionID || record.status === 'archived') return false;
 		if (query && !`${record.title} ${record.description} ${record.ownerUsername}`.toLowerCase().includes(query)) return false;
@@ -3783,7 +3872,8 @@ function renderCollections() {
 	const collection = activeCollection() || state.collections[0];
 	state.activeCollectionId = collection.id;
 	const records = collectionRecords(collection.id);
-	$('#main-content').innerHTML = `<div class="page-heading collection-page-heading"><div><p class="eyebrow">${escapeHTML(workspace?.name || 'Команда')} · Конструктор процессов</p><h1>${escapeHTML(collection.name)}</h1><p>${escapeHTML(collection.description || `${collection.cardLabel}: настраиваемые этапы и поля`)}</p></div><div class="collection-page-actions"><button type="button" class="primary" data-create-collection-card>${icon('plus')} ${escapeHTML(collection.cardLabel)}</button>${canConfigureWorkspace() ? `<button type="button" class="secondary" data-configure-collection>${icon('settings')} Настроить</button>` : ''}</div></div><section class="collection-toolbar"><nav class="collection-tabs" aria-label="Доски">${state.collections.map((item) => `<button type="button" class="${item.id === collection.id ? 'active' : ''}" data-collection-tab="${item.id}"><span>${icon('network')}</span><strong>${escapeHTML(item.name)}</strong><small>${state.records.filter((record) => record.collectionId === item.id && record.status !== 'archived').length}</small></button>`).join('')}${canConfigureWorkspace() ? `<button type="button" class="collection-tab-add" data-create-collection title="Новая доска" aria-label="Новая доска">${icon('plus')}</button>` : ''}</nav><label class="collection-search">${icon('search')}<input type="search" value="${escapeHTML(state.collectionSearch)}" placeholder="Найти на доске" aria-label="Найти карточку на доске"></label></section>${renderCollectionFilters(collection)}<section class="collection-board" aria-label="Доска ${escapeHTML(collection.name)}">${collection.stages.map((stage) => { const items = records.filter((record) => record.stageId === stage.id || (!record.stageId && stage.id === collection.stages[0]?.id)); return `<section class="collection-column tone-${stage.colorKey}" data-collection-drop="${stage.id}"><header><div><i></i><strong>${escapeHTML(stage.name)}</strong></div><span>${items.length}</span></header><div>${items.map((record) => renderCollectionCard(record, collection)).join('') || '<p class="collection-column-empty">Перетащите карточку сюда</p>'}</div><button type="button" class="collection-add-card" data-create-at-stage="${stage.id}">${icon('plus')} Добавить</button></section>`; }).join('')}</section>`;
+  rememberWorkScroll();
+	$('#main-content').innerHTML = `<div class="page-heading collection-page-heading"><div><p class="eyebrow">${escapeHTML(workspace?.name || 'Команда')} · Конструктор процессов</p><h1>${escapeHTML(collection.name)}</h1><p>${escapeHTML(collection.description || `${collection.cardLabel}: настраиваемые этапы и поля`)}</p></div><div class="collection-page-actions"><button type="button" class="primary" data-create-collection-card>${icon('plus')} ${escapeHTML(collection.cardLabel)}</button>${canConfigureWorkspace() ? `<button type="button" class="secondary" data-configure-collection>${icon('settings')} Настроить</button>` : ''}</div></div><section class="collection-toolbar"><nav class="collection-tabs" aria-label="Доски">${state.collections.map((item) => `<button type="button" class="${item.id === collection.id ? 'active' : ''}" data-collection-tab="${item.id}"><span>${icon('network')}</span><strong>${escapeHTML(item.name)}</strong><small>${state.records.filter((record) => record.collectionId === item.id && record.status !== 'archived').length}</small></button>`).join('')}${canConfigureWorkspace() ? `<button type="button" class="collection-tab-add" data-create-collection title="Новая доска" aria-label="Новая доска">${icon('plus')}</button>` : ''}</nav><label class="collection-search">${icon('search')}<input type="search" value="${escapeHTML(state.collectionSearch)}" placeholder="Найти на доске" aria-label="Найти карточку на доске"></label></section>${renderCollectionFilters(collection)}${renderWorkCollectionBoard(records, collection)}`;
   const addBoard = $('[data-create-collection]');
   if (addBoard) addBoard.innerHTML = `${icon('plus')}<strong>Новая доска</strong>`;
   $('.collection-toolbar').insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-board-calendar>${icon('calendar')} Календарь</button>`);
@@ -3798,6 +3888,7 @@ function renderCollections() {
 	$$('[data-collection-field-filter]').forEach((select) => { select.value = state.collectionFieldFilters[select.dataset.collectionFieldFilter] || ''; select.addEventListener('change', () => { state.collectionFieldFilters[select.dataset.collectionFieldFilter] = select.value; renderCollections(); }); });
 	$('[data-reset-collection-filters]')?.addEventListener('click', () => { state.collectionOwnerFilter = ''; state.collectionFieldFilters = {}; renderCollections(); });
 	bindCollectionBoard(collection);
+  bindWorkWindow(renderCollections);
 }
 
 async function reloadCollections({ render = true } = {}) {
@@ -3984,38 +4075,97 @@ async function refreshCollectionSettingsDialog() {
 	openCollectionSettingsDialog(activeCollection());
 }
 
-function openCollectionSettingsDialog(collection) {
-	const dialog = $('#workspace-dialog');
-	const fieldTypes = [['text','Короткий текст'],['long_text','Большой текст'],['number','Число'],['money','Сумма'],['date','Дата'],['datetime','Дата и время'],['select','Один вариант'],['multi_select','Несколько вариантов'],['user','Участник'],['checkbox','Да / нет'],['url','Ссылка'],['email','Почта'],['phone','Телефон'],['relation','Связанная карточка']];
-	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell collection-settings-shell"><header><div><p class="eyebrow">Конструктор доски</p><h2>${escapeHTML(collection.name)}</h2><p>Этапы и поля этой доски.</p></div><div class="collection-settings-header-actions"><button type="button" class="icon-button" data-edit-collection aria-label="Переименовать доску" title="Переименовать доску">${icon('edit')}</button><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></div></header><div class="collection-settings-grid"><section><header><div><strong>Этапы</strong><small>Колонки доски и состояние процесса</small></div></header><div class="collection-settings-list">${collectionSettingsStageRows(collection)}</div><form id="collection-stage-form" class="compact-settings-form"><input name="name" required maxlength="60" placeholder="Название нового этапа"><select name="category"><option value="active">Активная работа</option><option value="backlog">Ожидает начала</option><option value="review">Проверка</option><option value="done">Финальный этап</option></select><select name="colorKey"><option value="neutral">Нейтральный</option><option value="amber">Жёлтый</option><option value="blue">Синий</option><option value="green">Зелёный</option><option value="red">Красный</option><option value="violet">Фиолетовый</option></select><button type="submit" class="secondary">${icon('plus')} Этап</button></form></section><section><header><div><strong>Поля карточки</strong><small>Типизированные свойства для фильтрации и учёта</small></div></header><div class="collection-settings-list">${collectionSettingsFieldRows(collection, fieldTypes)}</div><form id="collection-field-form" class="compact-settings-form field-form"><input name="name" required maxlength="80" placeholder="Название поля"><select name="fieldType">${fieldTypes.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select><input name="options" placeholder="Варианты через запятую" hidden><label class="check"><input type="checkbox" name="required"> Обязательное</label><label class="check"><input type="checkbox" name="showOnCard" checked> Показывать на карточке</label><button type="submit" class="secondary">${icon('plus')} Поле</button></form></section></div></div>`;
-	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
-	enhanceSelects(dialog);
-	const fieldForm = $('#collection-field-form', dialog);
-	const fieldType = fieldForm.elements.fieldType;
-	const options = fieldForm.elements.options;
-	const syncOptions = () => { options.hidden = !['select', 'multi_select'].includes(fieldType.value); options.required = !options.hidden; };
-	fieldType.addEventListener('change', syncOptions); syncOptions();
-	$('#collection-stage-form', dialog).addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { await api(`/api/collections/${collection.id}/stages`, { method: 'POST', body: JSON.stringify({ name: form.get('name'), category: form.get('category'), colorKey: form.get('colorKey') }) }); await refreshCollectionSettingsDialog(); toast('Этап добавлен'); } catch (error) { toast(error.message, true); } });
-	fieldForm.addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { await api(`/api/collections/${collection.id}/fields`, { method: 'POST', body: JSON.stringify({ name: form.get('name'), fieldType: form.get('fieldType'), required: event.currentTarget.elements.required.checked, showOnCard: event.currentTarget.elements.showOnCard.checked, options: String(form.get('options') || '').split(',').map((item) => item.trim()).filter(Boolean) }) }); await refreshCollectionSettingsDialog(); toast('Поле добавлено'); } catch (error) { toast(error.message, true); } });
-	$('[data-edit-collection]', dialog)?.addEventListener('click', async () => {
-		const values = await askCollectionConfiguration(collection);
-		if (!values) return;
-		try { await api(`/api/collections/${collection.id}`, { method: 'PATCH', body: JSON.stringify(values) }); await refreshCollectionSettingsDialog(); toast('Доска сохранена'); } catch (error) { toast(error.message, true); }
-	});
-	$$('[data-edit-collection-stage]', dialog).forEach((button) => button.addEventListener('click', async () => {
-		const stage = collection.stages.find((item) => item.id === button.dataset.editCollectionStage);
-		const values = await askCollectionStageConfiguration(stage);
-		if (!values) return;
-		try { await api(`/api/collections/${collection.id}/stages/${stage.id}`, { method: 'PATCH', body: JSON.stringify(values) }); await refreshCollectionSettingsDialog(); toast('Этап сохранён'); } catch (error) { toast(error.message, true); }
-	}));
-	$$('[data-edit-collection-field]', dialog).forEach((button) => button.addEventListener('click', async () => {
-		const field = collection.fields.find((item) => item.id === button.dataset.editCollectionField);
-		const values = await askCollectionFieldConfiguration(field);
-		if (!values) return;
-		try { await api(`/api/collections/${collection.id}/fields/${field.id}`, { method: 'PATCH', body: JSON.stringify(values) }); await refreshCollectionSettingsDialog(); toast('Поле сохранено'); } catch (error) { toast(error.message, true); }
-	}));
-	openModal(dialog);
+async function openCollectionSettingsDialog(collection, tab = 'fields') {
+  if (!collection) return;
+  const context = captureProjectContext(), dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
+  const fieldTypes = [['text','Короткий текст'],['long_text','Большой текст'],['number','Число'],['money','Сумма'],['date','Дата'],['datetime','Дата и время'],['select','Один вариант'],['multi_select','Несколько вариантов'],['user','Участник'],['checkbox','Да / нет'],['url','Ссылка'],['email','Почта'],['phone','Телефон'],['relation','Связанная карточка']];
+  content.innerHTML = `<div class="workspace-editor-shell"><header><h2>Конструктор доски</h2><button type="button" class="icon-button" data-schema-close aria-label="Закрыть">${icon('x')}</button></header><p>Загружаем поля и колонки…</p></div>`;
+  const loading = content.firstElementChild;
+  $('[data-schema-close]', loading).addEventListener('click', closeWorkspaceDialog); openModal(dialog);
+  let schema;
+  try { schema = await api(`/api/collections/${collection.id}/schema`, { headers: { 'X-Workspace-ID': context.workspace } }); }
+  catch (error) {
+    if (loading.isConnected) { loading.insertAdjacentHTML('beforeend', `<p>${escapeHTML(error.message)}</p><button type="button" class="secondary" data-schema-retry>Повторить</button>`); $('[data-schema-retry]', loading).addEventListener('click', () => openCollectionSettingsDialog(collection, tab)); }
+    return;
+  }
+  if (!isProjectContextCurrent(context) || !loading.isConnected || !dialog.open) return;
+  const active = (kind) => schema[kind].filter(item => !item.archivedAt);
+  const categories = {backlog:'Ожидает начала', active:'Активная работа', review:'Проверка', done:'Финальный этап'};
+  const row = (kind, item, index, length) => `<article class="schema-row"><div><strong>${escapeHTML(item.name)}</strong><small>${kind === 'fields' ? escapeHTML(fieldTypes.find(([key]) => key === item.fieldType)?.[1] || item.fieldType) + (item.required ? ' · обязательное' : '') : escapeHTML(categories[item.category]) + ' · карточек: ' + item.recordCount}</small></div><div class="schema-row-actions">${item.archivedAt ? `<button type="button" class="secondary" data-schema-restore="${kind}" data-schema-id="${item.id}">${icon('rotate')} Восстановить</button>` : `<button type="button" class="icon-button" data-schema-move="${kind}" data-schema-id="${item.id}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="Выше: ${escapeHTML(item.name)}">↑</button><button type="button" class="icon-button" data-schema-move="${kind}" data-schema-id="${item.id}" data-direction="1" ${index === length - 1 ? 'disabled' : ''} aria-label="Ниже: ${escapeHTML(item.name)}">↓</button><button type="button" class="icon-button" data-schema-edit="${kind}" data-schema-id="${item.id}" aria-label="Настроить: ${escapeHTML(item.name)}">${icon('edit')}</button><button type="button" class="icon-button danger-text" data-schema-delete="${kind}" data-schema-id="${item.id}" aria-label="Удалить: ${escapeHTML(item.name)}">${icon('trash')}</button>`}</div></article>`;
+  const removed = ['fields','stages'].flatMap(kind => schema[kind].filter(item => item.archivedAt).map(item => row(kind,item,0,0))).join('');
+  content.innerHTML = `<div class="workspace-editor-shell collection-settings-shell"><header><div><p class="eyebrow">Конструктор доски · для всей команды</p><h2>${escapeHTML(collection.name)}</h2></div><div class="collection-settings-header-actions"><button type="button" class="icon-button" data-edit-collection aria-label="Переименовать доску">${icon('edit')}</button><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></div></header>
+    <nav class="team-settings-tabs" aria-label="Разделы конструктора">${[['fields','Поля'],['stages','Колонки'],['archive','Удалённые']].map(([key,label]) => `<button type="button" data-schema-tab="${key}" class="${tab === key ? 'active' : ''}" aria-pressed="${tab === key}">${label}</button>`).join('')}</nav>
+    <section data-schema-panel="fields" ${tab !== 'fields' ? 'hidden' : ''}><p>Уберите ненужные поля, измените порядок и обязательность. Сохранённые значения удалённого поля можно вернуть.</p>${active('fields').map((item,index,items) => row('fields',item,index,items.length)).join('') || '<p class="muted">Пользовательских полей пока нет.</p>'}
+      <details class="schema-create"><summary>${icon('plus')} Добавить поле</summary><form id="collection-field-form" class="card-form"><label>Название поля<input name="name" required maxlength="80"></label><label>Тип поля<select name="fieldType">${fieldTypes.map(([key,label]) => `<option value="${key}">${label}</option>`).join('')}</select></label><label data-field-options hidden>Варианты через запятую<input name="options" placeholder="Первый, Второй"></label><label class="check"><input type="checkbox" name="required"> Обязательное</label><label class="check"><input type="checkbox" name="showOnCard" checked> Показывать на карточке доски</label><button type="submit" class="primary">${icon('plus')} Добавить поле</button></form></details>
+    </section><section data-schema-panel="stages" ${tab !== 'stages' ? 'hidden' : ''}><p>Колонки можно переименовать, переставить и удалить. Карточки удаляемой колонки перемещаются в выбранную вами колонку с сохранением состояния.</p>${active('stages').map((item,index,items) => row('stages',item,index,items.length)).join('')}
+      <details class="schema-create"><summary>${icon('plus')} Добавить колонку</summary><form id="collection-stage-form" class="card-form"><label>Название колонки<input name="name" required maxlength="60"></label><label>Смысл этапа<select name="category">${Object.entries(categories).map(([key,label]) => `<option value="${key}">${label}</option>`).join('')}</select></label><label>Цвет<select name="colorKey">${[['neutral','Нейтральный'],['amber','Жёлтый'],['blue','Синий'],['green','Зелёный'],['red','Красный'],['violet','Фиолетовый']].map(([key,label]) => `<option value="${key}">${label}</option>`).join('')}</select></label><button type="submit" class="primary">${icon('plus')} Добавить колонку</button></form></details>
+    </section><section data-schema-panel="archive" ${tab !== 'archive' ? 'hidden' : ''}><p>Восстановление поля возвращает прежние значения. Восстановление колонки не перемещает карточки обратно.</p>${removed || '<p class="muted">Удалённых элементов нет.</p>'}</section></div>`;
+  const shell = content.firstElementChild;
+  $('[data-close-workspace-dialog]',shell).addEventListener('click',closeWorkspaceDialog);
+  $$('[data-schema-tab]',shell).forEach(button => button.addEventListener('click', () => {
+    tab = button.dataset.schemaTab; closeCustomSelects();
+    $$('[data-schema-tab]',shell).forEach(item => {item.classList.toggle('active',item === button);item.setAttribute('aria-pressed',String(item === button));});
+    $$('[data-schema-panel]',shell).forEach(panel => panel.hidden = panel.dataset.schemaPanel !== tab);
+  }));
+  let busy = false;
+  const mutate = async (path,method,body,message) => {
+    if (busy || !isProjectContextCurrent(context) || !shell.isConnected) return;
+    if (!flushDialogDrafts(dialog)) return toast('Не удалось сохранить черновик на устройстве', true);
+    busy = true;
+    try {
+      await api(path,{method,headers:{'X-Workspace-ID':context.workspace},body:JSON.stringify(body)});
+      if (!isProjectContextCurrent(context)) return;
+      if (method === 'POST' && path === base+'/fields') clearWorkingDraftFor($('#collection-field-form',shell));
+      if (method === 'POST' && path === base+'/stages') clearWorkingDraftFor($('#collection-stage-form',shell));
+      state.detailCache.clear(); await reloadCollections({render:false}); await syncProjectChanges();
+      if (isProjectContextCurrent(context) && $('#record-dialog').open && state.activeDetail && !state.recordEditMode && !dialogHasUnsavedChanges($('#record-dialog'))) renderRecordDialog();
+      if (!isProjectContextCurrent(context) || !shell.isConnected || !dialog.open) return;
+      if (state.view === 'work') renderWorkList(); else if (state.view === 'collections') renderCollections();
+      await openCollectionSettingsDialog(state.collections.find(item => item.id === collection.id),tab); toast(message);
+    } catch(error) { if (isProjectContextCurrent(context)) toast(error.message,true); }
+    finally {busy = false;}
+  };
+  const base = `/api/collections/${collection.id}`;
+  const fieldForm = $('#collection-field-form',shell);
+  for (const kind of ['field','stage']) {
+    const form = $(`#collection-${kind}-form`,shell);
+    bindWorkingDraft(form, `collection-schema:${context.workspace}:${collection.id}:${kind}`);
+    if (form.classList.contains('has-unsaved-draft')) form.closest('details').open = true;
+  }
+  const syncFieldOptions = () => {
+    const enabled = ['select','multi_select'].includes(fieldForm.elements.fieldType.value);
+    $('[data-field-options]',fieldForm).hidden = !enabled; fieldForm.elements.options.required = enabled;
+  };
+  fieldForm.elements.fieldType.addEventListener('change', syncFieldOptions); syncFieldOptions();
+  bindTeamSubmit(fieldForm, data => mutate(base+'/fields','POST',{name:data.get('name'),fieldType:data.get('fieldType'),required:fieldForm.elements.required.checked,showOnCard:fieldForm.elements.showOnCard.checked,options:String(data.get('options') || '').split(',').map(item => item.trim()).filter(Boolean)},'Поле добавлено'));
+  bindTeamSubmit($('#collection-stage-form',shell), data => mutate(base+'/stages','POST',{name:data.get('name'),category:data.get('category'),colorKey:data.get('colorKey')},'Колонка добавлена'));
+  $('[data-edit-collection]',shell).addEventListener('click',async () => {const value = await askCollectionConfiguration(collection);if(value) await mutate(base,'PATCH',value,'Доска сохранена');});
+  $$('[data-schema-edit]',shell).forEach(button => button.addEventListener('click',async () => {
+    const kind = button.dataset.schemaEdit, item = schema[kind].find(item => item.id === button.dataset.schemaId);
+    const value = await (kind === 'fields' ? askCollectionFieldConfiguration(item) : askCollectionStageConfiguration(item));
+    if (value) await mutate(`${base}/${kind}/${item.id}`,'PATCH',{...value,expectedUpdatedAt:item.updatedAt},'Настройки сохранены');
+  }));
+  $$('[data-schema-delete]',shell).forEach(button => button.addEventListener('click',async () => {
+    const kind = button.dataset.schemaDelete, item = schema[kind].find(item => item.id === button.dataset.schemaId);
+    const move = kind === 'stages' && item.recordCount > 0;
+    const choices = move ? active('stages').filter(stage => stage.id !== item.id).map(stage => ({value:stage.id,label:stage.name})) : [{value:'archive',label:'Удалить с возможностью восстановления'}];
+    if (kind === 'stages' && active('stages').length === 1) return toast('На доске должна остаться хотя бы одна колонка',true);
+    const answer = await askChoice({title:`Удалить «${item.name}»?`,label:move ? `Куда переместить карточки (${item.recordCount})? Их тип и состояние сохранятся.` : kind === 'fields' ? 'Поле исчезнет из форм и фильтров. Значения сохранятся в разделе «Удалённые».' : 'Пустую колонку можно будет восстановить.',choices});
+    if (answer) await mutate(`${base}/${kind}/${item.id}`,'DELETE',{expectedUpdatedAt:item.updatedAt,moveToStageId:move ? answer : ''},kind === 'fields' ? 'Поле удалено. Значения сохранены.' : 'Колонка удалена');
+  }));
+  $$('[data-schema-restore]',shell).forEach(button => button.addEventListener('click', () => {
+    const kind = button.dataset.schemaRestore, item = schema[kind].find(item => item.id === button.dataset.schemaId);
+    return mutate(`${base}/${kind}/${item.id}/restore`,'POST',{expectedUpdatedAt:item.updatedAt},'Элемент восстановлен');
+  }));
+  $$('[data-schema-move]',shell).forEach(button => button.addEventListener('click', () => {
+    const kind = button.dataset.schemaMove, items = active(kind), index = items.findIndex(item => item.id === button.dataset.schemaId), target = index + Number(button.dataset.direction);
+    if (target < 0 || target >= items.length) return;
+    const ids = items.map(item => item.id); [ids[index],ids[target]] = [ids[target],ids[index]];
+    return mutate(base+'/schema-order','PUT',{kind,ids,versions:Object.fromEntries(items.map(item => [item.id,item.updatedAt]))},'Порядок сохранён');
+  }));
+  enhanceSelects(shell);
 }
+
 
 function renderWorkRow(record) {
   const deadline = deadlineState(record);
@@ -8460,7 +8610,7 @@ function pageLayoutCatalog() {
   if (state.view === 'personal' && state.personalTab && state.personalTab !== 'today') blocks = [heading, block('summary', 'Личная сводка', '.personal-summary'), block('tabs','Разделы','.personal-tabs',true), block('records','Записи','.personal-content',true)];
   if (state.view === 'personal') fields = [field('noteDates', 'Дата заметки', '.personal-note footer time'), field('notePreview', 'Текст в списке заметок', '.personal-note .markdown-body')];
   const customPage = state.workspacePages.find((item) => `page:${item.id}` === state.view);
-  const collection = state.view === 'collections' ? activeCollection() : customPage ? state.collections.find((item) => item.id === customPage.collectionId) : null;
+  const collection = state.view === 'collections' ? activeCollection() : state.view === 'work' ? state.collections.find(item => item.id === state.workCollection) : customPage ? state.collections.find((item) => item.id === customPage.collectionId) : null;
   if (customPage) blocks = [heading, block('filters', 'Поиск', '.custom-page-search', true), block('records', 'Карточки', '.custom-page-list, :scope > .collection-board', true)];
   if (collection || customPage) fields = [
     field('description', 'Описание', '.collection-card > button > p, .custom-page-title > span'),
@@ -8470,6 +8620,10 @@ function pageLayoutCatalog() {
     ...(collection?.fields || []).map((item) => field(`field:${item.id}`, item.name, `[data-page-field="field:${CSS.escape(item.id)}"]`)),
   ].filter((item) => !customPage || customPage.fields.includes(item.key));
   if (collection && !customPage) fields = fields.filter((item) => item.key !== 'status');
+  if (state.view === 'work' && state.workViewMode === 'kanban' && !collection) fields = [...fields,
+    ...[['inbox','Разобрать'],['queued','Не начато'],['in_progress','В работе'],['blocked','Заблокировано'],['review','На проверке'],['completed','Завершено'],['postponed','Отложено'],['cancelled','Отменено']].map(([key,label]) => field(`column:${key}`, `Колонка: ${label}`, `[data-kanban-status="${key}"]`)),
+  ];
+  if (collection && !customPage) fields = [...fields, ...collection.stages.map(stage => field(`column:${stage.id}`, `Колонка: ${stage.name}`, `[data-collection-drop="${CSS.escape(stage.id)}"]`))];
   return { blocks, fields };
 }
 

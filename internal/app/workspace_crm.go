@@ -31,6 +31,8 @@ type CollectionFieldOption struct {
 }
 
 type CollectionField struct {
+	ArchivedAt string                  `json:"archivedAt,omitempty"`
+	UpdatedAt  string                  `json:"updatedAt"`
 	ID         string                  `json:"id"`
 	Key        string                  `json:"key"`
 	Name       string                  `json:"name"`
@@ -42,11 +44,14 @@ type CollectionField struct {
 }
 
 type CollectionStage struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Category  string `json:"category"`
-	ColorKey  string `json:"colorKey"`
-	SortOrder int    `json:"sortOrder"`
+	ArchivedAt  string `json:"archivedAt,omitempty"`
+	UpdatedAt   string `json:"updatedAt"`
+	RecordCount int    `json:"recordCount"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Category    string `json:"category"`
+	ColorKey    string `json:"colorKey"`
+	SortOrder   int    `json:"sortOrder"`
 }
 
 type WorkspaceCollection struct {
@@ -228,7 +233,11 @@ func (s *Server) listCollections(ctx context.Context, workspaceID string) ([]Wor
 }
 
 func (s *Server) listCollectionStages(ctx context.Context, collectionID string) ([]CollectionStage, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT id, name, category, color_key, sort_order FROM collection_stages WHERE collection_id = ? AND archived_at IS NULL ORDER BY sort_order, name`, collectionID)
+	return s.listCollectionSchemaStages(ctx, collectionID, false)
+}
+
+func (s *Server) listCollectionSchemaStages(ctx context.Context, collectionID string, includeArchived bool) ([]CollectionStage, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT id, name, category, color_key, sort_order, COALESCE(archived_at,''), updated_at, CASE WHEN ? THEN (SELECT COUNT(*) FROM records r WHERE r.collection_id = collection_stages.collection_id AND r.stage_id = collection_stages.id) ELSE 0 END FROM collection_stages WHERE collection_id = ? AND (? OR archived_at IS NULL) ORDER BY sort_order, name`, includeArchived, collectionID, includeArchived)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +245,7 @@ func (s *Server) listCollectionStages(ctx context.Context, collectionID string) 
 	items := make([]CollectionStage, 0)
 	for rows.Next() {
 		var item CollectionStage
-		if err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.ColorKey, &item.SortOrder); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.ColorKey, &item.SortOrder, &item.ArchivedAt, &item.UpdatedAt, &item.RecordCount); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -245,7 +254,11 @@ func (s *Server) listCollectionStages(ctx context.Context, collectionID string) 
 }
 
 func (s *Server) listCollectionFields(ctx context.Context, collectionID string) ([]CollectionField, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT id, field_key, name, field_type, required, show_on_card, sort_order FROM collection_fields WHERE collection_id = ? AND archived_at IS NULL ORDER BY sort_order, name`, collectionID)
+	return s.listCollectionSchemaFields(ctx, collectionID, false)
+}
+
+func (s *Server) listCollectionSchemaFields(ctx context.Context, collectionID string, includeArchived bool) ([]CollectionField, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT id, field_key, name, field_type, required, show_on_card, sort_order, COALESCE(archived_at,''), updated_at FROM collection_fields WHERE collection_id = ? AND (? OR archived_at IS NULL) ORDER BY sort_order, name`, collectionID, includeArchived)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +266,7 @@ func (s *Server) listCollectionFields(ctx context.Context, collectionID string) 
 	for rows.Next() {
 		var item CollectionField
 		var required, showOnCard int
-		if err := rows.Scan(&item.ID, &item.Key, &item.Name, &item.FieldType, &required, &showOnCard, &item.SortOrder); err != nil {
+		if err := rows.Scan(&item.ID, &item.Key, &item.Name, &item.FieldType, &required, &showOnCard, &item.SortOrder, &item.ArchivedAt, &item.UpdatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -490,9 +503,10 @@ func (s *Server) handleUpdateCollectionStage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var input struct {
-		Name     string `json:"name"`
-		Category string `json:"category"`
-		ColorKey string `json:"colorKey"`
+		ExpectedAt string `json:"expectedUpdatedAt"`
+		Name       string `json:"name"`
+		Category   string `json:"category"`
+		ColorKey   string `json:"colorKey"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -503,12 +517,16 @@ func (s *Server) handleUpdateCollectionStage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	now := nowText()
-	result, err := s.store.db.ExecContext(r.Context(), `UPDATE collection_stages SET name = ?, category = ?, color_key = ?, updated_at = ? WHERE id = ? AND collection_id = ? AND archived_at IS NULL`, input.Name, input.Category, input.ColorKey, now, stageID, collectionID)
+	result, err := s.store.db.ExecContext(r.Context(), `UPDATE collection_stages SET name = ?, category = ?, color_key = ?, updated_at = ? WHERE id = ? AND collection_id = ? AND archived_at IS NULL AND (? = '' OR updated_at = ?)`, input.Name, input.Category, input.ColorKey, now, stageID, collectionID, input.ExpectedAt, input.ExpectedAt)
 	if err != nil {
 		writeError(w, http.StatusConflict, "Этап с таким названием уже существует")
 		return
 	}
 	if changed, _ := result.RowsAffected(); changed == 0 {
+		if input.ExpectedAt != "" {
+			writeError(w, http.StatusConflict, "Схема изменилась. Обновите конструктор")
+			return
+		}
 		writeError(w, http.StatusNotFound, "Этап не найден")
 		return
 	}
@@ -626,6 +644,7 @@ func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var input struct {
+		ExpectedAt string `json:"expectedUpdatedAt"`
 		Name       string `json:"name"`
 		Required   bool   `json:"required"`
 		ShowOnCard bool   `json:"showOnCard"`
@@ -639,12 +658,16 @@ func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	now := nowText()
-	result, err := s.store.db.ExecContext(r.Context(), `UPDATE collection_fields SET name = ?, required = ?, show_on_card = ?, updated_at = ? WHERE id = ? AND collection_id = ? AND archived_at IS NULL`, input.Name, input.Required, input.ShowOnCard, now, fieldID, collectionID)
+	result, err := s.store.db.ExecContext(r.Context(), `UPDATE collection_fields SET name = ?, required = ?, show_on_card = ?, updated_at = ? WHERE id = ? AND collection_id = ? AND archived_at IS NULL AND (? = '' OR updated_at = ?)`, input.Name, input.Required, input.ShowOnCard, now, fieldID, collectionID, input.ExpectedAt, input.ExpectedAt)
 	if err != nil {
 		writeError(w, http.StatusConflict, "Поле с таким названием уже существует")
 		return
 	}
 	if changed, _ := result.RowsAffected(); changed == 0 {
+		if input.ExpectedAt != "" {
+			writeError(w, http.StatusConflict, "Схема изменилась. Обновите конструктор")
+			return
+		}
 		writeError(w, http.StatusNotFound, "Поле не найдено")
 		return
 	}
