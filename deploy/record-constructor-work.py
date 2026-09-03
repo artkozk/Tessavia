@@ -24,16 +24,18 @@ db.commit()
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *unused): return None
 client = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
-def api(path, method='GET', body=None):
+def api(path, method='GET', body=None, workspace='bizflow-team'):
     request = urllib.request.Request('http://127.0.0.1:8522/api'+path, method=method,
         data=None if body is None else json.dumps(body, ensure_ascii=False).encode(),
-        headers={'Cookie':'business_session='+token, 'X-Workspace-ID':'bizflow-team', 'Content-Type':'application/json'})
+        headers={'Cookie':'business_session='+token, 'X-Workspace-ID':workspace, 'Content-Type':'application/json'})
     with client.open(request, timeout=25) as response:
         raw=response.read(); return json.loads(raw) if raw else None
 try:
-    boards = api('/collections')
-    for board in boards:
-        schema = api('/collections/'+board['id']+'/schema')
+    accessible = {workspace['id'] for workspace in api('/workspaces')}
+    managed = {row[0] for row in db.execute("SELECT workspace_id FROM workspace_members WHERE user_id=1 AND status='active' AND role IN ('owner','admin')")}
+    boards = [(workspace,board) for workspace in sorted(accessible & managed) for board in api('/collections', workspace=workspace)]
+    for workspace, board in boards:
+        schema = api('/collections/'+board['id']+'/schema', workspace=workspace)
         for kind, table in [('fields','collection_fields'), ('stages','collection_stages')]:
             actual = schema[kind]
             expected = list(db.execute('SELECT id,updated_at,archived_at FROM '+table+' WHERE collection_id=?', (board['id'],)))
@@ -47,7 +49,7 @@ try:
     detail=api('/records/'+task_id); task=detail['record']
     assert task['workspaceId']=='bizflow-team' and task['ownerId']==1 and task['parentId']==parent_id
     assert task['status'] in ('in_progress','completed')
-    marker='[verified:constructor-work-'+args.commit[:7]+']'
+    marker='[verified:constructor-work-'+args.commit[:7]+'-schemas]'
     evidence=marker+'\nУдаление, восстановление и порядок полей/колонок доступны администратору конкретной команды. Значения полей сохранены; удаление заполненной колонки требует выбора целевой, сохраняет статус и тип. Общая доска настраивается как личный вид, системные колонки можно скрыть. Список: страницы 10/25/50, поиск по всему набору; доска: ограниченная высота и порции по 20.\nПроверены API-доступы, устаревшие версии, сохранность заполненного обязательного поля, последняя колонка, отмена переноса и восстановление. Go test/vet и 146 Node-тестов успешны. В браузере: создание/удаление/возврат заполненного поля, удаление/возврат и порядок колонок, 1201 запись, последняя страница и полный поиск, 320 px. Физические Android/iPhone не проверялись.\nProduction GET schema соответствует БД на '+str(len(boards))+' досках; тестовые данные не создавались. Сухой запуск сравнил все таблицы до/после без изменения.\nCommit: '+args.commit+'\nRelease: '+args.release+'\nSHA256: '+args.sha256+'\nКонтракт: docs/architecture/CONSTRUCTOR_AND_BOUNDED_WORK_2026_09_04.md. Большой конструктор остаётся в работе: типы сущностей, формулы, преобразование типов и библиотека блоков не объявляются завершёнными.'
     if not any(marker in proof['content'] for proof in detail.get('proofs',[])):
         api('/records/'+task_id+'/proofs','POST',{'kind':'text','content':evidence})
