@@ -67,6 +67,3 @@ finally:
     db.execute('DELETE FROM sessions WHERE token_hash=?',(digest,))
     db.commit()
     db.close()
-
-
-
