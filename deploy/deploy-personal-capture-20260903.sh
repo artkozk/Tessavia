@@ -68,14 +68,15 @@ tables = [r[0] for r in before.execute("SELECT name FROM sqlite_master WHERE typ
 for table in tables:
     query = 'SELECT * FROM "'+table.replace('"','""')+'" ORDER BY rowid'
     old, new = [dict(r) for r in before.execute(query)], [dict(r) for r in after.execute(query)]
-    if table == 'schema_migrations':
+    if table == 'schema_migrations' and not any(r['version'] == '030_personal_inbox.sql' for r in old):
         added = [r for r in new if r not in old]
         assert len(added) == 1 and added[0]['version'] == '030_personal_inbox.sql', added
         new = [r for r in new if r['version'] != '030_personal_inbox.sql']
-    if table == 'personal_notes':
+    if table == 'personal_notes' and 'in_inbox' not in [r['name'] for r in before.execute('PRAGMA table_info(personal_notes)')]:
         assert all(r.pop('in_inbox') == 0 for r in new), 'Unexpected inbox migration'
     assert old == new, table+' unexpected content change'
-assert after.execute('SELECT COUNT(*) FROM personal_capture_requests').fetchone()[0] == 0
+if 'personal_capture_requests' not in tables:
+    assert after.execute('SELECT COUNT(*) FROM personal_capture_requests').fetchone()[0] == 0
 after_tables = {r[0] for r in after.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
 assert after_tables == set(tables) | {'personal_capture_requests'}, 'Unexpected tables'
 assert after.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
@@ -87,7 +88,7 @@ check_http() {
   local base="$1"
   curl --max-time 15 -fsS "$base/" > "$dry/index.html"
   grep -q '<title>Tessavie</title>' "$dry/index.html"
-  grep -q '20260903-personal-capture-1' "$dry/index.html"
+  grep -q '20260903-personal-capture-2' "$dry/index.html"
   ! grep -qi 'bizflow' "$dry/index.html"
   ! grep -q 'tessavie.css\|auth-weave' "$dry/index.html"
   ! grep -q 'brand-symbol' "$dry/index.html"
@@ -137,5 +138,4 @@ test "$(sqlite3 "$db" 'SELECT COUNT(*) FROM pragma_foreign_key_check;')" = 0
 test "$(sqlite3 "$db" "SELECT COUNT(*) FROM schema_migrations WHERE version='029_tessavie_brand.sql';")" = 1
 test "$(sqlite3 "$db" "SELECT COUNT(*) FROM schema_migrations WHERE version='030_personal_inbox.sql';")" = 1
 printf 'RELEASE=%s\nCOMMIT=%s\nSHA256=%s\nDEPLOY=ok\n' "$release" "$CANDIDATE_COMMIT" "$EXPECTED_SHA256"
-
 
