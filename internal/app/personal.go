@@ -27,12 +27,13 @@ type PersonalSettings struct {
 }
 
 type PersonalNote struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	Pinned    bool   `json:"pinned"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	ScheduledDate *string `json:"scheduledDate"`
+	ID            string  `json:"id"`
+	Title         string  `json:"title"`
+	Body          string  `json:"body"`
+	Pinned        bool    `json:"pinned"`
+	CreatedAt     string  `json:"createdAt"`
+	UpdatedAt     string  `json:"updatedAt"`
 }
 
 type PersonalPlan struct {
@@ -166,7 +167,7 @@ func (s *Server) handlePersonalOverview(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) listPersonalNotes(r *http.Request, ownerID int64) ([]PersonalNote, error) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at FROM personal_notes WHERE owner_id = ? AND archived_at IS NULL ORDER BY pinned DESC, updated_at DESC`, ownerID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date FROM personal_notes WHERE owner_id = ? AND archived_at IS NULL ORDER BY pinned DESC, updated_at DESC`, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +176,7 @@ func (s *Server) listPersonalNotes(r *http.Request, ownerID int64) ([]PersonalNo
 	for rows.Next() {
 		var item PersonalNote
 		var pinned int
-		if err := rows.Scan(&item.ID, &item.Title, &item.Body, &pinned, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Title, &item.Body, &pinned, &item.CreatedAt, &item.UpdatedAt, &item.ScheduledDate); err != nil {
 			return nil, err
 		}
 		item.Pinned = pinned == 1
@@ -341,12 +342,17 @@ func (s *Server) personalTargetTitle(r *http.Request, ownerID int64, targetType,
 
 func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Title      string `json:"title"`
-		Body       string `json:"body"`
-		Pinned     bool   `json:"pinned"`
-		LinkPlanID string `json:"linkPlanId"`
+		ScheduledDate *string `json:"scheduledDate"`
+		Title         string  `json:"title"`
+		Body          string  `json:"body"`
+		Pinned        bool    `json:"pinned"`
+		LinkPlanID    string  `json:"linkPlanId"`
 	}
 	if !decodeJSON(w, r, &input) || !validatePersonalText(w, &input.Title, input.Body) {
+		return
+	}
+	if input.ScheduledDate != nil && *input.ScheduledDate != "" && !validDate(*input.ScheduledDate) {
+		writeError(w, http.StatusBadRequest, "Некорректная дата заметки")
 		return
 	}
 	id, ok := newPersonalID(w)
@@ -368,7 +374,7 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_notes(id, owner_id, title, body, pinned, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, now)
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_notes(id, owner_id, title, body, pinned, created_at, updated_at, scheduled_date) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, now, input.ScheduledDate)
 	if err == nil && input.LinkPlanID != "" {
 		linkID, ok := newPersonalID(w)
 		if !ok {
@@ -383,26 +389,37 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить заметку")
 		return
 	}
-	writeJSON(w, http.StatusCreated, PersonalNote{ID: id, Title: input.Title, Body: strings.TrimSpace(input.Body), Pinned: input.Pinned, CreatedAt: now, UpdatedAt: now})
+	writeJSON(w, http.StatusCreated, PersonalNote{ID: id, Title: input.Title, Body: strings.TrimSpace(input.Body), Pinned: input.Pinned, CreatedAt: now, UpdatedAt: now, ScheduledDate: input.ScheduledDate})
 }
 
 func (s *Server) handleUpdatePersonalNote(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Title  string `json:"title"`
-		Body   string `json:"body"`
-		Pinned bool   `json:"pinned"`
+		ScheduledDate *string `json:"scheduledDate"`
+		Title         string  `json:"title"`
+		Body          string  `json:"body"`
+		Pinned        bool    `json:"pinned"`
 	}
 	if !decodeJSON(w, r, &input) || !validatePersonalText(w, &input.Title, input.Body) {
 		return
 	}
+	if input.ScheduledDate != nil && *input.ScheduledDate != "" && !validDate(*input.ScheduledDate) {
+		writeError(w, http.StatusBadRequest, "Некорректная дата заметки")
+		return
+	}
 	user := currentUser(r)
 	now := nowText()
-	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_notes SET title = ?, body = ?, pinned = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, r.PathValue("id"), user.ID)
+	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_notes SET title = ?, body = ?, pinned = ?, updated_at = ?, scheduled_date = COALESCE(?, scheduled_date) WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, input.ScheduledDate, r.PathValue("id"), user.ID)
 	if err != nil || affectedRows(result) == 0 {
 		writeError(w, http.StatusNotFound, "Заметка не найдена")
 		return
 	}
-	writeJSON(w, http.StatusOK, PersonalNote{ID: r.PathValue("id"), Title: input.Title, Body: strings.TrimSpace(input.Body), Pinned: input.Pinned, UpdatedAt: now})
+	var note PersonalNote
+	err = s.store.db.QueryRowContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, r.PathValue("id"), user.ID).Scan(&note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось прочитать заметку")
+		return
+	}
+	writeJSON(w, http.StatusOK, note)
 }
 
 func (s *Server) handleArchivePersonalNote(w http.ResponseWriter, r *http.Request) {

@@ -12,7 +12,7 @@ import (
 const interfacePresetPayloadVersion = 1
 
 var portableInterfacePageKeys = func() map[string]bool {
-	keys := map[string]bool{"personal": true, "notifications": true}
+	keys := map[string]bool{"personal": true, "notifications": true, "day:personal": true, "day:project": true, "calendar:personal": true, "calendar:project": true}
 	for key := range projectViewKeys {
 		keys[key] = true
 	}
@@ -32,6 +32,11 @@ var portableInterfaceBlockKeys = map[string]bool{
 	"tabs": true, "habits": true, "plans": true, "life": true, "notes": true,
 	"search": true, "preference": true, "limitation": true, "rule": true,
 	"digest": true, "legend": true, "hidden": true,
+	"month": true, "undated": true, "boards": true,
+	"focus": true, "capture": true, "capacity": true, "quality": true,
+	"widget:calendar": true, "widget:agenda": true, "widget:notes": true,
+	"widget:plans": true, "widget:habits": true, "widget:tasks": true,
+	"widget:research": true, "widget:risks": true, "widget:goals": true,
 }
 
 var portableInterfaceFieldKeys = map[string]bool{
@@ -155,6 +160,13 @@ func portableInterfacePreferences(input InterfacePreferences, device string) Int
 			}
 		}
 		page.BlockSpans = spans
+		settings := make(map[string]PageBlockSettings)
+		for block, value := range page.BlockSettings {
+			if portableInterfaceBlockKeys[block] {
+				settings[block] = value
+			}
+		}
+		page.BlockSettings = settings
 		pages[key] = page
 	}
 	input.Layout.Pages = pages

@@ -71,7 +71,7 @@ test('device editor offers desktop width only on desktop', () => {
 
 test('render observer does not undo a pointer drag before it is committed', () => {
   const root={};
-  const context=vm.createContext({state:{me:{id:1}},$:(selector)=>selector==='#main-content'?root:selector==='.reorder-dragging'?{}:null});
+  const context=vm.createContext({state:{me:{id:1}},$:(selector)=>selector==='#main-content'?root:selector.includes('.reorder-dragging')?{}:null});
   vm.runInContext(source.slice(source.indexOf('function applyPageLayout('),source.lastIndexOf('bootstrap();')),context);
   assert.doesNotThrow(()=>vm.runInContext('applyPageLayout()',context));
 });

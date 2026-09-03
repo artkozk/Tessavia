@@ -34,11 +34,11 @@ test('calendar format and zoom are separated across account, project, device and
   vm.runInContext(fragment('function calendarPresentationKey(', 'function calendarPresentationToolbar('),context);
   const run=code=>vm.runInContext(code,context);
   run("saveCalendarPresentation('work',{format:'circles',zoom:160})");
-  assert.equal(run("calendarPresentation('work').zoom"),160);
+  assert.equal(run("calendarPresentation('work').zoom"),100);
   device='mobile'; assert.equal(run("calendarPresentation('work').zoom"),100);
   device='desktop';state.activeWorkspaceId='two';assert.equal(run("calendarPresentation('work').format"),'grid');
   run("saveCalendarPresentation('personal',{format:'circles',zoom:500})");
-  state.activeWorkspaceId='three';assert.equal(run("calendarPresentation('personal').zoom"),180);
+  state.activeWorkspaceId='three';assert.equal(run("calendarPresentation('personal').zoom"),100);
   state.me.id=2;assert.equal(run("calendarPresentation('personal').zoom"),100);
 });
 

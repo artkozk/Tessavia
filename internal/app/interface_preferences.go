@@ -42,13 +42,31 @@ type InterfaceLayout struct {
 }
 
 type PageLayout struct {
-	Order          []string       `json:"order"`
-	HiddenBlocks   []string       `json:"hiddenBlocks"`
-	HiddenFields   []string       `json:"hiddenFields"`
-	BlockSpans     map[string]int `json:"blockSpans"`
-	ContentWidth   int            `json:"contentWidth,omitempty"`
-	Density        string         `json:"density,omitempty"`
-	ToolbarActions *[]string      `json:"toolbarActions,omitempty"`
+	Widgets        []string                     `json:"widgets,omitempty"`
+	BlockSettings  map[string]PageBlockSettings `json:"blockSettings,omitempty"`
+	Order          []string                     `json:"order"`
+	HiddenBlocks   []string                     `json:"hiddenBlocks"`
+	HiddenFields   []string                     `json:"hiddenFields"`
+	BlockSpans     map[string]int               `json:"blockSpans"`
+	ContentWidth   int                          `json:"contentWidth,omitempty"`
+	Density        string                       `json:"density,omitempty"`
+	ToolbarActions *[]string                    `json:"toolbarActions,omitempty"`
+}
+
+// Geometry contains no record identifiers or content, so it is safe to share in presets.
+type PageBlockSettings struct {
+	Column  int    `json:"column,omitempty"`
+	Height  int    `json:"height,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+	Scale   int    `json:"scale,omitempty"`
+	Density string `json:"density,omitempty"`
+	Format  string `json:"format,omitempty"`
+}
+
+var pageWidgetKeys = map[string]bool{
+	"widget:calendar": true, "widget:agenda": true, "widget:notes": true,
+	"widget:plans": true, "widget:habits": true, "widget:tasks": true,
+	"widget:research": true, "widget:risks": true, "widget:goals": true,
 }
 
 var pageLayoutKey = regexp.MustCompile(`^[a-zA-Z0-9_:-]{1,100}$`)
@@ -71,9 +89,34 @@ func normalizePageLayouts(pages map[string]PageLayout) map[string]PageLayout {
 		page.Order = clean(page.Order)
 		page.HiddenBlocks = clean(page.HiddenBlocks)
 		page.HiddenFields = clean(page.HiddenFields)
+		page.Widgets = uniqueAllowedStrings(page.Widgets, pageWidgetKeys)
+		settings := make(map[string]PageBlockSettings)
+		for block, value := range page.BlockSettings {
+			if len(settings) >= 100 || !pageLayoutKey.MatchString(block) {
+				continue
+			}
+			value.Column = max(0, min(12, value.Column))
+			if value.Height != 0 {
+				value.Height = max(160, min(1600, value.Height))
+			}
+			if value.Limit != 0 {
+				value.Limit = max(1, min(50, value.Limit))
+			}
+			if value.Scale != 0 {
+				value.Scale = max(40, min(100, value.Scale))
+			}
+			if value.Density != "compact" && value.Density != "comfortable" {
+				value.Density = ""
+			}
+			if value.Format != "circles" && value.Format != "grid" {
+				value.Format = ""
+			}
+			settings[block] = value
+		}
+		page.BlockSettings = settings
 		spans := make(map[string]int)
 		for block, span := range page.BlockSpans {
-			if len(spans) < 100 && pageLayoutKey.MatchString(block) && (span == 4 || span == 6 || span == 8 || span == 12) {
+			if len(spans) < 100 && pageLayoutKey.MatchString(block) && span >= 2 && span <= 12 {
 				spans[block] = span
 			}
 		}
