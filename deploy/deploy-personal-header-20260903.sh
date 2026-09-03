@@ -23,6 +23,7 @@ cleanup() {
   if [[ -n "$dry" && "$dry" == /tmp/bizflow-personal-header-check.* ]]; then rm -rf -- "$dry"; fi
   if [[ "$result" -ne 0 && "$switch_started" -eq 1 ]]; then
     systemctl stop business-control || true
+    install -m 0600 "$backup/business-control.env" /etc/business-control.env
     ln -sfn "$previous" "$root/current.next"
     mv -Tf "$root/current.next" "$root/current"
     systemctl start business-control
@@ -49,7 +50,7 @@ dry=$(mktemp -d /tmp/bizflow-personal-header-check.XXXXXX)
 cp "$backup/business-control.db" "$dry/check.db"
 mkdir "$dry/uploads"
 chown -R business-control:business-control "$dry"
-runuser -u business-control -- env BUSINESS_ADDRESS=127.0.0.1:18543 BUSINESS_DATABASE_PATH="$dry/check.db" BUSINESS_UPLOAD_PATH="$dry/uploads" "$release/business-control" > "$dry/server.log" 2>&1 &
+runuser -u business-control -- env BUSINESS_ADDRESS=127.0.0.1:18543 BUSINESS_DATABASE_PATH="$dry/check.db" BUSINESS_UPLOAD_PATH="$dry/uploads" BUSINESS_REGISTRATION_SKIP_VERIFICATION=true "$release/business-control" > "$dry/server.log" 2>&1 &
 dry_pid=$!
 for attempt in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:18543/api/health > "$dry/health.json" 2>/dev/null; then break; fi
@@ -69,10 +70,30 @@ test "$(sqlite3 "$dry/check.db" "SELECT COUNT(*) FROM schema_migrations WHERE ve
 test "$(sqlite3 "$dry/check.db" 'SELECT COUNT(*) FROM workspace_pages;')" = "$(sqlite3 "$backup/business-control.db" 'SELECT COUNT(*) FROM workspace_pages;')"
 test "$(sqlite3 "$dry/check.db" 'SELECT COUNT(*) FROM personal_notes;')" = "$(sqlite3 "$backup/business-control.db" 'SELECT COUNT(*) FROM personal_notes;')"
 test "$(sqlite3 "$dry/check.db" 'SELECT COUNT(*) FROM schema_migrations;')" = "$(sqlite3 "$backup/business-control.db" 'SELECT COUNT(*) FROM schema_migrations;')"
+python3 - <<'PY'
+import json,urllib.request,http.cookiejar,uuid
+jar=http.cookiejar.CookieJar()
+client=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+name='direct_qa_'+uuid.uuid4().hex[:12]
+body=json.dumps({'email':name+'@example.test','username':name,'password':uuid.uuid4().hex}).encode()
+request=urllib.request.Request('http://127.0.0.1:18543/api/auth/register',data=body,headers={'Content-Type':'application/json'})
+with client.open(request,timeout=15) as response:
+    user=json.load(response)
+    assert response.status==201 and user.get('id') and 'challengeId' not in user
+with client.open('http://127.0.0.1:18543/api/workspaces',timeout=15) as response:
+    workspaces=json.load(response)
+    assert len(workspaces)==1 and workspaces[0]['kind']=='personal'
+print('DIRECT_REGISTRATION_DRY_RUN=ok')
+PY
 kill "$dry_pid"; wait "$dry_pid" 2>/dev/null || true; dry_pid=''
 printf 'DRY_RUN=ok\n'
 switch_started=1
 systemctl stop business-control
+if grep -q '^BUSINESS_REGISTRATION_SKIP_VERIFICATION=' /etc/business-control.env; then
+  sed -i 's/^BUSINESS_REGISTRATION_SKIP_VERIFICATION=.*/BUSINESS_REGISTRATION_SKIP_VERIFICATION=true/' /etc/business-control.env
+else
+  printf '\nBUSINESS_REGISTRATION_SKIP_VERIFICATION=true\n' >> /etc/business-control.env
+fi
 ln -sfn "$release" "$root/current.next"
 mv -Tf "$root/current.next" "$root/current"
 systemctl start business-control

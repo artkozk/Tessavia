@@ -1603,7 +1603,8 @@ function setAuthMode(mode) {
   state.authMode = mode;
   $$('[data-auth-mode]').forEach((button) => button.classList.toggle('active', button.dataset.authMode === mode));
   $('#auth-heading-title').textContent = mode === 'register' ? 'Создайте аккаунт' : 'Войдите в проект';
-	$('#auth-heading-copy').textContent = mode === 'register' ? 'Создание аккаунта завершается шестизначным кодом подтверждения.' : 'Продолжите работу с того места, где остановились.';
+	$('#auth-heading-copy').hidden = mode === 'register';
+	$('#auth-heading-copy').textContent = 'Продолжите работу с того места, где остановились.';
   $('#email-field').hidden = mode !== 'register';
   $('#email-field input').required = mode === 'register';
   $('#login-label').textContent = mode === 'register' ? 'Логин' : 'Логин или почта';
@@ -1634,6 +1635,7 @@ function showRegistrationVerification(challenge) {
 	$('#auth-form').password.required = false;
 	$('#auth-form').email.required = false;
 	$('#auth-heading-title').textContent = 'Подтвердите регистрацию';
+	$('#auth-heading-copy').hidden = false;
 	$('#auth-heading-copy').textContent = 'Введите код в течение 15 минут. Аккаунт появится только после проверки.';
 	$('#auth-submit').textContent = 'Подтвердить код';
 	const testing = $('#auth-testing-code');
@@ -1657,11 +1659,11 @@ async function submitAuth(event) {
   try {
 		const path = verifying ? '/api/auth/register/verify' : `/api/auth/${state.authMode}`;
     const authenticatedUser = await api(path, { method: 'POST', body: JSON.stringify(body) });
-		if (state.authMode === 'register' && !verifying) {
+		if (state.authMode === 'register' && !verifying && authenticatedUser.challengeId) {
 			showRegistrationVerification(authenticatedUser);
 			return;
 		}
-		const invitationAcceptedDuringRegistration = verifying && state.registrationChallenge?.invitationPending;
+		const invitationAcceptedDuringRegistration = state.authMode === 'register' && (state.pendingInviteToken || (verifying && state.registrationChallenge?.invitationPending));
 		if (invitationAcceptedDuringRegistration) {
 			state.pendingInviteToken = '';
 			const url = new URL(location.href);
