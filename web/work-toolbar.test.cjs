@@ -14,10 +14,18 @@ test('input defaults keep toggle exclusions at zero specificity so search paddin
   assert.match(css, /input\[type="checkbox"\], input\[type="radio"\]\s*\{[^}]*width: 18px;[^}]*padding: 0;/);
 });
 
-test('team scope has an explicit plural label and preserves saved partner keys', () => {
+test('toolbar offers only all and mine, normalizing retired saved scopes before rendering', () => {
   const toolbar = slice('function renderWorkList()', 'function renderWorkBoardToolbar()');
-  assert.match(toolbar, /\['partner', 'Других участников'\]/);
-  assert.doesNotMatch(toolbar, /Партнёра/);
+  assert.match(toolbar, /\[\['all', 'Вся'\], \['mine', 'Моя'\]\]/);
+  assert.doesNotMatch(toolbar, /Партнёра|Других участников/);
+  const normalization = toolbar.slice(0, toolbar.indexOf('const records'));
+  const context = vm.createContext({ state: { collections: [] } });
+  for (const [previous, expected] of [['partner', 'all'], [undefined, 'all'], ['all', 'all'], ['mine', 'mine']]) {
+    context.state.workScope = previous;
+    vm.runInContext(normalization + '}', context);
+    context.renderWorkList();
+    assert.equal(context.state.workScope, expected);
+  }
   assert.match(toolbar, /aria-label="Поиск в очереди работы"/);
   assert.match(toolbar, /aria-label="Чья работа"/);
   assert.match(toolbar, /aria-pressed=/);
@@ -25,20 +33,36 @@ test('team scope has an explicit plural label and preserves saved partner keys',
   assert.doesNotMatch(css, /\.work-scope \.segment \{ flex: 1; \}/);
 });
 
-test('both list and calendar include every other participant, with owner filter taking precedence', () => {
+test('list and calendar treat retired scope as all and preserve specific-owner precedence', () => {
   const state = { me: { id: 1 }, records: [1, 2, 3].map(ownerId => ({ id: String(ownerId), ownerId, type: 'task', status: 'planned' })),
     workScope: 'partner', workType: 'all', workstreamFilter: 'all', workStatus: 'active', workOrder: 'priority' };
   const context = vm.createContext({ state, isWorkRecord: () => true, isActiveRecord: () => true, sortWorkRecords: () => 0 });
   vm.runInContext(slice('function filteredWorkRecords()', 'function renderWorkKanban(') + slice('function calendarRecordPool()', 'function recordsByDueDate('), context);
   for (const fn of ['filteredWorkRecords', 'calendarRecordPool']) {
-    assert.deepEqual(Array.from(context[fn](), item => item.id), ['2', '3']);
+    assert.deepEqual(Array.from(context[fn](), item => item.id), ['1', '2', '3']);
     state.ownerFilter = '3';
     assert.deepEqual(Array.from(context[fn](), item => item.id), ['3']);
     state.ownerFilter = '';
     state.workScope = 'mine';
     assert.deepEqual(Array.from(context[fn](), item => item.id), ['1']);
+    state.ownerFilter = '3';
+    assert.deepEqual(Array.from(context[fn](), item => item.id), ['3']);
+    state.ownerFilter = '';
     state.workScope = 'all';
     assert.equal(context[fn]().length, 3);
     state.workScope = 'partner';
   }
+});
+
+test('specific owner is visible in additional filters, counted and resettable', () => {
+  const toolbar = slice('function renderWorkList()', 'function renderWorkBoardToolbar()');
+  assert.match(toolbar, /Ответственный<select id="work-owner-select"/);
+  assert.match(toolbar, /userOptions\(state.ownerFilter\)/);
+  assert.match(toolbar, /\$\('#work-owner-select'\)\.addEventListener\('change'/);
+  assert.match(toolbar, /data-reset-work-filters[^\n]*state.ownerFilter = ''/);
+  const context = vm.createContext({ state: { workType: 'all', workstreamFilter: 'all', workStatus: 'active', workOrder: 'priority', ownerFilter: '' } });
+  vm.runInContext(slice('function workFilterCount()', 'function hierarchyDepth('), context);
+  assert.equal(context.workFilterCount(), 0);
+  context.state.ownerFilter = '3';
+  assert.equal(context.workFilterCount(), 1);
 });

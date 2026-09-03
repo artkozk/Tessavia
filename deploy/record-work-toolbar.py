@@ -4,6 +4,7 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--complete', action='store_true')
+parser.add_argument('--simplify', action='store_true')
 parser.add_argument('--commit')
 parser.add_argument('--release')
 parser.add_argument('--sha256')
@@ -57,10 +58,19 @@ try:
                        'expectedUpdatedAt': task['updatedAt']})
     else:
         task = api('/records', 'POST', {'type': 'task', 'title': title, 'description': criteria, 'ownerId': 1, 'status': 'in_progress'})
+    if args.simplify:
+        revision = '[revision:work-toolbar-two-scopes-2026-09-03]'
+        if revision not in task.get('description', ''):
+            task = api('/records/' + task['id'], 'PATCH', {
+                'description': task.get('description', '') + '\n\n' + revision + '\nАктуальное уточнение пользователя отменяет третий переключатель. Оставить только «Вся» и «Моя», конкретного участника выбирать в фильтрах. Старые scope=partner открывать как «Вся», не оставляя скрытого ограничения. Исправление лупы сохранить; старые доказательства относятся к предыдущей редакции требований.',
+                'status': 'in_progress', 'reason': 'Уточнение пользователя: убрать лишний переключатель',
+                'expectedUpdatedAt': task['updatedAt']})
     if args.complete:
         detail = api('/records/' + task['id'])
         evidence_marker = '[verified:work-toolbar-' + args.commit[:7] + ']'
         evidence = evidence_marker + '\nИсправлен каскад базовых input-стилей; отступ поиска 36 px, лупа не перехватывает нажатие. Командная подпись и aria-pressed, совместимость сохранённых фильтров. Тесты, браузерные проверки и ограничения зафиксированы в docs/operations/WORK_TOOLBAR_2026_09_03.md.\nCommit: ' + args.commit + '\nRelease: ' + args.release + '\nSHA256: ' + args.sha256
+        if args.simplify:
+            evidence += '\nАктуальный результат: третий переключатель удалён, только «Вся»/«Моя». Прежний partner трактуется как all; явный ответственный имеет приоритет. Исправление поиска сохранено. Эта редакция заменяет прежний критерий о подписи третьего переключателя.'
         if not any(evidence_marker in proof['content'] for proof in detail.get('proofs', [])):
             api('/records/' + task['id'] + '/proofs', 'POST', {'kind': 'text', 'content': evidence})
         if detail['record']['status'] != 'completed':
