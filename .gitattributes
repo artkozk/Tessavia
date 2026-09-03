@@ -1,0 +1,3 @@
+# Embedded JavaScript is also read by source-contract tests. Keep identical
+# newlines on Windows and Linux so those checks validate the same artifact.
+web/app.js text eol=lf

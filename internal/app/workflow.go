@@ -1127,7 +1127,7 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 	workspaceID := currentWorkspace(r).ID
 	if r.URL.Query().Get("format") == "csv" {
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		w.Header().Set("Content-Disposition", `attachment; filename="bizflow-records.csv"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="tessavie-records.csv"`)
 		_, _ = w.Write([]byte{0xEF, 0xBB, 0xBF})
 		writer := csv.NewWriter(w)
 		defer writer.Flush()
@@ -1200,7 +1200,7 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 		data[name] = rows
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="bizflow-export.json"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="tessavie-export.json"`)
 	_ = json.NewEncoder(w).Encode(payload)
 }
 

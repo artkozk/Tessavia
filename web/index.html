@@ -3,28 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#faf9f5">
+  <meta name="theme-color" content="#fcfaf5">
   <link rel="manifest" href="/manifest.webmanifest">
-  <title>BizFlow</title>
-  <link rel="stylesheet" href="/styles.css?v=20260903-workspace-widgets-day-1">
+  <title>Tessavie</title>
+  <meta name="application-name" content="Tessavie">
+  <meta name="apple-mobile-web-app-title" content="Tessavie">
+  <meta name="description" content="Tessavie — пространство для ваших планов, идей и работы команды. Всё важное связано.">
+  <link rel="icon" type="image/svg+xml" href="/brand/tessavie-mark.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/brand/tessavie-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/brand/tessavie-180.png">
+  <link rel="stylesheet" href="/styles.css?v=20260903-tessavie-1">
+  <link rel="stylesheet" href="/tessavie.css?v=20260903-tessavie-1">
 </head>
 <body>
   <div id="auth-root" class="auth-root" hidden>
     <div class="auth-layout">
       <section class="auth-intro">
-        <div class="auth-brand"><span class="brand-mark"><span class="brand-symbol"><i></i><i></i></span></span><span><strong>BizFlow</strong><small>пространство основателей</small></span></div>
+        <div class="auth-brand"><span class="brand-mark"><img src="/brand/tessavie-mark.svg" width="64" height="64" alt="" aria-hidden="true"></span><span class="brand-wordmark"><strong>Tessavie</strong><small>Всё важное связано</small></span></div>
         <div class="auth-statement">
-          <p class="eyebrow">От мысли до результата</p>
-          <h1>BizFlow</h1>
-          <p>Единое место для решений, задач и договорённостей команды.</p>
+          <p class="eyebrow">Идеи. Люди. Возможности.</p>
+          <h1>У каждого замысла<br>есть <em>продолжение.</em></h1>
+          <p>Личные планы, общие цели и работа команды. Соберите всё важное в одном пространстве.</p>
         </div>
-        <p class="auth-caption">Рабочая память проекта</p>
+        <img class="auth-weave" src="/brand/tessavie-weave.svg" width="480" height="240" alt="" aria-hidden="true">
+        <p class="auth-caption">От первой мысли <span>↗</span> к общему результату</p>
       </section>
       <main class="auth-panel">
-        <div class="auth-panel-brand"><span class="brand-mark"><span class="brand-symbol"><i></i><i></i></span></span><strong>BizFlow</strong></div>
+        <div class="auth-panel-brand"><span class="brand-mark"><img src="/brand/tessavie-mark.svg" width="64" height="64" alt="" aria-hidden="true"></span><strong>Tessavie</strong></div>
         <div class="auth-heading">
           <p class="eyebrow">Закрытое пространство</p>
-          <h2 id="auth-heading-title">Войдите в проект</h2>
+          <h2 id="auth-heading-title">С возвращением</h2>
           <p class="muted" id="auth-heading-copy">Продолжите работу с того места, где остановились.</p>
         </div>
         <div class="segmented" role="tablist" aria-label="Вход или регистрация">
@@ -51,7 +59,7 @@
 
   <div id="app-root" class="app-shell" hidden>
     <aside class="sidebar" aria-hidden="true" inert>
-      <div class="brand"><span class="brand-mark small"><span class="brand-symbol"><i></i><i></i></span></span><span><strong>BizFlow</strong><small>пространство основателей</small></span><button type="button" class="sidebar-close icon-button" id="sidebar-close" aria-label="Закрыть меню"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+      <div class="brand"><span class="brand-mark small"><img src="/brand/tessavie-mark.svg" width="64" height="64" alt="" aria-hidden="true"></span><span class="brand-wordmark"><strong>Tessavie</strong><small>Всё важное связано</small></span><button type="button" class="sidebar-close icon-button" id="sidebar-close" aria-label="Закрыть меню"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
       <div id="workspace-control" class="workspace-control"></div>
       <nav id="main-nav" class="main-nav" aria-label="Разделы"></nav>
       <div class="sidebar-footer">
@@ -63,7 +71,7 @@
     <div class="workspace">
       <header class="topbar">
         <button type="button" class="menu-button icon-button" id="menu-button" aria-label="Открыть меню"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
-        <div><p class="eyebrow">BizFlow</p><h2 id="page-title">Обзор</h2></div>
+        <div><p class="eyebrow">Tessavie</p><h2 id="page-title">Обзор</h2></div>
         <div class="global-search" id="global-search">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="global-search-input" type="search" placeholder="Найти во всём проекте" autocomplete="off" aria-label="Глобальный поиск по проекту">
@@ -90,6 +98,6 @@
   <script src="/vendor/cytoscape-3.34.1.min.js"></script>
   <script src="/vendor/marked-18.0.9.umd.js"></script>
   <script src="/vendor/dompurify-3.4.13.min.js"></script>
-  <script type="module" src="/app.js?v=20260903-workspace-widgets-day-1"></script>
+  <script type="module" src="/app.js?v=20260903-tessavie-1"></script>
 </body>
 </html>

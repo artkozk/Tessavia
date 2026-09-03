@@ -1,10 +1,38 @@
 {
-  "name": "BizFlow",
-  "short_name": "BizFlow",
+  "name": "Tessavie",
+  "short_name": "Tessavie",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#faf9f5",
-  "theme_color": "#14725e",
-  "lang": "ru"
+  "background_color": "#fcfaf5",
+  "theme_color": "#155e63",
+  "lang": "ru",
+  "id": "/",
+  "description": "Всё важное связано: личные планы, идеи и работа команды.",
+  "icons": [
+    {
+      "src": "/brand/tessavie-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/tessavie-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/tessavie-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/tessavie-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
 }

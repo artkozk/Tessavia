@@ -2654,7 +2654,7 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
 }
 
 /* 2026-08-25 business memory. Risks, tests, decisions and inbox use the same
-   card language as the rest of BizFlow while exposing their semantic state. */
+   card language as the rest of Tessavie while exposing their semantic state. */
 .heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .validation-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(300px, 1.2fr); gap: 1px; margin: 20px 0; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: var(--line); }
 .validation-summary > * { min-height: 104px; display: grid; align-content: center; gap: 4px; padding: 17px 20px; border: 0; background: #fffefa; text-align: left; }
@@ -2885,7 +2885,7 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
   .work-calendar > header.calendar-commandbar { align-items: flex-start; justify-content: flex-start; flex-direction: column; }
 }
 
-/* Personal workspace uses the current BizFlow palette and control language. */
+/* Personal workspace uses the current Tessavie palette and control language. */
 .personal-heading .eyebrow { display: flex; align-items: center; gap: 6px; }
 .personal-heading .eyebrow .icon { width: 14px; height: 14px; }
 .personal-create-menu { position: relative; align-self: start; }
