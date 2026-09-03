@@ -3987,13 +3987,15 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .time-map-legend .current { border: 2px solid var(--accent); outline: 2px solid var(--accent-soft); }
 .time-map-group { padding: 12px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--quarter-bg, var(--surface)) 28%, var(--surface)); }
 .time-map-group h3 { font-size: 13px; margin: 0 0 10px; }
-.time-map-days, .planner-circle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(28px, calc(48px * var(--calendar-scale, 1))), 1fr)); gap: 4px; }
-.calendar-circle { position: relative; display: grid; place-items: center; justify-self: center; width: max(28px, calc(48px * var(--calendar-scale, 1))); height: max(28px, calc(48px * var(--calendar-scale, 1))); padding: 4px; border: 0; background: transparent; color: var(--ink); border-radius: 0; }
-.calendar-circle > span { display: grid; place-items: center; width: 82%; height: 82%; border: 1px solid var(--muted); border-radius: 50%; font-size: 12px; font-variant-numeric: tabular-nums; }
+.time-map-days, .planner-circle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(28px, calc(48px * var(--calendar-scale, 1))), 1fr)); gap: 8px 4px; padding-block: 8px; }
+.calendar-circle { position: relative; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; justify-self: center; width: max(28px, calc(48px * var(--calendar-scale, 1))); height: max(28px, calc(48px * var(--calendar-scale, 1))); padding: 4px; border: 0; background: transparent; color: var(--ink); border-radius: 0; }
+/* A date is indivisible; intrinsic text sizing must not stretch a scaled circle. */
+.calendar-circle > span, .mini-calendar-circles > button > span { aspect-ratio: 1; white-space: nowrap; overflow-wrap: normal; line-height: 1; flex-shrink: 0; }
+.calendar-circle > span { display: grid; place-items: center; width: max(22px, 82%); height: auto; min-height: 0; border: 1px solid var(--muted); border-radius: 50%; font-size: 12px; font-variant-numeric: tabular-nums; }
 .calendar-circle.elapsed > span { background: var(--accent); border-color: var(--accent); color: #fff; }
 .calendar-circle.current > span { border: 2px solid var(--accent); outline: 3px solid var(--accent-soft); font-weight: 700; }
 .calendar-circle.selected { background: var(--accent-soft); border-radius: 6px; }
-.calendar-circle > small { position: absolute; right: 0; top: 0; font-size: 10px; min-width: 16px; height: 16px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; }
+.calendar-circle > small { position: absolute; right: 0; top: -8px; font-size: 10px; line-height: 1; white-space: nowrap; min-width: 16px; height: 12px; padding-inline: 1px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; }
 .calendar-circle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .calendar-circle:hover > span { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .calendar-day-details > div { display: grid; gap: 8px; margin: 16px 0; }
