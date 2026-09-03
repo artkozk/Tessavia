@@ -7328,6 +7328,8 @@ function actionLabel(action) {
 }
 
 function activityActionLabel(item) {
+  const schemaActions = {field_archived:'удалил поле доски',field_restored:'восстановил поле доски',stage_archived:'удалил колонку доски',stage_restored:'восстановил колонку доски',schema_reordered:'изменил порядок полей или колонок',collection_stage_relocated:'переместил карточку из удалённой колонки'};
+  if (schemaActions[item.action]) return schemaActions[item.action];
   if (item.entityType === 'user' && item.action === 'created') return 'зарегистрировался в проекте';
   return actionLabel(item.action);
 }
@@ -7430,6 +7432,7 @@ function activityContext(item) {
 
 function recordTitleByActivity(item) {
   if (item.entityType === 'user') return item.details?.username || 'Участник команды';
+  if (item.entityType === 'collection') return item.details?.name || state.collections.find(collection => collection.id === item.entityId)?.name || 'Доска';
   return state.records.find((record) => record.id === item.entityId)?.title || item.details?.title || (item.entityType === 'section_definition' ? 'Шаблон карточки' : item.entityType === 'planning_cycle' ? '12-недельный цикл' : typeMeta[item.entityType]?.singular || 'Запись недоступна');
 }
 

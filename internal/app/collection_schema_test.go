@@ -64,6 +64,10 @@ func TestCollectionSchemaArchiveRestorePreservesValuesAndLifecycle(t *testing.T)
 	if stage != target.ID || status != record.Status || kind != record.Type {
 		t.Fatalf("converted record: %s/%s/%s", stage, status, kind)
 	}
+	var historyType, historyWorkspace string
+	if err := f.store.db.QueryRow(`SELECT entity_type,workspace_id FROM activity WHERE entity_id=? AND action='collection_stage_relocated'`, record.ID).Scan(&historyType, &historyWorkspace); err != nil || historyType != record.Type || historyWorkspace != f.project.ID {
+		t.Fatalf("relocation missing from typed team history: %s/%s %v", historyType, historyWorkspace, err)
+	}
 	call("owner", "GET", base+"/schema", nil, 200, &schema)
 	for _, item := range schema.Stages {
 		if item.ID == source.ID {

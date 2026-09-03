@@ -83,6 +83,7 @@ func (s *Server) setCollectionElementArchive(w http.ResponseWriter, r *http.Requ
 	}
 	now := nowText()
 	moved := []string{}
+	movedTypes := map[string]string{}
 	if kind == "stage" && !restore {
 		var active int
 		if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM collection_stages WHERE collection_id=? AND archived_at IS NULL`, r.PathValue("id")).Scan(&active); err != nil {
@@ -93,19 +94,20 @@ func (s *Server) setCollectionElementArchive(w http.ResponseWriter, r *http.Requ
 			writeError(w, 409, "На доске должна остаться хотя бы одна колонка")
 			return
 		}
-		rows, queryErr := tx.QueryContext(r.Context(), `SELECT id FROM records WHERE collection_id=? AND stage_id=?`, r.PathValue("id"), id)
+		rows, queryErr := tx.QueryContext(r.Context(), `SELECT id,type FROM records WHERE collection_id=? AND stage_id=?`, r.PathValue("id"), id)
 		if queryErr != nil {
 			writeError(w, 500, "Не удалось проверить карточки")
 			return
 		}
 		for rows.Next() {
-			var recordID string
-			if queryErr = rows.Scan(&recordID); queryErr != nil {
+			var recordID, recordType string
+			if queryErr = rows.Scan(&recordID, &recordType); queryErr != nil {
 				rows.Close()
 				writeError(w, 500, "Не удалось прочитать карточки")
 				return
 			}
 			moved = append(moved, recordID)
+			movedTypes[recordID] = recordType
 		}
 		queryErr = rows.Err()
 		rows.Close()
@@ -124,7 +126,7 @@ func (s *Server) setCollectionElementArchive(w http.ResponseWriter, r *http.Requ
 				return
 			}
 			for _, recordID := range moved {
-				if err = writeActivity(r.Context(), tx, currentUser(r).ID, "record", recordID, "collection_stage_relocated", "Колонка удалена; состояние карточки сохранено", map[string]any{"before": id, "after": target}); err != nil {
+				if err = writeActivity(r.Context(), tx, currentUser(r).ID, movedTypes[recordID], recordID, "collection_stage_relocated", "Колонка удалена; состояние карточки сохранено", map[string]any{"before": id, "after": target}); err != nil {
 					writeError(w, 500, "Не удалось сохранить историю карточек")
 					return
 				}

@@ -8,6 +8,13 @@ const helpers = source.slice(source.indexOf('function currentWorkWindow('), sour
 test('the complete embedded UI parses, including collection markup', () => {
   new vm.Script(source.replace(/^import .*;$/gm, ''), {filename:'app.js'});
 });
+test('schema history uses understandable actions instead of internal operation names', () => {
+  const code=source.slice(source.indexOf('function activityActionLabel('),source.indexOf('function formatActivityValue('));
+  const context=vm.createContext({actionLabel:value=>value});vm.runInContext(code,context);
+  for (const action of ['field_archived','field_restored','stage_archived','stage_restored','schema_reordered','collection_stage_relocated']) {
+    assert.notEqual(context.activityActionLabel({entityType:'collection',action}),action);
+  }
+});
 function setup() {
   const state = {me:{id:1},activeWorkspaceId:'team-a',view:'work',workViewMode:'list',workStatus:'all',search:''};
   const context = vm.createContext({state,icon:()=>'',CSS:{escape:String}});
