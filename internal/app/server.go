@@ -480,7 +480,7 @@ func (s *Server) handleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
 	var currentHash string
 	if err := s.store.db.QueryRowContext(r.Context(), `SELECT password_hash FROM users WHERE id = ?`, user.ID).Scan(&currentHash); err != nil || bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(input.CurrentPassword)) != nil {
-		writeError(w, http.StatusUnauthorized, "Текущий пароль указан неверно")
+		writeError(w, http.StatusBadRequest, "Текущий пароль указан неверно")
 		return
 	}
 	newHash, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
