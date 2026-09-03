@@ -157,8 +157,8 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		SELECT q.id, q.record_id, q.body, q.status, q.created_at, q.updated_at
 		FROM question_items q
 		JOIN records r ON r.id = q.record_id
-		WHERE (? = 1 OR (r.status <> 'archived' AND q.status <> 'archived'))
-		ORDER BY q.record_id, q.sort_order, q.created_at`, includeArchived)
+		WHERE r.workspace_id = ? AND (? = 1 OR (r.status <> 'archived' AND q.status <> 'archived'))
+		ORDER BY q.record_id, q.sort_order, q.created_at`, currentWorkspace(r).ID, includeArchived)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить вопросы карты")
 		return
@@ -186,8 +186,8 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		JOIN question_items q ON q.id = a.question_id
 		JOIN records r ON r.id = q.record_id
 		JOIN users u ON u.id = a.author_id
-		WHERE (? = 1 OR (r.status <> 'archived' AND q.status <> 'archived'))
-		ORDER BY a.created_at`, includeArchived)
+		WHERE r.workspace_id = ? AND (? = 1 OR (r.status <> 'archived' AND q.status <> 'archived'))
+		ORDER BY a.created_at`, currentWorkspace(r).ID, includeArchived)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить ответы карты")
 		return
@@ -215,8 +215,8 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		JOIN question_items q ON q.id = d.question_id
 		JOIN records r ON r.id = q.record_id
 		JOIN users u ON u.id = d.decided_by
-		WHERE (? = 1 OR (r.status <> 'archived' AND q.status <> 'archived'))
-		ORDER BY d.created_at`, includeArchived)
+		WHERE r.workspace_id = ? AND (? = 1 OR (r.status <> 'archived' AND q.status <> 'archived'))
+		ORDER BY d.created_at`, currentWorkspace(r).ID, includeArchived)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить итоги карты")
 		return
@@ -243,8 +243,8 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		FROM research_options o
 		JOIN records r ON r.id = o.record_id
 		JOIN users u ON u.id = o.updated_by
-		WHERE (? = 1 OR (r.status <> 'archived' AND o.status <> 'archived'))
-		ORDER BY o.record_id, o.sort_order, o.created_at`, includeArchived)
+		WHERE r.workspace_id = ? AND (? = 1 OR (r.status <> 'archived' AND o.status <> 'archived'))
+		ORDER BY o.record_id, o.sort_order, o.created_at`, currentWorkspace(r).ID, includeArchived)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить варианты исследований карты")
 		return
