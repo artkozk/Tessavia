@@ -103,13 +103,29 @@ type PersonalRecurrenceRule struct {
 }
 
 type HabitCheckin struct {
-	Date      string `json:"date"`
-	Value     int    `json:"value"`
-	Note      string `json:"note"`
-	UpdatedAt string `json:"updatedAt"`
+	Date      string  `json:"date"`
+	Value     float64 `json:"value"`
+	State     string  `json:"state"`
+	Note      string  `json:"note"`
+	UpdatedAt string  `json:"updatedAt"`
 }
 
 type PersonalHabit struct {
+	Description string       `json:"description"`
+	ColorKey    string       `json:"colorKey"`
+	IconKey     string       `json:"iconKey"`
+	Timezone    string       `json:"timezone"`
+	Revision    int          `json:"revision"`
+	ArchivedAt  string       `json:"archivedAt"`
+	Rule        HabitRule    `json:"rule"`
+	Rules       []HabitRule  `json:"rules,omitempty"`
+	Pauses      []HabitPause `json:"pauses"`
+	Moves       []HabitMove  `json:"moves"`
+	Paused      bool         `json:"paused"`
+	Today       string       `json:"today"`
+	Days        []HabitDay   `json:"days"`
+	Summary     HabitSummary `json:"summary"`
+
 	ID                string         `json:"id"`
 	Title             string         `json:"title"`
 	ScheduleKind      string         `json:"scheduleKind"`
@@ -353,97 +369,24 @@ func (s *Server) listPersonalPlans(r *http.Request, ownerID int64) ([]PersonalPl
 }
 
 func (s *Server) listPersonalHabits(r *http.Request, ownerID int64) ([]PersonalHabit, error) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, schedule_kind, target_per_week, unit, start_date, created_at, updated_at FROM personal_habits WHERE owner_id = ? AND archived_at IS NULL ORDER BY updated_at DESC`, ownerID)
+	items, err := s.loadHabits(r, ownerID, "", time.Now().AddDate(0, 0, -7).Format("2006-01-02"))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	items := make([]PersonalHabit, 0)
-	for rows.Next() {
-		var item PersonalHabit
-		if err := rows.Scan(&item.ID, &item.Title, &item.ScheduleKind, &item.TargetPerWeek, &item.Unit, &item.StartDate, &item.CreatedAt, &item.UpdatedAt); err != nil {
-			return nil, err
+	for i, h := range items {
+		today := habitToday(h)
+		out := buildHabitTracker(h, habitAdd(today, -6), today, today)
+		items[i] = out.Habit
+		items[i].Days = out.Days
+		items[i].Summary = out.Summary
+		weekStart, _ := habitPeriodBounds(today, "weekly")
+		for _, c := range out.Days {
+			if c.Date >= weekStart && c.State == "success" {
+				items[i].CompletedThisWeek++
+			}
 		}
-		item.Checkins = make([]HabitCheckin, 0)
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	rows.Close() // one DB connection: release it before loading child check-ins.
-	for index := range items {
-		checkins, err := s.listHabitCheckins(r, ownerID, items[index].ID)
-		if err != nil {
-			return nil, err
-		}
-		items[index].Checkins = checkins
-		items[index].CurrentStreak, items[index].BestStreak, items[index].CompletedThisWeek = habitStats(checkins)
 	}
 	return items, nil
-}
-
-func (s *Server) listHabitCheckins(r *http.Request, ownerID int64, habitID string) ([]HabitCheckin, error) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT checkin_date, value, note, updated_at FROM personal_habit_checkins WHERE owner_id = ? AND habit_id = ? AND value > 0 ORDER BY checkin_date DESC`, ownerID, habitID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := make([]HabitCheckin, 0)
-	for rows.Next() {
-		var item HabitCheckin
-		if err := rows.Scan(&item.Date, &item.Value, &item.Note, &item.UpdatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
-}
-
-func habitStats(checkins []HabitCheckin) (current, best, thisWeek int) {
-	done := make(map[string]bool, len(checkins))
-	for _, checkin := range checkins {
-		done[checkin.Date] = checkin.Value > 0
-	}
-	now := time.Now().In(personalLocation())
-	weekday := (int(now.Weekday()) + 6) % 7
-	weekStart := now.AddDate(0, 0, -weekday)
-	for offset := 0; offset < 7; offset++ {
-		if done[weekStart.AddDate(0, 0, offset).Format("2006-01-02")] {
-			thisWeek++
-		}
-	}
-	day := now
-	if !done[day.Format("2006-01-02")] {
-		day = day.AddDate(0, 0, -1)
-	}
-	for done[day.Format("2006-01-02")] {
-		current++
-		day = day.AddDate(0, 0, -1)
-	}
-	dates := make([]string, 0, len(done))
-	for date := range done {
-		dates = append(dates, date)
-	}
-	sort.Strings(dates)
-	streak := 0
-	var previous time.Time
-	for _, value := range dates {
-		parsed, err := time.Parse("2006-01-02", value)
-		if err != nil {
-			continue
-		}
-		if previous.IsZero() || parsed.Sub(previous) == 24*time.Hour {
-			streak++
-		} else {
-			streak = 1
-		}
-		if streak > best {
-			best = streak
-		}
-		previous = parsed
-	}
-	return current, best, thisWeek
 }
 
 func (s *Server) listPersonalLinks(r *http.Request, ownerID int64) ([]PersonalLink, error) {
@@ -802,135 +745,6 @@ func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleArchivePersonalPlan(w http.ResponseWriter, r *http.Request) {
 	s.archivePersonalEntity(w, r, "plan", `UPDATE personal_plans SET status = 'archived', updated_at = ? WHERE id = ? AND owner_id = ? AND status <> 'archived'`, "План не найден")
-}
-
-func (s *Server) handleCreatePersonalHabit(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Title         string `json:"title"`
-		ScheduleKind  string `json:"scheduleKind"`
-		TargetPerWeek int    `json:"targetPerWeek"`
-		Unit          string `json:"unit"`
-		StartDate     string `json:"startDate"`
-	}
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	input.Title = strings.TrimSpace(input.Title)
-	input.Unit = strings.TrimSpace(input.Unit)
-	if input.ScheduleKind == "" {
-		input.ScheduleKind = "daily"
-	}
-	if input.TargetPerWeek == 0 {
-		input.TargetPerWeek = 7
-	}
-	if input.Unit == "" {
-		input.Unit = "раз"
-	}
-	if input.StartDate == "" {
-		input.StartDate = time.Now().In(personalLocation()).Format("2006-01-02")
-	}
-	if len([]rune(input.Title)) < 1 || len([]rune(input.Title)) > 160 || len([]rune(input.Unit)) > 32 || input.TargetPerWeek < 1 || input.TargetPerWeek > 7 || !validHabitSchedule(input.ScheduleKind) || !validDate(input.StartDate) {
-		writeError(w, http.StatusBadRequest, "Проверьте название и расписание привычки")
-		return
-	}
-	id, ok := newPersonalID(w)
-	if !ok {
-		return
-	}
-	now := nowText()
-	user := currentUser(r)
-	_, err := s.store.db.ExecContext(r.Context(), `INSERT INTO personal_habits(id, owner_id, title, schedule_kind, target_per_week, unit, start_date, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, input.ScheduleKind, input.TargetPerWeek, input.Unit, input.StartDate, now, now)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось сохранить привычку")
-		return
-	}
-	writeJSON(w, http.StatusCreated, PersonalHabit{ID: id, Title: input.Title, ScheduleKind: input.ScheduleKind, TargetPerWeek: input.TargetPerWeek, Unit: input.Unit, StartDate: input.StartDate, Checkins: []HabitCheckin{}, CreatedAt: now, UpdatedAt: now})
-}
-
-func (s *Server) handleUpdatePersonalHabit(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Title         string `json:"title"`
-		ScheduleKind  string `json:"scheduleKind"`
-		TargetPerWeek int    `json:"targetPerWeek"`
-		Unit          string `json:"unit"`
-	}
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	input.Title = strings.TrimSpace(input.Title)
-	input.Unit = strings.TrimSpace(input.Unit)
-	if len([]rune(input.Title)) < 1 || len([]rune(input.Title)) > 160 || len([]rune(input.Unit)) > 32 || input.TargetPerWeek < 1 || input.TargetPerWeek > 7 || !validHabitSchedule(input.ScheduleKind) {
-		writeError(w, http.StatusBadRequest, "Проверьте название и расписание привычки")
-		return
-	}
-	user := currentUser(r)
-	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_habits SET title = ?, schedule_kind = ?, target_per_week = ?, unit = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, input.Title, input.ScheduleKind, input.TargetPerWeek, input.Unit, nowText(), r.PathValue("id"), user.ID)
-	if err != nil || affectedRows(result) == 0 {
-		writeError(w, http.StatusNotFound, "Привычка не найдена")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) handleArchivePersonalHabit(w http.ResponseWriter, r *http.Request) {
-	s.archivePersonalEntity(w, r, "habit", `UPDATE personal_habits SET archived_at = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, "Привычка не найдена")
-}
-
-func (s *Server) handleSetHabitCheckin(w http.ResponseWriter, r *http.Request) {
-	date := r.PathValue("date")
-	if !validDate(date) {
-		writeError(w, http.StatusBadRequest, "Некорректная дата")
-		return
-	}
-	var input struct {
-		Value int    `json:"value"`
-		Note  string `json:"note"`
-	}
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if input.Value == 0 {
-		input.Value = 1
-	}
-	if input.Value < 1 || input.Value > 1000000 || len([]rune(input.Note)) > 1000 {
-		writeError(w, http.StatusBadRequest, "Некорректная отметка")
-		return
-	}
-	user := currentUser(r)
-	habitID := r.PathValue("id")
-	if !s.personalEntityExists(r, user.ID, "habit", habitID) {
-		writeError(w, http.StatusNotFound, "Привычка не найдена")
-		return
-	}
-	id, ok := newPersonalID(w)
-	if !ok {
-		return
-	}
-	now := nowText()
-	_, err := s.store.db.ExecContext(r.Context(), `
-		INSERT INTO personal_habit_checkins(id, habit_id, owner_id, checkin_date, value, note, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(habit_id, checkin_date) DO UPDATE SET value = excluded.value, note = excluded.note, updated_at = excluded.updated_at`, id, habitID, user.ID, date, input.Value, strings.TrimSpace(input.Note), now, now)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось сохранить отметку")
-		return
-	}
-	writeJSON(w, http.StatusOK, HabitCheckin{Date: date, Value: input.Value, Note: strings.TrimSpace(input.Note), UpdatedAt: now})
-}
-
-func (s *Server) handleDeleteHabitCheckin(w http.ResponseWriter, r *http.Request) {
-	date := r.PathValue("date")
-	if !validDate(date) {
-		writeError(w, http.StatusBadRequest, "Некорректная дата")
-		return
-	}
-	user := currentUser(r)
-	result, err := s.store.db.ExecContext(r.Context(), `DELETE FROM personal_habit_checkins WHERE habit_id = ? AND owner_id = ? AND checkin_date = ?`, r.PathValue("id"), user.ID, date)
-	if err != nil || affectedRows(result) == 0 {
-		writeError(w, http.StatusNotFound, "Отметка не найдена")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handlePersonalSuggestions(w http.ResponseWriter, r *http.Request) {

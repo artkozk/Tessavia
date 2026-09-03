@@ -1,7 +1,8 @@
-const CACHE = 'tessavie-shell-20260904-constructor-work-4';
+const CACHE = 'tessavie-shell-20260904-habits-3';
 const ASSETS = [
-  '/', '/app.js?v=20260904-constructor-work-4', '/styles.css?v=20260904-constructor-work-4',
-  '/outbox-ui.js?v=20260903-offline-outbox-2', '/offline-outbox.js?v=20260903-offline-outbox-2',
+  '/', '/app.js?v=20260904-habits-3', '/styles.css?v=20260904-habits-3',
+  '/outbox-ui.js?v=20260904-habits-3', '/offline-outbox.js?v=20260903-offline-outbox-2',
+  '/habit-tracker.js?v=20260904-habits-3',
   '/graph-layout-state.js?v=20260903-graph-layouts-1', '/manifest.webmanifest',
   '/vendor/cytoscape-3.34.1.min.js', '/vendor/marked-18.0.9.umd.js', '/vendor/dompurify-3.4.13.min.js',
   '/fonts/Inter-Regular.woff2', '/fonts/Inter-SemiBold.woff2', '/fonts/Inter-Bold.woff2', '/fonts/Onest-Variable.ttf',

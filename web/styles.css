@@ -4296,3 +4296,98 @@ body:has(.calendar-expanded) { overflow: hidden; }
   .work-page-navigation .text-button { padding: 4px; }
   .schema-row-actions { flex-wrap: wrap; }
 }
+/* Habit tracker: bounded lists and a calendar whose state is readable without color. */
+.habit-section, .habit-tracker, .habit-settings { min-width: 0; }
+.habit-filters, .habit-card-heading, .habit-card-footer, .habit-goal, .habit-tracker-intro, .habit-period-navigation, .habit-lifecycle, .habit-increments { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.habit-filters { margin: 16px 0; }
+.habit-filters [aria-pressed="true"] { background: var(--accent); color: white; border-color: var(--accent); }
+.habit-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 16px; max-height: 68dvh; overflow-y: auto; overscroll-behavior: contain; padding: 2px 6px 12px 0; }
+.habit-card { --habit-color: var(--accent); border: 1px solid var(--line); border-left: 3px solid var(--habit-color); border-radius: 12px; padding: 16px; background: var(--surface); min-width: 0; }
+.habit-card[data-habit-color="blue"] { --habit-color: #4577a1; }
+.habit-card[data-habit-color="purple"] { --habit-color: #806197; }
+.habit-card[data-habit-color="orange"] { --habit-color: #b87829; }
+.habit-card[data-habit-color="pink"] { --habit-color: #a95880; }
+.habit-emblem { color: var(--habit-color); flex: 0 0 auto; }
+.habit-title { flex: 1; min-width: 100px; display: grid; text-align: left; gap: 5px; white-space: normal; overflow-wrap: anywhere; }
+.habit-title strong { font-size: 16px; }
+.habit-title span, .habit-card-footer small { font-size: 12px; color: var(--muted); font-weight: 400; }
+.habit-goal { justify-content: space-between; margin: 14px 0; font-size: 12px; }
+.habit-card .habit-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; width: 100%; }
+.habit-cell { min-width: 0; min-height: 48px; display: grid; justify-items: center; gap: 2px; padding: 6px 0; border: 1px solid var(--line); border-radius: 6px; }
+.habit-cell small { font-size: 11px; }
+.habit-card-footer { margin-top: 14px; justify-content: space-between; font-size: 13px; }
+.habit-card-footer small { display: block; margin-top: 3px; }
+.habit-card-footer button { font-size: 12px; }
+.habit-tracker { padding: 20px 28px 28px; }
+.habit-settings { padding: 20px 28px 28px; display: grid; gap: 16px; }
+.habit-settings [hidden] { display: none !important; }
+.habit-tracker-intro p { flex: 1 1 250px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.habit-tracker-controls { display: flex; align-items: end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
+.habit-period-navigation { flex: 1; justify-content: center; }
+.habit-period-navigation strong { font-size: 12px; flex: 1; text-align: center; }
+.habit-stats { display: flex; gap: 18px; flex-wrap: wrap; padding: 18px 0; border-block: 1px solid var(--line); }
+.habit-stats p { font-size: 13px; line-height: 1.6; margin: 6px 0; }
+.habit-stats small { font-size: 11px; color: var(--muted); max-width: 36ch; display: block; }
+.habit-progress { width: 88px; height: 88px; flex: 0 0 88px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--accent) var(--habit-progress), var(--line) 0); position: relative; }
+.habit-progress::before { content: ''; position: absolute; inset: 7px; background: var(--surface, #faf9f5); border-radius: 50%; }
+.habit-progress strong { position: relative; font-size: 22px; }
+.habit-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 20px; }
+.habit-calendar-weekday { color: var(--muted); text-align: center; font-size: 12px; padding: 5px; }
+.habit-calendar-day { min-width: 0; min-height: 60px; padding: 6px; border-radius: 7px; border: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1fr; text-align: left; position: relative; gap: 3px; }
+.habit-calendar-day b { justify-self: end; }
+.habit-calendar-day small { font-size: 11px; grid-column: 1 / -1; }
+.habit-calendar-day i { position: absolute; bottom: 2px; right: 4px; }
+.habit-calendar-day.is-today { outline: 2px solid var(--accent); outline-offset: 1px; }
+.habit-tracker .is-success, .habit-card .is-success { background: #dcece5; color: #155c48; }
+.habit-tracker .is-failed, .habit-card .is-failed { background: #f8e9e6; color: #974d42; }
+.habit-tracker .is-partial, .habit-card .is-partial { background: #faf0d8; color: #866322; }
+.habit-tracker .is-skipped, .habit-card .is-skipped, .habit-tracker .is-paused, .habit-card .is-paused { background: #e9ecec; color: #606d69; }
+.habit-tracker .is-future, .habit-tracker .is-rest, .habit-card .is-rest { background: transparent; color: var(--muted); }
+.habit-legend { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; font-size: 11px; }
+.habit-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.habit-legend b { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; }
+.habit-day-editor { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 14px; margin: 16px 0; }
+.habit-day-editor h3, .habit-day-editor p { margin: 0; }
+.habit-day-editor p { font-size: 13px; }
+.habit-day-editor input, .habit-day-editor select, .habit-day-editor textarea, .habit-settings input, .habit-settings select, .habit-settings textarea { min-width: 0; width: 100%; }
+.habit-increments span { font-size: 11px; }
+.habit-details { border-top: 1px solid var(--line); padding: 16px 0; font-size: 13px; }
+.habit-details summary { cursor: pointer; font-weight: 600; }
+.habit-weekday-stats { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 16px; }
+.habit-weekday-stats span { display: grid; gap: 7px; text-align: center; font-size: 12px; }
+.habit-weekday-stats small { font-size: 10px; color: var(--muted); }
+.habit-periods { display: grid; gap: 8px; margin: 16px 0; }
+.habit-periods > div { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; font-size: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; }
+.habit-weekday-picker { display: flex; flex-wrap: wrap; gap: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.habit-weekday-picker label { display: inline-flex; gap: 5px; align-items: center; }
+.habit-weekday-picker input { width: 16px; }
+.habit-lifecycle { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.habit-lifecycle label { font-size: 12px; }
+.habit-move-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 12px 0 20px; }
+.habit-move-form small { flex: 1 0 100%; color: var(--muted); }
+@media (max-width: 560px) {
+  .habit-tracker, .habit-settings { padding: 16px 12px; }
+  .habit-calendar { gap: 4px; }
+  .habit-calendar-day { min-height: 48px; padding: 4px; font-size: 11px; }
+  .habit-calendar-day small { font-size: 9px; }
+  .habit-tracker .form-grid.two, .habit-settings .form-grid.two { grid-template-columns: minmax(0, 1fr); }
+  .habit-day-editor { padding: 12px; }
+  .habit-progress { width: 64px; height: 64px; flex-basis: 64px; }
+  .habit-progress strong { font-size: 18px; }
+  .habit-stats { gap: 12px; }
+  .habit-stats > div:nth-child(2) { flex: 1; min-width: 130px; }
+  .habit-tracker-controls { align-items: stretch; }
+  .habit-period-navigation { flex: 1 0 100%; order: 3; }
+  .habit-card { padding: 12px; }
+  .habit-weekday-stats { gap: 2px; }
+}
+
+.habit-progress { background: none; }
+.habit-progress::before { display: none; }
+.habit-progress svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.habit-progress circle { fill: none; stroke-width: 8; }
+.habit-ring-track { stroke: var(--line); }
+.habit-ring-value { stroke: var(--accent); }
+@media (max-width: 560px) {
+  #personal-dialog:has(.habit-tracker) .dialog-header h2 { font-size: 18px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+}

@@ -1,4 +1,5 @@
-import { createOutboxUI } from './outbox-ui.js?v=20260903-offline-outbox-2';
+import { createHabitUI } from './habit-tracker.js?v=20260904-habits-3';
+import { createOutboxUI } from './outbox-ui.js?v=20260904-habits-3';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1167,7 +1168,8 @@ offlineOutbox = createOutboxUI({
   onOfflineIdentity: account => { state.me = account; state.offlineMode = true; },
   onConfirmed: (item) => {
     if (item.owner !== state.me?.id || state.offlineMode) return;
-    if (item.kind === 'note' || item.kind === 'plan') void loadPersonal({ force: true });
+    if (item.kind === 'habit-checkin') habitUI.confirmed(item.habit,item.date);
+    if (['note','plan','habit-checkin'].includes(item.kind)) void loadPersonal({ force: true });
     else if (item.workspace === state.activeWorkspaceId && item.thread === state.activeChatThreadId) void loadChatThread(item.thread,true);
   },
 });
@@ -2417,7 +2419,7 @@ function renderPersonal() {
   }
   const data = state.personal;
   const openPlans = data.plans.filter((plan) => plan.status === 'planned');
-  const doneToday = data.habits.filter((habit) => habit.checkins?.some((checkin) => checkin.date === localISODate())).length;
+  const doneToday = data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.state === 'success')).length;
   const inboxCount = data.notes.filter(note => note.inInbox).length;
   const tabs = [['today', 'Сегодня'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['projects', 'Проекты'], ['goals', 'Цели'], ['notes', 'Заметки'], ['plans', 'Дела'], ['habits', 'Привычки']];
   $('#main-content').innerHTML = `
@@ -2425,7 +2427,7 @@ function renderPersonal() {
       <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>Личное пространство</h1><p>${escapeHTML(state.me.displayName || state.me.username)}</p></div>
       ${renderPersonalCreateMenu()}
     </div>
-    <section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.length}</strong><small>отмечено</small></article><article><span>Незавершённые дела</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate || plan.startsAt || plan.occurrenceDate).length} запланировано</small></article><article><span>Проекты и цели</span><strong>${data.projects.length}/${data.goals.length}</strong><small>открыто</small></article></section>
+    <section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.planned)).length}</strong><small>отмечено</small></article><article><span>Незавершённые дела</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate || plan.startsAt || plan.occurrenceDate).length} запланировано</small></article><article><span>Проекты и цели</span><strong>${data.projects.length}/${data.goals.length}</strong><small>открыто</small></article></section>
     <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}</div>
     <div class="personal-content">${renderPersonalTab(data)}</div>`;
   $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; renderPersonal(); }));
@@ -2447,7 +2449,7 @@ function renderPersonalTab(data) {
   if (state.personalTab === 'habits') return renderPersonalHabits(data.habits, data.links);
   const activePlans = data.plans.filter((plan) => plan.status === 'planned').slice(0, 6);
   const notes = [...data.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)).slice(0, 4);
-  return `<section class="personal-today-grid"><div class="personal-column"><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ритм дня</p><h2>Привычки</h2></div>${data.habits.length ? `<span class="panel-note">${data.habits.filter((habit) => habit.currentStreak > 0).length} серий</span>` : ''}</div><div class="habit-list">${data.habits.map((habit) => renderHabitRow(habit, data.links, true)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ближайшее</p><h2>Планы</h2></div><button type="button" class="text-button" data-personal-tab-jump="plans">Все планы</button></div><div class="personal-list">${activePlans.map((plan) => renderPlanRow(plan, data.links)).join('') || personalEmpty('Открытых планов нет', 'plan', 'Добавить план')}</div></section></div><div class="personal-column"><section class="personal-section life-section">${renderLifeMap(data.settings)}</section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Под рукой</p><h2>Заметки</h2></div><button type="button" class="text-button" data-personal-tab-jump="notes">Все заметки</button></div><div class="personal-notes-preview">${notes.map((note) => renderNoteCard(note, data.links, true)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section></div></section>`;
+  return `<section class="personal-today-grid"><div class="personal-column"><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ритм дня</p><h2>Привычки</h2></div>${data.habits.length ? `<span class="panel-note">${data.habits.filter((habit) => habit.currentStreak > 0).length} серий</span>` : ''}</div><div class="habit-list">${data.habits.filter(h => !h.archivedAt && !h.paused).map((habit) => renderHabitRow(habit, data.links, true)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ближайшее</p><h2>Планы</h2></div><button type="button" class="text-button" data-personal-tab-jump="plans">Все планы</button></div><div class="personal-list">${activePlans.map((plan) => renderPlanRow(plan, data.links)).join('') || personalEmpty('Открытых планов нет', 'plan', 'Добавить план')}</div></section></div><div class="personal-column"><section class="personal-section life-section">${renderLifeMap(data.settings)}</section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Под рукой</p><h2>Заметки</h2></div><button type="button" class="text-button" data-personal-tab-jump="notes">Все заметки</button></div><div class="personal-notes-preview">${notes.map((note) => renderNoteCard(note, data.links, true)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section></div></section>`;
 }
 
 function renderPersonalProjects(data) {
@@ -2566,9 +2568,7 @@ function renderPersonalPlans(plans, links) {
   return `<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Личный горизонт</p><h2>Планы</h2></div><span class="panel-note">${active.length} открыто</span></div><div class="personal-plan-groups"><div><h3>В работе</h3><div class="personal-list">${active.map((plan) => renderPlanRow(plan, links)).join('') || `<p class="personal-muted">Открытых планов нет.</p>`}</div></div>${done.length ? `<div><h3>Завершено</h3><div class="personal-list completed">${done.map((plan) => renderPlanRow(plan, links)).join('')}</div></div>` : ''}</div></section>`;
 }
 
-function renderPersonalHabits(habits, links) {
-  return `<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Повторяемые действия</p><h2>Привычки</h2></div><span class="panel-note">${habits.length}</span></div><div class="habit-list expanded">${habits.map((habit) => renderHabitRow(habit, links)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section>`;
-}
+function renderPersonalHabits(habits, links) { return habitUI.renderList(habits); }
 
 function renderNoteCard(note, links, compact = false) {
   const ownLinks = personalLinksFor(links, 'note', note.id);
@@ -2586,12 +2586,8 @@ function renderPlanRow(plan, links) {
   return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
-function renderHabitRow(habit, links, compact = false) {
-  const dates = lastDates(7);
-  const done = new Set((habit.checkins || []).map((checkin) => checkin.date));
-  const ownLinks = personalLinksFor(links, 'habit', habit.id);
-  return `<article class="habit-row ${compact ? 'compact' : ''}"><button type="button" class="habit-main" data-personal-edit="habit" data-personal-id="${habit.id}"><strong>${escapeHTML(habit.title)}</strong><span>${habit.completedThisWeek}/${habit.targetPerWeek} ${escapeHTML(habit.unit)} за неделю · серия ${habit.currentStreak}</span></button><div class="habit-week" aria-label="Отметки за 7 дней">${dates.map((date) => `<button type="button" class="habit-day ${done.has(date) ? 'done' : ''} ${date === localISODate() ? 'today' : ''}" data-habit-check="${habit.id}" data-check-date="${date}" title="${formatDate(`${date}T12:00:00`)}" aria-label="${done.has(date) ? 'Снять отметку' : 'Отметить выполнение'}">${done.has(date) ? icon('check') : `<span>${new Date(`${date}T12:00:00`).toLocaleDateString('ru-RU', { weekday: 'narrow' })}</span>`}</button>`).join('')}</div><div class="habit-actions"><button type="button" class="icon-button" data-personal-link="habit" data-personal-id="${habit.id}" data-personal-title="${escapeHTML(habit.title)}" title="Связать" aria-label="Связать привычку">${icon('link')}</button></div>${renderPersonalLinkChips(ownLinks)}</article>`;
-}
+const habitUI = createHabitUI({ outbox: () => offlineOutbox, escapeHTML, icon, api, state, toast, loadPersonal, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, findHabit: id => findPersonalItem('habit', id), openLinks: openPersonalLinkDialog, renderPersonal });
+function renderHabitRow(habit, links, compact = false) { return habitUI.renderRow(habit, compact); }
 
 function renderLifeMap(settings) {
   if (!settings.birthDate) return `<div class="section-heading"><div><p class="eyebrow">Карта времени</p><h2>Жизнь в месяцах</h2></div></div><div class="life-empty"><span class="life-empty-dots">${Array.from({ length: 48 }, () => '<i></i>').join('')}</span><p>Укажите дату рождения и горизонт жизни в профиле.</p><button type="button" class="secondary" data-open-own-profile>${icon('edit')} Настроить</button></div>`;
@@ -2650,6 +2646,7 @@ function bindPersonalInteractions() {
     openPersonalEditor(button.dataset.personalCreate);
   }));
   $$('[data-plan-toggle]').forEach((button) => button.addEventListener('click', () => togglePersonalPlan(button.dataset.planToggle)));
+  habitUI.bind();
   $$('[data-habit-check]').forEach((button) => button.addEventListener('click', () => toggleHabitCheckin(button.dataset.habitCheck, button.dataset.checkDate)));
   $$('[data-personal-link]').forEach((button) => button.addEventListener('click', () => openPersonalLinkDialog(button.dataset.personalLink, button.dataset.personalId, button.dataset.personalTitle)));
   $$('[data-personal-target-type]').forEach((button) => button.addEventListener('click', () => openPersonalTarget(button.dataset.personalTargetType, button.dataset.personalTargetId)));
@@ -2722,6 +2719,7 @@ function personalPlanContextFields(plan) {
 }
 
 function openPersonalEditor(kind, id = '', context = {}) {
+  if (kind === 'habit') return id ? habitUI.open(id) : habitUI.settings();
   const item = id ? findPersonalItem(kind, id) : null;
   const dialog = $('#personal-dialog');
   const content = $('#personal-dialog-content');
@@ -9109,7 +9107,7 @@ function renderWorkspaceWidget(block, settings) {
     body = notes.slice(0,limit).map(note=>`<button type="button" class="day-record-row" data-day-kind="note" data-day-item="${note.id}">${icon('edit')}<span><strong>${escapeHTML(note.title)}</strong><small>${escapeHTML(markdownPlain(note.body).slice(0,100))}</small></span></button>`).join('');
     body += `<button type="button" class="text-button" data-widget-personal-tab="notes">Все заметки · ${notes.length} ${icon('chevronRight')}</button>`;
   } else if (kind === 'habits') {
-    body = (state.personal?.habits || []).slice(0,limit).map(habit => `<button type="button" class="day-record-row" data-widget-personal-tab="habits">${icon('checkSquare')}<span><strong>${escapeHTML(habit.title)}</strong><small>Серия: ${habit.currentStreak || 0}</small></span></button>`).join('');
+    body = (state.personal?.habits || []).filter(habit => !habit.archivedAt && !habit.paused).slice(0,limit).map(habit => `<button type="button" class="day-record-row" data-widget-personal-tab="habits">${icon('checkSquare')}<span><strong>${escapeHTML(habit.title)}</strong><small>Серия: ${habit.currentStreak || 0} ${escapeHTML(habit.summary?.streakUnit || 'плановых дней')}</small></span></button>`).join('');
     body += '<button type="button" class="text-button" data-widget-personal-tab="habits">Все привычки</button>';
   } else {
     let items = [];

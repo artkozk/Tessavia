@@ -19,11 +19,11 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
   local.querySelector('[data-new-plan]').onclick = () => newPersonal('plan');
   local.querySelector('[data-reconnect]').onclick = () => location.reload();
   local.querySelector('[data-offline-exit]').onclick = () => onAuthRequired();
-  const request = async (path, { owner: expected, workspace: project, body, timeout = 15000 } = {}) => {
+  const request = async (path, { owner: expected, workspace: project, body, method, timeout = 15000 } = {}) => {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeout);
     try {
       const form = body instanceof FormData;
-      const response = await fetch(path, { method: body ? 'POST' : 'GET', body: form ? body : body ? JSON.stringify(body) : undefined, credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+      const response = await fetch(path, { method: method || (body ? 'POST' : 'GET'), body: form ? body : body ? JSON.stringify(body) : undefined, credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
         headers: { 'X-Outbox-Owner': String(expected), ...(project ? { 'X-Workspace-ID': project } : {}), ...(body && !form ? { 'Content-Type': 'application/json' } : {}) } });
       const result = await response.json();
       if (!response.ok) throw Object.assign(new Error(result.error || 'Сервер не подтвердил отправку'), { status: response.status, code: result.code });
@@ -44,7 +44,7 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
       trigger.setAttribute('aria-label', `Очередь отправки${count ? `: ${count}` : ''}`);
       if (!dialog.open) return;
       const labels = { queued: 'В браузере · ожидает отправки', sending: 'Отправляется', confirmed: 'Подтверждено сервером', blocked: 'Требует действия', paused: 'Повторы остановлены' };
-      const markup = all.map(item => `<article class="outbox-item" data-id="${escapeHTML(item.id)}"><strong>${escapeHTML(item.title || item.fileName || 'Запись')}</strong><small>${escapeHTML(labels[item.status])} · ${escapeHTML(item.kind === 'note' || item.kind === 'plan' ? 'Только для вас' : item.destination || 'Исходный диалог')}</small>${item.error ? `<p class="form-error">${escapeHTML(item.error)}</p>` : ''}<div class="outbox-actions"><button type="button" class="quiet" data-text>Открыть текст</button>${item.blob ? '<button type="button" class="quiet" data-file>Сохранить файл</button>' : ''}${['queued','blocked','paused'].includes(item.status) || item.status === 'sending' && item.leaseUntil <= Date.now() ? `<button type="button" class="secondary" data-retry>Повторить отправку</button><button type="button" class="quiet" data-stop>${item.attempts ? 'Остановить повторы' : 'Отменить'}</button>` : ''}</div><textarea class="outbox-text" aria-label="Сохранённый текст" readonly hidden>${escapeHTML([item.payload?.title, item.payload?.body || item.payload?.notes].filter(Boolean).join('\n\n') || item.fileName || '')}</textarea></article>`).join('') || '<p>Очередь пуста.</p>';
+      const markup = all.map(item => `<article class="outbox-item" data-id="${escapeHTML(item.id)}"><strong>${escapeHTML(item.title || item.fileName || 'Запись')}</strong><small>${escapeHTML(labels[item.status])} · ${escapeHTML(['note','plan','habit-checkin'].includes(item.kind) ? 'Только для вас' : item.destination || 'Исходный диалог')}</small>${item.error ? `<p class="form-error">${escapeHTML(item.error)}</p>` : ''}<div class="outbox-actions"><button type="button" class="quiet" data-text>Открыть текст</button>${item.blob ? '<button type="button" class="quiet" data-file>Сохранить файл</button>' : ''}${['queued','blocked','paused'].includes(item.status) || item.status === 'sending' && item.leaseUntil <= Date.now() ? `<button type="button" class="secondary" data-retry>Повторить отправку</button><button type="button" class="quiet" data-stop>${item.attempts ? 'Остановить повторы' : 'Отменить'}</button>` : ''}</div><textarea class="outbox-text" aria-label="Сохранённый текст" readonly hidden>${escapeHTML([item.payload?.title, item.kind === 'habit-checkin' ? `Дата: ${item.date}\nРезультат: ${item.payload.state}\nФакт: ${item.payload.value}\n${item.payload.note || ''}` : item.payload?.body || item.payload?.notes].filter(Boolean).join('\n\n') || item.fileName || '')}</textarea></article>`).join('') || '<p>Очередь пуста.</p>';
       // Do not replace a selected text field during background checks.
       if (markup === lastMarkup || dialog.querySelector('.outbox-text:focus')) return;
       lastMarkup = markup;
@@ -62,13 +62,14 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
     verifyOwner: async expected => { const actual = await request('/api/me', { owner: expected }); if (actual.id !== expected) throw Object.assign(new Error('Аккаунт изменился'), { code: 'outbox_owner_changed' }); },
     online: () => navigator.onLine,
     send: item => {
+      if (item.kind === 'habit-checkin') return request(`/api/personal/habits/${encodeURIComponent(item.habit)}/checkins/${item.date}`, { owner: item.owner, method: 'PUT', body: item.payload }).then(result => ({ ...result, id: `${item.habit}:${item.date}` }));
       if (item.kind === 'note' || item.kind === 'plan') return request(`/api/personal/${item.kind}s`, { owner: item.owner, body: { ...item.payload, requestKey: item.id } });
       if (item.kind === 'message') return request(`/api/chat/threads/${encodeURIComponent(item.thread)}/messages`, { owner: item.owner, workspace: item.workspace, body: { ...item.payload, clientNonce: item.id } });
       const body = new FormData(); body.append('file',item.blob,item.fileName); body.append('clientNonce',item.id);
       for (const [key,value] of Object.entries(item.payload)) body.append(key,value);
       return request(`/api/chat/threads/${encodeURIComponent(item.thread)}/attachments`, { owner: item.owner, workspace: item.workspace, body, timeout: 120000 });
     },
-    changed: () => { void refresh(); channel?.postMessage('changed'); },
+    changed: () => { void refresh(); channel?.postMessage('changed'); window.dispatchEvent(new Event('tessavie-outbox-change')); },
     confirmed: (item,result) => { onConfirmed(item,result); void prune(item.owner); },
     authRequired: () => onAuthRequired(),
   });
@@ -100,6 +101,12 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
       local.hidden = false; local.querySelector('[data-local-account]').textContent = `Локальный аккаунт: ${account.username}`;
       void queue.pump(); return true;
     },
+    async addHabit(habit,date,payload,expected,title) {
+      const pending = (await store.list(expected)).some(item => item.kind === 'habit-checkin' && item.habit === habit && item.date === date && item.status !== 'confirmed');
+      if (pending) throw new Error('Для этого дня уже есть ожидающий результат. Проверьте очередь отправки.');
+      await queue.enqueue([{ kind: 'habit-checkin', habit, date, payload, title }], expected);
+    },
+    async pendingHabits(expected) { return (await store.list(expected)).filter(item => item.kind === 'habit-checkin' && item.status !== 'confirmed'); },
     async addPersonal(kind,payload,expected) {
       await queue.enqueue([{ kind, payload, title: payload.title || String(payload.body || payload.notes).split('\n')[0].slice(0,120) }],expected);
     },
