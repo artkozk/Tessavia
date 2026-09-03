@@ -5,6 +5,7 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 parser.add_argument('--complete', action='store_true')
 parser.add_argument('--simplify', action='store_true')
+parser.add_argument('--contextual-scope', action='store_true')
 parser.add_argument('--commit')
 parser.add_argument('--release')
 parser.add_argument('--sha256')
@@ -65,12 +66,21 @@ try:
                 'description': task.get('description', '') + '\n\n' + revision + '\nАктуальное уточнение пользователя отменяет третий переключатель. Оставить только «Вся» и «Моя», конкретного участника выбирать в фильтрах. Старые scope=partner открывать как «Вся», не оставляя скрытого ограничения. Исправление лупы сохранить; старые доказательства относятся к предыдущей редакции требований.',
                 'status': 'in_progress', 'reason': 'Уточнение пользователя: убрать лишний переключатель',
                 'expectedUpdatedAt': task['updatedAt']})
+    if args.contextual_scope:
+        revision = '[revision:work-toolbar-contextual-scope-2026-09-03]'
+        if revision not in task.get('description', ''):
+            task = api('/records/' + task['id'], 'PATCH', {
+                'description': task.get('description', '') + '\n\n' + revision + '\nАктуальное уточнение: в командном проекте с другими участниками показать компактный переключатель «Других», который исключает текущего пользователя. В личном или одиночном проекте оставить только «Вся»/«Моя» и убрать пустое место справа. Список, доска, календарь и старые scope=partner должны работать одинаково; явный ответственный сохраняет приоритет.',
+                'status': 'in_progress', 'reason': 'Уточнение пользователя: фильтр нужен только в совместном проекте',
+                'expectedUpdatedAt': task['updatedAt']})
     if args.complete:
         detail = api('/records/' + task['id'])
         evidence_marker = '[verified:work-toolbar-' + args.commit[:7] + ']'
         evidence = evidence_marker + '\nИсправлен каскад базовых input-стилей; отступ поиска 36 px, лупа не перехватывает нажатие. Командная подпись и aria-pressed, совместимость сохранённых фильтров. Тесты, браузерные проверки и ограничения зафиксированы в docs/operations/WORK_TOOLBAR_2026_09_03.md.\nCommit: ' + args.commit + '\nRelease: ' + args.release + '\nSHA256: ' + args.sha256
         if args.simplify:
             evidence += '\nАктуальный результат: третий переключатель удалён, только «Вся»/«Моя». Прежний partner трактуется как all; явный ответственный имеет приоритет. Исправление поиска сохранено. Эта редакция заменяет прежний критерий о подписи третьего переключателя.'
+        if args.contextual_scope:
+            evidence += '\nАктуальный результат: «Других» показывается только в командном проекте с другим участником и исключает текущего пользователя. В личном и одиночном проекте остаются компактные «Вся»/«Моя» без пустого места. Старый partner снова действует только там, где режим доступен.'
         if not any(evidence_marker in proof['content'] for proof in detail.get('proofs', [])):
             api('/records/' + task['id'] + '/proofs', 'POST', {'kind': 'text', 'content': evidence})
         if detail['record']['status'] != 'completed':

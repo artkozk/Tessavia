@@ -14,32 +14,41 @@ test('input defaults keep toggle exclusions at zero specificity so search paddin
   assert.match(css, /input\[type="checkbox"\], input\[type="radio"\]\s*\{[^}]*width: 18px;[^}]*padding: 0;/);
 });
 
-test('toolbar offers only all and mine, normalizing retired saved scopes before rendering', () => {
+test('toolbar offers other work only in a project with another participant', () => {
   const toolbar = slice('function renderWorkList()', 'function renderWorkBoardToolbar()');
-  assert.match(toolbar, /\[\['all', 'Вся'\], \['mine', 'Моя'\]\]/);
-  assert.doesNotMatch(toolbar, /Партнёра|Других участников/);
-  const normalization = toolbar.slice(0, toolbar.indexOf('const records'));
-  const context = vm.createContext({ state: { collections: [] } });
-  for (const [previous, expected] of [['partner', 'all'], [undefined, 'all'], ['all', 'all'], ['mine', 'mine']]) {
-    context.state.workScope = previous;
-    vm.runInContext(normalization + '}', context);
-    context.renderWorkList();
-    assert.equal(context.state.workScope, expected);
+  const helpers = slice('function hasOtherProjectParticipants()', 'function workFilterCount()');
+  const state = { activeWorkspaceId: 'team', workspaces: [{ id: 'team', kind: 'team' }], users: [{ id: 1 }, { id: 2 }], me: { id: 1 } };
+  const context = vm.createContext({ state });
+  vm.runInContext(helpers, context);
+  assert.equal(JSON.stringify(context.workScopeOptions()), JSON.stringify([['all', 'Вся'], ['mine', 'Моя'], ['partner', 'Других']]));
+  state.workScope = 'partner'; context.normalizeWorkScope(); assert.equal(state.workScope, 'partner');
+  state.users = [{ id: 1 }];
+  assert.equal(JSON.stringify(context.workScopeOptions()), JSON.stringify([['all', 'Вся'], ['mine', 'Моя']]));
+  context.normalizeWorkScope(); assert.equal(state.workScope, 'all');
+  state.workScope = 'partner'; state.workspaces[0].kind = 'personal'; state.users.push({ id: 2 });
+  context.normalizeWorkScope(); assert.equal(state.workScope, 'all');
+  for (const [previous, expected] of [[undefined, 'all'], ['unknown', 'all'], ['all', 'all'], ['mine', 'mine']]) {
+    state.workScope = previous; context.normalizeWorkScope(); assert.equal(state.workScope, expected);
   }
+  assert.match(toolbar, /workScopeOptions\(\)\.map/);
+  assert.match(toolbar, /\? 'Работа других участников'/);
+  assert.doesNotMatch(toolbar, /Партнёра|Других участников/);
   assert.match(toolbar, /aria-label="Поиск в очереди работы"/);
   assert.match(toolbar, /aria-label="Чья работа"/);
   assert.match(toolbar, /aria-pressed=/);
-  assert.match(css, /\.work-scope \.segment \{ flex: 1 1 auto; \}/);
-  assert.doesNotMatch(css, /\.work-scope \.segment \{ flex: 1; \}/);
+  assert.match(css, /\.work-scope \{ width: max-content; max-width: 100%; justify-self: start; \}/);
+  const scopeBlocks = css.match(/\.work-scope\s*\{[^}]*\}/g) || [];
+  assert.equal(scopeBlocks.some((block) => /(?:^|[;{])\s*width:\s*100%/.test(block)), false);
+  assert.match(css, /\.work-scope \.segment \{ flex: 0 0 auto; \}/);
 });
 
-test('list and calendar treat retired scope as all and preserve specific-owner precedence', () => {
+test('list and calendar show every other participant and preserve specific-owner precedence', () => {
   const state = { me: { id: 1 }, records: [1, 2, 3].map(ownerId => ({ id: String(ownerId), ownerId, type: 'task', status: 'planned' })),
     workScope: 'partner', workType: 'all', workstreamFilter: 'all', workStatus: 'active', workOrder: 'priority' };
   const context = vm.createContext({ state, isWorkRecord: () => true, isActiveRecord: () => true, sortWorkRecords: () => 0 });
   vm.runInContext(slice('function filteredWorkRecords()', 'function renderWorkKanban(') + slice('function calendarRecordPool()', 'function recordsByDueDate('), context);
   for (const fn of ['filteredWorkRecords', 'calendarRecordPool']) {
-    assert.deepEqual(Array.from(context[fn](), item => item.id), ['1', '2', '3']);
+    assert.deepEqual(Array.from(context[fn](), item => item.id), ['2', '3']);
     state.ownerFilter = '3';
     assert.deepEqual(Array.from(context[fn](), item => item.id), ['3']);
     state.ownerFilter = '';
