@@ -346,6 +346,10 @@ func (s *Server) handleRenameTeam(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "Команда не найдена")
 		return
 	}
+	if _, err = tx.ExecContext(r.Context(), `UPDATE workspaces SET name = ?, description = ?, updated_at = ? WHERE team_id = ? AND kind = 'team'`, input.Name, input.Description, nowText(), teamID); err != nil {
+		writeError(w, 500, "Не удалось обновить рабочее пространство команды")
+		return
+	}
 	if err = writeTeamActivity(r.Context(), tx, currentUser(r).ID, teamID, "team_updated", "Название и описание команды изменены", map[string]any{"name": map[string]any{"before": previousName, "after": input.Name}, "description": map[string]any{"before": previousDescription, "after": input.Description}}); err != nil {
 		writeError(w, 500, "Не удалось записать историю")
 		return

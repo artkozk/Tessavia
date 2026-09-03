@@ -11,6 +11,7 @@ function switcher(workspaces, activeWorkspaceId) {
   const context = vm.createContext({state, activeWorkspace: () => workspaces.find(p => p.id === activeWorkspaceId),
     $: selector => selector === '#workspace-control' ? root : null, $$: () => [],
     icon: name => `<svg data-icon="${name}"></svg>`,
+    teamRoleLabel: role => role || 'member',
     escapeHTML: value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;')});
   vm.runInContext(render+'\nrenderWorkspaceControl()', context);
   return {html: root.innerHTML, summary: root.innerHTML.match(/<summary[^>]*>([\s\S]*?)<\/summary>/)[1]};
@@ -46,7 +47,7 @@ test('personal and empty contexts are not labelled as a business team', () => {
   const personal = switcher([{id:'personal',kind:'personal',name:'Ignored'}],'personal');
   assert.match(personal.summary, /<strong>Личное пространство<\/strong><small>Только вы<\/small>/);
   assert.match(personal.summary, /data-icon="lock"/);
-  assert.match(switcher([],'missing').summary, /<strong>Выбрать проект<\/strong>/);
+  assert.match(switcher([],'missing').summary, /<strong>Выбрать команду<\/strong>/);
 });
 
 test('project names are escaped in headings, tooltips and accessible labels', () => {

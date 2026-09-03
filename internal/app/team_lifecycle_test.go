@@ -180,6 +180,10 @@ func TestOwnershipAndRemovalPermissions(t *testing.T) {
 	requestJSON(t, f.clients["owner"], "POST", path+"/leave", nil, 204, nil)
 	requestJSON(t, f.clients["member"], "DELETE", path+"/members/"+uid("admin"), nil, 204, nil)
 	requestJSON(t, f.clients["member"], "PATCH", path, map[string]any{"name": "Renamed team", "description": "Changed"}, 204, nil)
+	requestJSON(t, f.clients["member"], "GET", path, nil, 200, &team)
+	if team.Name != "Renamed team" || team.Projects[0].Name != team.Name || team.Projects[0].Description != "Changed" {
+		t.Fatal("team and workspace names diverged")
+	}
 	requestJSON(t, f.clients["member"], "DELETE", path, map[string]any{"name": "Renamed team"}, 204, nil)
 }
 

@@ -59,12 +59,15 @@ func TestTeamProjectsInvitationsAndPersonalPreferences(t *testing.T) {
 	requestWorkspaceJSON(t, ownerClient, http.MethodPost, server.URL+"/api/teams/"+firstProject.TeamID+"/projects", firstProject.ID, map[string]any{
 		"name": "CRM", "description": "Доступ только назначенным участникам",
 	}, http.StatusCreated, &secondProject)
+	if secondProject.TeamID == firstProject.TeamID {
+		t.Fatal("independent workspace was attached to the existing team")
+	}
 
 	var invite struct {
 		Code string `json:"code"`
 		URL  string `json:"url"`
 	}
-	requestWorkspaceJSON(t, ownerClient, http.MethodPost, server.URL+"/api/teams/"+firstProject.TeamID+"/invitations", firstProject.ID, map[string]any{
+	requestWorkspaceJSON(t, ownerClient, http.MethodPost, server.URL+"/api/teams/"+secondProject.TeamID+"/invitations", secondProject.ID, map[string]any{
 		"role": "member", "projectIds": []string{secondProject.ID}, "expiresDays": 7, "maxUses": 1,
 	}, http.StatusCreated, &invite)
 	if invite.Code == "" || invite.URL == "" {
@@ -74,7 +77,7 @@ func TestTeamProjectsInvitationsAndPersonalPreferences(t *testing.T) {
 		TeamID string `json:"teamId"`
 	}
 	requestJSON(t, memberClient, http.MethodPost, server.URL+"/api/invitations/accept", map[string]any{"code": invite.Code}, http.StatusOK, &accepted)
-	if accepted.TeamID != firstProject.TeamID {
+	if accepted.TeamID != secondProject.TeamID {
 		t.Fatalf("accepted team = %#v", accepted)
 	}
 
@@ -158,15 +161,19 @@ func TestTeamProjectsInvitationsAndPersonalPreferences(t *testing.T) {
 		"role": "member", "projectIds": []string{firstProject.ID}, "expiresDays": 7, "maxUses": 1,
 	}, http.StatusCreated, &memberInvite)
 	requestJSON(t, secondClient, http.MethodPost, server.URL+"/api/invitations/accept", map[string]any{"code": memberInvite.Code}, http.StatusOK, &accepted)
-	requestWorkspaceJSON(t, secondClient, http.MethodGet, server.URL+"/api/records", secondProject.ID, nil, http.StatusOK, &[]Record{})
+	requestWorkspaceJSON(t, secondClient, http.MethodGet, server.URL+"/api/records", secondProject.ID, nil, http.StatusForbidden, nil)
 
 	var detail TeamDetail
+	for _, endpoint := range []string{"/api/records", "/api/collections", "/api/search?q=test", "/api/graph", "/api/export"} {
+		requestWorkspaceJSON(t, secondClient, http.MethodGet, server.URL+endpoint, secondProject.ID, nil, http.StatusForbidden, nil)
+	}
+	requestJSON(t, secondClient, http.MethodGet, server.URL+"/api/teams/"+secondProject.TeamID, nil, http.StatusNotFound, nil)
 	requestWorkspaceJSON(t, ownerClient, http.MethodGet, server.URL+"/api/teams/"+firstProject.TeamID, firstProject.ID, nil, http.StatusOK, &detail)
-	if len(detail.Projects) != 2 || len(detail.Members) != 4 {
+	if len(detail.Projects) != 1 || len(detail.Members) != 3 {
 		t.Fatalf("team detail projects=%d members=%d member=%d", len(detail.Projects), len(detail.Members), member.ID)
 	}
 	for _, teamMember := range detail.Members {
-		if teamMember.Username == "team_second" && (teamMember.Role != "admin" || len(teamMember.ProjectRoles) != 2) {
+		if teamMember.Username == "team_second" && (teamMember.Role != "admin" || len(teamMember.ProjectRoles) != 1) {
 			t.Fatalf("member invitation downgraded administrator: %#v", teamMember)
 		}
 	}

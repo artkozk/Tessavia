@@ -4204,6 +4204,12 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .team-settings-tabs > button.active { border-color: var(--accent); color: var(--accent); }
 .team-settings-shell > .team-settings-section { border-right: 0; padding-inline: 0; }
 .team-settings-shell > footer { padding-top: 12px; }
+.team-header-actions, .directory-team-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.team-header-actions { flex-shrink: 0; }
+.team-workspace-summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; padding: 16px 0; text-align: left; border-bottom: 1px solid var(--line); }
+.team-workspace-summary > span:nth-child(2) { display: grid; gap: 4px; min-width: 0; }
+.team-workspace-summary strong, .teams-directory h3 { overflow-wrap: anywhere; white-space: normal; }
+.team-workspace-summary small { color: var(--muted); }
 .team-settings-shell .team-member-list { grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .team-person-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .team-person-row > span { min-width: 0; display: grid; gap: 3px; }
@@ -4230,6 +4236,9 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .project-load-error { display: flex; flex-wrap: wrap; gap: 14px; padding: 30px 0; }
 .project-load-error > h2, .project-load-error > p { flex-basis: 100%; }
 @media (max-width: 520px) {
+  .team-settings-shell > header { flex-wrap: wrap; }
+  .team-header-actions { width: 100%; justify-content: space-between; }
+  .directory-team-actions > button { white-space: normal; max-width: 100%; }
   .team-settings-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .team-settings-tabs > button { min-width: 0; font-size: 13px; }
   .team-person-row { grid-template-columns: auto minmax(0, 1fr); }

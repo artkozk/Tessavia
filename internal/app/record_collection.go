@@ -37,6 +37,7 @@ func (s *Server) handleAssignRecordCollection(w http.ResponseWriter, r *http.Req
 	}
 	var input struct {
 		CollectionID string                     `json:"collectionId"`
+		StageID      string                     `json:"stageId"`
 		ExpectedAt   string                     `json:"expectedUpdatedAt"`
 		Values       map[string]json.RawMessage `json:"values"`
 	}
@@ -98,7 +99,16 @@ func (s *Server) handleAssignRecordCollection(w http.ResponseWriter, r *http.Req
 		}
 	}
 	var stageID string
-	if err = s.store.db.QueryRowContext(r.Context(), `SELECT id FROM collection_stages WHERE collection_id = ? AND category = ? AND archived_at IS NULL ORDER BY sort_order LIMIT 1`, input.CollectionID, collectionCategoryForStatus(record.Status)).Scan(&stageID); err != nil {
+	if strings.TrimSpace(input.StageID) != "" {
+		err = s.store.db.QueryRowContext(r.Context(), `SELECT id FROM collection_stages WHERE collection_id = ? AND id = ? AND archived_at IS NULL`, input.CollectionID, input.StageID).Scan(&stageID)
+	} else {
+		err = s.store.db.QueryRowContext(r.Context(), `SELECT id FROM collection_stages WHERE collection_id = ? AND category = ? AND archived_at IS NULL ORDER BY sort_order LIMIT 1`, input.CollectionID, collectionCategoryForStatus(record.Status)).Scan(&stageID)
+	}
+	if err != nil {
+		if input.StageID != "" {
+			writeError(w, http.StatusBadRequest, "Выберите действующий этап этой доски")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "Добавьте на доске этап для текущего состояния карточки")
 		return
 	}

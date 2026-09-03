@@ -1243,7 +1243,7 @@ function isRecordViewCurrent(context) {
 }
 
 function renderProjectLoadError(error) {
-  $('#main-content').innerHTML='<section class="project-load-error"><h2>Не удалось загрузить пространство</h2><p>'+escapeHTML(error.message)+'</p><button type="button" class="primary" data-retry-project>Повторить</button><button type="button" class="secondary" data-open-teams>Команды и проекты</button></section>';
+  $('#main-content').innerHTML='<section class="project-load-error"><h2>Не удалось загрузить пространство</h2><p>'+escapeHTML(error.message)+'</p><button type="button" class="primary" data-retry-project>Повторить</button><button type="button" class="secondary" data-open-teams>Команды</button></section>';
   $('[data-retry-project]').addEventListener('click',()=>loadData().catch(renderProjectLoadError));
   $('[data-open-teams]').addEventListener('click',openTeamsDirectory);
 }
@@ -1997,14 +1997,14 @@ function renderWorkspaceControl() {
 		if (!grouped.has(id)) grouped.set(id, { id, name: project.teamName || project.name, role: project.teamRole || project.role, projects: [] });
 		grouped.get(id).projects.push(project);
 	});
-	const roleLabel = current?.teamRole === 'owner' ? 'Владелец команды' : current?.teamRole === 'admin' ? 'Администратор команды' : current?.role === 'owner' ? 'Владелец' : current?.role === 'admin' ? 'Администратор проекта' : 'Участник проекта';
+	const roleLabel = current?.teamRole === 'owner' ? 'Владелец команды' : current?.teamRole === 'admin' ? 'Администратор команды' : current?.role === 'owner' ? 'Владелец' : current?.role === 'admin' ? 'Администратор команды' : 'Участник команды';
 	const personal = current?.kind === 'personal';
-	const projectName = personal ? 'Личное пространство' : current?.name || 'Выбрать проект';
+	const projectName = personal ? 'Личное пространство' : current?.name || 'Выбрать команду';
 	const contextLabel = personal ? 'Только вы' : '';
-	const switcherTitle = `${projectName}${personal ? ` · ${contextLabel}` : current ? ` · ${roleLabel}` : ''}. Сменить проект`;
+	const switcherTitle = `${projectName}${personal ? ` · ${contextLabel}` : current ? ` · ${roleLabel}` : ''}. Сменить пространство`;
   const personalOption = personalWorkspace ? `<button type="button" class="workspace-personal-option ${personalWorkspace.id === state.activeWorkspaceId ? 'active' : ''}" data-switch-personal="${personalWorkspace.id}" aria-current="${personalWorkspace.id === state.activeWorkspaceId ? 'page' : 'false'}"><span>${icon(personalWorkspace.id === state.activeWorkspaceId ? 'check' : 'lock')}</span><span><strong>Личное пространство</strong><small>Только вы · независимо от команд</small></span></button>` : '';
-	const teamGroups = [...grouped.values()].map((team) => `<section class="workspace-team-group"><header><span><strong>${escapeHTML(team.name)}</strong><small>${team.projects.length} ${team.projects.length === 1 ? 'проект' : 'проекта'}</small></span><button type="button" class="icon-button" data-team-settings="${team.id}" title="Команда и участие" aria-label="Открыть команду ${escapeHTML(team.name)}">${icon('settings')}</button></header>${team.projects.map((project) => `<button type="button" class="${project.id === state.activeWorkspaceId ? 'active' : ''}" data-switch-workspace="${project.id}" aria-current="${project.id === state.activeWorkspaceId ? 'page' : 'false'}" title="${escapeHTML(project.name)}"><span>${icon(project.id === state.activeWorkspaceId ? 'check' : 'network')}</span><span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || 'Проект команды')}</small></span></button>`).join('')}</section>`).join('');
-	root.innerHTML = `<details class="workspace-switcher"><summary title="${escapeHTML(switcherTitle)}" aria-label="${escapeHTML(`${projectName}. Сменить проект`)}"><span>${icon(personal ? 'lock' : 'network')}</span><span><strong>${escapeHTML(projectName)}</strong>${personal ? `<small>${escapeHTML(contextLabel)}</small>` : ''}</span>${icon('chevronRight')}</summary><div>${personalOption}${teamGroups || '<p class="workspace-switcher-empty">Командных проектов пока нет.</p>'}<button type="button" data-join-workspace>${icon('link')}<span><strong>Ввести код приглашения</strong><small>Присоединиться к команде</small></span></button><button type="button" data-create-workspace>${icon('plus')}<span><strong>Новая команда</strong><small>Команда и её первый проект</small></span></button></div></details>`;
+	const teamGroups = [...grouped.values()].map((team) => `<section class="workspace-team-group"><header><span><strong>${escapeHTML(team.name)}</strong><small>${teamRoleLabel(team.role)}</small></span><button type="button" class="icon-button" data-team-settings="${team.id}" title="Команда и участие" aria-label="Открыть команду ${escapeHTML(team.name)}">${icon('settings')}</button></header>${team.projects.map((project) => `<button type="button" class="${project.id === state.activeWorkspaceId ? 'active' : ''}" data-switch-workspace="${project.id}" aria-current="${project.id === state.activeWorkspaceId ? 'page' : 'false'}" title="${escapeHTML(project.name)}"><span>${icon(project.id === state.activeWorkspaceId ? 'check' : 'network')}</span><span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || 'Рабочее пространство команды')}</small></span></button>`).join('')}</section>`).join('');
+	root.innerHTML = `<details class="workspace-switcher"><summary title="${escapeHTML(switcherTitle)}" aria-label="${escapeHTML(`${projectName}. Сменить пространство`)}"><span>${icon(personal ? 'lock' : 'network')}</span><span><strong>${escapeHTML(projectName)}</strong>${personal ? `<small>${escapeHTML(contextLabel)}</small>` : ''}</span>${icon('chevronRight')}</summary><div>${personalOption}${teamGroups || '<p class="workspace-switcher-empty">Команд пока нет.</p>'}<button type="button" data-join-workspace>${icon('link')}<span><strong>Ввести код приглашения</strong><small>Присоединиться к команде</small></span></button><button type="button" data-create-workspace>${icon('plus')}<span><strong>Новая команда</strong><small>Отдельные участники и рабочее пространство</small></span></button></div></details>`;
   $('[data-switch-personal]',root)?.addEventListener('click',async event=>{ try { if(await switchWorkspace(event.currentTarget.dataset.switchPersonal)) navigateToView('personal'); } catch (_) {} });
 	$$('[data-switch-workspace]', root).forEach((button) => button.addEventListener('click', () => { void switchWorkspace(button.dataset.switchWorkspace).catch(() => {}); }));
 	$$('[data-team-settings]', root).forEach((button) => button.addEventListener('click', () => openTeamSettings(button.dataset.teamSettings)));
@@ -2020,7 +2020,7 @@ function closeWorkspaceDialog() {
 function openWorkspaceCreateDialog() {
 	const dialog = $('#workspace-dialog');
 	const content = $('#workspace-dialog-content');
-	content.innerHTML = `<div class="workspace-editor-shell compact-workspace-editor"><header><div><p class="eyebrow">Новая команда</p><h2>Команда и первый проект</h2><p>Позже внутри команды можно создать другие проекты и отдельно назначить участников.</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="workspace-create-form" class="card-form"><label>Название команды и первого проекта<input name="name" required maxlength="100" placeholder="Например: Отдел продаж"></label><label>Описание<textarea name="description" rows="3" maxlength="800" placeholder="Что команда будет вести в Tessavie"></textarea></label><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
+	content.innerHTML = `<div class="workspace-editor-shell compact-workspace-editor"><header><div><p class="eyebrow">Новая команда</p><h2>Новая команда</h2><p>Создайте отдельную команду для стартапа или группы людей. Её участники и администраторы получают доступ только к этому рабочему пространству.</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="workspace-create-form" class="card-form"><label>Название команды<input name="name" required maxlength="100" placeholder="Например: Отдел продаж"></label><label>Описание<textarea name="description" rows="3" maxlength="800" placeholder="Что команда будет вести в Tessavie"></textarea></label><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
 	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
 	$('#workspace-create-form', dialog).addEventListener('submit', async (event) => {
 		event.preventDefault();
@@ -2035,7 +2035,7 @@ function openWorkspaceCreateDialog() {
 			localStorage.setItem('bizflow-active-workspace', workspace.id);
 			state.view = 'collections';
 			await loadData();
-			toast('Команда и первый проект созданы');
+			toast('Команда создана');
 		} catch (error) { submit.disabled = false; toast(error.message, true); }
 	});
 	openModal(dialog);
@@ -2043,7 +2043,7 @@ function openWorkspaceCreateDialog() {
 
 function teamProjectChecks(projects, selectedIDs = [], name = 'projectId', disabled = false) {
 	const selected = new Set(selectedIDs);
-	return projects.map((project) => `<label class="check team-project-check"><input type="checkbox" name="${name}" value="${project.id}" ${selected.has(project.id) ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || 'Проект команды')}</small></span></label>`).join('');
+	return projects.map((project) => `<label class="check team-project-check"><input type="checkbox" name="${name}" value="${project.id}" ${selected.has(project.id) ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || 'Рабочее пространство команды')}</small></span></label>`).join('');
 }
 
 function teamRoleLabel(role) {
@@ -2071,17 +2071,17 @@ async function reloadTeamSettings(teamID, tab, shell) {
 function teamMemberMarkup(team, member) {
   const canEdit = team.role === 'owner' && member.role !== 'owner' || team.role === 'admin' && member.role === 'member';
   if (!canEdit) return '<article class="team-person-row">' + avatarMarkup(member) + '<span><strong>' + escapeHTML(member.displayName || member.username) + '</strong><small>@' + escapeHTML(member.username) + '</small></span><em>' + teamRoleLabel(member.role) + '</em></article>';
-  return '<form data-team-member-form="' + member.id + '" class="team-member-row"><header>' + avatarMarkup(member) + '<span><strong>' + escapeHTML(member.displayName || member.username) + '</strong><small>@' + escapeHTML(member.username) + '</small></span><label>Роль<select name="role"><option value="member" ' + (member.role === 'member' ? 'selected' : '') + '>Участник</option><option value="admin" ' + (member.role === 'admin' ? 'selected' : '') + '>Администратор</option></select></label></header><fieldset><legend>Доступ к проектам</legend>' + teamProjectChecks(team.projects, Object.keys(member.projectRoles || {}), 'projectId', member.role === 'admin') + '</fieldset><div class="team-row-actions"><button type="submit" class="secondary">' + icon('check') + ' Сохранить доступ</button><button type="button" class="icon-button danger-icon" data-remove-member="' + member.id + '" title="Исключить участника" aria-label="Исключить ' + escapeHTML(member.username) + '">' + icon('trash') + '</button></div></form>';
+  return '<form data-team-member-form="' + member.id + '" class="team-member-row"><header>' + avatarMarkup(member) + '<span><strong>' + escapeHTML(member.displayName || member.username) + '</strong><small>@' + escapeHTML(member.username) + '</small></span><label>Роль в этой команде<select name="role"><option value="member" ' + (member.role === 'member' ? 'selected' : '') + '>Участник</option><option value="admin" ' + (member.role === 'admin' ? 'selected' : '') + '>Администратор</option></select></label></header><p class="team-role-hint">Администратор управляет только этой командой и не получает доступ к другим стартапам.</p><div class="team-row-actions"><button type="submit" class="secondary">' + icon('check') + ' Сохранить роль</button><button type="button" class="icon-button danger-icon" data-remove-member="' + member.id + '" title="Исключить участника" aria-label="Исключить ' + escapeHTML(member.username) + '">' + icon('trash') + '</button></div></form>';
 }
 
 function teamInviteHistory(invites) {
   return invites.map(invite => {
     const active = !invite.revokedAt && new Date(invite.expiresAt) > new Date() && invite.useCount < invite.maxUses;
-    return '<article class="' + (active ? '' : 'inactive') + '"><span>' + icon('link') + '</span><div><strong>' + teamRoleLabel(invite.role) + ' · ' + (invite.role === 'admin' ? 'Все проекты' : invite.projectIds.length + ' проектов') + '</strong><small>' + invite.useCount + ' из ' + invite.maxUses + ' использовано · до ' + formatDate(invite.expiresAt, true) + '</small></div>' + (active ? '<button type="button" class="icon-button" data-revoke-invite="' + invite.id + '" title="Отозвать" aria-label="Отозвать приглашение">' + icon('x') + '</button>' : '<em>Закрыто</em>') + '</article>';
+    return '<article class="' + (active ? '' : 'inactive') + '"><span>' + icon('link') + '</span><div><strong>' + teamRoleLabel(invite.role) + ' этой команды</strong><small>' + invite.useCount + ' из ' + invite.maxUses + ' использовано · до ' + formatDate(invite.expiresAt, true) + '</small></div>' + (active ? '<button type="button" class="icon-button" data-revoke-invite="' + invite.id + '" title="Отозвать" aria-label="Отозвать приглашение">' + icon('x') + '</button>' : '<em>Закрыто</em>') + '</article>';
   }).join('') || '<p class="muted">Приглашений ещё нет.</p>';
 }
 
-async function openTeamSettings(teamID, tab = 'projects') {
+async function openTeamSettings(teamID, tab = 'members') {
   const dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
   content.innerHTML = '<div class="workspace-dialog-loading"><span class="spinner"></span><strong>Загружаем команду</strong></div>';
   const loading = content.firstElementChild;
@@ -2092,18 +2092,19 @@ async function openTeamSettings(teamID, tab = 'projects') {
     if (!current()) return;
     state.teamDetail = team;
     const manager = ['owner', 'admin'].includes(team.role), owner = team.role === 'owner';
-    const tabs = [['projects','Проекты'],['members','Участники'], ...(manager ? [['invites','Приглашения']] : []), ['settings','Настройки']];
-    if (!tabs.some(([key])=>key===tab)) tab='projects';
-    const defaultProjects = team.projects.filter(project=>project.id===state.activeWorkspaceId).map(project=>project.id);
-    if (!defaultProjects.length && team.projects[0]) defaultProjects.push(team.projects[0].id);
-    content.innerHTML = '<div class="workspace-editor-shell team-settings-shell"><header><div><p class="eyebrow">' + teamRoleLabel(team.role) + '</p><h2>' + escapeHTML(team.name) + '</h2>' + (team.description ? '<p>' + escapeHTML(team.description) + '</p>' : '') + '</div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">' + icon('x') + '</button></header>' +
+    if (tab === 'projects') tab = 'members';
+    const tabs = [['members','Участники'], ...(manager ? [['invites','Приглашения']] : []), ['settings','Настройки']];
+    if (!tabs.some(([key])=>key===tab)) tab='members';
+    const workspace = team.projects[0];
+    const projectIDs = team.projects.map(project=>project.id);
+    content.innerHTML = '<div class="workspace-editor-shell team-settings-shell"><header><div><p class="eyebrow">' + teamRoleLabel(team.role) + '</p><h2>' + escapeHTML(team.name) + '</h2>' + (team.description ? '<p>' + escapeHTML(team.description) + '</p>' : '') + '</div><div class="team-header-actions">' + (!owner ? '<button type="button" class="secondary danger-text" data-team-leave>' + icon('arrowLeft') + ' Выйти из команды</button>' : '<button type="button" class="secondary" data-team-transfer>' + icon('users') + ' Передать владение</button>') + '<button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">' + icon('x') + '</button></div></header>' +
+      (workspace ? '<button type="button" class="team-workspace-summary" data-team-project="' + workspace.id + '"><span>' + icon('network') + '</span><span><small>Рабочее пространство команды</small><strong>' + escapeHTML(workspace.name) + '</strong></span>' + icon('chevronRight') + '</button>' : '') +
+      (owner ? '<p class="team-role-hint">Чтобы выйти из команды, сначала передайте владение другому участнику. Если команда больше не нужна, её можно удалить в настройках.</p>' : '') +
       '<nav class="team-settings-tabs" aria-label="Настройки команды">' + tabs.map(([key,label])=>'<button type="button" class="text-button ' + (tab===key?'active':'') + '" aria-pressed="' + (tab===key) + '" data-team-tab="' + key + '">' + label + '</button>').join('') + '</nav>' +
-      '<section class="team-settings-section" data-team-panel="projects" ' + (tab==='projects'?'':'hidden') + '><div class="team-project-list">' + team.projects.map(project=>'<article><span>' + icon('network') + '</span><button type="button" class="team-project-open" data-team-project="' + project.id + '"><strong>' + escapeHTML(project.name) + '</strong><small>' + escapeHTML(project.description || teamRoleLabel(project.role)) + '</small></button><span>' + icon('chevronRight') + '</span></article>').join('') + (team.projects.length ? '' : '<p class="muted">Вам пока не назначены проекты.</p>') + '</div>' +
-      (manager ? '<details class="team-inline-editor"><summary>' + icon('plus') + ' Создать проект</summary><form id="team-project-form"><label>Название проекта<input name="name" required maxlength="100"></label><label>Описание<textarea name="description" rows="2" maxlength="800"></textarea></label><fieldset><legend>Участники проекта</legend>' + team.members.filter(member=>member.role==='member').map(member=>'<label class="check"><input type="checkbox" name="memberId" value="' + member.id + '"><span>' + escapeHTML(member.displayName || member.username) + '</span></label>').join('') + '</fieldset><button type="submit" class="primary">' + icon('plus') + ' Создать проект</button></form></details>' : '') + '</section>' +
       '<section class="team-settings-section" data-team-panel="members" ' + (tab==='members'?'':'hidden') + '>' +
-      (manager ? '<details class="team-inline-editor"><summary>' + icon('users') + ' Добавить по юзернейму</summary><form id="team-member-add-form" class="team-member-add"><label>Юзернейм<input name="username" required placeholder="@username" autocomplete="off"></label><label>Роль<select name="role"><option value="member">Участник</option><option value="admin">Администратор</option></select></label><fieldset><legend>Доступ к проектам</legend>' + teamProjectChecks(team.projects,defaultProjects) + '</fieldset><button type="submit" class="primary">' + icon('plus') + ' Добавить</button></form></details>' : '') +
+      (manager ? '<details class="team-inline-editor"><summary>' + icon('users') + ' Добавить по юзернейму</summary><form id="team-member-add-form" class="team-member-add"><label>Юзернейм<input name="username" required placeholder="@username" autocomplete="off"></label><label>Роль в этой команде<select name="role"><option value="member">Участник</option><option value="admin">Администратор</option></select></label><p class="team-role-hint">Доступ относится только к ' + escapeHTML(team.name) + '.</p><button type="submit" class="primary">' + icon('plus') + ' Добавить</button></form></details>' : '') +
       '<div class="team-member-list">' + team.members.map(member=>teamMemberMarkup(team,member)).join('') + '</div></section>' +
-      (manager ? '<section class="team-settings-section" data-team-panel="invites" ' + (tab==='invites'?'':'hidden') + '><form id="team-invite-form"><div class="form-grid two"><label>Роль<select name="role"><option value="member">Участник</option><option value="admin">Администратор</option></select></label><label>Действует, дней<input name="expiresDays" type="number" min="1" max="90" value="7"></label></div><fieldset><legend>Проекты после входа</legend>' + teamProjectChecks(team.projects,defaultProjects) + '</fieldset><button type="submit" class="primary">' + icon('link') + ' Создать приглашение</button></form><div id="team-invite-secret"></div><div class="team-invite-history">' + teamInviteHistory(team.invitations) + '</div></section>' : '') +
+      (manager ? '<section class="team-settings-section" data-team-panel="invites" ' + (tab==='invites'?'':'hidden') + '><form id="team-invite-form"><div class="form-grid two"><label>Роль в этой команде<select name="role"><option value="member">Участник</option><option value="admin">Администратор</option></select></label><label>Действует, дней<input name="expiresDays" type="number" min="1" max="90" value="7"></label></div><p class="team-role-hint">Приглашение открывает только рабочее пространство этой команды.</p><button type="submit" class="primary">' + icon('link') + ' Создать приглашение</button></form><div id="team-invite-secret"></div><div class="team-invite-history">' + teamInviteHistory(team.invitations) + '</div></section>' : '') +
       '<section class="team-settings-section" data-team-panel="settings" ' + (tab==='settings'?'':'hidden') + '>' +
       (manager ? '<form id="team-settings-form" class="card-form"><label>Название команды<input name="name" required maxlength="100" value="' + escapeHTML(team.name) + '"></label><label>Описание<textarea name="description" rows="3" maxlength="800">' + escapeHTML(team.description) + '</textarea></label><button type="submit" class="primary">' + icon('check') + ' Сохранить</button></form>' : '') +
       '<div class="team-lifecycle-actions">' + (owner ? '<button type="button" class="secondary" data-team-transfer>' + icon('users') + ' Передать владение</button><button type="button" class="secondary danger-text" data-team-delete>' + icon('trash') + ' Удалить команду</button>' : '<button type="button" class="secondary danger-text" data-team-leave>' + icon('arrowLeft') + ' Выйти из команды</button>') + '</div></section><footer><button type="button" class="text-button" data-team-directory>' + icon('arrowLeft') + ' Все команды</button></footer></div>';
@@ -2119,12 +2120,8 @@ async function openTeamSettings(teamID, tab = 'projects') {
       closeWorkspaceDialog();
       try { if(await switchWorkspace(button.dataset.teamProject)) navigateToView('collections'); } catch(error){toast(error.message,true);}
     }));
-    bindTeamSubmit($('#team-project-form',shell),async form=>{
-      await api('/api/teams/'+teamID+'/projects',{method:'POST',body:JSON.stringify({name:form.get('name'),description:form.get('description'),memberIds:form.getAll('memberId').map(Number)})});
-      await reloadTeamSettings(teamID,'projects',shell); toast('Проект создан');
-    });
     bindTeamSubmit($('#team-member-add-form',shell),async form=>{
-      await api('/api/teams/'+teamID+'/members',{method:'POST',body:JSON.stringify({username:form.get('username'),role:form.get('role'),projectIds:form.getAll('projectId')})});
+      await api('/api/teams/'+teamID+'/members',{method:'POST',body:JSON.stringify({username:form.get('username'),role:form.get('role'),projectIds:projectIDs})});
       await reloadTeamSettings(teamID,'members',shell); toast('Участник добавлен');
     });
     bindTeamSubmit($('#team-settings-form',shell),async form=>{
@@ -2132,15 +2129,11 @@ async function openTeamSettings(teamID, tab = 'projects') {
       await reloadTeamSettings(teamID,'settings',shell); toast('Команда сохранена');
     });
     $$('[data-team-member-form]',shell).forEach(formNode=>bindTeamSubmit(formNode,async form=>{
-      await api('/api/teams/'+teamID+'/members/'+formNode.dataset.teamMemberForm,{method:'PATCH',body:JSON.stringify({role:form.get('role'),projectIds:form.getAll('projectId')})});
+      await api('/api/teams/'+teamID+'/members/'+formNode.dataset.teamMemberForm,{method:'PATCH',body:JSON.stringify({role:form.get('role'),projectIds:projectIDs})});
       await reloadTeamSettings(teamID,'members',shell); toast('Доступ сохранён');
     }));
-    $$('select[name="role"]',shell).forEach(select=>select.addEventListener('change',()=>{
-      const admin=select.value==='admin';
-      $$('input[name="projectId"]',select.closest('form')).forEach(input=>{input.disabled=admin;if(admin)input.checked=true;});
-    }));
     bindTeamSubmit($('#team-invite-form',shell),async form=>{
-      const invite=await api('/api/teams/'+teamID+'/invitations',{method:'POST',body:JSON.stringify({role:form.get('role'),projectIds:form.getAll('projectId'),expiresDays:Number(form.get('expiresDays')),maxUses:1})});
+      const invite=await api('/api/teams/'+teamID+'/invitations',{method:'POST',body:JSON.stringify({role:form.get('role'),projectIds:projectIDs,expiresDays:Number(form.get('expiresDays')),maxUses:1})});
       if (!shell.isConnected || !dialog.open) return;
       $('#team-invite-secret',shell).innerHTML='<div class="team-invite-result"><label>Код приглашения<input readonly value="'+escapeHTML(invite.code)+'"></label><button type="button" class="icon-button" data-copy-code aria-label="Скопировать код">'+icon('copy')+'</button><label>Ссылка<input readonly value="'+escapeHTML(invite.url)+'"></label><button type="button" class="icon-button" data-copy-url aria-label="Скопировать ссылку">'+icon('copy')+'</button></div>';
       $('[data-copy-code]',shell).addEventListener('click',()=>copyToClipboard(invite.code,'Код скопирован'));
@@ -2158,8 +2151,8 @@ async function openTeamSettings(teamID, tab = 'projects') {
     }
     bindRevocations();
     $('[data-team-delete]',shell)?.addEventListener('click',()=>openTeamLifecycleDialog(team,'delete'));
-    $('[data-team-leave]',shell)?.addEventListener('click',()=>openTeamLifecycleDialog(team,'leave'));
-    $('[data-team-transfer]',shell)?.addEventListener('click',()=>openTeamLifecycleDialog(team,'transfer'));
+    $$('[data-team-leave]',shell).forEach(button=>button.addEventListener('click',()=>openTeamLifecycleDialog(team,'leave')));
+    $$('[data-team-transfer]',shell).forEach(button=>button.addEventListener('click',()=>openTeamLifecycleDialog(team,'transfer')));
     $$('[data-remove-member]',shell).forEach(button=>button.addEventListener('click',()=>openTeamLifecycleDialog(team,'remove',team.members.find(member=>String(member.id)===button.dataset.removeMember))));
   } catch(error) {
     if (!current()) return;
@@ -2173,8 +2166,8 @@ function openTeamLifecycleDialog(team, action, member = null) {
   const dialog=$('#workspace-dialog'),content=$('#workspace-dialog-content');
   const titles={delete:'Удалить команду?',leave:'Выйти из команды?',transfer:'Передать владение',remove:'Исключить участника?'};
   const labels={delete:'Удалить команду',leave:'Выйти из команды',transfer:'Передать владение',remove:'Исключить участника'};
-  const copy=action==='delete'?'Команда и её проекты станут недоступны всем участникам. Владелец сможет восстановить их в разделе «Удалённые команды». Личные данные не изменятся.':action==='transfer'?'Выбранный участник получит все проекты и права владельца. Вы станете администратором.':'Доступ к проектам команды закроется. Незавершённые карточки и приёмка перейдут владельцу команды; авторство, история и личные данные сохранятся.';
-  const targets=team.members.filter(item=>item.id!==state.me.id);
+  const copy=action==='delete'?'Команда станет недоступна всем участникам. Владелец сможет восстановить её в разделе «Удалённые команды». Личные данные не изменятся.':action==='transfer'?'Выбранный участник получит права владельца этой команды. Вы станете администратором.':'Доступ к рабочему пространству команды закроется. Незавершённые карточки и приёмка перейдут владельцу команды; авторство, история и личные данные сохранятся.';
+  const targets=(team.members||[]).filter(item=>item.id!==state.me.id);
   content.innerHTML='<div class="workspace-editor-shell compact-workspace-editor team-lifecycle-dialog"><header><div><h2>'+titles[action]+'</h2><p>'+escapeHTML(team.name)+(member?' · @'+escapeHTML(member.username):'')+'</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">'+icon('x')+'</button></header><p>'+copy+'</p><form class="card-form" id="team-lifecycle-form">'+
     (action==='delete'?'<label>Название команды для подтверждения<input name="name" required autocomplete="off" placeholder="'+escapeHTML(team.name)+'"></label>':'')+
     (action==='transfer'?(targets.length?'<label>Новый владелец<select name="userId">'+targets.map(item=>'<option value="'+item.id+'">'+escapeHTML(item.displayName||item.username)+' (@'+escapeHTML(item.username)+')</option>').join('')+'</select></label>':'<p class="muted">Сначала добавьте другого участника в команду.</p>'):'')+
@@ -2201,7 +2194,7 @@ async function copyToClipboard(value, successMessage) {
 
 function openJoinTeamDialog({ token = '', code = '' } = {}) {
 	const dialog = $('#workspace-dialog');
-	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell compact-workspace-editor"><header><div><p class="eyebrow">Приглашение</p><h2>Присоединиться к команде</h2><p>${token ? 'Ссылка найдена. Подтвердите добавление команды и назначенных проектов.' : 'Введите код, который прислал администратор команды.'}</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="join-team-form" class="card-form">${token ? '' : `<label>Код команды<input name="code" required autocomplete="one-time-code" value="${escapeHTML(code)}" placeholder="ABCD-2345"></label>`}<button type="submit" class="primary">${icon('check')} Присоединиться</button></form></div>`;
+	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell compact-workspace-editor"><header><div><p class="eyebrow">Приглашение</p><h2>Присоединиться к команде</h2><p>${token ? 'Ссылка найдена. Подтвердите вступление в эту команду.' : 'Введите код, который прислал администратор команды.'}</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="join-team-form" class="card-form">${token ? '' : `<label>Код команды<input name="code" required autocomplete="one-time-code" value="${escapeHTML(code)}" placeholder="ABCD-2345"></label>`}<button type="submit" class="primary">${icon('check')} Присоединиться</button></form></div>`;
 	$('[data-close-workspace-dialog]', dialog).addEventListener('click', closeWorkspaceDialog);
 	$('#join-team-form', dialog).addEventListener('submit', async (event) => {
 		event.preventDefault(); const form = new FormData(event.currentTarget); const submit = $('button[type="submit"]', event.currentTarget); submit.disabled = true;
@@ -2267,7 +2260,7 @@ function renderNav() {
   const personal = activeWorkspace()?.kind === 'personal';
   $('#main-nav').innerHTML = `<div class="project-nav-items">${items.map((item) => { const count = navCount(item.key); return `<button type="button" class="nav-item ${state.view === item.key ? 'active' : ''}" data-view="${escapeHTML(item.key)}" title="${escapeHTML(item.label)}">${icon(item.iconName)}<span>${escapeHTML(item.label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`; }).join('')}</div>${personal ? '' : `<button type="button" class="nav-item nav-configure" data-configure-navigation>${icon('sliders')}<span>Настроить меню</span></button>`}`;
   $$('[data-view]', $('#main-nav')).forEach((button) => button.addEventListener('click', () => navigateToView(button.dataset.view)));
-  $('#main-nav').insertAdjacentHTML('beforeend', `<button type="button" class="nav-item" data-teams-directory>${icon('users')}<span>Команды и проекты</span></button>`);
+  $('#main-nav').insertAdjacentHTML('beforeend', `<button type="button" class="nav-item" data-teams-directory>${icon('users')}<span>Команды</span></button>`);
   $('[data-teams-directory]').addEventListener('click', () => { setSidebarOpen(false); openTeamsDirectory(); });
   $('[data-configure-navigation]')?.addEventListener('click', () => { setSidebarOpen(false); openNavigationSettings(); });
 }
@@ -3674,20 +3667,38 @@ function openExistingCardPicker(collection) {
 
 function openAssignRecordBoard(record, collectionID = '') {
   if (!record) return;
-  if (!state.collections.length) return openCollectionCreateDialog();
+  const context = captureProjectContext();
+  if (!state.collections.length) return openCollectionCreateDialog({ afterCreate: (created) => {
+    if (isProjectContextCurrent(context)) openAssignRecordBoard(record, created.id);
+  } });
   const dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
-  content.innerHTML = `<div class="workspace-editor-shell"><header><h2>Поля карточки</h2><button type="button" class="icon-button" data-assign-close aria-label="Закрыть">${icon('x')}</button></header><p>${escapeHTML(record.title)}</p><form id="assign-record-board"><label>Доска<select name="collectionId">${state.collections.map((item) => `<option value="${item.id}" ${item.id === collectionID ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select></label><div class="form-grid two" data-assign-fields></div><button type="submit" class="primary">${icon('check')} Добавить на доску</button></form></div>`;
+  content.innerHTML = `<div class="workspace-editor-shell"><header><h2>Добавить на доску</h2><button type="button" class="icon-button" data-assign-close aria-label="Закрыть">${icon('x')}</button></header><p>${escapeHTML(record.title)}</p><p class="muted">Тип карточки, состояние и история сохранятся.</p><form id="assign-record-board"><label>Доска<select name="collectionId">${state.collections.map((item) => `<option value="${item.id}" ${item.id === collectionID ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select></label><label>Этап на доске<select name="stageId"></select></label><div class="form-grid two" data-assign-fields></div><button type="submit" class="primary">${icon('check')} Добавить на доску</button></form></div>`;
   const form = $('#assign-record-board', content);
   const selected = () => state.collections.find((item) => item.id === form.elements.collectionId.value);
-  const renderFields = () => { $('[data-assign-fields]', form).innerHTML = selected().fields.map((field) => collectionFieldInput(field, null)).join(''); enhanceSelects(form); };
+  const renderFields = () => {
+    const category = record.status === 'completed' ? 'done' : record.status === 'review' ? 'review' : ['in_progress', 'blocked'].includes(record.status) ? 'active' : 'backlog';
+    const stages = selected().stages;
+    const preferred = stages.find(stage => stage.category === category) || stages.find(stage => stage.category !== 'done') || stages[0];
+    form.elements.stageId.innerHTML = stages.map(stage => `<option value="${stage.id}" ${stage.id === preferred?.id ? 'selected' : ''}>${escapeHTML(stage.name)}</option>`).join('');
+    $('[data-assign-fields]', form).innerHTML = selected().fields.map((field) => collectionFieldInput(field, null)).join(''); enhanceSelects(form);
+  };
   form.elements.collectionId.addEventListener('change', renderFields);
   $('[data-assign-close]', content).addEventListener('click', () => requestDialogClose(dialog));
   form.addEventListener('submit', async (event) => {
-    event.preventDefault(); const button = $('button[type="submit"]', form); button.disabled = true;
+    event.preventDefault(); const button = $('button[type="submit"]', form);
+    if (button.disabled || !isProjectContextCurrent(context)) return;
+    button.disabled = true;
     try {
-      await api(`/api/records/${record.id}/collection`, { method: 'PUT', body: JSON.stringify({ collectionId: selected().id, values: customFieldsFromForm(form, selected().fields), expectedUpdatedAt: record.updatedAt }) });
-      state.detailCache.delete(record.id); await syncProjectChanges(); closeDialogImmediately(dialog);
-      if ($('#record-dialog').open && state.activeDetail?.record.id === record.id) { state.activeDetail = await fetchRecordDetail(record.id, true); renderRecordDialog(); }
+      await api(`/api/records/${record.id}/collection`, { method: 'PUT', headers: { 'X-Workspace-ID': context.workspace }, body: JSON.stringify({ collectionId: selected().id, stageId: form.elements.stageId.value, values: customFieldsFromForm(form, selected().fields), expectedUpdatedAt: record.updatedAt }) });
+      if (!isProjectContextCurrent(context)) return;
+      state.detailCache.delete(record.id); await syncProjectChanges();
+      if (!isProjectContextCurrent(context)) return;
+      if (form.isConnected) closeDialogImmediately(dialog);
+      if ($('#record-dialog').open && state.activeDetail?.record.id === record.id) {
+        const detail = await fetchRecordDetail(record.id, true);
+        if (!isProjectContextCurrent(context)) return;
+        if ($('#record-dialog').open && state.activeDetail?.record.id === record.id) { state.activeDetail = detail; renderRecordDialog(); }
+      }
       if (state.view === 'work') renderWorkList(); else renderContent();
       toast('Карточка добавлена без изменения состояния');
     } catch (error) { button.disabled = false; toast(error.message, true); }
@@ -3874,7 +3885,7 @@ function openCollectionCardDialog(collection, record = null, stageID = '', defau
 	openModal(dialog);
 }
 
-function openCollectionCreateDialog() {
+function openCollectionCreateDialog({ afterCreate } = {}) {
 	const workspace = state.activeWorkspaceId;
 	const dialog = $('#workspace-dialog');
 	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Команда')}</p><h2>Новая доска</h2><p>Этапы и поля можно менять без разработки. Связи и история остаются общими для всей команды.</p></div><button type="button" class="icon-button" data-close-workspace-dialog>${icon('x')}</button></header><form id="collection-create-form" class="card-form"><label>Название доски<input name="name" required maxlength="100" placeholder="Например: CRM"></label><label>Описание<textarea name="description" rows="3" maxlength="800" placeholder="Какой процесс ведём на этой доске"></textarea></label><label>Как называть карточку<input name="cardLabel" maxlength="40" value="Задача" placeholder="Лид, сделка, кандидат, заявка"></label><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать доску</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
@@ -3888,8 +3899,11 @@ function openCollectionCreateDialog() {
 			if (workspace !== state.activeWorkspaceId) return;
 			state.activeCollectionId = created.id;
       if (state.view === 'work') state.workCollection = created.id;
-      if (element.isConnected) closeWorkspaceDialog();
+      const continueDialog = element.isConnected;
+      if (continueDialog) closeWorkspaceDialog();
       await reloadCollections(); toast('Доска создана');
+      if (workspace !== state.activeWorkspaceId) return;
+      if (afterCreate) { if (continueDialog) afterCreate(created); return; }
       if (state.view === 'work') openCollectionSettingsDialog(state.collections.find((item) => item.id === created.id));
 		} catch (error) { toast(error.message, true); }
 		finally { submit.disabled = false; }
@@ -5730,7 +5744,7 @@ function renderBlockersPanel(record) {
 }
 
 function renderRecordCustomFieldsRead(record, canEdit) {
-	if (!record.collectionId) return canEdit ? `<section class="dossier-section record-custom-fields"><header><h3>Свои поля</h3><button type="button" class="secondary" data-assign-record-board>${icon('plus')} Добавить поля</button></header></section>` : '';
+	if (!record.collectionId) return canEdit ? `<section class="dossier-section record-custom-fields"><header><div><p class="eyebrow">Доска</p><h3>Карточка пока без доски</h3></div><button type="button" class="secondary" data-assign-record-board>${icon('network')} Добавить на доску</button></header></section>` : '';
 	const collection = state.collections.find((item) => item.id === record.collectionId);
 	if (!collection) return '';
 	return `<section class="dossier-section record-custom-fields"><header><div><p class="eyebrow">${escapeHTML(collection.name)}</p><h3>Поля карточки</h3></div>${canEdit ? `<button type="button" class="icon-button" data-edit-custom-fields aria-label="Изменить поля" title="Изменить поля">${icon('edit')}</button>` : ''}</header><div class="dossier-properties">${collection.fields.map((field) => dossierProperty(field.name, collectionFieldDisplay(field, record.customFields?.[field.id]) || 'Не указано', '', false)).join('') || '<p class="muted">На доске пока нет пользовательских полей.</p>'}</div></section>`;
@@ -5800,7 +5814,7 @@ function renderRecordReadOverview(record, options) {
       <section class="dossier-meta"><span>${escapeHTML(workstreamLabels[record.workstream || 'business'])}</span><span>${record.editPolicy === 'owner_only' ? 'Личная карточка' : 'Общая карточка'}</span><span>${record.isRoot ? 'Корень ветки' : record.parentId ? 'Есть родитель' : 'Без родителя'}</span><button type="button" data-edit-field="workstream" ${canEdit ? '' : 'disabled'}>${icon('settings')} Настроить</button></section>
     </article>
     ${record.type === 'research' && record.status !== 'completed' ? `<section class="research-progress-explainer"><div><span>Готовность ${record.progress}%</span><strong>${record.result ? 'Вывод готов к подтверждению' : 'Зафиксируйте вывод после сравнения'}</strong><p>Процент складывается из вопроса исследования, структуры сравнения, вариантов, их заполненности и итогового вывода. 100% устанавливается только явным завершением.</p></div><progress max="100" value="${record.progress}"></progress></section>` : ''}
-    <div class="record-read-actions">${canEdit ? `<button type="button" class="primary" data-open-record-edit>${icon('edit')} Редактировать</button>${record.type === 'research' && record.status !== 'completed' ? `<button type="button" class="success" data-complete-research>${icon('check')} Завершить исследование</button>` : ''}` : ''}<button type="button" class="secondary" id="notify-partners">${icon('bell')} Уведомить</button><button type="button" class="secondary ai-action" data-analyze-record>${icon('sparkles')} AI-разбор</button><details class="record-more-actions"><summary class="icon-button" aria-label="Другие действия">•••</summary><div>${record.type === 'task' ? `<button type="button" id="convert-to-questions">${icon('messages')} Сделать карточкой вопросов</button>` : ''}${canEdit ? `<button type="button" class="danger-text" id="archive-record">${icon('archive')} В архив</button>` : ''}</div></details></div>
+    <div class="record-read-actions">${canEdit ? `<button type="button" class="primary" data-open-record-edit>${icon('edit')} Редактировать</button>${!record.collectionId ? `<button type="button" class="secondary" data-assign-record-board>${icon('network')} Добавить на доску</button>` : ''}${record.type === 'research' && record.status !== 'completed' ? `<button type="button" class="success" data-complete-research>${icon('check')} Завершить исследование</button>` : ''}` : ''}<button type="button" class="secondary" id="notify-partners">${icon('bell')} Уведомить</button><button type="button" class="secondary ai-action" data-analyze-record>${icon('sparkles')} AI-разбор</button><details class="record-more-actions"><summary class="icon-button" aria-label="Другие действия">•••</summary><div>${record.type === 'task' ? `<button type="button" id="convert-to-questions">${icon('messages')} Сделать карточкой вопросов</button>` : ''}${canEdit ? `<button type="button" class="danger-text" id="archive-record">${icon('archive')} В архив</button>` : ''}</div></details></div>
     ${renderAIAnalysis(record, canEdit)}
     ${renderNextActions(record)}
   </div>`;
@@ -6401,7 +6415,7 @@ function bindRecordDialogEvents() {
     finally { if (button.isConnected) button.disabled = false; }
   });
   $$('[data-edit-field]').forEach((button) => button.addEventListener('click', () => startEditing(button.dataset.editField)));
-  $('[data-assign-record-board]')?.addEventListener('click', () => openAssignRecordBoard(record));
+  $$('[data-assign-record-board]').forEach((button) => button.addEventListener('click', () => openAssignRecordBoard(record)));
 	$('[data-edit-custom-fields]')?.addEventListener('click', () => {
 		const collection = state.collections.find((item) => item.id === record.collectionId);
 		if (collection) openCollectionCardDialog(collection, record);
@@ -7247,7 +7261,7 @@ function activityContext(item) {
 }
 
 function recordTitleByActivity(item) {
-  if (item.entityType === 'user') return item.details?.username || 'Участник проекта';
+  if (item.entityType === 'user') return item.details?.username || 'Участник команды';
   return state.records.find((record) => record.id === item.entityId)?.title || item.details?.title || (item.entityType === 'section_definition' ? 'Шаблон карточки' : item.entityType === 'planning_cycle' ? '12-недельный цикл' : typeMeta[item.entityType]?.singular || 'Запись недоступна');
 }
 
@@ -7344,7 +7358,7 @@ async function openProfile(userId) {
   try {
     const displayName = profile.user.displayName || profile.user.username;
     const settings = { birthDate: null, lifeExpectancyYears: 100 };
-    $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${ownProfile ? 'Мой аккаунт' : 'Участник проекта'}</span><h2>${ownProfile ? 'Профиль' : escapeHTML(displayName)}</h2><p>@${escapeHTML(profile.user.username)} · на платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body">${!ownProfile ? `<section class="profile-summary">${avatarMarkup(profile.user, 'profile-avatar')}<div><h3>${escapeHTML(displayName)}</h3><p>@${escapeHTML(profile.user.username)}</p>${profile.user.bio ? `<div class="profile-bio">${escapeHTML(profile.user.bio).replace(/\n/g, '<br>')}</div>` : ''}</div>${ownProfile ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить профиль</button>` : ''}</section>` : ''}${ownProfile ? `<form id="profile-details-form" class="profile-editor">${renderProfilePhotoEditor(profile.user)}<div class="form-grid two"><label>Отображаемое имя<input name="displayName" maxlength="80" value="${escapeHTML(profile.user.displayName || '')}" placeholder="Как вас видят участники"></label><label>Имя пользователя<input name="username" maxlength="32" value="${escapeHTML(profile.user.username)}"></label></div><label>О себе<textarea name="bio" maxlength="800" rows="4" placeholder="Короткое публичное описание">${escapeHTML(profile.user.bio || '')}</textarea></label><div class="profile-private-fields"><div><span>${icon('lock')} Видно только вам</span><small>Эти данные используются только для личной карты времени.</small></div><div class="form-grid two"><label>Дата рождения<input name="birthDate" type="date" disabled value="${escapeHTML(settings.birthDate || '')}"></label><label>Горизонт, лет<input name="lifeExpectancyYears" type="number" disabled min="1" max="150" value=""></label></div><p class="profile-settings-status" data-profile-settings-status role="status">Загружаем личные настройки…</p></div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить профиль</button><button type="button" class="secondary" data-cancel-profile-edit>Сбросить изменения</button></div></form><details class="profile-security"><summary>${icon('lock')} Безопасность аккаунта</summary><form id="password-form"><div class="form-grid two"><label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label></div><button type="submit" class="secondary">Изменить пароль</button></form></details><details class="profile-security" data-profile-ai><summary>${icon('sparkles')} Состояние AI</summary><section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Состояние AI</strong><p>Локальный анализ доступен всегда.</p></div></section></details>` : ''}<details class="profile-security profile-activity-details" ${ownProfile ? '' : 'open'}><summary>Активность и нагрузка</summary><div data-profile-activity-body></div></details></div>`;
+    $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${ownProfile ? 'Мой аккаунт' : 'Участник команды'}</span><h2>${ownProfile ? 'Профиль' : escapeHTML(displayName)}</h2><p>@${escapeHTML(profile.user.username)} · на платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body">${!ownProfile ? `<section class="profile-summary">${avatarMarkup(profile.user, 'profile-avatar')}<div><h3>${escapeHTML(displayName)}</h3><p>@${escapeHTML(profile.user.username)}</p>${profile.user.bio ? `<div class="profile-bio">${escapeHTML(profile.user.bio).replace(/\n/g, '<br>')}</div>` : ''}</div>${ownProfile ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить профиль</button>` : ''}</section>` : ''}${ownProfile ? `<form id="profile-details-form" class="profile-editor">${renderProfilePhotoEditor(profile.user)}<div class="form-grid two"><label>Отображаемое имя<input name="displayName" maxlength="80" value="${escapeHTML(profile.user.displayName || '')}" placeholder="Как вас видят участники"></label><label>Имя пользователя<input name="username" maxlength="32" value="${escapeHTML(profile.user.username)}"></label></div><label>О себе<textarea name="bio" maxlength="800" rows="4" placeholder="Короткое публичное описание">${escapeHTML(profile.user.bio || '')}</textarea></label><div class="profile-private-fields"><div><span>${icon('lock')} Видно только вам</span><small>Эти данные используются только для личной карты времени.</small></div><div class="form-grid two"><label>Дата рождения<input name="birthDate" type="date" disabled value="${escapeHTML(settings.birthDate || '')}"></label><label>Горизонт, лет<input name="lifeExpectancyYears" type="number" disabled min="1" max="150" value=""></label></div><p class="profile-settings-status" data-profile-settings-status role="status">Загружаем личные настройки…</p></div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить профиль</button><button type="button" class="secondary" data-cancel-profile-edit>Сбросить изменения</button></div></form><details class="profile-security"><summary>${icon('lock')} Безопасность аккаунта</summary><form id="password-form"><div class="form-grid two"><label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label></div><button type="submit" class="secondary">Изменить пароль</button></form></details><details class="profile-security" data-profile-ai><summary>${icon('sparkles')} Состояние AI</summary><section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Состояние AI</strong><p>Локальный анализ доступен всегда.</p></div></section></details>` : ''}<details class="profile-security profile-activity-details" ${ownProfile ? '' : 'open'}><summary>Активность и нагрузка</summary><div data-profile-activity-body></div></details></div>`;
     $$('[data-close-profile]').forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
     const forms = $$('form', dialog);
     const formValues = (form) => JSON.stringify([...new FormData(form).entries()].filter(([key]) => key));
@@ -8654,12 +8668,12 @@ async function openTeamsDirectory() {
     if(!dialog.open||content.firstElementChild!==loading)return;
     state.teams=teams.filter(team=>!team.deletedAt);
     const deleted=teams.filter(team=>team.deletedAt);
-    content.innerHTML='<div class="workspace-editor-shell teams-directory"><header><h2>Команды и проекты</h2><button type="button" class="icon-button" data-directory-close aria-label="Закрыть">'+icon('x')+'</button></header><div class="plan-hub-actions"><button type="button" class="primary" data-directory-create>'+icon('plus')+' Новая команда</button><button type="button" class="secondary" data-directory-join>'+icon('link')+' Присоединиться</button></div>'+
+    content.innerHTML='<div class="workspace-editor-shell teams-directory"><header><div><p class="eyebrow">Независимые группы людей</p><h2>Команды</h2></div><button type="button" class="icon-button" data-directory-close aria-label="Закрыть">'+icon('x')+'</button></header><div class="plan-hub-actions"><button type="button" class="primary" data-directory-create>'+icon('plus')+' Новая команда</button><button type="button" class="secondary" data-directory-join>'+icon('link')+' Присоединиться</button></div>'+
       state.teams.map(team=>{
         const projects=state.workspaces.filter(project=>project.teamId===team.id);
-        return '<section><header><div><h3>'+escapeHTML(team.name)+'</h3><small>'+teamRoleLabel(team.role)+'</small></div><button type="button" class="secondary" data-directory-team="'+team.id+'">'+icon('users')+' Открыть команду</button></header>'+
+        return '<section><header><div><h3>'+escapeHTML(team.name)+'</h3><small>'+teamRoleLabel(team.role)+' · отдельный состав участников</small></div><div class="directory-team-actions"><button type="button" class="secondary" data-directory-team="'+team.id+'">'+icon('users')+' Управление</button>'+(team.role!=='owner'?'<button type="button" class="text-button danger-text" data-directory-leave="'+team.id+'">'+icon('arrowLeft')+' Выйти</button>':'')+'</div></header>'+
           projects.map(project=>'<button type="button" class="directory-project" data-directory-project="'+project.id+'">'+icon(project.id===state.activeWorkspaceId?'check':'network')+'<span><strong>'+escapeHTML(project.name)+'</strong><small>'+escapeHTML(project.description||'')+'</small></span>'+icon('chevronRight')+'</button>').join('')+
-          (projects.length?'':'<p class="muted">Вам пока не назначены проекты.</p>')+'</section>';
+          (projects.length?'':'<p class="muted">Рабочее пространство команды недоступно.</p>')+'</section>';
       }).join('')+(state.teams.length?'':'<p class="muted">Вы пока не участвуете в командах.</p>')+
       (deleted.length?'<details class="deleted-teams"><summary>Удалённые команды · '+deleted.length+'</summary>'+deleted.map(team=>'<article><div><strong>'+escapeHTML(team.name)+'</strong><small>Удалена '+formatDate(team.deletedAt,true)+'</small></div><button type="button" class="secondary" data-restore-team="'+team.id+'">'+icon('rotate')+' Восстановить</button></article>').join('')+'</details>':'')+'</div>';
     const shell=content.firstElementChild;
@@ -8667,6 +8681,7 @@ async function openTeamsDirectory() {
     $('[data-directory-create]',shell).addEventListener('click',openWorkspaceCreateDialog);
     $('[data-directory-join]',shell).addEventListener('click',()=>openJoinTeamDialog());
     $$('[data-directory-team]',shell).forEach(button=>button.addEventListener('click',()=>openTeamSettings(button.dataset.directoryTeam)));
+    $$('[data-directory-leave]',shell).forEach(button=>button.addEventListener('click',()=>openTeamLifecycleDialog(state.teams.find(team=>team.id===button.dataset.directoryLeave),'leave')));
     $$('[data-directory-project]',shell).forEach(button=>button.addEventListener('click',async()=>{closeWorkspaceDialog();try{if(await switchWorkspace(button.dataset.directoryProject))navigateToView('collections');}catch(error){toast(error.message,true);}}));
     $$('[data-restore-team]',shell).forEach(button=>button.addEventListener('click',async()=>{
       if(button.disabled)return;button.disabled=true;

@@ -2,8 +2,27 @@ PRAGMA foreign_keys = ON;
 BEGIN IMMEDIATE;
 
 -- The first CRM workspace is isolated from the BizFlow product workspace.
+INSERT OR IGNORE INTO teams(
+    id, name, slug, description, owner_id, created_at, updated_at
+)
+SELECT
+    'team-space-crm-first-client',
+    'CRM',
+    'team-space-crm-first-client',
+    'Рабочее пространство первой клиентской интеграции CRM',
+    id,
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+FROM users
+WHERE username = 'artkozk' COLLATE NOCASE;
+
+INSERT OR IGNORE INTO team_members(team_id, user_id, role, status, joined_at)
+SELECT 'team-space-crm-first-client', id, 'owner', 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+FROM users
+WHERE username = 'artkozk' COLLATE NOCASE;
+
 INSERT OR IGNORE INTO workspaces(
-    id, name, slug, kind, owner_id, delete_policy, description, created_at, updated_at
+    id, name, slug, kind, owner_id, delete_policy, description, team_id, created_at, updated_at
 )
 SELECT
     'crm-first-client',
@@ -13,6 +32,7 @@ SELECT
     id,
     'archive_only',
     'Рабочее пространство первой клиентской интеграции CRM',
+    'team-space-crm-first-client',
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 FROM users

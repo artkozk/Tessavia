@@ -8,6 +8,37 @@ import (
 	"time"
 )
 
+func TestEveryRecordTypeCanJoinBoardWithoutConversion(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "all-types.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	server := httptest.NewServer(NewServer(store, Config{SessionLifetime: time.Hour}))
+	defer server.Close()
+	client := testClient(t)
+	register(t, client, server.URL, "boards@example.test", "boards")
+	var board WorkspaceCollection
+	requestJSON(t, client, "POST", server.URL+"/api/collections", map[string]any{"name": "All types"}, 201, &board)
+	for kind := range recordTypes {
+		t.Run(kind, func(t *testing.T) {
+			record := createRecord(t, client, server.URL, map[string]any{"type": kind, "title": "Board " + kind, "description": "Keep this content"})
+			var assigned Record
+			requestJSON(t, client, "PUT", server.URL+"/api/records/"+record.ID+"/collection", map[string]any{"collectionId": board.ID, "expectedUpdatedAt": record.UpdatedAt}, 200, &assigned)
+			if assigned.ID != record.ID || assigned.Type != kind || assigned.Title != record.Title || assigned.Description != record.Description || assigned.Status != record.Status || assigned.OwnerID != record.OwnerID || assigned.CollectionID != board.ID || assigned.StageID == "" {
+				t.Fatalf("board assignment converted record: %#v", assigned)
+			}
+		})
+	}
+	idea := createRecord(t, client, server.URL, map[string]any{"type": "idea", "title": "Review idea", "status": "review"})
+	var assigned Record
+	requestJSON(t, client, "PUT", server.URL+"/api/records/"+idea.ID+"/collection", map[string]any{"collectionId": board.ID, "stageId": "not-on-this-board", "expectedUpdatedAt": idea.UpdatedAt}, 400, nil)
+	requestJSON(t, client, "PUT", server.URL+"/api/records/"+idea.ID+"/collection", map[string]any{"collectionId": board.ID, "stageId": board.Stages[0].ID, "expectedUpdatedAt": idea.UpdatedAt}, 200, &assigned)
+	if assigned.Type != "idea" || assigned.Status != "review" || assigned.StageID != board.Stages[0].ID {
+		t.Fatalf("explicit placement changed idea: %#v", assigned)
+	}
+}
+
 func TestLifecycleCompletionReopenAndBoardAssignment(t *testing.T) {
 	store, err := OpenStore(filepath.Join(t.TempDir(), "lifecycle.db"))
 	if err != nil {
