@@ -50,6 +50,8 @@ test "$(sqlite3 "$backup/business-control.db" 'SELECT COUNT(*) FROM pragma_forei
 printf 'BACKUP=%s\n' "$backup"
 install -d -m 0755 "$release"
 install -m 0755 "$staged" "$release/business-control"
+cmp -- "$staged" "$release/business-control"
+rm -f -- "$staged"
 dry=$(mktemp -d /tmp/tessavie-navigation-context-check.XXXXXX)
 cp "$backup/business-control.db" "$dry/check.db"
 mkdir "$dry/uploads"
