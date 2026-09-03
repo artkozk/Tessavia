@@ -40,3 +40,25 @@ test('profile save handlers preserve form references across awaits and photo pre
   assert.match(profile, /form.addEventListener\('input', checkDirty\)/);
   assert.match(profile, /syncAvatar\(updated\)/);
 });
+
+test('profile save omits private settings until they are actually loaded', () => {
+  const context = vm.createContext({});
+  vm.runInContext(source.slice(source.indexOf('function profileUpdatePayload('), source.indexOf('function renderProfileActivity(')), context);
+  const form = new Map([['username','owner'],['displayName','New name'],['bio','New bio']]);
+  const pending = context.profileUpdatePayload(form);
+  assert.equal(pending.displayName, 'New name');
+  assert.equal(Object.hasOwn(pending,'birthDate'), false);
+  assert.equal(Object.hasOwn(pending,'lifeExpectancyYears'), false);
+  form.set('birthDate','1990-01-02'); form.set('lifeExpectancyYears','90');
+  assert.equal(context.profileUpdatePayload(form).birthDate,'1990-01-02');
+  assert.equal(context.profileUpdatePayload(form).lifeExpectancyYears,90);
+});
+
+test('late profile responses cannot mutate another dialog, account, or project', () => {
+  const context=vm.createContext({state:{me:{id:1},activeWorkspaceId:'a'}});
+  vm.runInContext(source.slice(source.indexOf('function profileRequestIsCurrent('),source.indexOf('function profileUpdatePayload(')),context);
+  const dialog={open:true,dataset:{profileRequest:'2'}};
+  assert.equal(context.profileRequestIsCurrent(dialog,'2',1,'a'),true);
+  for(const args of [['1',1,'a'],['2',2,'a'],['2',1,'b']]) assert.equal(context.profileRequestIsCurrent(dialog,...args),false);
+  dialog.open=false;assert.equal(context.profileRequestIsCurrent(dialog,'2',1,'a'),false);
+});

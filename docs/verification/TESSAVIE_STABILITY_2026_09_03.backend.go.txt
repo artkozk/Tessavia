@@ -1,0 +1,55 @@
+package app
+
+import (
+ "fmt"
+ "net/http"
+ "net/http/httptest"
+ "path/filepath"
+ "testing"
+ "time"
+)
+
+// Diagnostic reproduction against a temporary database; never production data.
+func TestStabilityAudit20260903(t *testing.T) {
+ store, err := OpenStore(filepath.Join(t.TempDir(), "audit.db"))
+ if err != nil { t.Fatal(err) }; defer store.Close()
+ server := httptest.NewServer(NewServer(store, Config{SessionLifetime: time.Hour}))
+ defer server.Close()
+ owner, partner := testClient(t), testClient(t)
+ user := register(t, owner, server.URL, "audit_owner@example.test", "audit_owner")
+ other := register(t, partner, server.URL, "audit_partner@example.test", "audit_partner")
+
+ var note, first, second PersonalNote
+ requestJSON(t, owner, "POST", server.URL+"/api/personal/notes", map[string]any{"title":"Shared device draft", "body":"original"}, 201, &note)
+ requestJSON(t, owner, "PATCH", server.URL+"/api/personal/notes/"+note.ID, map[string]any{"title":note.Title, "body":"new content from first tab"}, 200, &first)
+ requestJSON(t, owner, "PATCH", server.URL+"/api/personal/notes/"+note.ID, map[string]any{"title":"Title from stale second tab", "body":note.Body}, 200, &second)
+ t.Logf("NOTE_STALE_SAVE accepted=true newest_content_lost=%t final_body=%q", second.Body != first.Body, second.Body)
+ requestJSON(t, partner, "PATCH", server.URL+"/api/personal/notes/"+note.ID, map[string]any{"title":"Other user", "body":"private access test"}, http.StatusNotFound, nil)
+ t.Log("NOTE_PRIVACY other_user_rejected=true")
+
+ criterion := createRecord(t, owner, server.URL, map[string]any{"type":"criterion", "title":"Audit criterion"})
+ idea := createRecord(t, owner, server.URL, map[string]any{"type":"idea", "title":"Audit idea"})
+ var scores []CriterionScore
+ scorePath := server.URL+"/api/records/"+idea.ID+"/criteria/"+criterion.ID
+ requestJSON(t, owner, "PUT", scorePath, map[string]any{"score":9,"note":"First opinion","reason":"Audit"}, 200, &scores)
+ requestJSON(t, partner, "PUT", scorePath, map[string]any{"score":2,"note":"Second opinion","reason":"Audit"}, 200, &scores)
+ var count, evaluator, value int
+ if err := store.db.QueryRow("SELECT COUNT(*), evaluated_by, score FROM criterion_scores WHERE record_id = ? AND criterion_id = ?", idea.ID, criterion.ID).Scan(&count,&evaluator,&value); err != nil { t.Fatal(err) }
+ t.Logf("SCORES participants=2 rows=%d final_score=%d first_author_replaced=%t",count,value,int64(evaluator)==other.ID)
+
+ var initial int
+ if err := store.db.QueryRow("SELECT COUNT(*) FROM records WHERE workspace_id = ?",idea.WorkspaceID).Scan(&initial); err != nil { t.Fatal(err) }
+ tx, err := store.db.Begin(); if err != nil { t.Fatal(err) }
+ for i:=initial; i<501; i++ {
+   stamp:=time.Date(2026,1,1,0,0,i,0,time.UTC).Format(time.RFC3339Nano)
+   if _, err:=tx.Exec("INSERT INTO records(id,type,title,status,author_id,owner_id,created_at,updated_at,workspace_id) VALUES(?,?,?,?,?,?,?,?,?)",fmt.Sprintf("audit-%04d",i),"task",fmt.Sprintf("Synthetic task %d",i),"planned",user.ID,user.ID,stamp,stamp,idea.WorkspaceID); err != nil { tx.Rollback(); t.Fatal(err) }
+ }
+ if err:=tx.Commit();err!=nil { t.Fatal(err) }
+ var records []Record
+ requestJSON(t,owner,"GET",server.URL+"/api/records?includeArchived=true",nil,200,&records)
+ seen:=map[string]bool{}; for _,rec:=range records { seen[rec.ID]=true }
+ missing:="";for i:=initial;i<501;i++ {id:=fmt.Sprintf("audit-%04d",i);if !seen[id] { missing=id;break }}
+ accessible:=false
+ if missing!="" { requestJSON(t,owner,"GET",server.URL+"/api/records/"+missing,nil,200,nil);accessible=true }
+ t.Logf("PAGINATION database_records=501 returned=%d omitted_record_accessible_directly=%t",len(records),accessible)
+}

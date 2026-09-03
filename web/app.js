@@ -6932,37 +6932,53 @@ function uploadProfileAvatar(file, onProgress) {
 	});
 }
 
+function profileRequestIsCurrent(dialog, requestId, viewerId, workspaceId) {
+  return dialog.open && dialog.dataset.profileRequest === requestId && state.me?.id === viewerId && state.activeWorkspaceId === workspaceId;
+}
+
+function profileUpdatePayload(form) {
+  const payload = { username: form.get('username'), displayName: form.get('displayName'), bio: form.get('bio') };
+  if (form.has('birthDate')) payload.birthDate = form.get('birthDate');
+  if (form.has('lifeExpectancyYears')) payload.lifeExpectancyYears = Number(form.get('lifeExpectancyYears'));
+  return payload;
+}
+
+function renderProfileActivity(profile, ownProfile) {
+  const maxSeconds = Math.max(1, ...profile.activity.map((day) => day.activeSeconds));
+  const accuracy = profile.estimateMinutes > 0 && profile.actualMinutes > 0 ? Math.round(profile.actualMinutes * 100 / profile.estimateMinutes) : 0;
+  const insight = estimateInsight(accuracy, profile.completedRecords);
+  const capacityHours = profile.weeklyCapacityMinutes ? Number((profile.weeklyCapacityMinutes / 60).toFixed(1)) : 0;
+  const capacityTone = !profile.weeklyCapacityMinutes ? 'unset' : profile.utilizationPercent > 100 ? 'overload' : profile.utilizationPercent >= 80 ? 'tight' : 'normal';
+  return `<div class="profile-metrics">${ownProfile ? `<article><span>Активное время · 30 дней</span><strong>${durationLabel(profile.activeSeconds30Days)}</strong><small>Только взаимодействие с интерфейсом</small></article><article><span>Действия в проекте · 30 дней</span><strong>${profile.actions30Days}</strong><small>${interactionsCountLabel(profile.interactions30Days)} с UI</small></article>` : ''}<article><span>Завершено</span><strong>${profile.completedRecords}</strong><small>карточек в этом проекте</small></article><article><span>Факт к оценке</span><strong>${accuracy ? `${accuracy}%` : 'Нет данных'}</strong><small>${minutesLabel(profile.actualMinutes)} факт · ${minutesLabel(profile.estimateMinutes)} план</small></article></div><section class="estimate-insight ${insight.tone}">${icon('clock')}<div><strong>${escapeHTML(insight.title)}</strong><p>${escapeHTML(insight.text)}</p></div></section><section class="weekly-capacity capacity-${capacityTone}"><header><div><span>Рабочая неделя</span><h3>${profile.weeklyCapacityMinutes ? `${profile.utilizationPercent}% запланировано` : 'Ёмкость пока не задана'}</h3><p>${minutesLabel(profile.scheduledMinutes)} со сроком на этой неделе${profile.unscheduledMinutes ? ` · ${minutesLabel(profile.unscheduledMinutes)} без недельного слота` : ''}</p></div><strong>${profile.weeklyCapacityMinutes ? minutesLabel(profile.weeklyCapacityMinutes) : '—'}</strong></header><progress max="100" value="${Math.min(100, profile.utilizationPercent || 0)}"></progress>${ownProfile ? `<form id="capacity-form"><label>Доступно в неделю, часов<input name="hours" type="number" min="0" max="168" step="0.5" value="${capacityHours}"></label><button type="submit" class="secondary">Сохранить ёмкость</button></form>` : '<small>Ёмкость задаёт сам участник в своём профиле.</small>'}</section>${ownProfile ? `<section class="activity-chart"><header><h3>Активность по дням</h3><span>Последние 30 дней</span></header><div>${profile.activity.length ? profile.activity.slice().reverse().map((day) => `<span title="${escapeHTML(day.date)} · ${durationLabel(day.activeSeconds)} · ${interactionsCountLabel(day.interactions)}"><i data-level="${Math.max(1, Math.ceil(day.activeSeconds * 5 / maxSeconds))}"></i><small>${day.date.slice(8)}</small></span>`).join('') : `<p>Активность начнёт накапливаться после взаимодействия с новой версией.</p>`}</div></section>` : ''}<section class="profile-actions"><header><h3>Действия в этом проекте</h3><span>${profile.recentActions.length}</span></header><div class="activity-list">${profile.recentActions.map(renderActivityItem).join('') || emptyState('Действий пока нет.')}</div></section>`;
+}
+
 async function openProfile(userId) {
   const dialog = $('#profile-dialog');
   if (dialog.open && !await confirmDialogTransition(dialog)) return;
   const requestId = String(Number(dialog.dataset.profileRequest || 0) + 1);
   dialog.dataset.profileRequest = requestId;
   dialog.dataset.composerDirty = 'false';
-  const user = state.users.find((item) => item.id === Number(userId));
-  $('#profile-dialog-content').innerHTML = `<div class="profile-loading"><span class="spinner"></span><strong>Загружаем активность ${escapeHTML(user?.username || '')}</strong></div>`;
+  const ownProfile = Number(userId) === state.me.id;
+  const viewerId = state.me.id;
+  const workspaceId = state.activeWorkspaceId;
+  const user = ownProfile ? state.me : state.users.find((item) => item.id === Number(userId));
+  const profile = { user: user || { id: Number(userId), username: '', displayName: 'Участник', createdAt: '' } };
+  const isCurrent = () => profileRequestIsCurrent(dialog, requestId, viewerId, workspaceId);
   openModal(dialog);
   try {
-    const ownProfile = Number(userId) === state.me.id;
-    const [profile, personal] = await Promise.all([
-      api(`/api/users/${userId}/profile`),
-      ownProfile ? api('/api/personal/overview') : Promise.resolve(null),
-    ]);
-    if (!dialog.open || dialog.dataset.profileRequest !== requestId) return;
-    if (personal) state.personal = personal;
-    const maxSeconds = Math.max(1, ...profile.activity.map((day) => day.activeSeconds));
-    const accuracy = profile.estimateMinutes > 0 && profile.actualMinutes > 0 ? Math.round(profile.actualMinutes * 100 / profile.estimateMinutes) : 0;
-    const insight = estimateInsight(accuracy, profile.completedRecords);
-    const capacityHours = profile.weeklyCapacityMinutes ? Number((profile.weeklyCapacityMinutes / 60).toFixed(1)) : 0;
-    const capacityTone = !profile.weeklyCapacityMinutes ? 'unset' : profile.utilizationPercent > 100 ? 'overload' : profile.utilizationPercent >= 80 ? 'tight' : 'normal';
     const displayName = profile.user.displayName || profile.user.username;
-    const settings = personal?.settings || { birthDate: null, lifeExpectancyYears: 100 };
-    $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${ownProfile ? 'Мой аккаунт' : 'Участник проекта'}</span><h2>${ownProfile ? 'Профиль' : escapeHTML(displayName)}</h2><p>@${escapeHTML(profile.user.username)} · на платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body">${!ownProfile ? `<section class="profile-summary">${avatarMarkup(profile.user, 'profile-avatar')}<div><h3>${escapeHTML(displayName)}</h3><p>@${escapeHTML(profile.user.username)}</p>${profile.user.bio ? `<div class="profile-bio">${escapeHTML(profile.user.bio).replace(/\n/g, '<br>')}</div>` : ''}</div>${ownProfile ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить профиль</button>` : ''}</section>` : ''}${ownProfile ? `<form id="profile-details-form" class="profile-editor">${renderProfilePhotoEditor(profile.user)}<div class="form-grid two"><label>Отображаемое имя<input name="displayName" maxlength="80" value="${escapeHTML(profile.user.displayName || '')}" placeholder="Как вас видят участники"></label><label>Имя пользователя<input name="username" maxlength="32" value="${escapeHTML(profile.user.username)}"></label></div><label>О себе<textarea name="bio" maxlength="800" rows="4" placeholder="Короткое публичное описание">${escapeHTML(profile.user.bio || '')}</textarea></label><div class="profile-private-fields"><div><span>${icon('lock')} Видно только вам</span><small>Эти данные используются только для личной карты времени.</small></div><div class="form-grid two"><label>Дата рождения<input name="birthDate" type="date" value="${escapeHTML(settings.birthDate || '')}"></label><label>Горизонт, лет<input name="lifeExpectancyYears" type="number" min="1" max="150" value="${settings.lifeExpectancyYears || 100}"></label></div></div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить профиль</button><button type="button" class="secondary" data-cancel-profile-edit>Сбросить изменения</button></div></form><details class="profile-security"><summary>${icon('lock')} Безопасность аккаунта</summary><form id="password-form"><div class="form-grid two"><label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label></div><button type="submit" class="secondary">Изменить пароль</button></form></details><details class="profile-security"><summary>${icon('sparkles')} Состояние AI</summary><section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Проверяем AI</strong><p>Локальный анализ доступен всегда.</p></div></section></details>` : ''}${ownProfile ? '<details class="profile-security profile-activity-details"><summary>Активность и нагрузка</summary>' : ''}<div class="profile-metrics">${ownProfile ? `<article><span>Активное время · 30 дней</span><strong>${durationLabel(profile.activeSeconds30Days)}</strong><small>Только взаимодействие с интерфейсом</small></article><article><span>Действия в проекте · 30 дней</span><strong>${profile.actions30Days}</strong><small>${interactionsCountLabel(profile.interactions30Days)} с UI</small></article>` : ''}<article><span>Завершено</span><strong>${profile.completedRecords}</strong><small>карточек в этом проекте</small></article><article><span>Факт к оценке</span><strong>${accuracy ? `${accuracy}%` : 'Нет данных'}</strong><small>${minutesLabel(profile.actualMinutes)} факт · ${minutesLabel(profile.estimateMinutes)} план</small></article></div><section class="estimate-insight ${insight.tone}">${icon('clock')}<div><strong>${escapeHTML(insight.title)}</strong><p>${escapeHTML(insight.text)}</p></div></section><section class="weekly-capacity capacity-${capacityTone}"><header><div><span>Рабочая неделя</span><h3>${profile.weeklyCapacityMinutes ? `${profile.utilizationPercent}% запланировано` : 'Ёмкость пока не задана'}</h3><p>${minutesLabel(profile.scheduledMinutes)} со сроком на этой неделе${profile.unscheduledMinutes ? ` · ${minutesLabel(profile.unscheduledMinutes)} без недельного слота` : ''}</p></div><strong>${profile.weeklyCapacityMinutes ? minutesLabel(profile.weeklyCapacityMinutes) : '—'}</strong></header><progress max="100" value="${Math.min(100, profile.utilizationPercent || 0)}"></progress>${ownProfile ? `<form id="capacity-form"><label>Доступно в неделю, часов<input name="hours" type="number" min="0" max="168" step="0.5" value="${capacityHours}"></label><button type="submit" class="secondary">Сохранить ёмкость</button></form>` : '<small>Ёмкость задаёт сам участник в своём профиле.</small>'}</section>${ownProfile ? `<section class="activity-chart"><header><h3>Активность по дням</h3><span>Последние 30 дней</span></header><div>${profile.activity.length ? profile.activity.slice().reverse().map((day) => `<span title="${escapeHTML(day.date)} · ${durationLabel(day.activeSeconds)} · ${interactionsCountLabel(day.interactions)}"><i data-level="${Math.max(1, Math.ceil(day.activeSeconds * 5 / maxSeconds))}"></i><small>${day.date.slice(8)}</small></span>`).join('') : `<p>Активность начнёт накапливаться после взаимодействия с новой версией.</p>`}</div></section>` : ''}<section class="profile-actions"><header><h3>Действия в этом проекте</h3><span>${profile.recentActions.length}</span></header><div class="activity-list">${profile.recentActions.map(renderActivityItem).join('') || emptyState('Действий пока нет.')}</div></section>${ownProfile ? '</details>' : ''}</div>`;
+    const settings = { birthDate: null, lifeExpectancyYears: 100 };
+    $('#profile-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${ownProfile ? 'Мой аккаунт' : 'Участник проекта'}</span><h2>${ownProfile ? 'Профиль' : escapeHTML(displayName)}</h2><p>@${escapeHTML(profile.user.username)} · на платформе с ${formatDate(profile.user.createdAt)}</p></div><button type="button" class="close-button icon-button" data-close-profile aria-label="Закрыть">${icon('x')}</button></div><div class="profile-body">${!ownProfile ? `<section class="profile-summary">${avatarMarkup(profile.user, 'profile-avatar')}<div><h3>${escapeHTML(displayName)}</h3><p>@${escapeHTML(profile.user.username)}</p>${profile.user.bio ? `<div class="profile-bio">${escapeHTML(profile.user.bio).replace(/\n/g, '<br>')}</div>` : ''}</div>${ownProfile ? `<button type="button" class="secondary" data-edit-profile>${icon('edit')} Изменить профиль</button>` : ''}</section>` : ''}${ownProfile ? `<form id="profile-details-form" class="profile-editor">${renderProfilePhotoEditor(profile.user)}<div class="form-grid two"><label>Отображаемое имя<input name="displayName" maxlength="80" value="${escapeHTML(profile.user.displayName || '')}" placeholder="Как вас видят участники"></label><label>Имя пользователя<input name="username" maxlength="32" value="${escapeHTML(profile.user.username)}"></label></div><label>О себе<textarea name="bio" maxlength="800" rows="4" placeholder="Короткое публичное описание">${escapeHTML(profile.user.bio || '')}</textarea></label><div class="profile-private-fields"><div><span>${icon('lock')} Видно только вам</span><small>Эти данные используются только для личной карты времени.</small></div><div class="form-grid two"><label>Дата рождения<input name="birthDate" type="date" disabled value="${escapeHTML(settings.birthDate || '')}"></label><label>Горизонт, лет<input name="lifeExpectancyYears" type="number" disabled min="1" max="150" value=""></label></div><p class="profile-settings-status" data-profile-settings-status role="status">Загружаем личные настройки…</p></div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить профиль</button><button type="button" class="secondary" data-cancel-profile-edit>Сбросить изменения</button></div></form><details class="profile-security"><summary>${icon('lock')} Безопасность аккаунта</summary><form id="password-form"><div class="form-grid two"><label>Текущий пароль<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>Новый пароль<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label></div><button type="submit" class="secondary">Изменить пароль</button></form></details><details class="profile-security" data-profile-ai><summary>${icon('sparkles')} Состояние AI</summary><section class="ai-provider-status checking" id="ai-provider-status">${icon('sparkles')}<div><strong>Состояние AI</strong><p>Локальный анализ доступен всегда.</p></div></section></details>` : ''}<details class="profile-security profile-activity-details" ${ownProfile ? '' : 'open'}><summary>Активность и нагрузка</summary><div data-profile-activity-body></div></details></div>`;
     $$('[data-close-profile]').forEach((button) => button.addEventListener('click', () => requestDialogClose(dialog)));
     const forms = $$('form', dialog);
     const formValues = (form) => JSON.stringify([...new FormData(form).entries()].filter(([key]) => key));
     const baselines = new Map(forms.map((form) => [form, formValues(form)]));
     const checkDirty = () => { dialog.dataset.composerDirty = String(forms.some((form) => formValues(form) !== baselines.get(form))); };
     forms.forEach((form) => { form.addEventListener('input', checkDirty); form.addEventListener('change', checkDirty); });
+    const trackForm = (form) => {
+      forms.push(form); baselines.set(form, formValues(form));
+      form.addEventListener('input', checkDirty); form.addEventListener('change', checkDirty);
+    };
     const markSaved = (form) => { baselines.set(form, formValues(form)); checkDirty(); };
     $('[data-cancel-profile-edit]', dialog)?.addEventListener('click', () => {
       const form = $('#profile-details-form', dialog);
@@ -7019,11 +7035,14 @@ async function openProfile(userId) {
       if (dialog.dataset.profileBusy === 'true') return;
       setProfileBusy(true);
       try {
-        state.me = await api('/api/me', { method: 'PATCH', body: JSON.stringify({ username: form.get('username'), displayName: form.get('displayName'), bio: form.get('bio'), birthDate: form.get('birthDate'), lifeExpectancyYears: Number(form.get('lifeExpectancyYears')) }) });
+        const payload = profileUpdatePayload(form);
+        state.me = await api('/api/me', { method: 'PATCH', body: JSON.stringify(payload) });
+        profile.user = state.me;
+        const member = state.users.find((item) => item.id === state.me.id);
+        if (member) Object.assign(member, state.me);
         $('#user-name').textContent = state.me.username;
-			renderAvatarContent($('#user-avatar'), state.me);
-        await loadData(true);
-        await loadPersonal({ force: true });
+        renderAvatarContent($('#user-avatar'), state.me);
+        if (state.personal && form.has('birthDate')) state.personal.settings = { birthDate: payload.birthDate || null, lifeExpectancyYears: payload.lifeExpectancyYears };
         markSaved(node);
         $$('input, textarea', node).forEach((input) => { if (input.type !== 'file') input.defaultValue = input.value; });
         toast('Профиль сохранён');
@@ -7043,22 +7062,73 @@ async function openProfile(userId) {
       } catch (error) { toast(error.message, true); }
       finally { setProfileBusy(false); }
     });
-    $('#capacity-form')?.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const node = event.currentTarget;
-      if (dialog.dataset.profileBusy === 'true') return;
-      setProfileBusy(true);
-      const hours = Number(new FormData(node).get('hours') || 0);
+    const activityDetails = $('.profile-activity-details', dialog);
+    let activityLoading = false, activityLoaded = false;
+    const loadActivity = async () => {
+      if (activityLoading || activityLoaded) return;
+      activityLoading = true;
+      const body = $('[data-profile-activity-body]', dialog);
+      body.innerHTML = '<div class="profile-section-loading" role="status"><span class="spinner"></span>Загружаем активность…</div>';
       try {
-        state.teamCapacity = await api(`/api/users/${profile.user.id}/capacity`, { method: 'PUT', body: JSON.stringify({ weeklyMinutes: Math.round(hours * 60) }) });
-        markSaved(node);
-        toast('Недельная ёмкость сохранена');
-      } catch (error) { toast(error.message, true); }
-      finally { setProfileBusy(false); }
-    });
-    const recentActions = new Map(profile.recentActions.map((item) => [item.id, item]));
-    $$('[data-open-event]', dialog).forEach((button) => button.addEventListener('click', () => openActivity(button.dataset.openEvent, recentActions.get(button.dataset.openEvent))));
-    if (ownProfile) api('/api/ai/health').then((health) => {
+        const activity = await api(`/api/users/${userId}/profile`, { headers: { 'X-Workspace-ID': workspaceId } });
+        if (!isCurrent()) return;
+        body.innerHTML = renderProfileActivity(activity, ownProfile);
+        const capacityForm = $('#capacity-form', dialog);
+        if (capacityForm) trackForm(capacityForm);
+        $('#capacity-form', dialog)?.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const node = event.currentTarget;
+          if (dialog.dataset.profileBusy === 'true') return;
+          setProfileBusy(true);
+          const hours = Number(new FormData(node).get('hours') || 0);
+          try {
+            state.teamCapacity = await api(`/api/users/${activity.user.id}/capacity`, { method: 'PUT', body: JSON.stringify({ weeklyMinutes: Math.round(hours * 60) }) });
+            markSaved(node);
+            toast('Недельная ёмкость сохранена');
+          } catch (error) { toast(error.message, true); }
+          finally { setProfileBusy(false); }
+        });
+        const recentActions = new Map(activity.recentActions.map((item) => [item.id, item]));
+        $$('[data-open-event]', dialog).forEach((button) => button.addEventListener('click', () => openActivity(button.dataset.openEvent, recentActions.get(button.dataset.openEvent))));
+
+        activityLoaded = true;
+      } catch (error) {
+        if (!isCurrent()) return;
+        body.innerHTML = `<div class="profile-section-error" role="status"><p>${escapeHTML(error.message)}</p><button type="button" class="secondary" data-retry-profile-activity>Повторить загрузку</button></div>`;
+        $('[data-retry-profile-activity]', body).addEventListener('click', loadActivity);
+      } finally { activityLoading = false; }
+    };
+    activityDetails.addEventListener('toggle', () => { if (activityDetails.open) void loadActivity(); });
+    if (!ownProfile) void loadActivity();
+    if (ownProfile) {
+      const loadSettings = async () => {
+        const status = $('[data-profile-settings-status]', dialog);
+        status.textContent = 'Загружаем личные настройки…';
+        try {
+          const basic = await api(`/api/users/${userId}/profile?view=basic`, { headers: { 'X-Workspace-ID': workspaceId } });
+          if (!isCurrent()) return;
+          const form = $('#profile-details-form', dialog);
+          const baseline = new Map(JSON.parse(baselines.get(form)));
+          for (const [name, value] of Object.entries(basic.settings)) {
+            const field = form.elements[name];
+            field.value = value ?? ''; field.defaultValue = field.value; field.disabled = false;
+            field.readOnly = dialog.dataset.profileBusy === 'true';
+            baseline.set(name, field.value);
+          }
+          baselines.set(form, JSON.stringify([...new FormData(form).entries()].map(([name,value]) => [name,baseline.has(name) ? baseline.get(name) : value])));
+          checkDirty(); status.textContent = '';
+        } catch (error) {
+          if (!isCurrent()) return;
+          status.innerHTML = `Личные настройки не загрузились. <button type="button" class="text-button" data-retry-profile-settings>Повторить</button>`;
+          $('[data-retry-profile-settings]', status).addEventListener('click', loadSettings, { once: true });
+        }
+      };
+      void loadSettings();
+      let aiRequested = false;
+      $('[data-profile-ai]', dialog).addEventListener('toggle', event => {
+        if (!event.currentTarget.open || aiRequested) return;
+        aiRequested = true;
+      api('/api/ai/health').then((health) => {
 			const node = $('#ai-provider-status', dialog); if (!node || !dialog.open || dialog.dataset.profileRequest !== requestId) return;
 			const externalProvider = health.provider === 'gemini' ? 'Gemini' : health.provider === 'groq' ? 'Groq' : 'Внешняя модель';
 			const provider = health.providerAvailable ? externalProvider : 'Локальный анализ активен';
@@ -7069,6 +7139,9 @@ async function openProfile(userId) {
 			node.className = `ai-provider-status ${health.providerAvailable ? 'available' : 'fallback'}`;
 			node.innerHTML = `${icon('sparkles')}<div><strong>${escapeHTML(`${provider}${health.providerAvailable ? model : ''}`)}</strong><p>${escapeHTML(message)}</p></div>`;
 		}).catch(() => {});
+
+      });
+    }
   } catch (error) {
     if (!dialog.open || dialog.dataset.profileRequest !== requestId) return;
     $('#profile-dialog-content').innerHTML = `<div class="record-load-error">${icon('help')}<h2>Профиль не загрузился</h2><p>${escapeHTML(error.message)}</p><button type="button" class="secondary" data-close-profile>Закрыть</button></div>`;

@@ -55,3 +55,41 @@ func TestProfileDoesNotLeakAnotherProjectOrPersonalActivity(t *testing.T) {
 		t.Fatal("owner lost private activity")
 	}
 }
+
+func TestBasicProfileDoesNotLoadPersonalCollectionsOrExposeSettingsToPartner(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "basic-profile.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	server := httptest.NewServer(NewServer(store, Config{SessionLifetime: time.Hour}))
+	defer server.Close()
+	ownerClient, partnerClient := testClient(t), testClient(t)
+	owner := register(t, ownerClient, server.URL, "basic_owner@example.test", "basic_owner")
+	register(t, partnerClient, server.URL, "basic_partner@example.test", "basic_partner")
+	requestJSON(t, ownerClient, "PATCH", server.URL+"/api/me", map[string]any{"birthDate": "1990-01-02", "lifeExpectancyYears": 90}, 200, nil)
+	requestJSON(t, ownerClient, "POST", server.URL+"/api/personal/notes", map[string]any{"title": "Private note", "body": "private-note-must-not-be-loaded-with-profile"}, 201, nil)
+	path := server.URL + "/api/users/" + strconv.FormatInt(owner.ID, 10) + "/profile?view=basic"
+	var basic map[string]any
+	requestJSON(t, ownerClient, "GET", path, nil, 200, &basic)
+	if len(basic) != 2 || basic["settings"].(map[string]any)["birthDate"] != "1990-01-02" {
+		t.Fatalf("bad own basic profile: %#v", basic)
+	}
+	data, _ := json.Marshal(basic)
+	if strings.Contains(string(data), "private-note-must-not") || basic["recentActions"] != nil || basic["activity"] != nil {
+		t.Fatal("basic profile includes unrelated collections")
+	}
+	// Omitted fields remain unchanged while their separate request is still pending.
+	requestJSON(t, ownerClient, "PATCH", server.URL+"/api/me", map[string]any{"displayName": "Updated immediately"}, 200, nil)
+	requestJSON(t, ownerClient, "GET", path, nil, 200, &basic)
+	if basic["settings"].(map[string]any)["birthDate"] != "1990-01-02" {
+		t.Fatal("saving name cleared private setting")
+	}
+	requestJSON(t, ownerClient, "PUT", server.URL+"/api/me/password", map[string]any{"currentPassword": "wrong-password", "newPassword": "new-long-password"}, 400, nil)
+	requestJSON(t, ownerClient, "GET", server.URL+"/api/me", nil, 200, nil)
+	basic = nil
+	requestJSON(t, partnerClient, "GET", path, nil, 200, &basic)
+	if len(basic) != 1 || basic["settings"] != nil {
+		t.Fatal("private settings leaked to partner")
+	}
+}

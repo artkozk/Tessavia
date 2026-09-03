@@ -103,6 +103,23 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setUserAvatar(&profile.User, avatarStoredName, avatarUpdatedAt)
+	// Opening account settings must not wait for history, capacity, or personal notes.
+	if r.URL.Query().Get("view") == "basic" {
+		response := struct {
+			User     User              `json:"user"`
+			Settings *PersonalSettings `json:"settings,omitempty"`
+		}{User: profile.User}
+		if userID == currentUser(r).ID {
+			response.Settings = &PersonalSettings{}
+			if err := s.store.db.QueryRowContext(r.Context(), `SELECT birth_date, life_expectancy_years FROM users WHERE id = ?`, userID).
+				Scan(&response.Settings.BirthDate, &response.Settings.LifeExpectancyYears); err != nil {
+				writeError(w, http.StatusInternalServerError, "Не удалось загрузить настройки профиля")
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
 	since := time.Now().UTC().AddDate(0, 0, -29).Format("2006-01-02")
 	if userID == currentUser(r).ID {
 		_ = s.store.db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(active_seconds), 0), COALESCE(SUM(interactions), 0) FROM user_activity_daily WHERE user_id = ? AND activity_date >= ?`, userID, since).

@@ -1098,6 +1098,11 @@ dialog.dismiss-attention { animation: dialog-dismiss-attention .3s ease; }
 
 .profile-dialog { width: min(900px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); }
 .profile-body { padding: 0 28px 30px; }
+.profile-section-loading { min-height: 112px; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 20px; color: var(--muted); }
+.profile-section-error { padding: 20px; display: grid; gap: 12px; justify-items: start; }
+.profile-settings-status { min-height: 20px; font-size: 13px; color: var(--muted); }
+.profile-settings-status:empty { display: none; }
+.profile-settings-status button { margin-left: 6px; }
 .profile-summary { min-height: 92px; display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); }
 .profile-avatar { width: 52px; height: 52px; font-size: 16px; }
 .profile-summary > div { display: grid; gap: 4px; }
