@@ -12,6 +12,7 @@ from urllib import request
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--commit',required=True)
 parser.add_argument('--release',required=True)
+parser.add_argument('--compact',action='store_true',help='Record the verified sidebar size correction')
 args=parser.parse_args()
 assert len(args.commit)==40 and all(c in '0123456789abcdef' for c in args.commit)
 assert args.release.startswith('/opt/business-control/releases/20260903-supplied-logo-')
@@ -27,7 +28,7 @@ db.execute('INSERT INTO sessions(user_id,token_hash,expires_at,created_at,last_s
 db.commit()
 opener=request.build_opener(request.ProxyHandler({}))
 task_id='c0fd9c05fb729716cc0fcee1392673e4'
-marker='[verified:supplied-logo-'+args.commit[:7]+']'
+marker='[verified:'+('compact-logo-' if args.compact else 'supplied-logo-')+args.commit[:7]+']'
 def api(method,path,body=None):
     payload=None if body is None else json.dumps(body,ensure_ascii=False).encode()
     req=request.Request('http://127.0.0.1:8522/api'+path,payload,
@@ -44,14 +45,23 @@ try:
     evidence+='Backup и dry-run на копии: таблицы не изменились; публичный smoke прошёл. '
     evidence+='Физические телефоны и обновление установленной PWA не проверялись.\n'
     evidence+='Commit: '+args.commit+'\nRelease: '+args.release+'\nhttps://control.e-rd.ru'
+    if args.compact:
+        evidence=marker+'\nПо замечанию пользователя логотип в боковом меню уменьшен со 174 до 128 px. '
+        evidence+='Высота шапки около 55 px на ПК и 59 px на телефоне; сохранено место для закрытия меню. '
+        evidence+='Изображение с тремя окнами, палитра, вход и иконки не изменены. '
+        evidence+='Go test/vet и Node-тесты, браузер 1280/390/320 px, длинный текст и восстановление черновика проверены. '
+        evidence+='Backup, dry-run со сравнением всех таблиц, публичный smoke и service active подтверждены. '
+        evidence+='Физические устройства не проверялись.\nCommit: '+args.commit+'\nRelease: '+args.release+'\nhttps://control.e-rd.ru'
     if not any(marker in proof['content'] for proof in detail.get('proofs',[])):
         api('POST','/records/'+task_id+'/proofs',{'kind':'text','content':evidence})
     record=api('GET','/records/'+task_id)['record']
     if marker not in record['result']:
+        correction=('Логотип в меню уменьшен до 128 px после замечания о чрезмерном размере.' if args.compact
+            else 'Пользователь выбрал последнее присланное изображение с тремя окнами.')
         api('PATCH','/records/'+task_id,{
             'expectedUpdatedAt':record['updatedAt'],
             'result':record['result']+'\n\n'+evidence,
-            'description':record['description']+'\n\n'+marker+'\nПользователь выбрал последнее присланное изображение с тремя окнами. '
+            'description':record['description']+'\n\n'+marker+'\n'+correction+' '
                 'Актуальное решение — название Tessavie, прежняя палитра и новый логотип из вложения. '
                 'Проверенный результат добавлен без удаления истории.'})
     verified=api('GET','/records/'+task_id)

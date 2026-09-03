@@ -4,6 +4,10 @@ set -Eeuo pipefail
 : "${CANDIDATE_COMMIT:?Set source commit}"
 : "${EXPECTED_SHA256:?Set binary hash}"
 : "${EXPECTED_PREVIOUS:?Set verified previous release}"
+: "${ASSET_VERSION:=20260903-supplied-logo-1}"
+: "${EXPECTED_LOGO_WIDTH:=}"
+[[ "$ASSET_VERSION" =~ ^20260903-(supplied|compact)-logo-1$ ]]
+[[ -z "$EXPECTED_LOGO_WIDTH" || "$EXPECTED_LOGO_WIDTH" =~ ^[0-9]{2,3}px$ ]]
 [[ "$RELEASE_NAME" =~ ^20260903-supplied-logo-[a-f0-9]+$ ]]
 [[ "$CANDIDATE_COMMIT" =~ ^[a-f0-9]{7,40}$ ]]
 [[ "$EXPECTED_SHA256" =~ ^[a-f0-9]{64}$ ]]
@@ -80,7 +84,7 @@ check_http() {
   local base="$1"
   curl --max-time 15 -fsS "$base/" > "$dry/index.html"
   grep -q '<title>Tessavie</title>' "$dry/index.html"
-  grep -q '20260903-supplied-logo-1' "$dry/index.html"
+  grep -qF "$ASSET_VERSION" "$dry/index.html"
   ! grep -qi 'bizflow' "$dry/index.html"
   ! grep -q 'tessavie.css\|auth-weave' "$dry/index.html"
   ! grep -q 'brand-symbol' "$dry/index.html"
@@ -89,6 +93,9 @@ check_http() {
   curl --max-time 15 -fsS "$base/styles.css" > "$dry/styles.css"
   grep -q -- '--accent: #126a55;' "$dry/styles.css"
   grep -q -- '--nav: #202824;' "$dry/styles.css"
+  if [[ -n "$EXPECTED_LOGO_WIDTH" ]]; then
+    grep -qF ".brand > .tessavie-logo { width: $EXPECTED_LOGO_WIDTH;" "$dry/styles.css"
+  fi
   grep -qF '.personal-create-menu { position: relative; align-self: auto; }' "$dry/styles.css"
   curl --max-time 15 -fsS "$base/manifest.webmanifest" > "$dry/manifest.json"
   python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m["name"]=="Tessavie" and m["background_color"]=="#faf9f5" and m["theme_color"]=="#14725e" and all("supplied-1" in i["src"] for i in m["icons"])' "$dry/manifest.json"
