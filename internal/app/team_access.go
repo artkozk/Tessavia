@@ -14,11 +14,12 @@ import (
 )
 
 type TeamSummary struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Role         string `json:"role"`
-	ProjectCount int    `json:"projectCount"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	Role         string  `json:"role"`
+	ProjectCount int     `json:"projectCount"`
+	DeletedAt    *string `json:"deletedAt,omitempty"`
 }
 
 type TeamMemberView struct {
@@ -51,7 +52,7 @@ type TeamDetail struct {
 
 func (s *Server) teamRole(ctx context.Context, teamID string, userID int64) (string, error) {
 	var role string
-	err := s.store.db.QueryRowContext(ctx, `SELECT role FROM team_members WHERE team_id = ? AND user_id = ? AND status = 'active'`, teamID, userID).Scan(&role)
+	err := s.store.db.QueryRowContext(ctx, `SELECT tm.role FROM team_members tm JOIN teams t ON t.id = tm.team_id WHERE team_id = ? AND user_id = ? AND status = 'active' AND t.deleted_at IS NULL`, teamID, userID).Scan(&role)
 	return role, err
 }
 
@@ -73,11 +74,12 @@ func (s *Server) requireTeamAdmin(w http.ResponseWriter, r *http.Request, teamID
 }
 
 func (s *Server) handleListTeams(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT t.id, t.name, t.description, tm.role,
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT t.id, t.name, t.description, tm.role, t.deleted_at,
 		(SELECT COUNT(*) FROM workspaces project JOIN workspace_members access ON access.workspace_id = project.id AND access.user_id = ? AND access.status = 'active' WHERE project.team_id = t.id AND project.archived_at IS NULL)
 		FROM teams t JOIN team_members tm ON tm.team_id = t.id
 		WHERE tm.user_id = ? AND tm.status = 'active'
-		ORDER BY t.name`, currentUser(r).ID, currentUser(r).ID)
+		AND (t.deleted_at IS NULL OR (? AND t.owner_id = tm.user_id))
+		ORDER BY t.name`, currentUser(r).ID, currentUser(r).ID, r.URL.Query().Get("includeDeleted") == "true")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить команды")
 		return
@@ -86,7 +88,7 @@ func (s *Server) handleListTeams(w http.ResponseWriter, r *http.Request) {
 	items := make([]TeamSummary, 0)
 	for rows.Next() {
 		var item TeamSummary
-		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Role, &item.ProjectCount); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Role, &item.DeletedAt, &item.ProjectCount); err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось прочитать команды")
 			return
 		}
@@ -102,7 +104,8 @@ func (s *Server) handleCreateTeam(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetTeam(w http.ResponseWriter, r *http.Request) {
 	teamID := strings.TrimSpace(r.PathValue("id"))
-	if _, ok := s.requireTeamAdmin(w, r, teamID); !ok {
+	if _, err := s.teamRole(r.Context(), teamID, currentUser(r).ID); err != nil {
+		writeError(w, http.StatusNotFound, "Команда не найдена")
 		return
 	}
 	detail, err := s.loadTeamDetail(r.Context(), teamID, currentUser(r).ID)
@@ -118,7 +121,7 @@ func (s *Server) loadTeamDetail(ctx context.Context, teamID string, viewerID int
 	if err := s.store.db.QueryRowContext(ctx, `SELECT t.id, t.name, t.description, tm.role,
 		(SELECT COUNT(*) FROM workspaces WHERE team_id = t.id AND archived_at IS NULL)
 		FROM teams t JOIN team_members tm ON tm.team_id = t.id
-		WHERE t.id = ? AND tm.user_id = ? AND tm.status = 'active'`, teamID, viewerID).
+		WHERE t.id = ? AND tm.user_id = ? AND tm.status = 'active' AND t.deleted_at IS NULL`, teamID, viewerID).
 		Scan(&detail.ID, &detail.Name, &detail.Description, &detail.Role, &detail.ProjectCount); err != nil {
 		return detail, err
 	}
@@ -126,7 +129,7 @@ func (s *Server) loadTeamDetail(ctx context.Context, teamID string, viewerID int
 		FROM workspaces w JOIN teams t ON t.id = w.team_id
 		JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ? AND tm.status = 'active'
 		LEFT JOIN workspace_members wm ON wm.workspace_id = w.id AND wm.user_id = ? AND wm.status = 'active'
-		WHERE w.team_id = ? AND w.archived_at IS NULL ORDER BY w.created_at, w.name`, viewerID, viewerID, teamID)
+		WHERE w.team_id = ? AND w.archived_at IS NULL AND (? IN ('owner', 'admin') OR wm.user_id IS NOT NULL) ORDER BY w.created_at, w.name`, viewerID, viewerID, teamID, detail.Role)
 	if err != nil {
 		return detail, err
 	}
@@ -166,6 +169,11 @@ func (s *Server) loadTeamDetail(ctx context.Context, teamID string, viewerID int
 		return detail, err
 	}
 	memberIndexes := make(map[int64]int, len(detail.Members))
+	visibleProjects := make(map[string]bool, len(detail.Projects))
+	for _, project := range detail.Projects {
+		visibleProjects[project.ID] = true
+	}
+	detail.ProjectCount = len(detail.Projects)
 	for index := range detail.Members {
 		memberIndexes[detail.Members[index].ID] = index
 	}
@@ -180,12 +188,16 @@ func (s *Server) loadTeamDetail(ctx context.Context, teamID string, viewerID int
 			roleRows.Close()
 			return detail, err
 		}
-		if index, ok := memberIndexes[userID]; ok {
+		if index, ok := memberIndexes[userID]; ok && visibleProjects[projectID] {
 			detail.Members[index].ProjectRoles[projectID] = projectRole
 		}
 	}
 	if err := roleRows.Close(); err != nil {
 		return detail, err
+	}
+	detail.Invitations = make([]TeamInvitationView, 0)
+	if detail.Role == "member" {
+		return detail, nil
 	}
 	inviteRows, err := s.store.db.QueryContext(ctx, `SELECT invitation.id, invitation.role, invitation.project_ids_json, invitation.expires_at, invitation.max_uses, invitation.use_count, invitation.revoked_at, invitation.created_at, creator.username
 		FROM workspace_invitations invitation JOIN users creator ON creator.id = invitation.created_by
@@ -245,7 +257,11 @@ func (s *Server) handleCreateTeamProject(w http.ResponseWriter, r *http.Request)
 	}
 	defer tx.Rollback()
 	var ownerID int64
-	if err = tx.QueryRowContext(r.Context(), `SELECT owner_id FROM teams WHERE id = ?`, teamID).Scan(&ownerID); err != nil {
+	if _, err = teamManagerTx(r.Context(), tx, teamID, currentUser(r).ID); err != nil {
+		writeError(w, 403, "Доступ к управлению командой изменился")
+		return
+	}
+	if err = tx.QueryRowContext(r.Context(), `SELECT owner_id FROM teams WHERE id = ? AND deleted_at IS NULL`, teamID).Scan(&ownerID); err != nil {
 		writeError(w, http.StatusNotFound, "Команда не найдена")
 		return
 	}
@@ -325,8 +341,12 @@ func (s *Server) validatedTeamProjects(ctx context.Context, teamID string, proje
 
 func grantTeamMemberTx(ctx context.Context, tx *sql.Tx, teamID string, userID int64, role string, projectIDs []string, actorID int64, preserveElevatedRole bool) error {
 	now := nowText()
+	var activeTeam int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM teams WHERE id = ? AND deleted_at IS NULL`, teamID).Scan(&activeTeam); err != nil {
+		return err
+	}
 	var existingRole string
-	err := tx.QueryRowContext(ctx, `SELECT role FROM team_members WHERE team_id = ? AND user_id = ?`, teamID, userID).Scan(&existingRole)
+	err := tx.QueryRowContext(ctx, `SELECT role FROM team_members WHERE team_id = ? AND user_id = ? AND status = 'active'`, teamID, userID).Scan(&existingRole)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -334,7 +354,7 @@ func grantTeamMemberTx(ctx context.Context, tx *sql.Tx, teamID string, userID in
 		role = existingRole
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO team_members(team_id, user_id, role, status, joined_at) VALUES(?, ?, ?, 'active', ?)
-		ON CONFLICT(team_id, user_id) DO UPDATE SET role = CASE WHEN team_members.role = 'owner' THEN 'owner' ELSE excluded.role END, status = 'active'`, teamID, userID, role, now); err != nil {
+		ON CONFLICT(team_id, user_id) DO UPDATE SET role = CASE WHEN team_members.role = 'owner' AND team_members.status = 'active' THEN 'owner' ELSE excluded.role END, status = 'active'`, teamID, userID, role, now); err != nil {
 		return err
 	}
 	if role == "owner" || role == "admin" {
@@ -363,11 +383,11 @@ func grantTeamMemberTx(ctx context.Context, tx *sql.Tx, teamID string, userID in
 			projectRole = "admin"
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO workspace_members(workspace_id, user_id, role, status, joined_at) VALUES(?, ?, ?, 'active', ?)
-			ON CONFLICT(workspace_id, user_id) DO UPDATE SET role = CASE WHEN workspace_members.role = 'owner' THEN 'owner' ELSE excluded.role END, status = 'active'`, projectID, userID, projectRole, now); err != nil {
+			ON CONFLICT(workspace_id, user_id) DO UPDATE SET role = excluded.role, status = 'active'`, projectID, userID, projectRole, now); err != nil {
 			return err
 		}
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT wm.workspace_id FROM workspace_members wm JOIN workspaces w ON w.id = wm.workspace_id WHERE w.team_id = ? AND wm.user_id = ? AND wm.role <> 'owner'`, teamID, userID)
+	rows, err := tx.QueryContext(ctx, `SELECT wm.workspace_id FROM workspace_members wm JOIN workspaces w ON w.id = wm.workspace_id WHERE w.team_id = ? AND wm.user_id = ?`, teamID, userID)
 	if err != nil {
 		return err
 	}
@@ -384,11 +404,14 @@ func grantTeamMemberTx(ctx context.Context, tx *sql.Tx, teamID string, userID in
 	}
 	rows.Close()
 	for _, projectID := range remove {
+		if err := handoffTeamAssignmentsTx(ctx, tx, teamID, userID, projectID, actorID); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?`, projectID, userID); err != nil {
 			return err
 		}
 	}
-	return writeActivity(ctx, tx, actorID, "team", teamID, "member_access_updated", "Доступ участника к проектам изменён", map[string]any{"userId": userID, "role": role, "projectIds": projectIDs})
+	return writeTeamActivity(ctx, tx, actorID, teamID, "member_access_updated", "Доступ участника к проектам изменён", map[string]any{"userId": userID, "role": role, "projectIds": projectIDs})
 }
 
 func (s *Server) handleAddTeamMember(w http.ResponseWriter, r *http.Request) {
@@ -420,6 +443,10 @@ func (s *Server) handleAddTeamMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	if _, err = teamManagerTx(r.Context(), tx, teamID, currentUser(r).ID); err != nil {
+		writeError(w, 403, "Доступ к управлению командой изменился")
+		return
+	}
 	if err = grantTeamMemberTx(r.Context(), tx, teamID, userID, normalizeTeamRole(input.Role), projects, currentUser(r).ID, true); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось добавить участника")
 		return
@@ -465,6 +492,20 @@ func (s *Server) handleUpdateTeamMember(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer tx.Rollback()
+	actorRole, roleErr := teamManagerTx(r.Context(), tx, teamID, currentUser(r).ID)
+	if roleErr != nil {
+		writeError(w, 403, "Доступ к управлению командой изменился")
+		return
+	}
+	var targetRole string
+	if err = tx.QueryRowContext(r.Context(), `SELECT role FROM team_members WHERE team_id = ? AND user_id = ? AND status = 'active'`, teamID, userID).Scan(&targetRole); err != nil {
+		writeError(w, 404, "Участник не найден")
+		return
+	}
+	if targetRole == "owner" || actorRole == "admin" && targetRole == "admin" {
+		writeError(w, 403, "Изменить доступ администратора может владелец команды")
+		return
+	}
 	if err = grantTeamMemberTx(r.Context(), tx, teamID, userID, normalizeTeamRole(input.Role), projects, currentUser(r).ID, false); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось изменить доступ")
 		return
@@ -531,8 +572,15 @@ func (s *Server) handleCreateTeamInvitation(w http.ResponseWriter, r *http.Reque
 	}
 	projectJSON, _ := json.Marshal(projects)
 	expiresAt := time.Now().UTC().Add(time.Duration(input.ExpiresDays) * 24 * time.Hour).Format(time.RFC3339Nano)
-	if _, err = s.store.db.ExecContext(r.Context(), `INSERT INTO workspace_invitations(id, team_id, token_hash, code_hash, role, project_ids_json, created_by, expires_at, max_uses, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, teamID, tokenHash, hashToken(normalizeInvitationCode(code)), normalizeTeamRole(input.Role), string(projectJSON), currentUser(r).ID, expiresAt, input.MaxUses, nowText()); err != nil {
+	result, err := s.store.db.ExecContext(r.Context(), `INSERT INTO workspace_invitations(id, team_id, token_hash, code_hash, role, project_ids_json, created_by, expires_at, max_uses, created_at)
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM teams t JOIN team_members tm ON tm.team_id = t.id WHERE t.id = ? AND t.deleted_at IS NULL AND tm.user_id = ? AND tm.status = 'active' AND tm.role IN ('owner', 'admin'))`, id, teamID, tokenHash, hashToken(normalizeInvitationCode(code)), normalizeTeamRole(input.Role), string(projectJSON), currentUser(r).ID, expiresAt, input.MaxUses, nowText(), teamID, currentUser(r).ID)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить приглашение")
+		return
+	}
+	count, _ := result.RowsAffected()
+	if count != 1 {
+		writeError(w, 403, "Доступ к управлению командой изменился")
 		return
 	}
 	proto := "https"

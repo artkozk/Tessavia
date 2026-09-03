@@ -242,14 +242,84 @@ function markdownPlain(value, empty = '') {
 		.trim();
 }
 
+// A notebook is one editing surface. Named fields remain only for API/draft compatibility.
+function notebookContent(title, body) {
+  return '<div data-notebook-title>' + (escapeHTML(title || '') || '<br>') + '</div>' +
+    (String(body || '').trim() ? renderMarkdown(body, '') : '<p><br></p>');
+}
+
+function syncNotebook(editor) {
+  const rich = editor.querySelector('.markdown-rich-editor');
+  if (!rich.firstChild) rich.innerHTML = notebookContent('', '');
+  if (rich.firstChild.nodeType === Node.TEXT_NODE) {
+    const block = document.createElement('div');
+    rich.insertBefore(block, rich.firstChild);
+    while (block.nextSibling?.nodeType === Node.TEXT_NODE) block.append(block.nextSibling);
+  }
+  const title = rich.firstElementChild;
+  rich.querySelectorAll('[data-notebook-title]').forEach(node => node.removeAttribute('data-notebook-title'));
+  title.setAttribute('data-notebook-title', '');
+  const titleText = title.textContent.replace(/\u00a0/g, ' ').trim();
+  editor.querySelector('[name="title"]').value = titleText;
+  title.classList.toggle('is-empty', !titleText);
+  if (!title.nextSibling) rich.insertAdjacentHTML('beforeend', '<p><br></p>');
+  const body = rich.cloneNode(true);
+  body.firstElementChild.remove();
+  const source = editor.querySelector('.markdown-source');
+  source.value = richTextToMarkdown(body);
+  const firstBody = title.nextElementSibling;
+  firstBody?.classList.toggle('notebook-body-empty', !source.value.trim());
+  return source.value;
+}
+
+function focusNotebook(editor, body = false) {
+  const rich = editor.querySelector('.markdown-rich-editor');
+  rich.focus({ preventScroll: true });
+  const target = body ? rich.firstElementChild.nextSibling : rich.firstElementChild;
+  const range = document.createRange();
+  range.selectNodeContents(target || rich);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function notebookEnter(editor, event) {
+  if (event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey) return false;
+  if (!(event.type === 'keydown' ? event.key === 'Enter' : ['insertParagraph', 'insertLineBreak'].includes(event.inputType))) return false;
+  const rich = editor.querySelector('.markdown-rich-editor');
+  const title = rich.firstElementChild;
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  if (!title.contains(range.startContainer) || !title.contains(range.endContainer)) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  range.deleteContents();
+  const suffix = document.createRange();
+  suffix.selectNodeContents(title);
+  suffix.setStart(range.startContainer, range.startOffset);
+  const fragment = suffix.extractContents();
+  if (fragment.textContent) {
+    const paragraph = document.createElement('p');
+    paragraph.append(fragment);
+    title.after(paragraph);
+  }
+  if (!title.textContent) title.innerHTML = '<br>';
+  syncNotebook(editor);
+  focusNotebook(editor, true);
+  rich.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertParagraph' }));
+  return true;
+}
+
 function markdownEditor(name, label, value, rows = 6, placeholder = '', suffix = '', options = {}) {
   const id = `markdown-${String(name).replace(/[^a-z0-9_-]/gi, '-')}-${suffix || 'main'}`;
-  const content = String(value || '').trim() ? renderMarkdown(value, '') : '';
+  const content = options.notebookTitle !== undefined ? notebookContent(options.notebookTitle, value) : String(value || '').trim() ? renderMarkdown(value, '') : '';
   const editorClass = options.compact ? ' compact-toolbar' : '';
   const historyActions = options.history ? `<button type="button" data-md-history="undo" title="Отменить (Ctrl+Z)" aria-label="Отменить">${icon('undo')}</button><button type="button" data-md-history="redo" title="Повторить (Ctrl+Y)" aria-label="Повторить">${icon('redo')}</button>` : '';
   const aiAction = options.ai === false ? '' : `<button type="button" data-ai-draft-editor title="Предложить черновик AI" aria-label="Предложить черновик AI">${icon('sparkles')}</button>`;
   const expandAction = options.expand === false ? '' : `<button type="button" data-open-notebook title="Развернуть редактор" aria-label="Развернуть редактор">${icon('maximize')}</button>`;
-  return `<div class="markdown-editor${editorClass}"><label for="${escapeHTML(id)}">${escapeHTML(label)}</label><div class="markdown-toolbar" role="toolbar" aria-label="Форматирование текста">${historyActions}<button type="button" data-md="bold" title="Полужирный (Ctrl+B)" aria-label="Полужирный"><b>B</b></button><button type="button" data-md="italic" title="Курсив (Ctrl+I)" aria-label="Курсив"><i>I</i></button><button type="button" data-md="heading2" title="Заголовок второго уровня (Ctrl+Alt+2)" aria-label="Заголовок второго уровня">H2</button><button type="button" data-md="list" title="Маркированный список (Ctrl+Shift+8)" aria-label="Маркированный список">${icon('menu')}</button><button type="button" data-md="ordered" title="Нумерованный список (Ctrl+Shift+7)" aria-label="Нумерованный список">1.</button><button type="button" data-md="quote" title="Цитата (Ctrl+Shift+.)" aria-label="Цитата">❯</button><button type="button" data-md="code" title="Блок кода (Ctrl+&#96;)" aria-label="Блок кода">&lt;/&gt;</button><button type="button" data-md="note" title="Примечание" aria-label="Примечание">i</button><button type="button" data-md="link" title="Ссылка (Ctrl+K)" aria-label="Ссылка">${icon('link')}</button><span class="markdown-toolbar-spacer"></span>${aiAction}${expandAction}</div><div id="${escapeHTML(id)}" class="markdown-rich-editor markdown-body" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="${escapeHTML(placeholder)}" style="--editor-rows:${Math.max(3, Number(rows) || 6)}">${content}</div><textarea class="markdown-source" name="${escapeHTML(name)}" hidden tabindex="-1" aria-hidden="true">${escapeHTML(value || '')}</textarea></div>`;
+  return `<div class="markdown-editor${editorClass}" ${options.notebookTitle !== undefined ? 'data-notebook' : ''}>${options.notebookTitle !== undefined ? `<input type="hidden" name="title" value="${escapeHTML(options.notebookTitle)}">` : ''}<label for="${escapeHTML(id)}">${escapeHTML(label)}</label><div class="markdown-toolbar" role="toolbar" aria-label="Форматирование текста">${historyActions}<button type="button" data-md="bold" title="Полужирный (Ctrl+B)" aria-label="Полужирный"><b>B</b></button><button type="button" data-md="italic" title="Курсив (Ctrl+I)" aria-label="Курсив"><i>I</i></button><button type="button" data-md="heading2" title="Заголовок второго уровня (Ctrl+Alt+2)" aria-label="Заголовок второго уровня">H2</button><button type="button" data-md="list" title="Маркированный список (Ctrl+Shift+8)" aria-label="Маркированный список">${icon('menu')}</button><button type="button" data-md="ordered" title="Нумерованный список (Ctrl+Shift+7)" aria-label="Нумерованный список">1.</button><button type="button" data-md="quote" title="Цитата (Ctrl+Shift+.)" aria-label="Цитата">❯</button><button type="button" data-md="code" title="Блок кода (Ctrl+&#96;)" aria-label="Блок кода">&lt;/&gt;</button><button type="button" data-md="note" title="Примечание" aria-label="Примечание">i</button><button type="button" data-md="link" title="Ссылка (Ctrl+K)" aria-label="Ссылка">${icon('link')}</button><span class="markdown-toolbar-spacer"></span>${aiAction}${expandAction}</div><div id="${escapeHTML(id)}" class="markdown-rich-editor markdown-body" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="${escapeHTML(placeholder)}" style="--editor-rows:${Math.max(3, Number(rows) || 6)}">${content}</div><textarea class="markdown-source" name="${escapeHTML(name)}" hidden tabindex="-1" aria-hidden="true">${escapeHTML(value || '')}</textarea></div>`;
 }
 
 function aiDraftTargetForEditor(editor) {
@@ -350,7 +420,7 @@ function setMarkdownEditorValue(editor, value, notify = true) {
   const source = $('.markdown-source', editor);
   const rich = $('.markdown-rich-editor', editor);
   source.value = String(value || '');
-  rich.innerHTML = source.value.trim() ? renderMarkdown(source.value, '') : '';
+  rich.innerHTML = editor.hasAttribute('data-notebook') ? notebookContent(editor.querySelector('[name="title"]').value, source.value) : source.value.trim() ? renderMarkdown(source.value, '') : '';
   if (notify) rich.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText' }));
 }
 
@@ -388,6 +458,7 @@ function bindMarkdownEditors(root = document) {
     editor.dataset.markdownBound = 'true';
     const textarea = $('.markdown-source', editor);
     const richEditor = $('.markdown-rich-editor', editor);
+    if (editor.hasAttribute('data-notebook')) syncNotebook(editor);
     let restoringHistory = false;
     let historyIndex = 0;
     let editorHistory = [{ html: richEditor.innerHTML, source: textarea.value }];
@@ -400,7 +471,7 @@ function bindMarkdownEditors(root = document) {
       if (redo) redo.disabled = historyIndex >= editorHistory.length - 1;
     };
     const sync = (event) => {
-      textarea.value = richTextToMarkdown(richEditor);
+      textarea.value = editor.hasAttribute('data-notebook') ? syncNotebook(editor) : richTextToMarkdown(richEditor);
       if (!restoringHistory) {
         const current = editorHistory[historyIndex];
         if (!current || current.html !== richEditor.innerHTML || current.source !== textarea.value) {
@@ -431,6 +502,7 @@ function bindMarkdownEditors(root = document) {
       restoringHistory = true;
       richEditor.innerHTML = snapshot.html;
       textarea.value = snapshot.source;
+      if (editor.hasAttribute('data-notebook')) syncNotebook(editor);
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
       restoringHistory = false;
       lastHistoryAt = 0;
@@ -457,11 +529,13 @@ function bindMarkdownEditors(root = document) {
       document.execCommand('insertText', false, event.clipboardData?.getData('text/plain') || '');
     });
     richEditor.addEventListener('beforeinput', (event) => {
+      if (editor.hasAttribute('data-notebook') && notebookEnter(editor, event)) return;
       if (event.inputType !== 'historyUndo' && event.inputType !== 'historyRedo') return;
       event.preventDefault();
       restoreHistory(event.inputType === 'historyRedo' ? 1 : -1);
     });
     richEditor.addEventListener('keydown', (event) => {
+      if (editor.hasAttribute('data-notebook') && notebookEnter(editor, event)) return;
       const shortcutKey = String(event.key || '').toLowerCase();
       if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.code === 'KeyZ' || shortcutKey === 'z')) {
         event.preventDefault();
@@ -817,6 +891,7 @@ function applyWorkingDraft(root, values = {}) {
     if (field.tagName === 'SELECT') syncCustomSelect(field);
     });
   });
+  $$('[data-notebook]', root).forEach(editor => setMarkdownEditorValue(editor, $('.markdown-source', editor).value, false));
 }
 
 function bindWorkingDraft(root, scope) {
@@ -952,7 +1027,10 @@ async function api(path, options = {}) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const workspace = state.activeWorkspaceId;
   const userID = state.me?.id;
-  const workspaceHeader = workspace && !path.startsWith('/api/workspaces') ? { 'X-Workspace-ID': workspace } : {};
+  const accountPath = path.split('?')[0];
+  const accountScoped = accountPath === '/api/me' || accountPath.startsWith('/api/me/') || accountPath === '/api/workspaces' || accountPath === '/api/teams' || accountPath.startsWith('/api/teams/') || accountPath.startsWith('/api/personal/') || accountPath === '/api/invitations/accept' || accountPath === '/api/auth/logout';
+  const requestedWorkspace = options.headers?.['X-Workspace-ID'] || state.activeWorkspaceId;
+  const workspaceHeader = requestedWorkspace && !accountScoped ? { 'X-Workspace-ID': requestedWorkspace } : {};
   const headers = { ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}), ...workspaceHeader, ...(options.headers || {}) };
   const key = method === 'GET' && !options.signal ? JSON.stringify([userID, workspace, path, headers]) : null;
   if (key && pendingAPIReads.has(key)) return pendingAPIReads.get(key);
@@ -974,6 +1052,8 @@ async function api(path, options = {}) {
           if (response.status === 401 && !path.startsWith('/api/auth/') && userID === state.me?.id) showAuth();
           const error = new Error(data.error || 'Ошибка запроса');
           error.status = response.status;
+          error.code = data.code;
+          if(data.code === 'workspace_unavailable' && requestedWorkspace === state.activeWorkspaceId && !accountScoped) void recoverWorkspaceAccess();
           throw error;
         }
         if (workspace === state.activeWorkspaceId && userID === state.me?.id && response.headers.has('X-Unread-Count')) state.unreadCount = Number(response.headers.get('X-Unread-Count'));
@@ -1031,6 +1111,9 @@ function showAuth() {
 }
 
 function clearPrivateClientState() {
+  state.loadDataRequest = (state.loadDataRequest || 0) + 1;
+  clearProjectClientState();
+  state.me = null; state.teams = [];
   state.workspacePages = []; state.pageSearch = ''; state.projectNavigation = { enabledViews: ['dashboard', 'work', 'collections', 'chat'] };
   state.notificationInbox = null; state.unreadCount = null; state.notificationRequest += 1;
   state.notificationLoading = false; state.layoutDraft = null; state.pageLayoutDraft = null;
@@ -1079,66 +1162,101 @@ async function bootstrap() {
 		maybeShowOnboarding();
 		if (!maybeOpenPendingInvitation()) maybeOpenPendingInterfacePreset();
   } catch (error) {
-    showAuth();
+    if(state.me) renderProjectLoadError(error); else showAuth();
   }
 }
 
-async function loadData(silent = false) {
-	const workspaces = await api('/api/workspaces');
-	const teamWorkspaces = workspaces.filter((workspace) => workspace.kind === 'team');
-	if (!teamWorkspaces.some((workspace) => workspace.id === state.activeWorkspaceId)) {
-		state.activeWorkspaceId = teamWorkspaces.find((workspace) => workspace.id === 'bizflow-team')?.id || teamWorkspaces[0]?.id || workspaces[0]?.id || '';
-	}
-	if (state.activeWorkspaceId) localStorage.setItem('bizflow-active-workspace', state.activeWorkspaceId);
-  const [users, records, notifications, activity, definitions, pendingQuestions, savedViews, chatThreads, planning, collections, desktopPreferences, mobilePreferences, projectNavigation, workspacePages] = await Promise.all([
-    api('/api/users'), api('/api/records?includeArchived=true'), api('/api/notifications'),
-		api('/api/activity?limit=200'), api('/api/section-definitions'), api('/api/questions/pending'), api('/api/saved-views'), api('/api/chat/threads'), api('/api/planning/cycles'), api('/api/collections'), api('/api/interface/preferences?device=desktop'), api('/api/interface/preferences?device=mobile'),
-    api('/api/workspace/navigation'), api('/api/workspace/pages?includeArchived=true'),
-  ]);
-  state.interfaceProfiles = { desktop: desktopPreferences, mobile: mobilePreferences };
-  const interfacePreferences = state.interfaceProfiles[interfaceDevice()];
-  const projectActivity = activity.filter((item) => typeMeta[item.entityType] || ['section_definition', 'planning_cycle', 'workspace_page', 'workspace'].includes(item.entityType));
-  const recordsByID = new Map(records.map((record) => [record.id, record]));
-  state.detailCache.forEach((detail, id) => {
-    const current = recordsByID.get(id);
-    if (!current || current.updatedAt !== detail.record.updatedAt) state.detailCache.delete(id);
+function clearProjectClientState({ closeWindows = true } = {}) {
+  if(closeWindows) $$('dialog[open]').forEach(dialog=>{
+    flushDialogDrafts(dialog);
+    dialog.dataset.historyState='false';
+    closeDialogImmediately(dialog);
   });
-	Object.assign(state, { users, records, notifications, activity: projectActivity, definitions, pendingQuestions, savedViews, chatThreads, workspaces, collections, interfacePreferences, projectNavigation, workspacePages, planningCycles: planning.cycles || [], activePlanningCycle: planning.active || null });
-	if (!collections.some((collection) => collection.id === state.activeCollectionId)) state.activeCollectionId = collections[0]?.id || '';
-  state.syncRecordsSince = latestTimestamp(records, 'updatedAt', state.syncRecordsSince);
-  state.syncActivitySince = latestTimestamp(projectActivity, 'createdAt', state.syncActivitySince);
-  state.qualityReport = null;
-  state.teamCapacity = null;
-  state.historyLoadedAll = activity.length < 200;
+  state.activeRecordRequest += 1;
+  state.notificationRequest += 1;
+  state.records=[];state.users=[];state.notifications=[];state.activity=[];state.pendingQuestions=[];
+  state.definitions=[];state.collections=[];state.workspacePages=[];state.savedViews=[];
+  state.chatThreads=[];state.chatMessages=[];state.activeChatThreadId='';state.chatLoadedThreadId='';
+  state.recordWorkspace=[];state.activeWorkspaceRecordId='';state.activeDetail=null;state.activeActivity=null;
+  state.detailCache.clear();state.detailRequests.clear();state.researchComparisons.clear();state.researchComparisonRequests.clear();
+  state.aiAnalyses.clear();state.aiQuestionDrafts.clear();
+  state.graphInstance?.destroy();state.graphInstance=null;state.graphData=null;
+  state.notificationInbox=null;state.unreadCount=null;state.notificationLoading=false;
+  state.qualityReport=null;state.teamCapacity=null;state.planningCycles=[];state.activePlanningCycle=null;
+  state.activeCollectionId='';state.collectionSearch='';state.collectionOwnerFilter='';state.collectionFieldFilters={};
+  state.calendarCollection='';state.calendarOwner='';state.calendarStatus='active';
+  state.syncRecordsSince='1970-01-01T00:00:00Z';state.syncActivitySince='1970-01-01T00:00:00Z';
+  closeGlobalSearch({clear:true});
+}
+
+function renderProjectLoadError(error) {
+  $('#main-content').innerHTML='<section class="project-load-error"><h2>Не удалось загрузить пространство</h2><p>'+escapeHTML(error.message)+'</p><button type="button" class="primary" data-retry-project>Повторить</button><button type="button" class="secondary" data-open-teams>Команды и проекты</button></section>';
+  $('[data-retry-project]').addEventListener('click',()=>loadData().catch(renderProjectLoadError));
+  $('[data-open-teams]').addEventListener('click',openTeamsDirectory);
+}
+
+async function recoverWorkspaceAccess() {
+  if(state.workspaceRecovery)return state.workspaceRecovery;
+  clearProjectClientState();
+  state.layoutDraft=null;state.pageLayoutDraft=null;state.view='personal';
+  $('#main-content').innerHTML='<div class="workspace-dialog-loading"><span class="spinner"></span><strong>Обновляем доступ</strong></div>';
+  state.workspaceRecovery=loadData().then(()=>toast('Доступ к проекту изменился. Личное пространство остаётся доступным.')).catch(renderProjectLoadError).finally(()=>{state.workspaceRecovery=null;});
+  return state.workspaceRecovery;
+}
+
+async function loadData(silent = false) {
+  const request=state.loadDataRequest=(state.loadDataRequest||0)+1, userID=state.me?.id;
+  const [workspaces,teams]=await Promise.all([api('/api/workspaces'),api('/api/teams')]);
+  if(request!==state.loadDataRequest||state.me?.id!==userID)return;
+  const previous=state.activeWorkspaceId;
+  if(!workspaces.some(workspace=>workspace.id===previous)){
+    state.activeWorkspaceId=previous ? workspaces.find(workspace=>workspace.kind==='personal')?.id || workspaces[0]?.id || '' : workspaces.find(workspace=>workspace.id==='bizflow-team')?.id || workspaces.find(workspace=>workspace.kind==='team')?.id || workspaces[0]?.id || '';
+    if(previous){clearProjectClientState();state.layoutDraft=null;state.pageLayoutDraft=null;state.view='personal';state.calendarScope='personal';}
+  }
+  const workspace=state.activeWorkspaceId;
+  if(!previous && workspaces.find(item=>item.id===workspace)?.kind==='personal'){state.view='personal';state.calendarScope='personal';}
+  if(workspace)localStorage.setItem('bizflow-active-workspace',workspace);
+  state.workspaces=workspaces;state.teams=teams;
+  const projectAPI=path=>api(path,{headers:{'X-Workspace-ID':workspace}});
+  const [users,records,notifications,activity,definitions,pendingQuestions,savedViews,chatThreads,planning,collections,desktopPreferences,mobilePreferences,projectNavigation,workspacePages]=await Promise.all([
+    projectAPI('/api/users'),projectAPI('/api/records?includeArchived=true'),projectAPI('/api/notifications'),
+    projectAPI('/api/activity?limit=200'),projectAPI('/api/section-definitions'),projectAPI('/api/questions/pending'),projectAPI('/api/saved-views'),projectAPI('/api/chat/threads'),projectAPI('/api/planning/cycles'),projectAPI('/api/collections'),projectAPI('/api/interface/preferences?device=desktop'),projectAPI('/api/interface/preferences?device=mobile'),
+    projectAPI('/api/workspace/navigation'),projectAPI('/api/workspace/pages?includeArchived=true'),
+  ]);
+  if(request!==state.loadDataRequest||state.me?.id!==userID||workspace!==state.activeWorkspaceId)return;
+  state.interfaceProfiles={desktop:desktopPreferences,mobile:mobilePreferences};
+  const interfacePreferences=state.interfaceProfiles[interfaceDevice()];
+  const projectActivity=activity.filter(item=>typeMeta[item.entityType]||['section_definition','planning_cycle','workspace_page','workspace'].includes(item.entityType));
+  const recordsByID=new Map(records.map(record=>[record.id,record]));
+  state.detailCache.forEach((detail,id)=>{const current=recordsByID.get(id);if(!current||current.updatedAt!==detail.record.updatedAt)state.detailCache.delete(id);});
+  Object.assign(state,{users,records,notifications,activity:projectActivity,definitions,pendingQuestions,savedViews,chatThreads,workspaces,collections,interfacePreferences,projectNavigation,workspacePages,planningCycles:planning.cycles||[],activePlanningCycle:planning.active||null});
+  if(!collections.some(collection=>collection.id===state.activeCollectionId))state.activeCollectionId=collections[0]?.id||'';
+  state.syncRecordsSince=latestTimestamp(records,'updatedAt',state.syncRecordsSince);
+  state.syncActivitySince=latestTimestamp(projectActivity,'createdAt',state.syncActivitySince);
+  state.qualityReport=null;state.teamCapacity=null;state.historyLoadedAll=activity.length<200;
   initializeViewHistory();
+  if(previous&&previous!==workspace)rememberView();
   render();
 }
 
 async function switchWorkspace(workspaceID, { restoring = false, keepView = false } = {}) {
-	if (!workspaceID || workspaceID === state.activeWorkspaceId) return;
-  if (!leavePageLayoutEditor()) return;
-  if (state.layoutDraft && !confirm('Выйти без сохранения раскладки?')) return;
-  state.layoutDraft = null;
-  if (!restoring && !keepView) rememberView();
-  const previousView = state.view;
-  state.calendarCollection = ''; state.calendarOwner = ''; state.calendarStatus = 'active';
-	state.activeWorkspaceId = workspaceID;
-	localStorage.setItem('bizflow-active-workspace', workspaceID);
-	state.activeCollectionId = '';
-	state.collectionSearch = '';
-	state.collectionOwnerFilter = '';
-	state.collectionFieldFilters = {};
-	state.recordWorkspace = [];
-	state.activeWorkspaceRecordId = '';
-	state.activeDetail = null;
-	state.detailCache.clear();
-	state.researchComparisons.clear();
-	state.syncRecordsSince = '1970-01-01T00:00:00Z';
-	state.syncActivitySince = '1970-01-01T00:00:00Z';
-	state.view = keepView ? previousView : 'dashboard';
-	setSidebarOpen(false);
-	await loadData();
-  if (!restoring && !keepView) pushViewHistory();
+  if(!workspaceID)return false;
+  if(workspaceID===state.activeWorkspaceId)return true;
+  if(!leavePageLayoutEditor())return false;
+  if(state.layoutDraft&&!confirm('Выйти без сохранения раскладки?'))return false;
+  state.layoutDraft=null;
+  if(!restoring&&!keepView)rememberView();
+  const previousView=state.view;
+  clearProjectClientState();
+  state.activeWorkspaceId=workspaceID;
+  localStorage.setItem('bizflow-active-workspace',workspaceID);
+  state.view=keepView?previousView:'dashboard';
+  setSidebarOpen(false);
+  $('#main-content').innerHTML='<div class="workspace-dialog-loading"><span class="spinner"></span><strong>Загружаем проект</strong></div>';
+  try {await loadData();}
+  catch(error){renderProjectLoadError(error);throw error;}
+  if(!restoring&&!keepView)pushViewHistory();
+  return state.activeWorkspaceId===workspaceID;
 }
 
 function latestTimestamp(items, field, fallback = '1970-01-01T00:00:00Z') {
@@ -1750,7 +1868,7 @@ function renderWorkspaceControl() {
 	if (!root) return;
 	const projects = state.workspaces.filter((workspace) => workspace.kind === 'team');
 	const current = activeWorkspace();
-	const grouped = new Map();
+	const grouped = new Map((state.teams || []).filter(team => !team.deletedAt).map(team => [team.id, { ...team, projects: [] }]));
 	projects.forEach((project) => {
 		const id = project.teamId || project.id;
 		if (!grouped.has(id)) grouped.set(id, { id, name: project.teamName || project.name, role: project.teamRole || project.role, projects: [] });
@@ -1759,10 +1877,10 @@ function renderWorkspaceControl() {
 	const roleLabel = current?.teamRole === 'owner' ? 'Владелец команды' : current?.teamRole === 'admin' ? 'Администратор команды' : current?.role === 'owner' ? 'Владелец' : current?.role === 'admin' ? 'Администратор проекта' : 'Участник проекта';
 	const personal = current?.kind === 'personal';
 	const projectName = personal ? 'Личное пространство' : current?.name || 'Выбрать проект';
-	const contextLabel = personal ? 'Только вы' : current?.teamName ? `Команда: ${current.teamName}` : 'Проекты';
-	const switcherTitle = `${projectName} · ${contextLabel}${current && !personal ? ` · ${roleLabel}` : ''}. Сменить проект`;
-	const teamGroups = [...grouped.values()].map((team) => `<section class="workspace-team-group"><header><span><strong>${escapeHTML(team.name)}</strong><small>${team.projects.length} ${team.projects.length === 1 ? 'проект' : 'проекта'}</small></span>${['owner', 'admin'].includes(team.role) ? `<button type="button" class="icon-button" data-team-settings="${team.id}" title="Участники и доступ" aria-label="Настроить команду ${escapeHTML(team.name)}">${icon('settings')}</button>` : ''}</header>${team.projects.map((project) => `<button type="button" class="${project.id === state.activeWorkspaceId ? 'active' : ''}" data-switch-workspace="${project.id}" aria-current="${project.id === state.activeWorkspaceId ? 'page' : 'false'}" title="${escapeHTML(project.name)}"><span>${icon(project.id === state.activeWorkspaceId ? 'check' : 'network')}</span><span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || 'Проект команды')}</small></span></button>`).join('')}</section>`).join('');
-	root.innerHTML = `<details class="workspace-switcher"><summary title="${escapeHTML(switcherTitle)}" aria-label="${escapeHTML(`${projectName}. ${contextLabel}. Сменить проект`)}"><span>${icon(personal ? 'lock' : 'network')}</span><span><strong>${escapeHTML(projectName)}</strong><small>${escapeHTML(contextLabel)}</small></span>${icon('chevronRight')}</summary><div>${teamGroups || '<p class="workspace-switcher-empty">Командных проектов пока нет.</p>'}<button type="button" data-join-workspace>${icon('link')}<span><strong>Ввести код приглашения</strong><small>Присоединиться к команде</small></span></button><button type="button" data-create-workspace>${icon('plus')}<span><strong>Новая команда</strong><small>Команда и её первый проект</small></span></button></div></details>`;
+	const contextLabel = personal ? 'Только вы' : '';
+	const switcherTitle = `${projectName}${personal ? ` · ${contextLabel}` : current ? ` · ${roleLabel}` : ''}. Сменить проект`;
+	const teamGroups = [...grouped.values()].map((team) => `<section class="workspace-team-group"><header><span><strong>${escapeHTML(team.name)}</strong><small>${team.projects.length} ${team.projects.length === 1 ? 'проект' : 'проекта'}</small></span><button type="button" class="icon-button" data-team-settings="${team.id}" title="Команда и участие" aria-label="Открыть команду ${escapeHTML(team.name)}">${icon('settings')}</button></header>${team.projects.map((project) => `<button type="button" class="${project.id === state.activeWorkspaceId ? 'active' : ''}" data-switch-workspace="${project.id}" aria-current="${project.id === state.activeWorkspaceId ? 'page' : 'false'}" title="${escapeHTML(project.name)}"><span>${icon(project.id === state.activeWorkspaceId ? 'check' : 'network')}</span><span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || 'Проект команды')}</small></span></button>`).join('')}</section>`).join('');
+	root.innerHTML = `<details class="workspace-switcher"><summary title="${escapeHTML(switcherTitle)}" aria-label="${escapeHTML(`${projectName}. Сменить проект`)}"><span>${icon(personal ? 'lock' : 'network')}</span><span><strong>${escapeHTML(projectName)}</strong>${personal ? `<small>${escapeHTML(contextLabel)}</small>` : ''}</span>${icon('chevronRight')}</summary><div>${teamGroups || '<p class="workspace-switcher-empty">Командных проектов пока нет.</p>'}<button type="button" data-join-workspace>${icon('link')}<span><strong>Ввести код приглашения</strong><small>Присоединиться к команде</small></span></button><button type="button" data-create-workspace>${icon('plus')}<span><strong>Новая команда</strong><small>Команда и её первый проект</small></span></button></div></details>`;
 	$$('[data-switch-workspace]', root).forEach((button) => button.addEventListener('click', () => switchWorkspace(button.dataset.switchWorkspace)));
 	$$('[data-team-settings]', root).forEach((button) => button.addEventListener('click', () => openTeamSettings(button.dataset.teamSettings)));
 	$('[data-join-workspace]', root)?.addEventListener('click', () => openJoinTeamDialog());
@@ -1803,64 +1921,153 @@ function teamProjectChecks(projects, selectedIDs = [], name = 'projectId', disab
 	return projects.map((project) => `<label class="check team-project-check"><input type="checkbox" name="${name}" value="${project.id}" ${selected.has(project.id) ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || 'Проект команды')}</small></span></label>`).join('');
 }
 
-async function openTeamSettings(teamID) {
-	const dialog = $('#workspace-dialog');
-	const content = $('#workspace-dialog-content');
-	content.innerHTML = '<div class="workspace-dialog-loading"><span class="spinner"></span><strong>Загружаем команду</strong></div>';
-	openModal(dialog);
-	try {
-		const team = await api(`/api/teams/${teamID}`);
-		state.teamDetail = team;
-		const roleLabels = { owner: 'Владелец', admin: 'Администратор', member: 'Участник' };
-		content.innerHTML = `<div class="workspace-editor-shell team-settings-shell"><header><div><p class="eyebrow">Управление командой</p><h2>${escapeHTML(team.name)}</h2><p>${escapeHTML(team.description || 'Участники видят только назначенные проекты.')}</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header>
-			<nav class="team-settings-summary" aria-label="Состав команды"><span><strong>${team.projects.length}</strong><small>проектов</small></span><span><strong>${team.members.length}</strong><small>участников</small></span><span><strong>${team.invitations.filter((item) => !item.revokedAt && new Date(item.expiresAt) > new Date() && item.useCount < item.maxUses).length}</strong><small>активных приглашений</small></span></nav>
-			<div class="team-settings-grid">
-			<section class="team-settings-section"><div class="section-heading"><div><p class="eyebrow">Структура</p><h3>Проекты команды</h3></div></div><div class="team-project-list">${team.projects.map((project) => `<article><span>${icon('network')}</span><div><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || 'Без описания')}</small></div><em>${escapeHTML(roleLabels[project.role] || 'Нет доступа')}</em></article>`).join('')}</div><details class="team-inline-editor"><summary>${icon('plus')} Создать проект</summary><form id="team-project-form"><label>Название<input name="name" required maxlength="100" placeholder="Например: Платформа Python"></label><label>Описание<textarea name="description" rows="2" maxlength="800"></textarea></label><fieldset><legend>Первый доступ участникам</legend>${teamProjectChecks([], []) || team.members.filter((member) => member.role === 'member').map((member) => `<label class="check"><input type="checkbox" name="memberId" value="${member.id}"><span>${avatarMarkup(member, 'small')}<strong>${escapeHTML(member.displayName || member.username)}</strong><small>@${escapeHTML(member.username)}</small></span></label>`).join('') || '<p class="muted">Администраторы получат доступ автоматически.</p>'}</fieldset><button type="submit" class="primary">${icon('plus')} Создать проект</button></form></details></section>
-			<section class="team-settings-section"><div class="section-heading"><div><p class="eyebrow">Быстрое добавление</p><h3>По юзернейму</h3></div></div><form id="team-member-add-form" class="team-member-add"><label>Юзернейм<input name="username" required placeholder="@username" autocomplete="off"></label><label>Роль<select name="role"><option value="member">Участник</option><option value="admin">Администратор</option></select></label><fieldset><legend>Доступ к проектам</legend>${teamProjectChecks(team.projects)}</fieldset><button type="submit" class="primary">${icon('plus')} Добавить</button></form></section>
-			<section class="team-settings-section team-members-section"><div class="section-heading"><div><p class="eyebrow">Права</p><h3>Участники</h3></div></div><div class="team-member-list">${team.members.map((member) => { const owner = member.role === 'owner'; const selected = Object.keys(member.projectRoles || {}); return `<form data-team-member-form="${member.id}" class="team-member-row ${owner ? 'is-owner' : ''}"><header>${avatarMarkup(member)}<span><strong>${escapeHTML(member.displayName || member.username)}</strong><small>@${escapeHTML(member.username)}</small></span><label>Роль<select name="role" ${owner ? 'disabled' : ''}><option value="member" ${member.role === 'member' ? 'selected' : ''}>Участник</option><option value="admin" ${member.role === 'admin' ? 'selected' : ''}>Администратор</option><option value="owner" ${owner ? 'selected' : ''}>Владелец</option></select></label></header><fieldset><legend>${member.role === 'admin' || owner ? 'Доступ ко всем проектам' : 'Доступ к проектам'}</legend>${teamProjectChecks(team.projects, selected, 'projectId', owner || member.role === 'admin')}</fieldset>${owner ? '<p class="muted">Владелец сохраняет полный доступ ко всем проектам.</p>' : `<button type="submit" class="secondary">${icon('check')} Сохранить доступ</button>`}</form>`; }).join('')}</div></section>
-			<section class="team-settings-section team-invite-section"><div class="section-heading"><div><p class="eyebrow">Новый человек</p><h3>Ссылка или код</h3></div></div><form id="team-invite-form"><div class="form-grid two"><label>Роль<select name="role"><option value="member">Участник</option><option value="admin">Администратор</option></select></label><label>Действует, дней<input name="expiresDays" type="number" min="1" max="90" value="7"></label></div><fieldset><legend>Проекты после входа</legend>${teamProjectChecks(team.projects)}</fieldset><button type="submit" class="primary">${icon('link')} Создать приглашение</button></form><div id="team-invite-secret"></div><div class="team-invite-history">${team.invitations.map((invite) => { const active = !invite.revokedAt && new Date(invite.expiresAt) > new Date() && invite.useCount < invite.maxUses; return `<article class="${active ? '' : 'inactive'}"><span>${icon('link')}</span><div><strong>${invite.role === 'admin' ? 'Администратор' : 'Участник'} · ${invite.projectIds.length} проектов</strong><small>${invite.useCount} из ${invite.maxUses} использовано · до ${formatDate(invite.expiresAt, true)}</small></div>${active ? `<button type="button" class="icon-button" data-revoke-invite="${invite.id}" title="Отозвать" aria-label="Отозвать приглашение">${icon('x')}</button>` : '<em>Закрыто</em>'}</article>`; }).join('') || '<p class="muted">Приглашений ещё не создавали.</p>'}</div></section>
-			</div></div>`;
-		$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
-		$('#team-project-form', dialog)?.addEventListener('submit', async (event) => {
-			event.preventDefault(); const form = new FormData(event.currentTarget);
-			try { await api(`/api/teams/${teamID}/projects`, { method: 'POST', body: JSON.stringify({ name: form.get('name'), description: form.get('description'), memberIds: form.getAll('memberId').map(Number) }) }); await loadData(true); await openTeamSettings(teamID); toast('Проект создан'); } catch (error) { toast(error.message, true); }
-		});
-		$('#team-member-add-form', dialog)?.addEventListener('submit', async (event) => {
-			event.preventDefault(); const form = new FormData(event.currentTarget);
-			try { await api(`/api/teams/${teamID}/members`, { method: 'POST', body: JSON.stringify({ username: form.get('username'), role: form.get('role'), projectIds: form.getAll('projectId') }) }); await loadData(true); await openTeamSettings(teamID); toast('Участник добавлен'); } catch (error) { toast(error.message, true); }
-		});
-		$$('[data-team-member-form]', dialog).forEach((formNode) => formNode.addEventListener('submit', async (event) => {
-			event.preventDefault(); const form = new FormData(event.currentTarget); const button = $('button[type="submit"]', event.currentTarget); button.disabled = true;
-			try { await api(`/api/teams/${teamID}/members/${event.currentTarget.dataset.teamMemberForm}`, { method: 'PATCH', body: JSON.stringify({ role: form.get('role'), projectIds: form.getAll('projectId') }) }); await loadData(true); await openTeamSettings(teamID); toast('Доступ сохранён'); } catch (error) { button.disabled = false; toast(error.message, true); }
-		}));
-		$$('[data-team-member-form] select[name="role"]', dialog).forEach((select) => select.addEventListener('change', () => {
-			const admin = select.value === 'admin';
-			$$('input[name="projectId"]', select.closest('[data-team-member-form]')).forEach((input) => { input.disabled = admin; if (admin) input.checked = true; });
-		}));
-		['#team-member-add-form', '#team-invite-form'].forEach((selector) => {
-			const formNode = $(selector, dialog);
-			const roleSelect = $('select[name="role"]', formNode);
-			roleSelect?.addEventListener('change', () => {
-				const admin = roleSelect.value === 'admin';
-				$$('input[name="projectId"]', formNode).forEach((input) => { input.disabled = admin; if (admin) input.checked = true; });
-			});
-		});
-		$('#team-invite-form', dialog)?.addEventListener('submit', async (event) => {
-			event.preventDefault(); const form = new FormData(event.currentTarget);
-			try {
-				const invite = await api(`/api/teams/${teamID}/invitations`, { method: 'POST', body: JSON.stringify({ role: form.get('role'), projectIds: form.getAll('projectId'), expiresDays: Number(form.get('expiresDays')), maxUses: 1 }) });
-				$('#team-invite-secret', dialog).innerHTML = `<div class="invite-secret"><div><span>Код команды</span><strong>${escapeHTML(invite.code)}</strong></div><button type="button" class="secondary" data-copy-invite-code>${icon('copy')} Код</button><button type="button" class="secondary" data-copy-invite-url>${icon('link')} Ссылка</button><small>Показывается один раз. При необходимости создайте новое приглашение.</small></div>`;
-				$('[data-copy-invite-code]', dialog).addEventListener('click', () => copyToClipboard(invite.code, 'Код скопирован'));
-				$('[data-copy-invite-url]', dialog).addEventListener('click', () => copyToClipboard(invite.url, 'Ссылка скопирована'));
-			} catch (error) { toast(error.message, true); }
-		});
-		$$('[data-revoke-invite]', dialog).forEach((button) => button.addEventListener('click', async () => {
-			try { await api(`/api/teams/${teamID}/invitations/${button.dataset.revokeInvite}`, { method: 'DELETE' }); await openTeamSettings(teamID); toast('Приглашение отозвано'); } catch (error) { toast(error.message, true); }
-		}));
-	} catch (error) {
-		content.innerHTML = `<div class="workspace-editor-shell compact-workspace-editor"><header><div><h2>Команда не загрузилась</h2><p>${escapeHTML(error.message)}</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header></div>`;
-		$('[data-close-workspace-dialog]', dialog)?.addEventListener('click', closeWorkspaceDialog);
-	}
+function teamRoleLabel(role) {
+  return { owner: 'Владелец', admin: 'Администратор', member: 'Участник' }[role] || 'Участник';
+}
+
+function bindTeamSubmit(form, action) {
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (form.dataset.submitting === 'true') return;
+    form.dataset.submitting = 'true';
+    const submit = $('button[type="submit"]', form);
+    if (submit) submit.disabled = true;
+    try { await action(new FormData(form)); }
+    catch (error) { if (form.isConnected) toast(error.message, true); }
+    finally { delete form.dataset.submitting; if (submit?.isConnected) submit.disabled = false; }
+  });
+}
+
+async function reloadTeamSettings(teamID, tab, shell) {
+  await loadData(true);
+  if ($('#workspace-dialog').open && shell.isConnected) await openTeamSettings(teamID, tab);
+}
+
+function teamMemberMarkup(team, member) {
+  const canEdit = team.role === 'owner' && member.role !== 'owner' || team.role === 'admin' && member.role === 'member';
+  if (!canEdit) return '<article class="team-person-row">' + avatarMarkup(member) + '<span><strong>' + escapeHTML(member.displayName || member.username) + '</strong><small>@' + escapeHTML(member.username) + '</small></span><em>' + teamRoleLabel(member.role) + '</em></article>';
+  return '<form data-team-member-form="' + member.id + '" class="team-member-row"><header>' + avatarMarkup(member) + '<span><strong>' + escapeHTML(member.displayName || member.username) + '</strong><small>@' + escapeHTML(member.username) + '</small></span><label>Роль<select name="role"><option value="member" ' + (member.role === 'member' ? 'selected' : '') + '>Участник</option><option value="admin" ' + (member.role === 'admin' ? 'selected' : '') + '>Администратор</option></select></label></header><fieldset><legend>Доступ к проектам</legend>' + teamProjectChecks(team.projects, Object.keys(member.projectRoles || {}), 'projectId', member.role === 'admin') + '</fieldset><div class="team-row-actions"><button type="submit" class="secondary">' + icon('check') + ' Сохранить доступ</button><button type="button" class="icon-button danger-icon" data-remove-member="' + member.id + '" title="Исключить участника" aria-label="Исключить ' + escapeHTML(member.username) + '">' + icon('trash') + '</button></div></form>';
+}
+
+function teamInviteHistory(invites) {
+  return invites.map(invite => {
+    const active = !invite.revokedAt && new Date(invite.expiresAt) > new Date() && invite.useCount < invite.maxUses;
+    return '<article class="' + (active ? '' : 'inactive') + '"><span>' + icon('link') + '</span><div><strong>' + teamRoleLabel(invite.role) + ' · ' + (invite.role === 'admin' ? 'Все проекты' : invite.projectIds.length + ' проектов') + '</strong><small>' + invite.useCount + ' из ' + invite.maxUses + ' использовано · до ' + formatDate(invite.expiresAt, true) + '</small></div>' + (active ? '<button type="button" class="icon-button" data-revoke-invite="' + invite.id + '" title="Отозвать" aria-label="Отозвать приглашение">' + icon('x') + '</button>' : '<em>Закрыто</em>') + '</article>';
+  }).join('') || '<p class="muted">Приглашений ещё нет.</p>';
+}
+
+async function openTeamSettings(teamID, tab = 'projects') {
+  const dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
+  content.innerHTML = '<div class="workspace-dialog-loading"><span class="spinner"></span><strong>Загружаем команду</strong></div>';
+  const loading = content.firstElementChild;
+  openModal(dialog);
+  const current = () => dialog.open && content.firstElementChild === loading;
+  try {
+    const team = await api('/api/teams/' + teamID);
+    if (!current()) return;
+    state.teamDetail = team;
+    const manager = ['owner', 'admin'].includes(team.role), owner = team.role === 'owner';
+    const tabs = [['projects','Проекты'],['members','Участники'], ...(manager ? [['invites','Приглашения']] : []), ['settings','Настройки']];
+    if (!tabs.some(([key])=>key===tab)) tab='projects';
+    const defaultProjects = team.projects.filter(project=>project.id===state.activeWorkspaceId).map(project=>project.id);
+    if (!defaultProjects.length && team.projects[0]) defaultProjects.push(team.projects[0].id);
+    content.innerHTML = '<div class="workspace-editor-shell team-settings-shell"><header><div><p class="eyebrow">' + teamRoleLabel(team.role) + '</p><h2>' + escapeHTML(team.name) + '</h2>' + (team.description ? '<p>' + escapeHTML(team.description) + '</p>' : '') + '</div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">' + icon('x') + '</button></header>' +
+      '<nav class="team-settings-tabs" aria-label="Настройки команды">' + tabs.map(([key,label])=>'<button type="button" class="text-button ' + (tab===key?'active':'') + '" aria-pressed="' + (tab===key) + '" data-team-tab="' + key + '">' + label + '</button>').join('') + '</nav>' +
+      '<section class="team-settings-section" data-team-panel="projects" ' + (tab==='projects'?'':'hidden') + '><div class="team-project-list">' + team.projects.map(project=>'<article><span>' + icon('network') + '</span><button type="button" class="team-project-open" data-team-project="' + project.id + '"><strong>' + escapeHTML(project.name) + '</strong><small>' + escapeHTML(project.description || teamRoleLabel(project.role)) + '</small></button><span>' + icon('chevronRight') + '</span></article>').join('') + (team.projects.length ? '' : '<p class="muted">Вам пока не назначены проекты.</p>') + '</div>' +
+      (manager ? '<details class="team-inline-editor"><summary>' + icon('plus') + ' Создать проект</summary><form id="team-project-form"><label>Название проекта<input name="name" required maxlength="100"></label><label>Описание<textarea name="description" rows="2" maxlength="800"></textarea></label><fieldset><legend>Участники проекта</legend>' + team.members.filter(member=>member.role==='member').map(member=>'<label class="check"><input type="checkbox" name="memberId" value="' + member.id + '"><span>' + escapeHTML(member.displayName || member.username) + '</span></label>').join('') + '</fieldset><button type="submit" class="primary">' + icon('plus') + ' Создать проект</button></form></details>' : '') + '</section>' +
+      '<section class="team-settings-section" data-team-panel="members" ' + (tab==='members'?'':'hidden') + '>' +
+      (manager ? '<details class="team-inline-editor"><summary>' + icon('users') + ' Добавить по юзернейму</summary><form id="team-member-add-form" class="team-member-add"><label>Юзернейм<input name="username" required placeholder="@username" autocomplete="off"></label><label>Роль<select name="role"><option value="member">Участник</option><option value="admin">Администратор</option></select></label><fieldset><legend>Доступ к проектам</legend>' + teamProjectChecks(team.projects,defaultProjects) + '</fieldset><button type="submit" class="primary">' + icon('plus') + ' Добавить</button></form></details>' : '') +
+      '<div class="team-member-list">' + team.members.map(member=>teamMemberMarkup(team,member)).join('') + '</div></section>' +
+      (manager ? '<section class="team-settings-section" data-team-panel="invites" ' + (tab==='invites'?'':'hidden') + '><form id="team-invite-form"><div class="form-grid two"><label>Роль<select name="role"><option value="member">Участник</option><option value="admin">Администратор</option></select></label><label>Действует, дней<input name="expiresDays" type="number" min="1" max="90" value="7"></label></div><fieldset><legend>Проекты после входа</legend>' + teamProjectChecks(team.projects,defaultProjects) + '</fieldset><button type="submit" class="primary">' + icon('link') + ' Создать приглашение</button></form><div id="team-invite-secret"></div><div class="team-invite-history">' + teamInviteHistory(team.invitations) + '</div></section>' : '') +
+      '<section class="team-settings-section" data-team-panel="settings" ' + (tab==='settings'?'':'hidden') + '>' +
+      (manager ? '<form id="team-settings-form" class="card-form"><label>Название команды<input name="name" required maxlength="100" value="' + escapeHTML(team.name) + '"></label><label>Описание<textarea name="description" rows="3" maxlength="800">' + escapeHTML(team.description) + '</textarea></label><button type="submit" class="primary">' + icon('check') + ' Сохранить</button></form>' : '') +
+      '<div class="team-lifecycle-actions">' + (owner ? '<button type="button" class="secondary" data-team-transfer>' + icon('users') + ' Передать владение</button><button type="button" class="secondary danger-text" data-team-delete>' + icon('trash') + ' Удалить команду</button>' : '<button type="button" class="secondary danger-text" data-team-leave>' + icon('arrowLeft') + ' Выйти из команды</button>') + '</div></section><footer><button type="button" class="text-button" data-team-directory>' + icon('arrowLeft') + ' Все команды</button></footer></div>';
+    const shell = content.firstElementChild;
+    $('[data-close-workspace-dialog]',shell).addEventListener('click',closeWorkspaceDialog);
+    $('[data-team-directory]',shell).addEventListener('click',openTeamsDirectory);
+    $$('[data-team-tab]',shell).forEach(button=>button.addEventListener('click',()=>{
+      closeCustomSelects();
+      $$('[data-team-tab]',shell).forEach(item=>{item.classList.toggle('active',item===button);item.setAttribute('aria-pressed',String(item===button));});
+      $$('[data-team-panel]',shell).forEach(panel=>panel.hidden=panel.dataset.teamPanel!==button.dataset.teamTab);
+    }));
+    $$('[data-team-project]',shell).forEach(button=>button.addEventListener('click',async()=>{
+      closeWorkspaceDialog();
+      try { if(await switchWorkspace(button.dataset.teamProject)) navigateToView('collections'); } catch(error){toast(error.message,true);}
+    }));
+    bindTeamSubmit($('#team-project-form',shell),async form=>{
+      await api('/api/teams/'+teamID+'/projects',{method:'POST',body:JSON.stringify({name:form.get('name'),description:form.get('description'),memberIds:form.getAll('memberId').map(Number)})});
+      await reloadTeamSettings(teamID,'projects',shell); toast('Проект создан');
+    });
+    bindTeamSubmit($('#team-member-add-form',shell),async form=>{
+      await api('/api/teams/'+teamID+'/members',{method:'POST',body:JSON.stringify({username:form.get('username'),role:form.get('role'),projectIds:form.getAll('projectId')})});
+      await reloadTeamSettings(teamID,'members',shell); toast('Участник добавлен');
+    });
+    bindTeamSubmit($('#team-settings-form',shell),async form=>{
+      await api('/api/teams/'+teamID,{method:'PATCH',body:JSON.stringify({name:form.get('name'),description:form.get('description')})});
+      await reloadTeamSettings(teamID,'settings',shell); toast('Команда сохранена');
+    });
+    $$('[data-team-member-form]',shell).forEach(formNode=>bindTeamSubmit(formNode,async form=>{
+      await api('/api/teams/'+teamID+'/members/'+formNode.dataset.teamMemberForm,{method:'PATCH',body:JSON.stringify({role:form.get('role'),projectIds:form.getAll('projectId')})});
+      await reloadTeamSettings(teamID,'members',shell); toast('Доступ сохранён');
+    }));
+    $$('select[name="role"]',shell).forEach(select=>select.addEventListener('change',()=>{
+      const admin=select.value==='admin';
+      $$('input[name="projectId"]',select.closest('form')).forEach(input=>{input.disabled=admin;if(admin)input.checked=true;});
+    }));
+    bindTeamSubmit($('#team-invite-form',shell),async form=>{
+      const invite=await api('/api/teams/'+teamID+'/invitations',{method:'POST',body:JSON.stringify({role:form.get('role'),projectIds:form.getAll('projectId'),expiresDays:Number(form.get('expiresDays')),maxUses:1})});
+      if (!shell.isConnected || !dialog.open) return;
+      $('#team-invite-secret',shell).innerHTML='<div class="team-invite-result"><label>Код приглашения<input readonly value="'+escapeHTML(invite.code)+'"></label><button type="button" class="icon-button" data-copy-code aria-label="Скопировать код">'+icon('copy')+'</button><label>Ссылка<input readonly value="'+escapeHTML(invite.url)+'"></label><button type="button" class="icon-button" data-copy-url aria-label="Скопировать ссылку">'+icon('copy')+'</button></div>';
+      $('[data-copy-code]',shell).addEventListener('click',()=>copyToClipboard(invite.code,'Код скопирован'));
+      $('[data-copy-url]',shell).addEventListener('click',()=>copyToClipboard(invite.url,'Ссылка скопирована'));
+      team.invitations.unshift({...invite,useCount:0});
+      $('.team-invite-history',shell).innerHTML=teamInviteHistory(team.invitations);
+      bindRevocations(); toast('Приглашение создано');
+    });
+    function bindRevocations() {
+      $$('[data-revoke-invite]',shell).forEach(button=>button.addEventListener('click',async()=>{
+        if(button.disabled)return;button.disabled=true;
+        try { await api('/api/teams/'+teamID+'/invitations/'+button.dataset.revokeInvite,{method:'DELETE'}); await reloadTeamSettings(teamID,'invites',shell);toast('Приглашение отозвано'); }
+        catch(error){button.disabled=false;toast(error.message,true);}
+      }));
+    }
+    bindRevocations();
+    $('[data-team-delete]',shell)?.addEventListener('click',()=>openTeamLifecycleDialog(team,'delete'));
+    $('[data-team-leave]',shell)?.addEventListener('click',()=>openTeamLifecycleDialog(team,'leave'));
+    $('[data-team-transfer]',shell)?.addEventListener('click',()=>openTeamLifecycleDialog(team,'transfer'));
+    $$('[data-remove-member]',shell).forEach(button=>button.addEventListener('click',()=>openTeamLifecycleDialog(team,'remove',team.members.find(member=>String(member.id)===button.dataset.removeMember))));
+  } catch(error) {
+    if (!current()) return;
+    content.innerHTML='<div class="workspace-editor-shell compact-workspace-editor"><header><div><h2>Команда недоступна</h2><p>'+escapeHTML(error.message)+'</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">'+icon('x')+'</button></header><button type="button" class="secondary" data-team-directory>'+icon('arrowLeft')+' Все команды</button></div>';
+    $('[data-close-workspace-dialog]',content).addEventListener('click',closeWorkspaceDialog);
+    $('[data-team-directory]',content).addEventListener('click',openTeamsDirectory);
+  }
+}
+
+function openTeamLifecycleDialog(team, action, member = null) {
+  const dialog=$('#workspace-dialog'),content=$('#workspace-dialog-content');
+  const titles={delete:'Удалить команду?',leave:'Выйти из команды?',transfer:'Передать владение',remove:'Исключить участника?'};
+  const labels={delete:'Удалить команду',leave:'Выйти из команды',transfer:'Передать владение',remove:'Исключить участника'};
+  const copy=action==='delete'?'Команда и её проекты станут недоступны всем участникам. Владелец сможет восстановить их в разделе «Удалённые команды». Личные данные не изменятся.':action==='transfer'?'Выбранный участник получит все проекты и права владельца. Вы станете администратором.':'Доступ к проектам команды закроется. Незавершённые карточки и приёмка перейдут владельцу команды; авторство, история и личные данные сохранятся.';
+  const targets=team.members.filter(item=>item.id!==state.me.id);
+  content.innerHTML='<div class="workspace-editor-shell compact-workspace-editor team-lifecycle-dialog"><header><div><h2>'+titles[action]+'</h2><p>'+escapeHTML(team.name)+(member?' · @'+escapeHTML(member.username):'')+'</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">'+icon('x')+'</button></header><p>'+copy+'</p><form class="card-form" id="team-lifecycle-form">'+
+    (action==='delete'?'<label>Название команды для подтверждения<input name="name" required autocomplete="off" placeholder="'+escapeHTML(team.name)+'"></label>':'')+
+    (action==='transfer'?(targets.length?'<label>Новый владелец<select name="userId">'+targets.map(item=>'<option value="'+item.id+'">'+escapeHTML(item.displayName||item.username)+' (@'+escapeHTML(item.username)+')</option>').join('')+'</select></label>':'<p class="muted">Сначала добавьте другого участника в команду.</p>'):'')+
+    '<div class="form-actions"><button type="submit" class="'+(action==='delete'||action==='remove'?'secondary danger-text':'primary')+'" '+(action==='transfer'&&!targets.length?'disabled':'')+'>'+icon(action==='delete'||action==='remove'?'trash':action==='leave'?'arrowLeft':'check')+' '+labels[action]+'</button><button type="button" class="secondary" data-team-cancel>Отмена</button></div></form></div>';
+  const shell=content.firstElementChild;
+  $('[data-close-workspace-dialog]',shell).addEventListener('click',closeWorkspaceDialog);
+  $('[data-team-cancel]',shell).addEventListener('click',()=>openTeamSettings(team.id,action==='remove'?'members':'settings'));
+  bindTeamSubmit($('#team-lifecycle-form',shell),async form=>{
+    const base='/api/teams/'+team.id;
+    if(action==='delete')await api(base,{method:'DELETE',body:JSON.stringify({name:form.get('name')})});
+    if(action==='leave')await api(base+'/leave',{method:'POST'});
+    if(action==='transfer')await api(base+'/ownership',{method:'POST',body:JSON.stringify({userId:Number(form.get('userId'))})});
+    if(action==='remove')await api(base+'/members/'+member.id,{method:'DELETE'});
+    if(action==='transfer'||action==='remove')await reloadTeamSettings(team.id,'members',shell);
+    else {if(shell.isConnected)closeWorkspaceDialog();await loadData();}
+    toast({delete:'Команда удалена. Восстановление доступно в списке команд.',leave:'Вы вышли из команды',transfer:'Владение передано',remove:'Участник исключён'}[action]);
+  });
+  openModal(dialog);
 }
 
 async function copyToClipboard(value, successMessage) {
@@ -2289,7 +2496,7 @@ async function togglePersonalPlan(id) {
   const plan = findPersonalItem('plan', id);
   if (!plan) return;
   try {
-    await api(`/api/personal/plans/${id}`, { method: 'PATCH', body: JSON.stringify({ title: plan.title, notes: plan.notes || '', expectedUpdatedAt: plan.updatedAt, status: plan.status === 'done' ? 'planned' : 'done' }) });
+    await api(`/api/personal/plans/${id}`, { method: 'PATCH', body: JSON.stringify({ title: plan.titleGenerated ? '' : plan.title, notes: plan.notes || '', expectedUpdatedAt: plan.updatedAt, status: plan.status === 'done' ? 'planned' : 'done' }) });
     await loadPersonal({ force: true });
   } catch (error) { toast(error.message, true); }
 }
@@ -2319,43 +2526,15 @@ async function openPersonalTarget(type, id) {
 }
 
 function personalNoteSheet(item, { bodyName = 'body', pin = true } = {}) {
-  const label = pin ? 'Заметка' : 'Входящее';
-  return `<section class="personal-note-sheet ${pin ? '' : 'inbox-note-sheet'}" aria-label="${label}"><div class="personal-note-title-row"><textarea name="title" rows="1" maxlength="240" aria-label="Название" placeholder="Название" enterkeyhint="next">${escapeHTML(item?.title || '')}</textarea>${pin ? `<label class="personal-note-pin" title="Закрепить заметку"><input class="sr-only" type="checkbox" name="pinned" aria-label="Закрепить заметку" ${item?.pinned ? 'checked' : ''}><span>${icon('bookmark')}</span></label>` : ''}</div>${markdownEditor(bodyName, pin ? 'Текст заметки' : 'Текст входящего', item?.body || '', 6, 'Заметка...', pin ? 'personal-note' : 'inbox-note', { compact: true, history: true, ai: false, expand: false })}</section>`;
+  const label = bodyName === 'notes' ? 'План' : pin ? 'Заметка' : 'Входящее';
+  return `<section class="personal-note-sheet ${pin ? '' : 'inbox-note-sheet'}" aria-label="${label}">${pin ? `<label class="personal-note-pin" title="Закрепить заметку"><input class="sr-only" type="checkbox" name="pinned" aria-label="Закрепить заметку" ${item?.pinned ? 'checked' : ''}><span>${icon('bookmark')}</span></label>` : ''}${markdownEditor(bodyName, label, item?.body || '', 6, '', 'notebook-' + bodyName, { compact: true, history: true, ai: false, expand: false, notebookTitle: item?.titleGenerated ? '' : item?.title || '' })}</section>`;
 }
 
-function bindPersonalNoteSheet(form, bodyLabel = 'Текст заметки') {
-  const title = form.elements.title;
-  const body = $('.markdown-rich-editor', form);
-  body.setAttribute('aria-label', bodyLabel);
-  const resizeTitle = () => { title.style.height = 'auto'; title.style.height = `${title.scrollHeight}px`; };
-  const enterBody = (event) => {
-    if (event.isComposing || event.keyCode === 229) return;
-    const enter = event.type === 'keydown' ? event.key === 'Enter' : ['insertParagraph', 'insertLineBreak'].includes(event.inputType);
-    if (!enter) return;
-    event.preventDefault();
-    event.stopPropagation();
-    body.focus();
-    const range = document.createRange();
-    range.selectNodeContents(body);
-    range.collapse(true);
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-  };
-  title.addEventListener('keydown', enterBody);
-  title.addEventListener('beforeinput', enterBody);
-  title.addEventListener('input', resizeTitle);
-  if (typeof ResizeObserver !== 'undefined') {
-    let previousWidth = 0;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry.contentRect.width === previousWidth) return;
-      previousWidth = entry.contentRect.width;
-      resizeTitle();
-    });
-    observer.observe(title);
-    form.closest('dialog').addEventListener('close', () => observer.disconnect(), { once: true });
-  }
-  return resizeTitle;
+function bindPersonalNoteSheet(form, bodyLabel = 'Заметка') {
+  const editor = $('.markdown-editor[data-notebook]', form);
+  $('.markdown-rich-editor', editor).setAttribute('aria-label', bodyLabel);
+  editor.append($('.markdown-toolbar', editor));
+  return () => syncNotebook(editor);
 }
 
 function openPersonalEditor(kind, id = '', context = {}) {
@@ -2367,13 +2546,13 @@ function openPersonalEditor(kind, id = '', context = {}) {
   const body = kind === 'note'
     ? `${personalNoteSheet(item)}<label class="note-schedule-field">${icon('calendar')}<span>В календаре</span><input type="date" name="scheduledDate" aria-label="Дата заметки в календаре" value="${escapeHTML(item ? noteCalendarDate(item) : context.date || localISODate())}"></label>${item?.createdAt ? `<small class="muted">Создана ${escapeHTML(formatDate(item.createdAt))}</small>` : ''}`
     : kind === 'plan'
-      ? `${markdownEditor('notes', 'Описание', item?.notes || '', 6, 'Описание...', 'personal-plan', { compact: true, history: true, ai: false, expand: false })}${personalPlanDateFields(item || { startDate: context.date || '', endDate: context.date || '' })}`
+      ? `${personalNoteSheet(item ? { ...item, body: item.notes } : null, { bodyName: 'notes', pin: false })}${personalPlanDateFields(item || { startDate: context.date || '', endDate: context.date || '' })}`
       : `<div class="form-grid two"><label>Режим<select name="scheduleKind"><option value="daily" ${(item?.scheduleKind || 'daily') === 'daily' ? 'selected' : ''}>Каждый день</option><option value="weekdays" ${item?.scheduleKind === 'weekdays' ? 'selected' : ''}>По будням</option><option value="weekly_target" ${item?.scheduleKind === 'weekly_target' ? 'selected' : ''}>Цель на неделю</option></select></label><label>Дней в неделю<input type="number" name="targetPerWeek" min="1" max="7" value="${item?.targetPerWeek || 7}"></label></div><div class="form-grid two"><label>Единица<input name="unit" maxlength="32" value="${escapeHTML(item?.unit || 'раз')}"></label><label>Начало<input type="date" name="startDate" value="${escapeHTML(item?.startDate || localISODate())}" ${item ? 'disabled' : ''}></label></div>`;
   const newHeading = kind === 'habit' ? 'Новая привычка' : kind === 'plan' ? 'Новый план' : 'Новая заметка';
   const titleField = kind === 'habit'
     ? `<label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}" placeholder="Например: читать 20 минут"></label>`
-    : kind === 'note' ? '' : `<label class="personal-title-field"><span>Название <small>необязательно</small></span><input name="title" maxlength="240" value="${escapeHTML(item?.title || '')}" placeholder="Система возьмёт его из первой строки"></label>`;
-  content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind === 'note' ? 'personal-note-form' : ''}" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
+    : '';
+  content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind !== 'habit' ? 'personal-note-form' : ''}" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
   $$('[data-close-personal]', dialog).forEach((button) => button.addEventListener('click', async () => { if (await requestDialogClose(dialog) && context.planId) openPersonalPlanDetails(context.planId); }));
   const editorForm = $('#personal-editor-form', dialog);
   const draftScope = `personal:${state.me.id}:${kind}:${item?.id || context.planId || (context.date ? `day:${context.date}` : 'new')}`;
@@ -2383,7 +2562,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
     editor.append($('.markdown-toolbar', editor));
   }
   bindMarkdownEditors(dialog);
-  const resizeNoteTitle = kind === 'note' ? bindPersonalNoteSheet(editorForm) : null;
+  const resizeNoteTitle = kind !== 'habit' ? bindPersonalNoteSheet(editorForm, kind === 'plan' ? 'План' : 'Заметка') : null;
   if (kind === 'plan') bindPersonalPlanDates(editorForm);
   if (item && kind === 'note') {
     $('.personal-note-sheet', editorForm).insertAdjacentHTML('afterend', renderPersonalLinkChips(personalLinksFor(state.personal.links, kind, id)));
@@ -2395,7 +2574,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
     if (saving) return;
     const form = new FormData(event.currentTarget);
     let payload;
-    if (kind === 'note') payload = { title: form.get('title'), body: form.get('body'), scheduledDate: form.get('scheduledDate') || '', pinned: form.get('pinned') === 'on', ...(!item && context.planId ? { linkPlanId: context.planId } : {}) };
+    if (kind === 'note') payload = { title: form.get('title'), ...(item ? { expectedUpdatedAt: item.updatedAt } : {}), body: form.get('body'), scheduledDate: form.get('scheduledDate') || '', pinned: form.get('pinned') === 'on', ...(!item && context.planId ? { linkPlanId: context.planId } : {}) };
     else if (kind === 'plan') {
       const mode = form.get('dateMode');
       if (mode === 'days' && !form.get('startDate') || mode === 'time' && !form.get('dueAt')) { toast('Укажите дату или выберите «Без даты»', true); return; }
@@ -2434,8 +2613,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
   requestAnimationFrame(() => {
     resizeNoteTitle?.();
     if (!item && kind !== 'habit') {
-      const focus = kind === 'note' && !editorForm.elements.body.value ? editorForm.elements.title : $('.markdown-rich-editor', editorForm);
-      focus?.focus({ preventScroll: true });
+      focusNotebook($('.markdown-editor', editorForm));
     }
   });
 }
@@ -3361,7 +3539,7 @@ function renderCollectionFilters(collection) {
 function renderCollections() {
 	const workspace = activeWorkspace();
 	if (!state.collections.length) {
-		$('#main-content').innerHTML = `<div class="page-heading collection-page-heading"><div><p class="eyebrow">${escapeHTML(workspace?.name || 'Команда')}</p><h1>Доски и процессы</h1><p>Создайте первую доску, задайте этапы и поля. Карточки сохранят связи, файлы, обсуждения, историю и AI-контекст Tessavie.</p></div>${canConfigureWorkspace() ? `<button type="button" class="primary" data-create-collection>${icon('plus')} Создать доску</button>` : ''}</div><div class="guided-empty collection-empty">${icon('network')}<h2>Досок пока нет</h2><p>Администратор команды может собрать CRM, редакционный план, воронку найма или другой процесс без разработки.</p>${canConfigureWorkspace() ? '<button type="button" class="primary" data-create-collection>Создать первую доску</button>' : ''}</div>`;
+		$('#main-content').innerHTML = `<div class="page-heading collection-page-heading"><div><p class="eyebrow">${escapeHTML(workspace?.name || 'Команда')}</p><h1>Доски</h1></div></div><div class="guided-empty collection-empty">${icon('network')}<h2>Досок пока нет</h2>${canConfigureWorkspace() ? `<button type="button" class="primary" data-create-collection>${icon('plus')} Создать первую доску</button>` : '<p>Создать доску может администратор проекта.</p>'}</div>`;
 		$$('[data-create-collection]').forEach((button) => button.addEventListener('click', openCollectionCreateDialog));
 		return;
 	}
@@ -5381,7 +5559,7 @@ function renderRecordOverview(record, statuses) {
     ${canEdit ? '' : `<div class="access-banner">${icon('lock')}<span><strong>Личная карточка ${escapeHTML(record.ownerUsername)}</strong><small>Вы можете просматривать её ход и связи, но изменять содержание может только ответственный.</small></span></div>`}
     ${renderHierarchyPanel(record, canEdit)}
     <form id="record-edit-form" class="card-form record-overview-form ${record.type === 'inbox' ? 'personal-note-form inbox-record-form' : ''}" data-can-edit="${canEdit}">
-      ${record.type === 'inbox' ? `${personalNoteSheet({ title: record.title, body: record.description }, { bodyName: 'description', pin: false })}<label>Статус<select name="status">${statuses.map(status => `<option value="${status}" ${record.status === status ? 'selected' : ''}>${statusLabel({ ...record, status })}</option>`).join('')}</select></label>` : `
+      ${record.type === 'inbox' ? `${personalNoteSheet({ title: record.title, titleGenerated: record.titleGenerated, body: record.description }, { bodyName: 'description', pin: false })}<label>Статус<select name="status">${statuses.map(status => `<option value="${status}" ${record.status === status ? 'selected' : ''}>${statusLabel({ ...record, status })}</option>`).join('')}</select></label>` : `
       <div class="form-grid two"><label>Название<input name="title" value="${escapeHTML(record.title)}" required></label><label>${record.type === 'question_set' ? 'Статус рассчитывается автоматически' : 'Статус'}<select name="status" ${record.type === 'question_set' ? 'disabled' : ''}>${statuses.map((status) => `<option value="${status}" ${record.status === status ? 'selected' : ''}>${statusLabel({ ...record, status })}</option>`).join('')}</select></label></div>
       ${markdownEditor('description', language.description, record.description, 5, 'Контекст, факты и ожидаемый результат')}`}
       ${renderBusinessDetailsFields(record.type, record.businessDetails || {}, record.id)}
@@ -6544,7 +6722,7 @@ function openCreateDialog(initialType = 'idea', preset = {}) {
   openModal($('#create-dialog'));
   if (resizeInboxTitle) {
     resizeInboxTitle();
-    (createForm.elements.description.value.trim() ? $('.markdown-rich-editor', createForm) : createForm.elements.title).focus({ preventScroll: true });
+    focusNotebook($('.markdown-editor[data-notebook]', createForm), Boolean(createForm.elements.description.value.trim()));
   }
 }
 
@@ -7103,6 +7281,7 @@ function onboardingKey() {
 }
 
 function maybeShowOnboarding() {
+  if(activeWorkspace()?.kind==='personal')return;
   try { if (!localStorage.getItem(onboardingKey())) openOnboarding(0); } catch (_) {}
 }
 
@@ -7155,7 +7334,7 @@ async function restoreViewHistory(entry) {
   if (!entry?.businessControlView || entry.businessControlAccount !== state.me?.id) return;
   state.layoutDraft = null;
   const route = entry.businessControlView;
-  if (route.workspaceId !== state.activeWorkspaceId) await switchWorkspace(route.workspaceId, { restoring: true });
+  if (route.workspaceId !== state.activeWorkspaceId && !await switchWorkspace(route.workspaceId, { restoring: true })) { rememberView(); return; }
   routeFields.forEach((key) => { if (Object.hasOwn(route, key)) state[key] = structuredClone(route[key]); });
   if (state.view === 'notifications') { state.notificationInbox = null; state.notificationError = ''; }
   render();
@@ -7766,7 +7945,7 @@ function pageLayoutCatalog() {
     calendar: [heading, block('filters', 'Вид и фильтры', '.planner-controls', true), block('month', 'Календарь и расписание', '.planner-body', true), block('undated', 'Без даты', '.planner-undated')],
     work: [heading, block('filters', 'Поиск и фильтры', ':scope > .work-controls', true), block('summary', 'Сводка и представления', ':scope > .work-view-summary'), block('boards', 'Доска и её настройки', '.work-board-toolbar'), workRecords],
     personal: [heading, block('summary', 'Личная сводка', '.personal-summary'), block('tabs', 'Разделы', '.personal-tabs', true), block('habits', 'Привычки', '.personal-today-grid .personal-section:has(> .habit-list)', false, 6), block('plans', 'Ближайшие планы', '.personal-today-grid .personal-section:has(> .personal-list)', false, 6), block('life', 'Карта времени', '.personal-today-grid .life-section', false, 6), block('notes', 'Последние заметки', '.personal-today-grid .personal-section:has(> .personal-notes-preview)', false, 6)],
-    collections: [heading, block('search', 'Доски и поиск', '.collection-toolbar', true), block('filters', 'Фильтры', '.collection-filters', true), block('records', 'Доска', ':scope > .collection-board', true)],
+    collections: [heading, block('search', 'Доски и поиск', '.collection-toolbar', true), block('filters', 'Фильтры', '.collection-filters', true), block('records', 'Доска', ':scope > .collection-board, :scope > .collection-empty', true)],
     principles: [heading, ...[['preference', 'Критерии'], ['limitation', 'Ограничения'], ['rule', 'Правила']].map(([key, label]) => block(key, label, `.principle-column:has([data-create-principle="${key}"])`, false, 4))],
     validation: [heading, block('summary', 'Сводка проверок', '.validation-summary'), block('filters', 'Фильтры', '.validation-filter', true), block('records', 'Риски и проверки', '.validation-list', true)],
     outcomes: [heading, block('filters', 'Фильтры результатов', '.outcome-filter', true), block('records', 'Решения и выводы', '.outcome-list', true)],
@@ -7987,17 +8166,41 @@ function openPersonalPlanDetails(id) {
   openModal(dialog);
 }
 
-function openTeamsDirectory() {
-  const dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
-  const teams = new Map();
-  state.workspaces.filter((item) => item.teamId).forEach((item) => { if (!teams.has(item.teamId)) teams.set(item.teamId, []); teams.get(item.teamId).push(item); });
-  content.innerHTML = `<div class="workspace-editor-shell teams-directory"><header><h2>Команды и проекты</h2><button type="button" class="icon-button" data-directory-close aria-label="Закрыть">${icon('x')}</button></header><div class="plan-hub-actions"><button type="button" class="primary" data-directory-create>${icon('plus')} Новая команда</button><button type="button" class="secondary" data-directory-join>${icon('link')} Присоединиться</button></div>${[...teams.entries()].map(([id, projects]) => `<section><header><h3>${escapeHTML(projects[0].teamName)}</h3><button type="button" class="secondary" data-directory-team="${id}">${icon('users')} Участники и проекты</button></header>${projects.map((project) => `<button type="button" class="directory-project" data-directory-project="${project.id}">${icon(project.id === state.activeWorkspaceId ? 'check' : 'network')}<span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || '')}</small></span>${icon('chevronRight')}</button>`).join('')}</section>`).join('') || '<p class="muted">Команд пока нет.</p>'}</div>`;
-  $('[data-directory-close]').addEventListener('click', closeWorkspaceDialog);
-  $('[data-directory-create]').addEventListener('click', openWorkspaceCreateDialog);
-  $('[data-directory-join]').addEventListener('click', () => openJoinTeamDialog());
-  $$('[data-directory-team]').forEach((button) => button.addEventListener('click', () => openTeamSettings(button.dataset.directoryTeam)));
-  $$('[data-directory-project]').forEach((button) => button.addEventListener('click', async () => { closeWorkspaceDialog(); await switchWorkspace(button.dataset.directoryProject); navigateToView('collections'); }));
+async function openTeamsDirectory() {
+  const dialog=$('#workspace-dialog'),content=$('#workspace-dialog-content');
+  content.innerHTML='<div class="workspace-dialog-loading"><span class="spinner"></span><strong>Загружаем команды</strong></div>';
+  const loading=content.firstElementChild;
   openModal(dialog);
+  try {
+    const teams=await api('/api/teams?includeDeleted=true');
+    if(!dialog.open||content.firstElementChild!==loading)return;
+    state.teams=teams.filter(team=>!team.deletedAt);
+    const deleted=teams.filter(team=>team.deletedAt);
+    content.innerHTML='<div class="workspace-editor-shell teams-directory"><header><h2>Команды и проекты</h2><button type="button" class="icon-button" data-directory-close aria-label="Закрыть">'+icon('x')+'</button></header><div class="plan-hub-actions"><button type="button" class="primary" data-directory-create>'+icon('plus')+' Новая команда</button><button type="button" class="secondary" data-directory-join>'+icon('link')+' Присоединиться</button></div>'+
+      state.teams.map(team=>{
+        const projects=state.workspaces.filter(project=>project.teamId===team.id);
+        return '<section><header><div><h3>'+escapeHTML(team.name)+'</h3><small>'+teamRoleLabel(team.role)+'</small></div><button type="button" class="secondary" data-directory-team="'+team.id+'">'+icon('users')+' Открыть команду</button></header>'+
+          projects.map(project=>'<button type="button" class="directory-project" data-directory-project="'+project.id+'">'+icon(project.id===state.activeWorkspaceId?'check':'network')+'<span><strong>'+escapeHTML(project.name)+'</strong><small>'+escapeHTML(project.description||'')+'</small></span>'+icon('chevronRight')+'</button>').join('')+
+          (projects.length?'':'<p class="muted">Вам пока не назначены проекты.</p>')+'</section>';
+      }).join('')+(state.teams.length?'':'<p class="muted">Вы пока не участвуете в командах.</p>')+
+      (deleted.length?'<details class="deleted-teams"><summary>Удалённые команды · '+deleted.length+'</summary>'+deleted.map(team=>'<article><div><strong>'+escapeHTML(team.name)+'</strong><small>Удалена '+formatDate(team.deletedAt,true)+'</small></div><button type="button" class="secondary" data-restore-team="'+team.id+'">'+icon('rotate')+' Восстановить</button></article>').join('')+'</details>':'')+'</div>';
+    const shell=content.firstElementChild;
+    $('[data-directory-close]',shell).addEventListener('click',closeWorkspaceDialog);
+    $('[data-directory-create]',shell).addEventListener('click',openWorkspaceCreateDialog);
+    $('[data-directory-join]',shell).addEventListener('click',()=>openJoinTeamDialog());
+    $$('[data-directory-team]',shell).forEach(button=>button.addEventListener('click',()=>openTeamSettings(button.dataset.directoryTeam)));
+    $$('[data-directory-project]',shell).forEach(button=>button.addEventListener('click',async()=>{closeWorkspaceDialog();try{if(await switchWorkspace(button.dataset.directoryProject))navigateToView('collections');}catch(error){toast(error.message,true);}}));
+    $$('[data-restore-team]',shell).forEach(button=>button.addEventListener('click',async()=>{
+      if(button.disabled)return;button.disabled=true;
+      try{await api('/api/teams/'+button.dataset.restoreTeam+'/restore',{method:'POST'});await loadData(true);if(dialog.open&&shell.isConnected)await openTeamsDirectory();toast('Команда восстановлена. Старые приглашения остаются отозванными.');}
+      catch(error){button.disabled=false;toast(error.message,true);}
+    }));
+  } catch(error) {
+    if(!dialog.open||content.firstElementChild!==loading)return;
+    content.innerHTML='<div class="workspace-editor-shell"><header><h2>Команды не загрузились</h2><button type="button" class="icon-button" data-directory-close aria-label="Закрыть">'+icon('x')+'</button></header><p>'+escapeHTML(error.message)+'</p><button type="button" class="secondary" data-directory-retry>Повторить</button></div>';
+    $('[data-directory-close]',content).addEventListener('click',closeWorkspaceDialog);
+    $('[data-directory-retry]',content).addEventListener('click',openTeamsDirectory);
+  }
 }
 
 function openCalendar(scope = 'project', collectionID = '') {

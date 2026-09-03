@@ -22,14 +22,15 @@ const projects = [
   {id:'other', name:'CRM', teamId:'startup', teamName:'Startup', kind:'team', role:'member'},
 ];
 
-test('current project is primary and team is secondary, switching updates identity', () => {
+test('closed switcher contains the project without a redundant team caption', () => {
   const crm = switcher(projects,'crm');
-  assert.match(crm.summary, /<strong>CRM<\/strong><small>Команда: Business<\/small>/);
+  assert.match(crm.summary, /<strong>CRM<\/strong>/);
+  assert.doesNotMatch(crm.summary, /<small>|Business|Команда:/);
   assert.doesNotMatch(crm.summary, /Владелец|Рабочее пространство/);
   assert.match(crm.html, /data-switch-workspace="crm" aria-current="page"/);
   assert.match(crm.html, /data-switch-workspace="python" aria-current="false"/);
   assert.match(switcher(projects,'python').summary, /<strong>Python<\/strong>/);
-  assert.match(switcher(projects,'other').summary, /<small>Команда: Startup<\/small>/);
+  assert.doesNotMatch(switcher(projects,'other').summary, /Startup|<small>/);
 });
 
 test('same-named projects remain grouped by team, only supplied accessible projects render', () => {
@@ -37,8 +38,8 @@ test('same-named projects remain grouped by team, only supplied accessible proje
   assert.equal((html.match(/workspace-team-group/g)||[]).length, 2);
   assert.equal((html.match(/aria-current="page"/g)||[]).length, 1);
   assert.equal((html.match(/data-switch-workspace=/g)||[]).length, 3);
-  assert.match(html, /Настроить команду Business/);
-  assert.doesNotMatch(html, /Настроить команду Startup/);
+  assert.match(html, /Открыть команду Business/);
+  assert.match(html, /Открыть команду Startup/);
 });
 
 test('personal and empty contexts are not labelled as a business team', () => {

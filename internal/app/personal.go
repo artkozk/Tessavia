@@ -27,28 +27,30 @@ type PersonalSettings struct {
 }
 
 type PersonalNote struct {
-	InInbox       bool    `json:"inInbox"`
-	ScheduledDate *string `json:"scheduledDate"`
-	ID            string  `json:"id"`
-	Title         string  `json:"title"`
-	Body          string  `json:"body"`
-	Pinned        bool    `json:"pinned"`
-	CreatedAt     string  `json:"createdAt"`
-	UpdatedAt     string  `json:"updatedAt"`
+	TitleGenerated bool    `json:"titleGenerated"`
+	InInbox        bool    `json:"inInbox"`
+	ScheduledDate  *string `json:"scheduledDate"`
+	ID             string  `json:"id"`
+	Title          string  `json:"title"`
+	Body           string  `json:"body"`
+	Pinned         bool    `json:"pinned"`
+	CreatedAt      string  `json:"createdAt"`
+	UpdatedAt      string  `json:"updatedAt"`
 }
 
 type PersonalPlan struct {
-	ID          string  `json:"id"`
-	Title       string  `json:"title"`
-	Notes       string  `json:"notes"`
-	DueAt       *string `json:"dueAt"`
-	StartDate   string  `json:"startDate"`
-	EndDate     string  `json:"endDate"`
-	ColorKey    string  `json:"colorKey"`
-	Status      string  `json:"status"`
-	CompletedAt *string `json:"completedAt"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	TitleGenerated bool    `json:"titleGenerated"`
+	ID             string  `json:"id"`
+	Title          string  `json:"title"`
+	Notes          string  `json:"notes"`
+	DueAt          *string `json:"dueAt"`
+	StartDate      string  `json:"startDate"`
+	EndDate        string  `json:"endDate"`
+	ColorKey       string  `json:"colorKey"`
+	Status         string  `json:"status"`
+	CompletedAt    *string `json:"completedAt"`
+	CreatedAt      string  `json:"createdAt"`
+	UpdatedAt      string  `json:"updatedAt"`
 }
 
 type HabitCheckin struct {
@@ -113,6 +115,7 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN team_members tm ON tm.team_id = w.team_id AND tm.user_id = wm.user_id AND tm.status = 'active'
 		WHERE wm.user_id = ? AND wm.status = 'active'
 		  AND w.archived_at IS NULL
+		  AND (w.team_id IS NULL OR (t.deleted_at IS NULL AND tm.user_id IS NOT NULL))
 		ORDER BY CASE w.kind WHEN 'personal' THEN 0 ELSE 1 END, COALESCE(t.name, ''), w.name`, user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить пространства")
@@ -168,7 +171,7 @@ func (s *Server) handlePersonalOverview(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) listPersonalNotes(r *http.Request, ownerID int64) ([]PersonalNote, error) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date, in_inbox FROM personal_notes WHERE owner_id = ? AND archived_at IS NULL ORDER BY pinned DESC, updated_at DESC`, ownerID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date, in_inbox, title_generated FROM personal_notes WHERE owner_id = ? AND archived_at IS NULL ORDER BY pinned DESC, updated_at DESC`, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +180,7 @@ func (s *Server) listPersonalNotes(r *http.Request, ownerID int64) ([]PersonalNo
 	for rows.Next() {
 		var item PersonalNote
 		var pinned int
-		if err := rows.Scan(&item.ID, &item.Title, &item.Body, &pinned, &item.CreatedAt, &item.UpdatedAt, &item.ScheduledDate, &item.InInbox); err != nil {
+		if err := rows.Scan(&item.ID, &item.Title, &item.Body, &pinned, &item.CreatedAt, &item.UpdatedAt, &item.ScheduledDate, &item.InInbox, &item.TitleGenerated); err != nil {
 			return nil, err
 		}
 		item.Pinned = pinned == 1
@@ -187,7 +190,7 @@ func (s *Server) listPersonalNotes(r *http.Request, ownerID int64) ([]PersonalNo
 }
 
 func (s *Server) listPersonalPlans(r *http.Request, ownerID int64) ([]PersonalPlan, error) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, notes, due_at, status, completed_at, created_at, updated_at, start_date, end_date, color_key FROM personal_plans WHERE owner_id = ? AND status <> 'archived' ORDER BY CASE status WHEN 'planned' THEN 0 ELSE 1 END, due_at IS NULL, due_at, updated_at DESC`, ownerID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, notes, due_at, status, completed_at, created_at, updated_at, start_date, end_date, color_key, title_generated FROM personal_plans WHERE owner_id = ? AND status <> 'archived' ORDER BY CASE status WHEN 'planned' THEN 0 ELSE 1 END, due_at IS NULL, due_at, updated_at DESC`, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +198,7 @@ func (s *Server) listPersonalPlans(r *http.Request, ownerID int64) ([]PersonalPl
 	items := make([]PersonalPlan, 0)
 	for rows.Next() {
 		var item PersonalPlan
-		if err := rows.Scan(&item.ID, &item.Title, &item.Notes, &item.DueAt, &item.Status, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt, &item.StartDate, &item.EndDate, &item.ColorKey); err != nil {
+		if err := rows.Scan(&item.ID, &item.Title, &item.Notes, &item.DueAt, &item.Status, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt, &item.StartDate, &item.EndDate, &item.ColorKey, &item.TitleGenerated); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -329,7 +332,7 @@ func (s *Server) listPersonalLinks(r *http.Request, ownerID int64) ([]PersonalLi
 func (s *Server) personalTargetTitle(r *http.Request, ownerID int64, targetType, targetID string) string {
 	var title string
 	queries := map[string]string{
-		"record": `SELECT r.title FROM records r JOIN workspaces w ON w.id = r.workspace_id JOIN workspace_members m ON m.workspace_id = w.id WHERE r.id = ? AND r.status <> 'archived' AND w.archived_at IS NULL AND m.user_id = ? AND m.status = 'active'`,
+		"record": `SELECT r.title FROM records r JOIN workspaces w ON w.id = r.workspace_id JOIN workspace_members m ON m.workspace_id = w.id WHERE r.id = ? AND r.status <> 'archived' AND w.archived_at IS NULL AND m.user_id = ? AND m.status = 'active' AND (w.team_id IS NULL OR EXISTS (SELECT 1 FROM teams t JOIN team_members tm ON tm.team_id = t.id WHERE t.id = w.team_id AND t.deleted_at IS NULL AND tm.user_id = m.user_id AND tm.status = 'active'))`,
 		"note":   `SELECT title FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`,
 		"plan":   `SELECT title FROM personal_plans WHERE id = ? AND owner_id = ? AND status <> 'archived'`,
 		"habit":  `SELECT title FROM personal_habits WHERE id = ? AND owner_id = ? AND archived_at IS NULL`,
@@ -349,7 +352,11 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 		Pinned        bool    `json:"pinned"`
 		LinkPlanID    string  `json:"linkPlanId"`
 	}
-	if !decodeJSON(w, r, &input) || !validatePersonalText(w, &input.Title, input.Body) {
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	titleGenerated := strings.TrimSpace(input.Title) == ""
+	if !validatePersonalText(w, &input.Title, input.Body) {
 		return
 	}
 	if input.ScheduledDate != nil && *input.ScheduledDate != "" && !validDate(*input.ScheduledDate) {
@@ -375,7 +382,7 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_notes(id, owner_id, title, body, pinned, created_at, updated_at, scheduled_date) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, now, input.ScheduledDate)
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_notes(id, owner_id, title, body, pinned, created_at, updated_at, scheduled_date, title_generated) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, now, input.ScheduledDate, titleGenerated)
 	if err == nil && input.LinkPlanID != "" {
 		linkID, ok := newPersonalID(w)
 		if !ok {
@@ -390,17 +397,22 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить заметку")
 		return
 	}
-	writeJSON(w, http.StatusCreated, PersonalNote{ID: id, Title: input.Title, Body: strings.TrimSpace(input.Body), Pinned: input.Pinned, CreatedAt: now, UpdatedAt: now, ScheduledDate: input.ScheduledDate})
+	writeJSON(w, http.StatusCreated, PersonalNote{ID: id, Title: input.Title, Body: strings.TrimSpace(input.Body), Pinned: input.Pinned, CreatedAt: now, UpdatedAt: now, ScheduledDate: input.ScheduledDate, TitleGenerated: titleGenerated})
 }
 
 func (s *Server) handleUpdatePersonalNote(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		ScheduledDate *string `json:"scheduledDate"`
-		Title         string  `json:"title"`
-		Body          string  `json:"body"`
-		Pinned        bool    `json:"pinned"`
+		ExpectedUpdatedAt string  `json:"expectedUpdatedAt"`
+		ScheduledDate     *string `json:"scheduledDate"`
+		Title             string  `json:"title"`
+		Body              string  `json:"body"`
+		Pinned            bool    `json:"pinned"`
 	}
-	if !decodeJSON(w, r, &input) || !validatePersonalText(w, &input.Title, input.Body) {
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	titleGenerated := strings.TrimSpace(input.Title) == ""
+	if !validatePersonalText(w, &input.Title, input.Body) {
 		return
 	}
 	if input.ScheduledDate != nil && *input.ScheduledDate != "" && !validDate(*input.ScheduledDate) {
@@ -409,13 +421,26 @@ func (s *Server) handleUpdatePersonalNote(w http.ResponseWriter, r *http.Request
 	}
 	user := currentUser(r)
 	now := nowText()
-	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_notes SET title = ?, body = ?, pinned = ?, updated_at = ?, scheduled_date = COALESCE(?, scheduled_date) WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, input.ScheduledDate, r.PathValue("id"), user.ID)
-	if err != nil || affectedRows(result) == 0 {
+	var previousVersion string
+	if err := s.store.db.QueryRowContext(r.Context(), `SELECT updated_at FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, r.PathValue("id"), user.ID).Scan(&previousVersion); err != nil {
 		writeError(w, http.StatusNotFound, "Заметка не найдена")
 		return
 	}
+	if input.ExpectedUpdatedAt != "" && input.ExpectedUpdatedAt != previousVersion {
+		writeError(w, http.StatusConflict, "Заметка изменена в другом окне. Черновик сохранён; откройте актуальную версию.")
+		return
+	}
+	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_notes SET title = ?, body = ?, pinned = ?, updated_at = ?, scheduled_date = COALESCE(?, scheduled_date), title_generated = ? WHERE id = ? AND owner_id = ? AND archived_at IS NULL AND updated_at = ?`, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, input.ScheduledDate, titleGenerated, r.PathValue("id"), user.ID, previousVersion)
+	if err != nil {
+		writeError(w, 500, "Не удалось сохранить заметку")
+		return
+	}
+	if affectedRows(result) == 0 {
+		writeError(w, 409, "Заметка изменена. Откройте актуальную версию.")
+		return
+	}
 	var note PersonalNote
-	err = s.store.db.QueryRowContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date, in_inbox FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, r.PathValue("id"), user.ID).Scan(&note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate, &note.InInbox)
+	err = s.store.db.QueryRowContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date, in_inbox, title_generated FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, r.PathValue("id"), user.ID).Scan(&note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate, &note.InInbox, &note.TitleGenerated)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать заметку")
 		return
@@ -429,7 +454,11 @@ func (s *Server) handleArchivePersonalNote(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request) {
 	var input personalPlanInput
-	if !decodeJSON(w, r, &input) || !validatePersonalText(w, &input.Title, input.Notes) {
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	titleGenerated := strings.TrimSpace(input.Title) == ""
+	if !validatePersonalText(w, &input.Title, input.Notes) {
 		return
 	}
 	plan, err := input.calendarFields(PersonalPlan{ColorKey: "green"})
@@ -443,18 +472,23 @@ func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request
 	}
 	now := nowText()
 	user := currentUser(r)
-	_, err = s.store.db.ExecContext(r.Context(), `INSERT INTO personal_plans(id, owner_id, title, notes, due_at, status, created_at, updated_at, start_date, end_date, color_key) VALUES(?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, now, now, plan.StartDate, plan.EndDate, plan.ColorKey)
+	_, err = s.store.db.ExecContext(r.Context(), `INSERT INTO personal_plans(id, owner_id, title, notes, due_at, status, created_at, updated_at, start_date, end_date, color_key, title_generated) VALUES(?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, now, now, plan.StartDate, plan.EndDate, plan.ColorKey, titleGenerated)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить план")
 		return
 	}
 	plan.ID, plan.Title, plan.Notes, plan.Status, plan.CreatedAt, plan.UpdatedAt = id, input.Title, strings.TrimSpace(input.Notes), "planned", now, now
+	plan.TitleGenerated = titleGenerated
 	writeJSON(w, http.StatusCreated, plan)
 }
 
 func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request) {
 	var input personalPlanInput
-	if !decodeJSON(w, r, &input) || !validatePersonalText(w, &input.Title, input.Notes) {
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	titleGenerated := strings.TrimSpace(input.Title) == ""
+	if !validatePersonalText(w, &input.Title, input.Notes) {
 		return
 	}
 	if input.Status != "planned" && input.Status != "done" {
@@ -485,12 +519,13 @@ func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request
 			completedAt = &now
 		}
 	}
-	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_plans SET title = ?, notes = ?, due_at = ?, status = ?, completed_at = ?, updated_at = ?, start_date = ?, end_date = ?, color_key = ? WHERE id = ? AND owner_id = ? AND status <> 'archived' AND updated_at = ?`, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, input.Status, completedAt, now, plan.StartDate, plan.EndDate, plan.ColorKey, r.PathValue("id"), user.ID, current.UpdatedAt)
+	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_plans SET title = ?, notes = ?, due_at = ?, status = ?, completed_at = ?, updated_at = ?, start_date = ?, end_date = ?, color_key = ?, title_generated = ? WHERE id = ? AND owner_id = ? AND status <> 'archived' AND updated_at = ?`, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, input.Status, completedAt, now, plan.StartDate, plan.EndDate, plan.ColorKey, titleGenerated, r.PathValue("id"), user.ID, current.UpdatedAt)
 	if err != nil || affectedRows(result) == 0 {
 		writeError(w, http.StatusConflict, "План изменён. Откройте актуальную версию.")
 		return
 	}
 	plan.ID, plan.Title, plan.Notes, plan.Status, plan.CompletedAt, plan.UpdatedAt = r.PathValue("id"), input.Title, strings.TrimSpace(input.Notes), input.Status, completedAt, now
+	plan.TitleGenerated = titleGenerated
 	writeJSON(w, http.StatusOK, plan)
 }
 
@@ -635,7 +670,7 @@ func (s *Server) handlePersonalSuggestions(w http.ResponseWriter, r *http.Reques
 	}
 	user := currentUser(r)
 	items := make([]PersonalSuggestion, 0)
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT r.id, CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' ELSE r.type END, r.title, w.name FROM records r JOIN workspaces w ON w.id = r.workspace_id JOIN workspace_members m ON m.workspace_id = w.id WHERE r.status NOT IN ('archived', 'cancelled') AND w.archived_at IS NULL AND m.user_id = ? AND m.status = 'active' ORDER BY r.updated_at DESC LIMIT 250`, user.ID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT r.id, CASE WHEN r.business_kind <> '' THEN r.business_kind WHEN r.subtype = 'question_set' THEN 'question_set' ELSE r.type END, r.title, w.name FROM records r JOIN workspaces w ON w.id = r.workspace_id JOIN workspace_members m ON m.workspace_id = w.id WHERE r.status NOT IN ('archived', 'cancelled') AND w.archived_at IS NULL AND m.user_id = ? AND m.status = 'active' AND (w.team_id IS NULL OR EXISTS (SELECT 1 FROM teams t JOIN team_members tm ON tm.team_id = t.id WHERE t.id = w.team_id AND t.deleted_at IS NULL AND tm.user_id = m.user_id AND tm.status = 'active')) ORDER BY r.updated_at DESC LIMIT 250`, user.ID)
 	if err == nil {
 		for rows.Next() {
 			var id, recordType, title, workspace string

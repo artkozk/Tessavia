@@ -1,0 +1,3 @@
+ALTER TABLE personal_notes ADD COLUMN title_generated INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE personal_plans ADD COLUMN title_generated INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE records ADD COLUMN title_generated INTEGER NOT NULL DEFAULT 0;

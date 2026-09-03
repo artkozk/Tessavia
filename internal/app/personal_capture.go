@@ -41,10 +41,10 @@ func (s *Server) handlePersonalCapture(w http.ResponseWriter, r *http.Request) {
 	var archived sql.NullString
 	var note PersonalNote
 	err = tx.QueryRowContext(r.Context(), `
-		SELECT c.body_hash, n.id, n.title, n.body, n.pinned, n.created_at, n.updated_at, n.scheduled_date, n.in_inbox, n.archived_at
+		SELECT c.body_hash, n.id, n.title, n.body, n.pinned, n.created_at, n.updated_at, n.scheduled_date, n.in_inbox, n.archived_at, n.title_generated
 		FROM personal_capture_requests c JOIN personal_notes n ON n.id = c.note_id AND n.owner_id = c.owner_id
 		WHERE c.owner_id = ? AND c.request_key = ?`, user.ID, input.RequestKey).
-		Scan(&oldHash, &note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate, &note.InInbox, &archived)
+		Scan(&oldHash, &note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate, &note.InInbox, &archived, &note.TitleGenerated)
 	if err == nil {
 		if oldHash != bodyHash || archived.Valid {
 			writeError(w, http.StatusConflict, "Эта отправка уже сохранена с другим текстом или перенесена в архив")
@@ -63,7 +63,7 @@ func (s *Server) handlePersonalCapture(w http.ResponseWriter, r *http.Request) {
 	}
 	now := nowText()
 	// The request and its note commit together; retrying a lost response cannot duplicate it.
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_notes(id, owner_id, title, body, created_at, updated_at, in_inbox) VALUES(?, ?, ?, ?, ?, ?, 1)`, id, user.ID, title, input.Body, now, now)
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_notes(id, owner_id, title, body, created_at, updated_at, in_inbox, title_generated) VALUES(?, ?, ?, ?, ?, ?, 1, 1)`, id, user.ID, title, input.Body, now, now)
 	if err == nil {
 		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_capture_requests(owner_id, request_key, body_hash, note_id) VALUES(?, ?, ?, ?)`, user.ID, input.RequestKey, bodyHash, id)
 	}
@@ -74,7 +74,7 @@ func (s *Server) handlePersonalCapture(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить входящее. Текст остаётся в черновике")
 		return
 	}
-	writeJSON(w, http.StatusCreated, PersonalNote{ID: id, Title: title, Body: input.Body, InInbox: true, CreatedAt: now, UpdatedAt: now})
+	writeJSON(w, http.StatusCreated, PersonalNote{ID: id, Title: title, Body: input.Body, InInbox: true, TitleGenerated: true, CreatedAt: now, UpdatedAt: now})
 }
 
 func (s *Server) handlePersonalInboxState(w http.ResponseWriter, r *http.Request) {
