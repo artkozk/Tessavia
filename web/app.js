@@ -1602,7 +1602,7 @@ function setAuthMode(mode) {
 	resetRegistrationVerification(false);
   state.authMode = mode;
   $$('[data-auth-mode]').forEach((button) => button.classList.toggle('active', button.dataset.authMode === mode));
-  $('#auth-heading-title').textContent = mode === 'register' ? 'Создайте аккаунт' : 'С возвращением';
+  $('#auth-heading-title').textContent = mode === 'register' ? 'Создайте аккаунт' : 'Войдите в проект';
 	$('#auth-heading-copy').textContent = mode === 'register' ? 'Создание аккаунта завершается шестизначным кодом подтверждения.' : 'Продолжите работу с того места, где остановились.';
   $('#email-field').hidden = mode !== 'register';
   $('#email-field input').required = mode === 'register';
