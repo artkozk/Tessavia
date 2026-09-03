@@ -5,8 +5,10 @@ set -Eeuo pipefail
 : "${EXPECTED_SHA256:?Set binary hash}"
 : "${EXPECTED_PREVIOUS:?Set verified previous release}"
 : "${ASSET_VERSION:=20260903-supplied-logo-1}"
+: "${BRAND_VERSION:=supplied-1}"
 : "${EXPECTED_LOGO_WIDTH:=}"
-[[ "$ASSET_VERSION" =~ ^20260903-(supplied|compact)-logo-1$ ]]
+[[ "$ASSET_VERSION" =~ ^20260903-(supplied|compact|linked)-logo-1$ ]]
+[[ "$BRAND_VERSION" =~ ^(supplied|linked)-1$ ]]
 [[ -z "$EXPECTED_LOGO_WIDTH" || "$EXPECTED_LOGO_WIDTH" =~ ^[0-9]{2,3}px$ ]]
 [[ "$RELEASE_NAME" =~ ^20260903-supplied-logo-[a-f0-9]+$ ]]
 [[ "$CANDIDATE_COMMIT" =~ ^[a-f0-9]{7,40}$ ]]
@@ -88,8 +90,8 @@ check_http() {
   ! grep -qi 'bizflow' "$dry/index.html"
   ! grep -q 'tessavie.css\|auth-weave' "$dry/index.html"
   ! grep -q 'brand-symbol' "$dry/index.html"
-  grep -qF 'tessavie-logo-light.svg?v=supplied-1' "$dry/index.html"
-  grep -qF 'tessavie-logo.svg?v=supplied-1' "$dry/index.html"
+  grep -qF "tessavie-logo-light.svg?v=$BRAND_VERSION" "$dry/index.html"
+  grep -qF "tessavie-logo.svg?v=$BRAND_VERSION" "$dry/index.html"
   curl --max-time 15 -fsS "$base/styles.css" > "$dry/styles.css"
   grep -q -- '--accent: #126a55;' "$dry/styles.css"
   grep -q -- '--nav: #202824;' "$dry/styles.css"
@@ -98,7 +100,7 @@ check_http() {
   fi
   grep -qF '.personal-create-menu { position: relative; align-self: auto; }' "$dry/styles.css"
   curl --max-time 15 -fsS "$base/manifest.webmanifest" > "$dry/manifest.json"
-  python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m["name"]=="Tessavie" and m["background_color"]=="#faf9f5" and m["theme_color"]=="#14725e" and all("supplied-1" in i["src"] for i in m["icons"])' "$dry/manifest.json"
+  python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m["name"]=="Tessavie" and m["background_color"]=="#faf9f5" and m["theme_color"]=="#14725e" and all("?v="+sys.argv[2] in i["src"] for i in m["icons"])' "$dry/manifest.json" "$BRAND_VERSION"
   for asset in tessavie-logo.svg tessavie-logo-light.svg tessavie-mark.svg tessavie-32.png tessavie-180.png tessavie-192.png tessavie-512.png tessavie-maskable-512.png; do
     curl --max-time 15 -fsS "$base/brand/$asset" > /dev/null
   done

@@ -1,17 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
   <rect width="256" height="256" rx="44" fill="#faf9f5"/>
-  <g transform="translate(-86.5 -195.7) scale(.6)"><g fill="none" stroke-width="9.5" stroke-linejoin="round">
-    <path d="M238.5 596.5h-27a19.5 19.5 0 0 1-19.5-19.5V414.5a20 20 0 0 1 20-20h196a20 20 0 0 1 20 20v21" stroke="#8a9c96"/>
-    <path d="M294.5 644h-23a20 20 0 0 1-20-20V467.5a20 20 0 0 1 20-20h184a20 20 0 0 1 20 20v21" stroke="#79b3a6"/>
-    <rect x="307" y="500.5" width="216" height="184" rx="20" stroke="#094f40"/>
+  <g transform="translate(-201.25 -225.25) scale(.75)"><defs>
+    <linearGradient id="front-join" gradientUnits="userSpaceOnUse" x1="449" y1="423" x2="468" y2="423"><stop stop-color="#1d634f"/><stop offset="1" stop-color="#2d2f33"/></linearGradient>
+    <linearGradient id="back-join" gradientUnits="userSpaceOnUse" x1="399" y1="515" x2="435" y2="515"><stop stop-color="#2d2f33"/><stop offset="1" stop-color="#1d634f"/></linearGradient>
+  </defs>
+  <g fill="none" stroke="#2d2f33" stroke-width="17" stroke-linejoin="round">
+    <path d="M470.5 401 473 383c1.3-11.7-7.4-20.5-19-20.5H352c-12 0-20.5 9-22.1 21L316.1 495.5c-1.6 11 6 19.5 17.4 19.5H407c12 0 21-5.5 27-13"/>
+    <path d="M392.5 537l-1.7 15.5c-2 16 5.2 27 19.2 27H519c12 0 20.8-7.8 23.3-21l19.9-116.5c1.8-11.5-5-19.5-17.4-19.5H433.5c-11.7 0-21.5 7.9-23.5 19.5l-8 51"/>
+    <path d="M399 515h8c12 0 21-5.5 27-13" stroke="url(#back-join)"/>
+    <path d="M402 493l8-51c2-11.6 11.8-19.5 23.5-19.5H468" stroke="url(#front-join)"/>
   </g>
-  <g fill="#8a9c96"><circle cx="222.5" cy="422.5" r="6.7"/><circle cx="249" cy="422.5" r="6.7"/></g>
-  <g fill="#79b3a6"><circle cx="281.5" cy="475.5" r="6.7"/><circle cx="307.5" cy="475.5" r="6.7"/></g>
-  <g fill="#094f40"><circle cx="337.8" cy="528.8" r="6.7"/><circle cx="364" cy="528.8" r="6.7"/></g>
-  <rect x="331.5" y="568" width="38" height="71" rx="7.5" fill="#89bfb1"/>
-  <g fill="none" stroke-width="13.5" stroke-linecap="round">
-    <path d="M393 574.8h91.5" stroke="#859b94"/>
-    <path d="M393 603.8h91.5" stroke="#c4d1cb"/>
-    <path d="M393 632.8h53" stroke="#d6dfda"/>
-  </g></g>
+  <circle cx="453.5" cy="500" r="26" fill="#1d634f"/></g>
 </svg>

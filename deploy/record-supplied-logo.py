@@ -12,7 +12,9 @@ from urllib import request
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--commit',required=True)
 parser.add_argument('--release',required=True)
-parser.add_argument('--compact',action='store_true',help='Record the verified sidebar size correction')
+variant=parser.add_mutually_exclusive_group()
+variant.add_argument('--compact',action='store_true',help='Record the verified sidebar size correction')
+variant.add_argument('--linked',action='store_true',help='Record the verified linked frames logo replacement')
 args=parser.parse_args()
 assert len(args.commit)==40 and all(c in '0123456789abcdef' for c in args.commit)
 assert args.release.startswith('/opt/business-control/releases/20260903-supplied-logo-')
@@ -28,7 +30,7 @@ db.execute('INSERT INTO sessions(user_id,token_hash,expires_at,created_at,last_s
 db.commit()
 opener=request.build_opener(request.ProxyHandler({}))
 task_id='c0fd9c05fb729716cc0fcee1392673e4'
-marker='[verified:'+('compact-logo-' if args.compact else 'supplied-logo-')+args.commit[:7]+']'
+marker='[verified:'+('linked-logo-' if args.linked else 'compact-logo-' if args.compact else 'supplied-logo-')+args.commit[:7]+']'
 def api(method,path,body=None):
     payload=None if body is None else json.dumps(body,ensure_ascii=False).encode()
     req=request.Request('http://127.0.0.1:8522/api'+path,payload,
@@ -52,11 +54,19 @@ try:
         evidence+='Go test/vet и Node-тесты, браузер 1280/390/320 px, длинный текст и восстановление черновика проверены. '
         evidence+='Backup, dry-run со сравнением всех таблиц, публичный smoke и service active подтверждены. '
         evidence+='Физические устройства не проверялись.\nCommit: '+args.commit+'\nRelease: '+args.release+'\nhttps://control.e-rd.ru'
+    if args.linked:
+        evidence=marker+'\nУстановлен новый присланный логотип: две наклонные рамки, зелёная точка соединения и надпись Tessavie с зелёной точкой над i. '
+        evidence+='Обновлены SVG для светлого и тёмного фона, favicon и PWA; источник сохранён в документации. '
+        evidence+='Ширина в меню 128 px, на входе 196 px, прежняя палитра интерфейса сохранена. '
+        evidence+='Go test/vet и Node-тесты, браузер 1280/820/390/320 px, длинный текст и восстановление черновика проверены. '
+        evidence+='Backup, dry-run со сравнением всех таблиц, публичный smoke и service active подтверждены. '
+        evidence+='Физические устройства и обновление установленной PWA не проверялись.\nCommit: '+args.commit+'\nRelease: '+args.release+'\nhttps://control.e-rd.ru'
     if not any(marker in proof['content'] for proof in detail.get('proofs',[])):
         api('POST','/records/'+task_id+'/proofs',{'kind':'text','content':evidence})
     record=api('GET','/records/'+task_id)['record']
     if marker not in record['result']:
-        correction=('Логотип в меню уменьшен до 128 px после замечания о чрезмерном размере.' if args.compact
+        correction=('Пользователь выбрал новый логотип с двумя наклонными рамками и зелёной точкой соединения; компактная ширина 128 px сохранена.' if args.linked
+            else 'Логотип в меню уменьшен до 128 px после замечания о чрезмерном размере.' if args.compact
             else 'Пользователь выбрал последнее присланное изображение с тремя окнами.')
         api('PATCH','/records/'+task_id,{
             'expectedUpdatedAt':record['updatedAt'],
