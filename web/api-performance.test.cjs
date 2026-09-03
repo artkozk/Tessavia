@@ -59,8 +59,9 @@ test('saving-related sync finishes even when chat is slow; late companions canno
   const chat=deferred();
   const c=vm.createContext({URLSearchParams, state:{me:{id:1},activeWorkspaceId:'a',records:[],activity:[],syncRecordsSince:'1970',syncActivitySince:'1970',detailCache:new Map()},
     typeMeta:{}, latestTimestamp:(items,field,fallback)=>fallback,renderNav(){},renderNotificationBadge(){},
-    api:async path => path.includes('/api/sync?') ? {records:[],activity:[]} : path==='/api/chat/threads' ? chat.promise : []});
-  vm.runInContext(source.slice(source.indexOf('async function syncProjectChanges('), source.indexOf('function closeGlobalSearch(')),c);
+    api:async path => path.includes('/api/sync?') ? {records:[],activity:[],checkpoint:'2026-09-03T12:00:00Z',nextCursor:''} : path==='/api/chat/threads' ? chat.promise : []});
+  vm.runInContext(source.slice(source.indexOf('async function readProjectPages('), source.indexOf('function renderProjectLoading(')),c);
+  vm.runInContext(source.slice(source.indexOf('function compareSyncTimestamps('), source.indexOf('function closeGlobalSearch(')),c);
   await Promise.race([c.syncProjectChanges(),new Promise((resolve,reject)=>setTimeout(()=>reject(new Error('sync waited for chat')),100))]);
   c.state.activeWorkspaceId='b'; chat.resolve([{id:'private-a'}]); await new Promise(resolve=>setImmediate(resolve));
   assert.equal(c.state.chatThreads,undefined);

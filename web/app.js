@@ -1111,6 +1111,7 @@ function showAuth() {
 }
 
 function clearPrivateClientState() {
+  state.loadDataAbort?.abort();
   state.loadDataRequest = (state.loadDataRequest || 0) + 1;
   clearProjectClientState();
   state.me = null; state.teams = [];
@@ -1167,6 +1168,7 @@ async function bootstrap() {
 }
 
 function clearProjectClientState({ closeWindows = true } = {}) {
+  state.projectDataReady = false;
   if(closeWindows) $$('dialog[open]').forEach(dialog=>{
     flushDialogDrafts(dialog);
     dialog.dataset.historyState='false';
@@ -1185,7 +1187,7 @@ function clearProjectClientState({ closeWindows = true } = {}) {
   state.qualityReport=null;state.teamCapacity=null;state.planningCycles=[];state.activePlanningCycle=null;
   state.activeCollectionId='';state.collectionSearch='';state.collectionOwnerFilter='';state.collectionFieldFilters={};
   state.calendarCollection='';state.calendarOwner='';state.calendarStatus='active';
-  state.syncRecordsSince='1970-01-01T00:00:00Z';state.syncActivitySince='1970-01-01T00:00:00Z';
+  state.syncRecordsSince='1970-01-01T00:00:00Z';state.syncActivitySince='1970-01-01T00:00:00Z';state.syncAppliedCheckpoint='';
   closeGlobalSearch({clear:true});
 }
 
@@ -1204,9 +1206,43 @@ async function recoverWorkspaceAccess() {
   return state.workspaceRecovery;
 }
 
+async function readProjectPages(path, { workspace = state.activeWorkspaceId, signal, onProgress } = {}) {
+  const records = new Map(), activity = new Map(), cursors = new Set();
+  let cursor = '', checkpoint = '';
+  do {
+    if (signal?.aborted) throw new Error('Загрузка отменена');
+    const query = new URLSearchParams({ pageSize: '200' });
+    if (cursor) query.set('cursor', cursor);
+    const page = await api(`${path}${path.includes('?') ? '&' : '?'}${query}`, { signal, headers: { 'X-Workspace-ID': workspace } });
+    if (signal?.aborted) throw new Error('Загрузка отменена');
+    if (!Array.isArray(page.records) || !page.checkpoint || (checkpoint && checkpoint !== page.checkpoint)) throw new Error('Не удалось подтвердить полноту загрузки. Повторите запрос.');
+    checkpoint = page.checkpoint;
+    page.records.forEach(record => records.set(record.id, record));
+    (page.activity || []).forEach(item => activity.set(item.id, item));
+    onProgress?.(records.size);
+    cursor = page.nextCursor || '';
+    if (cursor && cursors.has(cursor)) throw new Error('Загрузка остановлена: сервер повторил страницу. Повторите запрос.');
+    cursors.add(cursor);
+  } while (cursor);
+  return { records: [...records.values()], activity: [...activity.values()].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt) || a.id.localeCompare(b.id)), checkpoint };
+}
+
+function renderProjectLoading(controller) {
+  state.projectDataReady = false;
+  renderWorkspaceControl();
+  renderNav();
+  $('#main-content').innerHTML = '<section class="workspace-dialog-loading" aria-live="polite"><span class="spinner"></span><strong id="project-load-progress">Загружаем проект</strong><button type="button" class="secondary" data-cancel-project-load>Отменить загрузку</button></section>';
+  $('[data-cancel-project-load]').addEventListener('click', () => controller.abort(), { once: true });
+}
+
 async function loadData(silent = false) {
+  state.loadDataAbort?.abort();
+  const controller = state.loadDataAbort = new AbortController();
   const request=state.loadDataRequest=(state.loadDataRequest||0)+1, userID=state.me?.id;
-  const [workspaces,teams]=await Promise.all([api('/api/workspaces'),api('/api/teams')]);
+  const current = () => request === state.loadDataRequest && state.me?.id === userID;
+  if (!silent && !state.records.length) renderProjectLoading(controller);
+  try {
+  const [workspaces,teams]=await Promise.all([api('/api/workspaces', {signal:controller.signal}),api('/api/teams', {signal:controller.signal})]);
   if(request!==state.loadDataRequest||state.me?.id!==userID)return;
   const previous=state.activeWorkspaceId;
   if(!workspaces.some(workspace=>workspace.id===previous)){
@@ -1217,13 +1253,15 @@ async function loadData(silent = false) {
   if(!previous && workspaces.find(item=>item.id===workspace)?.kind==='personal'){state.view='personal';state.calendarScope='personal';}
   if(workspace)localStorage.setItem('bizflow-active-workspace',workspace);
   state.workspaces=workspaces;state.teams=teams;
-  const projectAPI=path=>api(path,{headers:{'X-Workspace-ID':workspace}});
-  const [users,records,notifications,activity,definitions,pendingQuestions,savedViews,chatThreads,planning,collections,desktopPreferences,mobilePreferences,projectNavigation,workspacePages]=await Promise.all([
-    projectAPI('/api/users'),projectAPI('/api/records?includeArchived=true'),projectAPI('/api/notifications'),
+  const projectAPI=path=>api(path,{signal:controller.signal,headers:{'X-Workspace-ID':workspace}});
+  const [users,recordPage,notifications,activity,definitions,pendingQuestions,savedViews,chatThreads,planning,collections,desktopPreferences,mobilePreferences,projectNavigation,workspacePages]=await Promise.all([
+    projectAPI('/api/users'),readProjectPages('/api/records?includeArchived=true', {workspace, signal:controller.signal, onProgress:count=>{ const progress=$('#project-load-progress'); if(current() && progress) progress.textContent=`Загружено карточек: ${count}`; }}),projectAPI('/api/notifications'),
     projectAPI('/api/activity?limit=200'),projectAPI('/api/section-definitions'),projectAPI('/api/questions/pending'),projectAPI('/api/saved-views'),projectAPI('/api/chat/threads'),projectAPI('/api/planning/cycles'),projectAPI('/api/collections'),projectAPI('/api/interface/preferences?device=desktop'),projectAPI('/api/interface/preferences?device=mobile'),
     projectAPI('/api/workspace/navigation'),projectAPI('/api/workspace/pages?includeArchived=true'),
   ]);
   if(request!==state.loadDataRequest||state.me?.id!==userID||workspace!==state.activeWorkspaceId)return;
+  const records = recordPage.records.sort((a,b) => (a.dueAt ? 0 : 1) - (b.dueAt ? 0 : 1) || (a.dueAt || '').localeCompare(b.dueAt || '') || b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+  state.projectDataReady = true;
   state.interfaceProfiles={desktop:desktopPreferences,mobile:mobilePreferences};
   const interfacePreferences=state.interfaceProfiles[interfaceDevice()];
   const projectActivity=activity.filter(item=>typeMeta[item.entityType]||['section_definition','planning_cycle','workspace_page','workspace'].includes(item.entityType));
@@ -1231,12 +1269,20 @@ async function loadData(silent = false) {
   state.detailCache.forEach((detail,id)=>{const current=recordsByID.get(id);if(!current||current.updatedAt!==detail.record.updatedAt)state.detailCache.delete(id);});
   Object.assign(state,{users,records,notifications,activity:projectActivity,definitions,pendingQuestions,savedViews,chatThreads,workspaces,collections,interfacePreferences,projectNavigation,workspacePages,planningCycles:planning.cycles||[],activePlanningCycle:planning.active||null});
   if(!collections.some(collection=>collection.id===state.activeCollectionId))state.activeCollectionId=collections[0]?.id||'';
-  state.syncRecordsSince=latestTimestamp(records,'updatedAt',state.syncRecordsSince);
+  state.syncRecordsSince=recordPage.checkpoint;
+  state.syncAppliedCheckpoint=recordPage.checkpoint;
   state.syncActivitySince=latestTimestamp(projectActivity,'createdAt',state.syncActivitySince);
   state.qualityReport=null;state.teamCapacity=null;state.historyLoadedAll=activity.length<200;
   initializeViewHistory();
   if(previous&&previous!==workspace)rememberView();
   render();
+  } catch (error) {
+    if (!current()) return;
+    if (controller.signal.aborted) throw new Error('Загрузка отменена. Можно повторить её или выбрать другое пространство.');
+    throw error;
+  } finally {
+    if (current()) state.loadDataAbort = null;
+  }
 }
 
 async function switchWorkspace(workspaceID, { restoring = false, keepView = false } = {}) {
@@ -1254,7 +1300,8 @@ async function switchWorkspace(workspaceID, { restoring = false, keepView = fals
   setSidebarOpen(false);
   $('#main-content').innerHTML='<div class="workspace-dialog-loading"><span class="spinner"></span><strong>Загружаем проект</strong></div>';
   try {await loadData();}
-  catch(error){renderProjectLoadError(error);throw error;}
+  catch(error){if(state.activeWorkspaceId!==workspaceID)return false;renderProjectLoadError(error);throw error;}
+  if(state.activeWorkspaceId!==workspaceID)return false;
   if(!restoring&&!keepView)pushViewHistory();
   return state.activeWorkspaceId===workspaceID;
 }
@@ -1266,32 +1313,47 @@ function latestTimestamp(items, field, fallback = '1970-01-01T00:00:00Z') {
   }, fallback);
 }
 
+function compareSyncTimestamps(left, right) {
+  const milliseconds = new Date(left).getTime() - new Date(right).getTime();
+  const fraction = value => (String(value).match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/)?.[1] || '').padEnd(9, '0').slice(3, 9);
+  return milliseconds || Number(fraction(left)) - Number(fraction(right));
+}
+
 async function syncProjectChanges({ renderCurrent = false, includeCompanions = true } = {}) {
+  if (state.loadDataAbort) return { changed: false, activityChanged: false };
   const workspace = state.activeWorkspaceId;
+  const userID = state.me?.id, generation = state.loadDataRequest;
+  const current = checkpoint => workspace === state.activeWorkspaceId && userID === state.me?.id && generation === state.loadDataRequest &&
+    (!state.syncAppliedCheckpoint || compareSyncTimestamps(checkpoint, state.syncAppliedCheckpoint) >= 0);
   const query = new URLSearchParams({ recordsSince: state.syncRecordsSince, activitySince: state.syncActivitySince });
   if (includeCompanions) refreshProjectCompanions(workspace).catch(() => {});
-  const changes = await api(`/api/sync?${query}`);
-  if (workspace !== state.activeWorkspaceId) return { changed: false, activityChanged: false };
-  const recordsByID = new Map(state.records.map((record) => [record.id, record]));
+  const changes = await readProjectPages(`/api/sync?${query}`, {workspace});
+  if (!current(changes.checkpoint)) return { changed: false, activityChanged: false };
+  const projectActivity = changes.activity.filter(item => typeMeta[item.entityType] || ['section_definition', 'planning_cycle', 'workspace_page', 'workspace'].includes(item.entityType));
+  let definitionsPatch = null;
+  if (projectActivity.some(item => ['section_definition', 'workspace_page', 'workspace'].includes(item.entityType))) {
+    const projectAPI = path => api(path, {headers: {'X-Workspace-ID': workspace}});
+    const [definitions, projectNavigation, workspacePages] = await Promise.all([projectAPI('/api/section-definitions'), projectAPI('/api/workspace/navigation'), projectAPI('/api/workspace/pages?includeArchived=true')]);
+    if (!current(changes.checkpoint)) return { changed: false, activityChanged: false };
+    definitionsPatch = { definitions, projectNavigation, workspacePages };
+  }
+  const recordsByID = new Map(state.records.map(record => [record.id, record]));
   let changed = false;
-  (changes.records || []).forEach((record) => {
+  changes.records.forEach(record => {
     const previous = recordsByID.get(record.id);
+    if (previous && compareSyncTimestamps(record.updatedAt, previous.updatedAt) < 0) return;
     if (!previous || previous.updatedAt !== record.updatedAt || JSON.stringify(previous.blockers || []) !== JSON.stringify(record.blockers || [])) changed = true;
     recordsByID.set(record.id, record);
     if (!previous || previous.updatedAt !== record.updatedAt) state.detailCache.delete(record.id);
   });
   state.records = [...recordsByID.values()];
-  const knownActivity = new Set(state.activity.map((item) => item.id));
-  const newActivity = (changes.activity || []).filter((item) => !knownActivity.has(item.id) && (typeMeta[item.entityType] || ['section_definition', 'planning_cycle', 'workspace_page', 'workspace'].includes(item.entityType)));
-  if (newActivity.some((item) => ['section_definition', 'workspace_page', 'workspace'].includes(item.entityType))) {
-    const [definitions, projectNavigation, workspacePages] = await Promise.all([api('/api/section-definitions'), api('/api/workspace/navigation'), api('/api/workspace/pages?includeArchived=true')]);
-    if (workspace !== state.activeWorkspaceId) return { changed: false, activityChanged: false };
-    Object.assign(state, { definitions, projectNavigation, workspacePages });
-    state.detailCache.clear();
-  }
+  if (definitionsPatch) { Object.assign(state, definitionsPatch); state.detailCache.clear(); }
+  const knownActivity = new Set(state.activity.map(item => item.id));
+  const newActivity = projectActivity.filter(item => !knownActivity.has(item.id));
   if (newActivity.length) state.activity = [...newActivity.slice().reverse(), ...state.activity].slice(0, 500);
-  state.syncRecordsSince = latestTimestamp(changes.records || [], 'updatedAt', state.syncRecordsSince);
-  state.syncActivitySince = latestTimestamp(changes.activity || [], 'createdAt', state.syncActivitySince);
+  state.syncRecordsSince = changes.checkpoint;
+  state.syncActivitySince = changes.checkpoint;
+  state.syncAppliedCheckpoint = changes.checkpoint;
   if (changed || newActivity.length) {
     state.contentRefreshPending = true;
     state.qualityReport = null;
@@ -1305,11 +1367,12 @@ async function syncProjectChanges({ renderCurrent = false, includeCompanions = t
 
 async function refreshProjectCompanions(workspace) {
   const userID = state.me?.id;
+  const generation = state.loadDataRequest;
   await Promise.allSettled([
     ['notifications', '/api/notifications'], ['pendingQuestions', '/api/questions/pending'], ['chatThreads', '/api/chat/threads'],
   ].map(async ([field, path]) => {
     const value = await api(path);
-    if (workspace !== state.activeWorkspaceId || userID !== state.me?.id) return;
+    if (workspace !== state.activeWorkspaceId || userID !== state.me?.id || generation !== state.loadDataRequest) return;
     state[field] = value;
     renderNav();
     renderNotificationBadge();
@@ -1881,7 +1944,7 @@ function renderWorkspaceControl() {
 	const switcherTitle = `${projectName}${personal ? ` · ${contextLabel}` : current ? ` · ${roleLabel}` : ''}. Сменить проект`;
 	const teamGroups = [...grouped.values()].map((team) => `<section class="workspace-team-group"><header><span><strong>${escapeHTML(team.name)}</strong><small>${team.projects.length} ${team.projects.length === 1 ? 'проект' : 'проекта'}</small></span><button type="button" class="icon-button" data-team-settings="${team.id}" title="Команда и участие" aria-label="Открыть команду ${escapeHTML(team.name)}">${icon('settings')}</button></header>${team.projects.map((project) => `<button type="button" class="${project.id === state.activeWorkspaceId ? 'active' : ''}" data-switch-workspace="${project.id}" aria-current="${project.id === state.activeWorkspaceId ? 'page' : 'false'}" title="${escapeHTML(project.name)}"><span>${icon(project.id === state.activeWorkspaceId ? 'check' : 'network')}</span><span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || 'Проект команды')}</small></span></button>`).join('')}</section>`).join('');
 	root.innerHTML = `<details class="workspace-switcher"><summary title="${escapeHTML(switcherTitle)}" aria-label="${escapeHTML(`${projectName}. Сменить проект`)}"><span>${icon(personal ? 'lock' : 'network')}</span><span><strong>${escapeHTML(projectName)}</strong>${personal ? `<small>${escapeHTML(contextLabel)}</small>` : ''}</span>${icon('chevronRight')}</summary><div>${teamGroups || '<p class="workspace-switcher-empty">Командных проектов пока нет.</p>'}<button type="button" data-join-workspace>${icon('link')}<span><strong>Ввести код приглашения</strong><small>Присоединиться к команде</small></span></button><button type="button" data-create-workspace>${icon('plus')}<span><strong>Новая команда</strong><small>Команда и её первый проект</small></span></button></div></details>`;
-	$$('[data-switch-workspace]', root).forEach((button) => button.addEventListener('click', () => switchWorkspace(button.dataset.switchWorkspace)));
+	$$('[data-switch-workspace]', root).forEach((button) => button.addEventListener('click', () => { void switchWorkspace(button.dataset.switchWorkspace).catch(() => {}); }));
 	$$('[data-team-settings]', root).forEach((button) => button.addEventListener('click', () => openTeamSettings(button.dataset.teamSettings)));
 	$('[data-join-workspace]', root)?.addEventListener('click', () => openJoinTeamDialog());
 	$('[data-create-workspace]', root)?.addEventListener('click', () => openWorkspaceCreateDialog());
@@ -2125,6 +2188,7 @@ function navigationCatalog(preferences = state.interfacePreferences) {
 }
 
 function navCount(key) {
+  if (state.projectDataReady === false) return '';
   if (key === 'work') return state.records.filter((record) => isWorkRecord(record) && isActiveRecord(record)).length;
   if (key === 'collections') return state.collections.length;
   if (key === 'chat') return state.chatThreads.reduce((sum, thread) => sum + thread.unreadCount, 0);
@@ -2165,6 +2229,11 @@ function openInterfaceSettings() {
 }
 
 function renderContent() {
+  if (state.projectDataReady === false && state.view !== 'personal' && !(['calendar','day'].includes(state.view) && state.calendarScope === 'personal')) {
+    if (state.loadDataAbort) renderProjectLoading(state.loadDataAbort);
+    else renderProjectLoadError(new Error('Данные проекта ещё не загружены. Повторите загрузку, чтобы увидеть полный список.'));
+    return;
+  }
   state.contentRefreshPending = false;
   applyInterfaceLayout();
   const titles = Object.fromEntries(navItems);

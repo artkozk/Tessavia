@@ -289,12 +289,16 @@ func (s *Server) handleIncrementalSync(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Некорректный курсор истории")
 		return
 	}
+	if r.URL.Query().Has("pageSize") || r.URL.Query().Has("cursor") {
+		s.handleSyncPages(w, r, recordsSince, activitySince)
+		return
+	}
 	workspaceID := currentWorkspace(r).ID
 	query := recordSelect + ` WHERE r.workspace_id = ? AND (julianday(r.updated_at) >= julianday(?) OR EXISTS (
 		SELECT 1 FROM record_links dependency
 		JOIN records target ON target.id = dependency.target_id
 		WHERE dependency.source_id = r.id AND dependency.active = 1 AND dependency.relation_type = 'depends_on' AND julianday(target.updated_at) >= julianday(?)
-	)) ORDER BY r.updated_at LIMIT 500`
+	)) ORDER BY r.updated_at, r.id`
 	rows, err := s.store.db.QueryContext(r.Context(), query, workspaceID, recordsSince, recordsSince)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось синхронизировать карточки")

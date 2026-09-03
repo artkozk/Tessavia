@@ -45,6 +45,7 @@ type Server struct {
 	aiClients   []*http.Client
 	aiCursor    atomic.Uint32
 	aiClientErr error
+	pageEpoch   string
 }
 
 type contextKey string
@@ -61,7 +62,7 @@ func NewServer(store *Store, config Config) http.Handler {
 	if len(aiClients) > 0 {
 		aiClient = aiClients[0]
 	}
-	server := &Server{store: store, config: config, mux: http.NewServeMux(), aiClient: aiClient, aiClients: aiClients, aiClientErr: aiClientErr}
+	server := &Server{store: store, config: config, mux: http.NewServeMux(), aiClient: aiClient, aiClients: aiClients, aiClientErr: aiClientErr, pageEpoch: nowText()}
 	server.routes()
 	return server.securityHeaders(server.mux)
 }
@@ -757,7 +758,12 @@ func (s *Server) handleListRecords(w http.ResponseWriter, r *http.Request) {
 		where = append(where, "(r.title LIKE ? OR r.description LIKE ?)")
 		args = append(args, "%"+search+"%", "%"+search+"%")
 	}
-	query := recordSelect + " WHERE " + strings.Join(where, " AND ") + " ORDER BY CASE WHEN r.due_at IS NULL THEN 1 ELSE 0 END, r.due_at, r.updated_at DESC LIMIT 500"
+	if r.URL.Query().Has("pageSize") || r.URL.Query().Has("cursor") {
+		s.handleRecordPage(w, r, where, args)
+		return
+	}
+	// Keep the array contract for existing integrations without silently truncating it.
+	query := recordSelect + " WHERE " + strings.Join(where, " AND ") + " ORDER BY CASE WHEN r.due_at IS NULL THEN 1 ELSE 0 END, r.due_at, r.updated_at DESC, r.id"
 	rows, err := s.store.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
 		log.Printf("list records: %v", err)
