@@ -21,6 +21,8 @@ test('team scope has an explicit plural label and preserves saved partner keys',
   assert.match(toolbar, /aria-label="Поиск в очереди работы"/);
   assert.match(toolbar, /aria-label="Чья работа"/);
   assert.match(toolbar, /aria-pressed=/);
+  assert.match(css, /\.work-scope \.segment \{ flex: 1 1 auto; \}/);
+  assert.doesNotMatch(css, /\.work-scope \.segment \{ flex: 1; \}/);
 });
 
 test('both list and calendar include every other participant, with owner filter taking precedence', () => {
