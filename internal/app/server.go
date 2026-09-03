@@ -116,6 +116,8 @@ func (s *Server) routes() {
 	s.mux.Handle("PATCH /api/collections/{id}/fields/{fieldId}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollectionField)))
 	s.mux.Handle("GET /api/personal/overview", s.requireAuth(http.HandlerFunc(s.handlePersonalOverview)))
 	s.mux.Handle("POST /api/personal/notes", s.requireAuth(http.HandlerFunc(s.handleCreatePersonalNote)))
+	s.mux.Handle("POST /api/personal/capture", s.requireAuth(http.HandlerFunc(s.handlePersonalCapture)))
+	s.mux.Handle("PATCH /api/personal/notes/{id}/inbox", s.requireAuth(http.HandlerFunc(s.handlePersonalInboxState)))
 	s.mux.Handle("PATCH /api/personal/notes/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdatePersonalNote)))
 	s.mux.Handle("DELETE /api/personal/notes/{id}", s.requireAuth(http.HandlerFunc(s.handleArchivePersonalNote)))
 	s.mux.Handle("POST /api/personal/plans", s.requireAuth(http.HandlerFunc(s.handleCreatePersonalPlan)))

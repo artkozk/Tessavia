@@ -1173,7 +1173,8 @@ function bindGlobalEvents() {
   $('#profile-button').addEventListener('click', () => { setSidebarOpen(false); openProfile(state.me.id); });
   $('#new-record-button').addEventListener('click', (event) => {
     event.stopPropagation();
-    if (personalWorkspacePage()) openPersonalEditor('note', '', state.view === 'day' ? { date: state.calendarDay } : {});
+    if (personalWorkspacePage() && state.view !== 'day' && state.view !== 'calendar') openPersonalCapture();
+    else if (personalWorkspacePage()) openPersonalEditor('note', '', state.view === 'day' ? { date: state.calendarDay } : {});
     else if (state.view === 'calendar') createCalendarEntry();
     else toggleCreateMenu();
   });
@@ -1915,9 +1916,10 @@ function renderContent() {
   $('#page-title').textContent = titles[state.view] || (state.view === 'notifications' ? 'Уведомления' : state.view === 'quality' ? 'Качество базы' : 'Обзор');
   const createButton = $('#new-record-button');
   const personalCreate = personalWorkspacePage();
-  createButton.innerHTML = `${icon('plus')} ${personalCreate ? 'Заметка' : 'Создать'}`;
-  createButton.setAttribute('aria-label', personalCreate ? 'Новая личная заметка' : 'Создать');
-  createButton.title = personalCreate ? 'Новая личная заметка' : 'Создать';
+  const quickCapture = personalCreate && state.view !== 'day' && state.view !== 'calendar';
+  createButton.innerHTML = `${icon('plus')} ${quickCapture ? 'Записать' : personalCreate ? 'Заметка' : 'Создать'}`;
+  createButton.setAttribute('aria-label', quickCapture ? 'Записать во входящие' : personalCreate ? 'Новая личная заметка' : 'Создать');
+  createButton.title = createButton.getAttribute('aria-label');
   if (state.view.startsWith('page:')) { $('#page-title').textContent = state.workspacePages.find((page) => `page:${page.id}` === state.view)?.name || 'Страница'; return renderWorkspacePage(); }
   if (state.view === 'personal') return renderPersonal();
   if (state.view === 'calendar') return renderCalendarPage();
@@ -2015,7 +2017,8 @@ function renderPersonal() {
   const data = state.personal;
   const openPlans = data.plans.filter((plan) => plan.status === 'planned');
   const doneToday = data.habits.filter((habit) => habit.checkins?.some((checkin) => checkin.date === localISODate())).length;
-  const tabs = [['today', 'Сегодня'], ['notes', 'Заметки'], ['plans', 'Планы'], ['habits', 'Привычки']];
+  const inboxCount = data.notes.filter(note => note.inInbox).length;
+  const tabs = [['today', 'Сегодня'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['notes', 'Заметки'], ['plans', 'Планы'], ['habits', 'Привычки']];
   $('#main-content').innerHTML = `
     <div class="page-heading personal-heading">
       <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>Личное пространство</h1><p>${escapeHTML(state.me.displayName || state.me.username)}</p></div>
@@ -2031,10 +2034,11 @@ function renderPersonal() {
 }
 
 function renderPersonalCreateMenu() {
-  return `<details class="personal-create-menu"><summary class="primary">${icon('plus')} Записать</summary><div><button type="button" data-personal-create="note">${icon('edit')}<span><strong>Заметка</strong><small>Свободный текст и списки</small></span></button><button type="button" data-personal-create="plan">${icon('calendar')}<span><strong>План</strong><small>Срок можно добавить позже</small></span></button><button type="button" data-personal-create="habit">${icon('checkSquare')}<span><strong>Привычка</strong><small>Регулярная отметка</small></span></button></div></details>`;
+  return `<details class="personal-create-menu"><summary class="primary">${icon('plus')} Записать</summary><div><button type="button" data-personal-capture>${icon('inbox')}<span><strong>Входящее</strong></span></button><button type="button" data-personal-create="note">${icon('edit')}<span><strong>Заметка</strong><small>Свободный текст и списки</small></span></button><button type="button" data-personal-create="plan">${icon('calendar')}<span><strong>План</strong><small>Срок можно добавить позже</small></span></button><button type="button" data-personal-create="habit">${icon('checkSquare')}<span><strong>Привычка</strong><small>Регулярная отметка</small></span></button></div></details>`;
 }
 
 function renderPersonalTab(data) {
+  if (state.personalTab === 'inbox') return renderPersonalInbox(data);
   if (state.personalTab === 'notes') return renderPersonalNotes(data.notes, data.links);
   if (state.personalTab === 'plans') return renderPersonalPlans(data.plans, data.links);
   if (state.personalTab === 'habits') return renderPersonalHabits(data.habits, data.links);
@@ -2045,6 +2049,88 @@ function renderPersonalTab(data) {
 
 function renderPersonalNotes(notes, links) {
   return `<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Личная память</p><h2>Заметки</h2></div><span class="panel-note">${notes.length}</span></div><div class="personal-note-grid">${notes.map((note) => renderNoteCard(note, links)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section>`;
+}
+
+function personalInboxNotes(notes) {
+  return notes.filter(note => note.inInbox).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function captureDraftMatches(draft, requestKey, body) {
+  return !draft || draft.values?.requestKey === requestKey && String(draft.values?.body || '').trim() === body;
+}
+
+function renderPersonalInbox(data) {
+  const notes = personalInboxNotes(data.notes);
+  return `<section class="personal-section personal-inbox"><div class="section-heading"><h2>Входящие <span class="panel-note">${notes.length}</span></h2><button type="button" class="primary" data-personal-capture>${icon('plus')} Записать</button></div><div class="personal-note-grid">${notes.map(note => renderNoteCard(note, data.links)).join('') || `<div class="personal-empty"><span>${icon('inbox')}</span><strong>Входящих нет</strong></div>`}</div></section>`;
+}
+
+function openPersonalInbox() {
+  if (!leavePageLayoutEditor()) return;
+  state.personalTab = 'inbox';
+  navigateToView('personal');
+}
+
+async function setPersonalInboxState(id, inInbox, button) {
+  const note = state.personal?.notes.find(item => item.id === id);
+  if (!note || button?.disabled) return;
+  if (button) button.disabled = true;
+  try {
+    await api(`/api/personal/notes/${id}/inbox`, { method: 'PATCH', body: JSON.stringify({ inInbox, expectedUpdatedAt: note.updatedAt }) });
+    await loadPersonal({ force: true });
+    if (inInbox) toast('Возвращено во входящие');
+    else toastAction('Сохранено в заметках', 'Вернуть', () => setPersonalInboxState(id, true));
+  } catch (error) { toast(error.message, true); }
+  finally { if (button?.isConnected) button.disabled = false; }
+}
+
+function openPersonalCapture() {
+  const dialog = $('#personal-dialog');
+  if (dialog.open) return;
+  const account = state.me.id;
+  const scope = `personal:${account}:capture`;
+  $('#create-menu').hidden = true;
+  $('.personal-create-menu[open]')?.removeAttribute('open');
+  $('#personal-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon('lock')} Только для вас</span><h2>Входящее</h2></div><button type="button" class="icon-button" data-capture-close aria-label="Закрыть">${icon('x')}</button></div><form class="dialog-form capture-form"><input type="hidden" name="requestKey" value="${crypto.randomUUID().replaceAll('-', '')}"><textarea name="body" aria-label="Текст входящего" placeholder="Запишите мысль или вставьте ссылку..." rows="6" maxlength="100000" required autofocus></textarea><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button><button type="button" class="text-button" data-capture-inbox>${icon('inbox')} Входящие</button></div></form>`;
+  const form = $('.capture-form', dialog);
+  const input = form.elements.body;
+  const errorMessage = document.createElement('p');
+  errorMessage.className = 'form-error'; errorMessage.setAttribute('role', 'alert'); errorMessage.hidden = true;
+  input.after(errorMessage);
+  bindWorkingDraft(form, scope);
+  $('[data-capture-close]', dialog).addEventListener('click', () => requestDialogClose(dialog));
+  $('[data-capture-inbox]', dialog).addEventListener('click', async () => { if (await requestDialogClose(dialog)) openPersonalInbox(); });
+  let saving = false;
+  input.addEventListener('input', () => {
+    form.elements.requestKey.value = crypto.randomUUID().replaceAll('-', '');
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const body = input.value.trim(), requestKey = form.elements.requestKey.value;
+    if (saving || !body) { if (!body) input.focus(); return; }
+    const submit = $('button[type="submit"]', form);
+    errorMessage.hidden = true;
+    saving = true; input.readOnly = true; submit.disabled = true;
+    state.workingDraftPersistors.get(form)?.();
+    try {
+      await api('/api/personal/capture', { method: 'POST', body: JSON.stringify({ body, requestKey }) });
+      if (state.me?.id !== account) return;
+      // A reopened form may already contain a newer draft while this request finishes.
+      flushDialogDrafts(dialog);
+      const draft = loadWorkingDraft(scope);
+      if (captureDraftMatches(draft, requestKey, body)) clearWorkingDraftFor(form);
+      else if (!form.isConnected) state.workingDraftPersistors.delete(form);
+      if (form.isConnected && dialog.open) closeDialogImmediately(dialog);
+      await loadPersonal({ force: true });
+      toastAction('Сохранено в личных входящих', 'Открыть', openPersonalInbox);
+    } catch (error) {
+      errorMessage.textContent = error instanceof TypeError ? 'Не удалось связаться с сервером. Текст остаётся здесь; повторите отправку.' : error.message;
+      errorMessage.hidden = false;
+    }
+    finally { saving = false; input.readOnly = false; submit.disabled = false; }
+  });
+  input.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); form.requestSubmit(); } });
+  openModal(dialog);
+  input.focus({ preventScroll: true });
 }
 
 function renderPersonalPlans(plans, links) {
@@ -2061,7 +2147,7 @@ function renderNoteCard(note, links, compact = false) {
   const ownLinks = personalLinksFor(links, 'note', note.id);
   const body = markdownPlain(note.body).trim();
   const preview = body && body !== note.title ? `<div class="markdown-body">${renderMarkdown(note.body)}</div>` : '';
-  return `<article class="personal-note ${compact ? 'compact' : ''}"><button type="button" class="personal-card-main" data-personal-edit="note" data-personal-id="${note.id}"><span>${note.pinned ? icon('bookmark') : icon('edit')}</span><strong>${escapeHTML(note.title)}</strong>${preview}</button>${renderPersonalLinkChips(ownLinks)}<footer><time datetime="${escapeHTML(note.createdAt)}" title="Изменена ${escapeHTML(formatDate(note.updatedAt, true))}">Создана ${formatDate(note.createdAt, true)}</time><button type="button" class="text-button" data-personal-link="note" data-personal-id="${note.id}" data-personal-title="${escapeHTML(note.title)}">${icon('link')} Связать</button></footer></article>`;
+  return `<article class="personal-note ${compact ? 'compact' : ''}"><button type="button" class="personal-card-main" data-personal-edit="note" data-personal-id="${note.id}"><span>${note.inInbox ? icon('inbox') : note.pinned ? icon('bookmark') : icon('edit')}</span><strong>${escapeHTML(note.title)}</strong>${preview}</button>${renderPersonalLinkChips(ownLinks)}<footer>${note.inInbox && !compact ? `<button type="button" class="text-button" data-inbox-keep-note="${note.id}">${icon('check')} Сохранить в заметках</button>` : ''}<time datetime="${escapeHTML(note.createdAt)}" title="Изменена ${escapeHTML(formatDate(note.updatedAt, true))}">Создана ${formatDate(note.createdAt, true)}</time><button type="button" class="text-button" data-personal-link="note" data-personal-id="${note.id}" data-personal-title="${escapeHTML(note.title)}">${icon('link')} Связать</button></footer></article>`;
 }
 
 function renderPlanRow(plan, links) {
@@ -2127,6 +2213,8 @@ function lastDates(count) {
 }
 
 function bindPersonalInteractions() {
+  $$('[data-personal-capture]').forEach(button => button.addEventListener('click', openPersonalCapture));
+  $$('[data-inbox-keep-note]').forEach(button => button.addEventListener('click', () => setPersonalInboxState(button.dataset.inboxKeepNote, false, button)));
   $$('[data-personal-tab-jump]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTabJump; renderPersonal(); }));
   $$('[data-personal-edit]').forEach((button) => button.addEventListener('click', () => openPersonalTarget(button.dataset.personalEdit, button.dataset.personalId)));
   $$('[data-personal-create]').forEach((button) => button.addEventListener('click', () => {
@@ -6303,6 +6391,7 @@ function projectAllowsType(type) {
 function toggleCreateMenu() {
   const menu = $('#create-menu');
   menu.innerHTML = `
+    <button type="button" data-personal-capture>${icon('lock')}<span><strong>Личное входящее</strong></span></button>
     <button type="button" data-create-type="inbox">${icon('inbox')}<span><strong>Входящее</strong><small>Сохранить мысль, не выбирая тип</small></span></button>
     <button type="button" data-create-type="idea">${icon('lightbulb')}<span><strong>Быстрая идея</strong><small>Сохранить мысль без оценки</small></span></button>
     <button type="button" data-create-type="task">${icon('checkSquare')}<span><strong>Задача</strong><small>Участнику проекта</small></span></button>
@@ -6317,6 +6406,7 @@ function toggleCreateMenu() {
     <button type="button" data-create-type="document">${icon('fileText')}<span><strong>Документ</strong><small>Материал или рабочая заметка</small></span></button>`;
   $$('[data-create-type]', menu).forEach((button) => { if (!projectAllowsType(button.dataset.createType)) button.remove(); });
   menu.hidden = !menu.hidden;
+  $('[data-personal-capture]', menu).addEventListener('click', event => { event.stopPropagation(); openPersonalCapture(); });
   $$('[data-create-type]', menu).forEach((button) => button.addEventListener('click', (event) => {
     event.stopPropagation(); menu.hidden = true; openCreateDialog(button.dataset.createType, { comparisonMode: button.dataset.createMode === 'comparison' });
   }));

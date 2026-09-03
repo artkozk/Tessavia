@@ -4120,3 +4120,18 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .tessavie-logo { display: block; width: 196px; max-width: 100%; height: auto; }
 .brand > .tessavie-logo { width: 128px; min-width: 0; flex: 0 1 128px; }
 .brand > .sidebar-close { flex-shrink: 0; }
+
+.capture-form { display: grid; gap: 16px; }
+.capture-form > textarea { display: block; width: 100%; min-width: 0; min-height: 180px; max-height: 55dvh; resize: vertical; font-size: 16px; line-height: 1.55; }
+.capture-form .form-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 0; }
+.personal-note { grid-template-columns: minmax(0, 1fr); }
+.personal-note .personal-link-chips { min-width: 0; }
+.personal-note .personal-link-chips button { white-space: normal; overflow-wrap: anywhere; text-align: left; min-height: 32px; }
+.personal-note .personal-link-chips .icon { flex-shrink: 0; }
+.personal-note footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.personal-note footer > time { flex: 1 1 140px; min-width: 0; }
+.personal-note footer > button { min-height: 40px; white-space: normal; }
+@media (max-width: 820px) {
+  .capture-form > textarea { min-height: 144px; max-height: 45dvh; }
+  .personal-inbox .section-heading > .primary { flex-shrink: 0; }
+}

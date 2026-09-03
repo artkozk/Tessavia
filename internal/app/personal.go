@@ -27,6 +27,7 @@ type PersonalSettings struct {
 }
 
 type PersonalNote struct {
+	InInbox       bool    `json:"inInbox"`
 	ScheduledDate *string `json:"scheduledDate"`
 	ID            string  `json:"id"`
 	Title         string  `json:"title"`
@@ -167,7 +168,7 @@ func (s *Server) handlePersonalOverview(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) listPersonalNotes(r *http.Request, ownerID int64) ([]PersonalNote, error) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date FROM personal_notes WHERE owner_id = ? AND archived_at IS NULL ORDER BY pinned DESC, updated_at DESC`, ownerID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date, in_inbox FROM personal_notes WHERE owner_id = ? AND archived_at IS NULL ORDER BY pinned DESC, updated_at DESC`, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +177,7 @@ func (s *Server) listPersonalNotes(r *http.Request, ownerID int64) ([]PersonalNo
 	for rows.Next() {
 		var item PersonalNote
 		var pinned int
-		if err := rows.Scan(&item.ID, &item.Title, &item.Body, &pinned, &item.CreatedAt, &item.UpdatedAt, &item.ScheduledDate); err != nil {
+		if err := rows.Scan(&item.ID, &item.Title, &item.Body, &pinned, &item.CreatedAt, &item.UpdatedAt, &item.ScheduledDate, &item.InInbox); err != nil {
 			return nil, err
 		}
 		item.Pinned = pinned == 1
@@ -414,7 +415,7 @@ func (s *Server) handleUpdatePersonalNote(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var note PersonalNote
-	err = s.store.db.QueryRowContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, r.PathValue("id"), user.ID).Scan(&note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate)
+	err = s.store.db.QueryRowContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date, in_inbox FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, r.PathValue("id"), user.ID).Scan(&note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate, &note.InInbox)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать заметку")
 		return
