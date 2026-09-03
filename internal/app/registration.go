@@ -77,7 +77,7 @@ func (s *Server) startRegistration(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if s.config.CookieSecure && !s.config.RegistrationTestMode {
+	if s.config.CookieSecure && !s.config.RegistrationTestMode && !s.config.RegistrationSkipVerification {
 		writeError(w, http.StatusServiceUnavailable, "Доставка кодов подтверждения пока не настроена")
 		return
 	}
@@ -129,6 +129,10 @@ func (s *Server) startRegistration(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить проверку")
 		return
 	}
+	if s.config.RegistrationSkipVerification {
+		s.finishRegistration(w, r, challengeID, code, false)
+		return
+	}
 	response := registrationChallengeResponse{ChallengeID: challengeID, ExpiresAt: expiresAt, InvitationPending: invitationID != ""}
 	if s.config.RegistrationTestMode || !s.config.CookieSecure {
 		response.TestingCode = code
@@ -150,6 +154,11 @@ func (s *Server) handleVerifyRegistration(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "Введите шестизначный код")
 		return
 	}
+	s.finishRegistration(w, r, input.ChallengeID, input.Code, true)
+}
+
+// Both modes use the same invitation, uniqueness and session checks.
+func (s *Server) finishRegistration(w http.ResponseWriter, r *http.Request, challengeID, code string, codeConfirmed bool) {
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось начать подтверждение")
@@ -159,7 +168,7 @@ func (s *Server) handleVerifyRegistration(w http.ResponseWriter, r *http.Request
 	var email, username, passwordHash, codeHash, expiresAt string
 	var invitationID sql.NullString
 	var attempts int
-	err = tx.QueryRowContext(r.Context(), `SELECT email, username, password_hash, code_hash, invitation_id, attempts, expires_at FROM registration_challenges WHERE id = ?`, input.ChallengeID).
+	err = tx.QueryRowContext(r.Context(), `SELECT email, username, password_hash, code_hash, invitation_id, attempts, expires_at FROM registration_challenges WHERE id = ?`, challengeID).
 		Scan(&email, &username, &passwordHash, &codeHash, &invitationID, &attempts, &expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "Проверка не найдена. Запросите новый код")
@@ -170,16 +179,16 @@ func (s *Server) handleVerifyRegistration(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if timestampExpired(expiresAt) {
-		_, _ = tx.ExecContext(r.Context(), `DELETE FROM registration_challenges WHERE id = ?`, input.ChallengeID)
+		_, _ = tx.ExecContext(r.Context(), `DELETE FROM registration_challenges WHERE id = ?`, challengeID)
 		_ = tx.Commit()
 		writeError(w, http.StatusGone, "Код истёк. Запросите новый")
 		return
 	}
-	if attempts >= 5 || hashToken(input.Code) != codeHash {
+	if attempts >= 5 || hashToken(code) != codeHash {
 		if attempts+1 >= 5 {
-			_, _ = tx.ExecContext(r.Context(), `DELETE FROM registration_challenges WHERE id = ?`, input.ChallengeID)
+			_, _ = tx.ExecContext(r.Context(), `DELETE FROM registration_challenges WHERE id = ?`, challengeID)
 		} else {
-			_, _ = tx.ExecContext(r.Context(), `UPDATE registration_challenges SET attempts = attempts + 1 WHERE id = ?`, input.ChallengeID)
+			_, _ = tx.ExecContext(r.Context(), `UPDATE registration_challenges SET attempts = attempts + 1 WHERE id = ?`, challengeID)
 		}
 		_ = tx.Commit()
 		writeError(w, http.StatusUnauthorized, "Неверный код подтверждения")
@@ -194,7 +203,7 @@ func (s *Server) handleVerifyRegistration(w http.ResponseWriter, r *http.Request
 		err = tx.QueryRowContext(r.Context(), `SELECT team_id, role, project_ids_json, expires_at, max_uses, use_count FROM workspace_invitations WHERE id = ? AND revoked_at IS NULL`, invitationID.String).
 			Scan(&invitationTeamID, &invitationRole, &projectJSON, &invitationExpiresAt, &maxUses, &invitationUseCount)
 		if errors.Is(err, sql.ErrNoRows) || err == nil && (timestampExpired(invitationExpiresAt) || invitationUseCount >= maxUses) {
-			_, _ = tx.ExecContext(r.Context(), `DELETE FROM registration_challenges WHERE id = ?`, input.ChallengeID)
+			_, _ = tx.ExecContext(r.Context(), `DELETE FROM registration_challenges WHERE id = ?`, challengeID)
 			_ = tx.Commit()
 			writeError(w, http.StatusGone, "Ссылка приглашения недействительна или уже использована")
 			return
@@ -232,11 +241,15 @@ func (s *Server) handleVerifyRegistration(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	if _, err = tx.ExecContext(r.Context(), `DELETE FROM registration_challenges WHERE id = ?`, input.ChallengeID); err != nil {
+	if _, err = tx.ExecContext(r.Context(), `DELETE FROM registration_challenges WHERE id = ?`, challengeID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить проверку")
 		return
 	}
-	if err = writeActivity(r.Context(), tx, userID, "user", strconv.FormatInt(userID, 10), "created", "Код регистрации подтверждён", map[string]any{"username": username}); err != nil {
+	reason := "Регистрация без проверки почты"
+	if codeConfirmed {
+		reason = "Код регистрации подтверждён"
+	}
+	if err = writeActivity(r.Context(), tx, userID, "user", strconv.FormatInt(userID, 10), "created", reason, map[string]any{"username": username}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось записать регистрацию")
 		return
 	}
