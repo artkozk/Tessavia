@@ -87,8 +87,10 @@ check_http() {
   grep -q '<title>Tessavie</title>' "$dry/index.html"
   grep -q '20260903-tessavie-1' "$dry/index.html"
   ! grep -qi 'bizflow' "$dry/index.html"
-  curl --max-time 15 -fsS "$base/tessavie.css" | grep -q '#155e63'
-  curl --max-time 15 -fsS "$base/manifest.webmanifest" | python3 -c 'import json,sys; m=json.load(sys.stdin); assert m["name"]=="Tessavie" and len(m["icons"])==4'
+  curl --max-time 15 -fsS "$base/tessavie.css" > "$dry/tessavie.css"
+  grep -q '#155e63' "$dry/tessavie.css"
+  curl --max-time 15 -fsS "$base/manifest.webmanifest" > "$dry/manifest.json"
+  python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m["name"]=="Tessavie" and len(m["icons"])==4' "$dry/manifest.json"
   for asset in tessavie-mark.svg tessavie-weave.svg tessavie-32.png tessavie-180.png tessavie-192.png tessavie-512.png tessavie-maskable-512.png; do
     curl --max-time 15 -fsS "$base/brand/$asset" > /dev/null
   done
