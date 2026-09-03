@@ -44,9 +44,10 @@ body, button, input, select, textarea { letter-spacing: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .48; }
-input:not([type="checkbox"]):not([type="radio"]), select, textarea { width: 100%; min-height: 42px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; padding: 10px 12px; outline: none; transition: border-color .15s, box-shadow .15s, background .15s; }
+/* Exclude native toggles without overriding component padding and dimensions. */
+input:where(:not([type="checkbox"]):not([type="radio"])), select, textarea { width: 100%; min-height: 42px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; padding: 10px 12px; outline: none; transition: border-color .15s, box-shadow .15s, background .15s; }
 input:hover, select:hover, textarea:hover { border-color: #b9bfd2; }
-input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(31, 102, 87, .14); }
+input:where(:not([type="checkbox"]):not([type="radio"])):focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(31, 102, 87, .14); }
 textarea { resize: vertical; line-height: 1.55; }
 h1, h2, h3, h4, p { margin: 0; }
 h1 { font-size: 28px; line-height: 1.22; font-weight: 700; }
@@ -1197,7 +1198,7 @@ dialog.dismiss-attention { animation: dialog-dismiss-attention .3s ease; }
 .segmented.compact { display: inline-flex; flex: 0 0 auto; padding: 3px; }
 .segmented.compact .segment { min-height: 34px; padding: 6px 12px; }
 .work-search { position: relative; max-width: none; }
-.work-search > .icon, .graph-search > .icon { position: absolute; left: 11px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--muted); }
+.work-search > .icon, .graph-search > .icon { position: absolute; left: 11px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .work-search input, .graph-search input { padding-left: 36px; }
 .work-status-tabs, .work-type-tabs { display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
 .work-status-tabs { flex: 0 0 auto; }
@@ -1450,8 +1451,8 @@ dialog { border-radius: 7px; }
 .fact strong { font-size: 12px; }
 .card-form { gap: 20px; padding: 0; border: 0; border-radius: 0; }
 .dialog-form { margin: 24px 28px 30px; padding: 0; }
-input:not([type="checkbox"]):not([type="radio"]), select, textarea { min-height: 44px; border-radius: 6px; background: #f8f8f4; font-size: 14px; }
-input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(31,102,87,.13); background: #fafaf7; }
+input:where(:not([type="checkbox"]):not([type="radio"])), select, textarea { min-height: 44px; border-radius: 6px; background: #f8f8f4; font-size: 14px; }
+input:where(:not([type="checkbox"]):not([type="radio"])):focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(31,102,87,.13); background: #fafaf7; }
 .form-more { border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
 .form-more summary { padding: 14px 2px; font-size: 12px; }
 .form-more-body { padding: 4px 2px 18px; }
@@ -1618,6 +1619,7 @@ dialog, .dialog-header, .dialog-layout, .record-tabs { background: var(--surface
 
 .work-controls { min-height: 74px; display: grid; grid-template-columns: auto minmax(260px, 1fr) auto; gap: 12px; padding: 14px 0; }
 .work-search { width: 100%; }
+.work-scope .segment { min-width: 0; white-space: normal; }
 .work-search input { min-height: 42px; }
 .work-filter-menu > summary { min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 8px 12px; }
 .work-filter-menu > summary b { min-width: 20px; padding: 2px 6px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 10px; text-align: center; }
