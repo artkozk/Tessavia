@@ -6,15 +6,25 @@ import (
 )
 
 type personalPlanInput struct {
-	RequestKey        string  `json:"requestKey"`
-	Title             string  `json:"title"`
-	Notes             string  `json:"notes"`
-	Status            string  `json:"status"`
-	DueAt             *string `json:"dueAt"`
-	StartDate         *string `json:"startDate"`
-	EndDate           *string `json:"endDate"`
-	ColorKey          *string `json:"colorKey"`
-	ExpectedUpdatedAt string  `json:"expectedUpdatedAt"`
+	RequestKey        string                   `json:"requestKey"`
+	Title             string                   `json:"title"`
+	Notes             string                   `json:"notes"`
+	Status            string                   `json:"status"`
+	DueAt             *string                  `json:"dueAt"`
+	StartDate         *string                  `json:"startDate"`
+	EndDate           *string                  `json:"endDate"`
+	ColorKey          *string                  `json:"colorKey"`
+	ExpectedUpdatedAt string                   `json:"expectedUpdatedAt"`
+	ItemKind          *string                  `json:"itemKind"`
+	ProjectID         *string                  `json:"projectId"`
+	GoalID            *string                  `json:"goalId"`
+	ParentID          *string                  `json:"parentId"`
+	PlannedMinutes    *int                     `json:"plannedMinutes"`
+	ActualMinutes     *int                     `json:"actualMinutes"`
+	StartsAt          *string                  `json:"startsAt"`
+	EndsAt            *string                  `json:"endsAt"`
+	OccurrenceDate    *string                  `json:"occurrenceDate"`
+	Recurrence        *personalRecurrenceInput `json:"recurrence"`
 }
 
 // Calendar dates stay timezone-free; a timed deadline retains its RFC3339 instant.
@@ -24,6 +34,20 @@ func (input personalPlanInput) calendarFields(plan PersonalPlan) (PersonalPlan, 
 		plan.DueAt, err = normalizeDueAt(*input.DueAt)
 		if err != nil {
 			return plan, errors.New("Некорректная дата и время")
+		}
+	}
+	if input.StartsAt != nil {
+		var err error
+		plan.StartsAt, err = normalizeDueAt(*input.StartsAt)
+		if err != nil {
+			return plan, errors.New("Некорректное начало события")
+		}
+	}
+	if input.EndsAt != nil {
+		var err error
+		plan.EndsAt, err = normalizeDueAt(*input.EndsAt)
+		if err != nil {
+			return plan, errors.New("Некорректное окончание события")
 		}
 	}
 	if input.StartDate != nil {
@@ -53,8 +77,28 @@ func (input personalPlanInput) calendarFields(plan PersonalPlan) (PersonalPlan, 
 	if plan.EndDate < plan.StartDate {
 		return plan, errors.New("Конец периода не может быть раньше начала")
 	}
-	if plan.DueAt != nil && plan.StartDate != "" {
-		return plan, errors.New("Выберите период целых дней или точное время")
+	if (plan.StartsAt == nil) != (plan.EndsAt == nil) {
+		return plan, errors.New("Укажите начало и окончание временного блока")
+	}
+	if plan.StartsAt != nil && plan.EndsAt != nil {
+		start, _ := time.Parse(time.RFC3339Nano, *plan.StartsAt)
+		end, _ := time.Parse(time.RFC3339Nano, *plan.EndsAt)
+		if !end.After(start) {
+			return plan, errors.New("Окончание события должно быть позже начала")
+		}
+	}
+	modes := 0
+	if plan.StartDate != "" {
+		modes++
+	}
+	if plan.DueAt != nil {
+		modes++
+	}
+	if plan.StartsAt != nil {
+		modes++
+	}
+	if modes > 1 {
+		return plan, errors.New("Выберите период дней, срок или временной блок")
 	}
 	switch plan.ColorKey {
 	case "green", "blue", "amber", "purple", "red", "neutral":

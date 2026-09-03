@@ -74,8 +74,15 @@ func writePersonalCreateReplay(w http.ResponseWriter, r *http.Request, tx *sql.T
 		result = note
 	} else {
 		var plan PersonalPlan
-		err = tx.QueryRowContext(r.Context(), `SELECT id,title,notes,due_at,status,created_at,updated_at,start_date,end_date,color_key,title_generated,completed_at FROM personal_plans WHERE id=? AND owner_id=? AND status<>'archived'`, id, owner).
-			Scan(&plan.ID, &plan.Title, &plan.Notes, &plan.DueAt, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt, &plan.StartDate, &plan.EndDate, &plan.ColorKey, &plan.TitleGenerated, &plan.CompletedAt)
+		plan, err = loadPersonalPlan(r.Context(), tx, owner, id)
+		if err == nil && plan.SeriesID != "" {
+			var rule PersonalRecurrenceRule
+			var active int
+			if ruleErr := tx.QueryRowContext(r.Context(), `SELECT series_id,cadence,interval_count,timezone,start_date,until_date,active,updated_at FROM personal_recurrence_rules WHERE series_id=? AND owner_id=?`, plan.SeriesID, owner).Scan(&rule.SeriesID, &rule.Cadence, &rule.Interval, &rule.Timezone, &rule.StartDate, &rule.UntilDate, &active, &rule.UpdatedAt); ruleErr == nil {
+				rule.Active = active == 1
+				plan.Recurrence = &rule
+			}
+		}
 		result = plan
 	}
 	if errors.Is(err, sql.ErrNoRows) {

@@ -22,6 +22,7 @@ import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph
 const iconPaths = {
   dashboard: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  folder: '<path d="M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
   checkSquare: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/>',
   messages: '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 9h8M8 13h5"/>',
   lightbulb: '<path d="M9 18h6M10 22h4"/><path d="M8.3 14.5A7 7 0 1 1 15.7 14.5c-.9.7-1.2 1.4-1.2 2.5h-5c0-1.1-.3-1.8-1.2-2.5Z"/>',
@@ -1873,7 +1874,7 @@ async function runGlobalSearch(query) {
 }
 
 function renderPersonalSearchResult(result) {
-  const labels={note:'Заметка',plan:'План',habit:'Привычка'},icons={note:'edit',plan:'calendar',habit:'checkSquare'};
+  const labels={project:'Личный проект',goal:'Цель',note:'Заметка',plan:'Дело или событие',habit:'Привычка'},icons={project:'folder',goal:'target',note:'edit',plan:'calendar',habit:'checkSquare'};
   const context=markdownPlain(result.context||'','').replace(/\s+/g,' ').trim();
   return `<button type="button" class="global-search-result" data-search-result="${escapeHTML(result.id)}" data-personal-id="${escapeHTML(result.id)}" data-personal-type="${escapeHTML(result.type)}"><span class="type-icon">${icon(icons[result.type]||'fileText')}</span><span><small>${labels[result.type]||'Личная запись'} · Только для вас</small><strong>${escapeHTML(result.title)}</strong>${context?`<em>${escapeHTML(context.slice(0,150))}${context.length>150?'…':''}</em>`:''}</span>${icon('chevronRight')}</button>`;
 }
@@ -2420,13 +2421,13 @@ function renderPersonal() {
   const openPlans = data.plans.filter((plan) => plan.status === 'planned');
   const doneToday = data.habits.filter((habit) => habit.checkins?.some((checkin) => checkin.date === localISODate())).length;
   const inboxCount = data.notes.filter(note => note.inInbox).length;
-  const tabs = [['today', 'Сегодня'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['notes', 'Заметки'], ['plans', 'Планы'], ['habits', 'Привычки']];
+  const tabs = [['today', 'Сегодня'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['projects', 'Проекты'], ['goals', 'Цели'], ['notes', 'Заметки'], ['plans', 'Дела'], ['habits', 'Привычки']];
   $('#main-content').innerHTML = `
     <div class="page-heading personal-heading">
       <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>Личное пространство</h1><p>${escapeHTML(state.me.displayName || state.me.username)}</p></div>
       ${renderPersonalCreateMenu()}
     </div>
-    <section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.length}</strong><small>отмечено</small></article><article><span>Открытые планы</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate).length} с датой</small></article><article><span>Заметки</span><strong>${data.notes.length}</strong><small>${data.notes.filter((note) => note.pinned).length} закреплено</small></article></section>
+    <section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.length}</strong><small>отмечено</small></article><article><span>Незавершённые дела</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate || plan.startsAt || plan.occurrenceDate).length} запланировано</small></article><article><span>Проекты и цели</span><strong>${data.projects.length}/${data.goals.length}</strong><small>открыто</small></article></section>
     <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}</div>
     <div class="personal-content">${renderPersonalTab(data)}</div>`;
   $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; renderPersonal(); }));
@@ -2436,17 +2437,43 @@ function renderPersonal() {
 }
 
 function renderPersonalCreateMenu() {
-  return `<details class="personal-create-menu"><summary class="primary">${icon('plus')} Записать</summary><div><button type="button" data-personal-capture>${icon('inbox')}<span><strong>Входящее</strong></span></button><button type="button" data-personal-create="note">${icon('edit')}<span><strong>Заметка</strong><small>Свободный текст и списки</small></span></button><button type="button" data-personal-create="plan">${icon('calendar')}<span><strong>План</strong><small>Срок можно добавить позже</small></span></button><button type="button" data-personal-create="habit">${icon('checkSquare')}<span><strong>Привычка</strong><small>Регулярная отметка</small></span></button></div></details>`;
+  return `<details class="personal-create-menu"><summary class="primary">${icon('plus')} Записать</summary><div><button type="button" data-personal-capture>${icon('inbox')}<span><strong>Входящее</strong></span></button><button type="button" data-personal-create="project">${icon('folder')}<span><strong>Личный проект</strong><small>Контекст для целей и дел</small></span></button><button type="button" data-personal-create="goal">${icon('target')}<span><strong>Цель</strong><small>На месяц или 12 недель</small></span></button><button type="button" data-personal-create="plan">${icon('checkSquare')}<span><strong>Дело или событие</strong><small>Срок добавлять необязательно</small></span></button><button type="button" data-personal-create="note">${icon('edit')}<span><strong>Заметка</strong><small>Свободный текст и списки</small></span></button><button type="button" data-personal-create="habit">${icon('rotate')}<span><strong>Привычка</strong><small>Регулярная отметка</small></span></button></div></details>`;
 }
 
 function renderPersonalTab(data) {
   if (state.personalTab === 'inbox') return renderPersonalInbox(data);
+  if (state.personalTab === 'projects') return renderPersonalProjects(data);
+  if (state.personalTab === 'goals') return renderPersonalGoals(data);
   if (state.personalTab === 'notes') return renderPersonalNotes(data.notes, data.links);
   if (state.personalTab === 'plans') return renderPersonalPlans(data.plans, data.links);
   if (state.personalTab === 'habits') return renderPersonalHabits(data.habits, data.links);
   const activePlans = data.plans.filter((plan) => plan.status === 'planned').slice(0, 6);
   const notes = [...data.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)).slice(0, 4);
   return `<section class="personal-today-grid"><div class="personal-column"><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ритм дня</p><h2>Привычки</h2></div>${data.habits.length ? `<span class="panel-note">${data.habits.filter((habit) => habit.currentStreak > 0).length} серий</span>` : ''}</div><div class="habit-list">${data.habits.map((habit) => renderHabitRow(habit, data.links, true)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ближайшее</p><h2>Планы</h2></div><button type="button" class="text-button" data-personal-tab-jump="plans">Все планы</button></div><div class="personal-list">${activePlans.map((plan) => renderPlanRow(plan, data.links)).join('') || personalEmpty('Открытых планов нет', 'plan', 'Добавить план')}</div></section></div><div class="personal-column"><section class="personal-section life-section">${renderLifeMap(data.settings)}</section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Под рукой</p><h2>Заметки</h2></div><button type="button" class="text-button" data-personal-tab-jump="notes">Все заметки</button></div><div class="personal-notes-preview">${notes.map((note) => renderNoteCard(note, data.links, true)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section></div></section>`;
+}
+
+function renderPersonalProjects(data) {
+  const cards = data.projects.map((project) => {
+    const goals = data.goals.filter((goal) => goal.projectId === project.id && goal.status === 'planned');
+    const plans = data.plans.filter((plan) => plan.projectId === project.id && plan.status === 'planned');
+    return `<button type="button" class="personal-structure-card planner-tone-${project.colorKey || 'green'}" data-personal-edit="project" data-personal-id="${project.id}"><span>${icon('folder')}</span><strong>${escapeHTML(project.title)}</strong><small>${goals.length} целей · ${plans.length} незавершённых дел</small>${project.notes ? `<p>${escapeHTML(markdownPlain(project.notes).slice(0, 140))}</p>` : ''}</button>`;
+  });
+  return `<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Только для вас</p><h2>Личные проекты</h2></div><span class="panel-note">${data.projects.length}</span></div><div class="personal-structure-grid">${cards.join('') || personalEmpty('Личных проектов пока нет', 'project', 'Создать проект')}</div></section>`;
+}
+
+function renderPersonalGoals(data) {
+  const cards = data.goals.map((goal) => {
+    const project = data.projects.find((item) => item.id === goal.projectId);
+    const unfinished = data.plans.filter((plan) => plan.goalId === goal.id && plan.status === 'planned').length;
+    const horizon = goal.horizon === 'twelve_weeks' ? '12 недель' : goal.horizon === 'month' ? 'Месяц' : 'Свой период';
+    return `<button type="button" class="personal-structure-card" data-personal-edit="goal" data-personal-id="${goal.id}"><span>${icon('target')}</span><strong>${escapeHTML(goal.title)}</strong><small>${horizon} · ${goal.progress}% · ${unfinished} незавершённых дел</small>${project ? `<em>${escapeHTML(project.title)}</em>` : ''}<progress max="100" value="${goal.progress}"></progress><p>${formatMinutes(goal.actualMinutes)} факт · ${formatMinutes(goal.plannedMinutes)} план</p></button>`;
+  });
+  return `<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Личный горизонт</p><h2>Цели</h2></div><span class="panel-note">${data.goals.length}</span></div><div class="personal-structure-grid">${cards.join('') || personalEmpty('Личных целей пока нет', 'goal', 'Добавить цель')}</div></section>`;
+}
+
+function formatMinutes(value) {
+  const minutes = Number(value) || 0;
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} ч ${minutes % 60 ? `${minutes % 60} мин` : ''}`.trim() : `${minutes} мин`;
 }
 
 function renderPersonalNotes(notes, links) {
@@ -2556,7 +2583,8 @@ function renderPlanRow(plan, links) {
   const ownLinks = personalLinksFor(links, 'plan', plan.id);
   const done = plan.status === 'done';
   const notes = markdownPlain(plan.notes).trim();
-  const summary = [personalPlanDateLabel(plan), notes && notes !== plan.title ? notes.slice(0, 90) : ''].filter(Boolean).join(' · ');
+  const project = state.personal?.projects.find((item) => item.id === plan.projectId), goal = state.personal?.goals.find((item) => item.id === plan.goalId);
+  const summary = [plan.itemKind === 'event' ? 'Событие' : 'Дело', project?.title, goal?.title, personalPlanDateLabel(plan), plan.plannedMinutes || plan.actualMinutes ? `${formatMinutes(plan.actualMinutes)} факт / ${formatMinutes(plan.plannedMinutes)} план` : '', notes && notes !== plan.title ? notes.slice(0, 90) : ''].filter(Boolean).join(' · ');
   return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
@@ -2631,7 +2659,7 @@ function bindPersonalInteractions() {
 }
 
 function findPersonalItem(kind, id) {
-  const collection = kind === 'note' ? state.personal?.notes : kind === 'plan' ? state.personal?.plans : state.personal?.habits;
+  const collection = kind === 'note' ? state.personal?.notes : kind === 'plan' ? state.personal?.plans : kind === 'project' ? state.personal?.projects : kind === 'goal' ? state.personal?.goals : state.personal?.habits;
   return (collection || []).find((item) => item.id === id);
 }
 
@@ -2680,19 +2708,36 @@ function bindPersonalNoteSheet(form, bodyLabel = 'Заметка') {
   return () => syncNotebook(editor);
 }
 
+function personalProjectFields(item) {
+  return `<label>Описание<textarea name="notes" rows="5" maxlength="100000" placeholder="Что входит в проект">${escapeHTML(item?.notes || '')}</textarea></label><fieldset class="plan-color-picker"><legend>Цвет</legend>${calendarColors().map(([key, label]) => `<label title="${label}"><input type="radio" name="colorKey" value="${key}" ${(item?.colorKey || 'green') === key ? 'checked' : ''} aria-label="${label}"><span class="planner-tone-${key}"></span></label>`).join('')}</fieldset>${item ? `<label>Состояние<select name="status"><option value="planned" ${item.status === 'planned' ? 'selected' : ''}>В работе</option><option value="done" ${item.status === 'done' ? 'selected' : ''}>Завершён</option></select></label>` : ''}`;
+}
+
+function personalGoalFields(item) {
+  const projects = state.personal?.projects || [];
+  return `<label>Личный проект<select name="projectId"><option value="">Без проекта</option>${projects.map((project) => `<option value="${project.id}" ${item?.projectId === project.id ? 'selected' : ''}>${escapeHTML(project.title)}</option>`).join('')}</select></label><label>Описание<textarea name="notes" rows="4" maxlength="100000">${escapeHTML(item?.notes || '')}</textarea></label><div class="form-grid two"><label>Горизонт<select name="horizon"><option value="month" ${(item?.horizon || 'month') === 'month' ? 'selected' : ''}>Месяц</option><option value="twelve_weeks" ${item?.horizon === 'twelve_weeks' ? 'selected' : ''}>12 недель</option><option value="custom" ${item?.horizon === 'custom' ? 'selected' : ''}>Свой период</option></select></label><label>Прогресс, %<input type="number" name="progress" min="0" max="100" value="${item?.progress || 0}"></label></div><div class="form-grid two"><label>Начало<input type="date" name="startDate" value="${escapeHTML(item?.startDate || localISODate())}" required></label><label>Окончание<input type="date" name="endDate" value="${escapeHTML(item?.endDate || '')}"></label></div><div class="form-grid two"><label>План, минут<input type="number" name="plannedMinutes" min="0" max="525600" value="${item?.plannedMinutes || 0}"></label><label>Факт, минут<input type="number" name="actualMinutes" min="0" max="525600" value="${item?.actualMinutes || 0}"></label></div>${item ? `<label>Состояние<select name="status"><option value="planned" ${item.status === 'planned' ? 'selected' : ''}>В работе</option><option value="done" ${item.status === 'done' ? 'selected' : ''}>Завершена</option></select></label>` : ''}`;
+}
+
+function personalPlanContextFields(plan) {
+  const projects = state.personal?.projects || [], goals = state.personal?.goals || [], parents = (state.personal?.plans || []).filter((item) => item.id !== plan.id && item.status === 'planned');
+  const recurrence = plan.recurrence || {};
+  return `<section class="personal-plan-context"><div class="form-grid two"><label>Тип<select name="itemKind"><option value="task" ${(plan.itemKind || 'task') === 'task' ? 'selected' : ''}>Дело</option><option value="event" ${plan.itemKind === 'event' ? 'selected' : ''}>Событие</option></select></label><label>Личный проект<select name="projectId"><option value="">Без проекта</option>${projects.map((project) => `<option value="${project.id}" ${plan.projectId === project.id ? 'selected' : ''}>${escapeHTML(project.title)}</option>`).join('')}</select></label></div><div class="form-grid two"><label>Цель<select name="goalId"><option value="">Без цели</option>${goals.map((goal) => `<option value="${goal.id}" ${plan.goalId === goal.id ? 'selected' : ''}>${escapeHTML(goal.title)}</option>`).join('')}</select></label><label>Родительское дело<select name="parentId"><option value="">Нет</option>${parents.map((parent) => `<option value="${parent.id}" ${plan.parentId === parent.id ? 'selected' : ''}>${escapeHTML(parent.title)}</option>`).join('')}</select></label></div><div class="form-grid two"><label>План, минут<input type="number" name="plannedMinutes" min="0" max="525600" value="${plan.plannedMinutes || 0}"></label><label>Факт, минут<input type="number" name="actualMinutes" min="0" max="525600" value="${plan.actualMinutes || 0}"></label></div><details class="personal-recurrence" ${plan.seriesId ? 'open' : ''}><summary>${icon('rotate')} Повторение <small>${plan.seriesId ? 'настроено' : 'необязательно'}</small></summary><div><div class="form-grid two"><label>Ритм<select name="recurrenceCadence"><option value="none">Не повторять</option><option value="daily" ${recurrence.cadence === 'daily' ? 'selected' : ''}>Каждый день</option><option value="weekly" ${recurrence.cadence === 'weekly' ? 'selected' : ''}>Каждую неделю</option><option value="monthly" ${recurrence.cadence === 'monthly' ? 'selected' : ''}>Каждый месяц</option></select></label><label>Интервал<input type="number" name="recurrenceInterval" min="1" max="365" value="${recurrence.interval || 1}"></label></div><div class="form-grid two"><label>Первый день<input type="date" name="recurrenceStartDate" value="${escapeHTML(recurrence.startDate || plan.occurrenceDate || '')}"></label><label>Повторять до<input type="date" name="recurrenceUntilDate" value="${escapeHTML(recurrence.untilDate || '')}"></label></div>${plan.seriesId ? `<label>Дата этого экземпляра<input type="date" name="occurrenceDate" value="${escapeHTML(plan.occurrenceDate || '')}"></label><label class="check"><input type="checkbox" name="applyToSeries"><span>Изменить всю серию</span></label><label class="check"><input type="checkbox" name="recurrenceActive" ${recurrence.active ? 'checked' : ''}><span>Создавать следующие экземпляры</span></label>` : ''}</div></details></section>`;
+}
+
 function openPersonalEditor(kind, id = '', context = {}) {
   const item = id ? findPersonalItem(kind, id) : null;
   const dialog = $('#personal-dialog');
   const content = $('#personal-dialog-content');
-  const labels = { note: 'Заметка', plan: 'План', habit: 'Привычка' };
+  const labels = { note: 'Заметка', plan: 'Дело', habit: 'Привычка', project: 'Личный проект', goal: 'Цель' };
   const title = labels[kind] || labels.note;
   const body = kind === 'note'
     ? `${personalNoteSheet(item)}<label class="note-schedule-field">${icon('calendar')}<span>В календаре</span><input type="date" name="scheduledDate" aria-label="Дата заметки в календаре" value="${escapeHTML(item ? noteCalendarDate(item) : context.date || localISODate())}"></label>${item?.createdAt ? `<small class="muted">Создана ${escapeHTML(formatDate(item.createdAt))}</small>` : ''}`
     : kind === 'plan'
-      ? `${personalNoteSheet(item ? { ...item, body: item.notes } : null, { bodyName: 'notes', pin: false })}${personalPlanDateFields(item || { startDate: context.date || '', endDate: context.date || '' })}`
-      : `<div class="form-grid two"><label>Режим<select name="scheduleKind"><option value="daily" ${(item?.scheduleKind || 'daily') === 'daily' ? 'selected' : ''}>Каждый день</option><option value="weekdays" ${item?.scheduleKind === 'weekdays' ? 'selected' : ''}>По будням</option><option value="weekly_target" ${item?.scheduleKind === 'weekly_target' ? 'selected' : ''}>Цель на неделю</option></select></label><label>Дней в неделю<input type="number" name="targetPerWeek" min="1" max="7" value="${item?.targetPerWeek || 7}"></label></div><div class="form-grid two"><label>Единица<input name="unit" maxlength="32" value="${escapeHTML(item?.unit || 'раз')}"></label><label>Начало<input type="date" name="startDate" value="${escapeHTML(item?.startDate || localISODate())}" ${item ? 'disabled' : ''}></label></div>`;
-  const newHeading = kind === 'habit' ? 'Новая привычка' : kind === 'plan' ? 'Новый план' : 'Новая заметка';
-  const titleField = kind === 'habit'
+      ? `${personalNoteSheet(item ? { ...item, body: item.notes } : null, { bodyName: 'notes', pin: false })}${personalPlanContextFields(item || {})}${personalPlanDateFields(item || { startDate: context.date || '', endDate: context.date || '' })}`
+      : kind === 'project' ? personalProjectFields(item)
+        : kind === 'goal' ? personalGoalFields(item)
+          : `<div class="form-grid two"><label>Режим<select name="scheduleKind"><option value="daily" ${(item?.scheduleKind || 'daily') === 'daily' ? 'selected' : ''}>Каждый день</option><option value="weekdays" ${item?.scheduleKind === 'weekdays' ? 'selected' : ''}>По будням</option><option value="weekly_target" ${item?.scheduleKind === 'weekly_target' ? 'selected' : ''}>Цель на неделю</option></select></label><label>Дней в неделю<input type="number" name="targetPerWeek" min="1" max="7" value="${item?.targetPerWeek || 7}"></label></div><div class="form-grid two"><label>Единица<input name="unit" maxlength="32" value="${escapeHTML(item?.unit || 'раз')}"></label><label>Начало<input type="date" name="startDate" value="${escapeHTML(item?.startDate || localISODate())}" ${item ? 'disabled' : ''}></label></div>`;
+  const newHeading = kind === 'habit' ? 'Новая привычка' : kind === 'plan' ? 'Новое дело' : kind === 'project' ? 'Новый личный проект' : kind === 'goal' ? 'Новая цель' : 'Новая заметка';
+  const titleField = ['habit', 'project', 'goal'].includes(kind)
     ? `<label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}" placeholder="Например: читать 20 минут"></label>`
     : '';
   content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind !== 'habit' ? 'personal-note-form' : ''}" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
@@ -2706,7 +2751,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
     editor.append($('.markdown-toolbar', editor));
   }
   bindMarkdownEditors(dialog);
-  const resizeNoteTitle = kind !== 'habit' ? bindPersonalNoteSheet(editorForm, kind === 'plan' ? 'План' : 'Заметка') : null;
+  const resizeNoteTitle = ['note', 'plan'].includes(kind) ? bindPersonalNoteSheet(editorForm, kind === 'plan' ? 'Дело' : 'Заметка') : null;
   if (kind === 'plan') bindPersonalPlanDates(editorForm);
   if (item && kind === 'note') {
     $('.personal-note-sheet', editorForm).insertAdjacentHTML('afterend', renderPersonalLinkChips(personalLinksFor(state.personal.links, kind, id)));
@@ -2721,9 +2766,12 @@ function openPersonalEditor(kind, id = '', context = {}) {
     if (kind === 'note') payload = { title: form.get('title'), ...(item ? { expectedUpdatedAt: item.updatedAt } : {}), body: form.get('body'), scheduledDate: form.get('scheduledDate') || '', pinned: form.get('pinned') === 'on', ...(!item && context.planId ? { linkPlanId: context.planId } : {}) };
     else if (kind === 'plan') {
       const mode = form.get('dateMode');
-      if (mode === 'days' && !form.get('startDate') || mode === 'time' && !form.get('dueAt')) { toast('Укажите дату или выберите «Без даты»', true); return; }
-      payload = { title: form.get('title'), notes: form.get('notes'), dueAt: mode === 'time' ? new Date(form.get('dueAt')).toISOString() : '', startDate: mode === 'days' ? form.get('startDate') : '', endDate: mode === 'days' ? form.get('endDate') : '', colorKey: form.get('colorKey'), ...(item ? { status: item.status, expectedUpdatedAt: item.updatedAt } : {}) };
+      if (mode === 'days' && !form.get('startDate') || mode === 'time' && !form.get('dueAt') || mode === 'block' && (!form.get('startsAt') || !form.get('endsAt'))) { toast('Заполните выбранные даты или выберите «Без даты»', true); return; }
+      const cadence = form.get('recurrenceCadence');
+      payload = { title: form.get('title'), notes: form.get('notes'), itemKind: form.get('itemKind'), projectId: form.get('projectId'), goalId: form.get('goalId'), parentId: form.get('parentId'), plannedMinutes: Number(form.get('plannedMinutes')), actualMinutes: Number(form.get('actualMinutes')), dueAt: mode === 'time' ? new Date(form.get('dueAt')).toISOString() : '', startDate: mode === 'days' ? form.get('startDate') : '', endDate: mode === 'days' ? form.get('endDate') : '', startsAt: mode === 'block' ? new Date(form.get('startsAt')).toISOString() : '', endsAt: mode === 'block' ? new Date(form.get('endsAt')).toISOString() : '', colorKey: form.get('colorKey'), ...(item?.seriesId ? { occurrenceDate: form.get('occurrenceDate') } : {}), ...(cadence !== 'none' ? { recurrence: { cadence, interval: Number(form.get('recurrenceInterval')) || 1, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow', startDate: form.get('recurrenceStartDate'), untilDate: form.get('recurrenceUntilDate'), active: item?.seriesId ? form.get('recurrenceActive') === 'on' : true } } : {}), ...(item ? { status: item.status, expectedUpdatedAt: item.updatedAt } : {}) };
     }
+    else if (kind === 'project') payload = { title: form.get('title'), notes: form.get('notes'), colorKey: form.get('colorKey'), ...(item ? { status: form.get('status'), expectedUpdatedAt: item.updatedAt } : {}) };
+    else if (kind === 'goal') payload = { title: form.get('title'), notes: form.get('notes'), projectId: form.get('projectId'), horizon: form.get('horizon'), startDate: form.get('startDate'), endDate: form.get('endDate'), progress: Number(form.get('progress')), plannedMinutes: Number(form.get('plannedMinutes')), actualMinutes: Number(form.get('actualMinutes')), ...(item ? { status: form.get('status'), expectedUpdatedAt: item.updatedAt } : {}) };
     else payload = { title: form.get('title'), scheduleKind: form.get('scheduleKind'), targetPerWeek: Number(form.get('targetPerWeek')), unit: form.get('unit'), ...(item ? {} : { startDate: form.get('startDate') }) };
     if (kind !== 'habit' && !String(payload.title || '').trim() && !String(kind === 'note' ? payload.body : payload.notes || '').trim()) {
       toast('Напишите текст или укажите название', true);
@@ -2744,14 +2792,17 @@ function openPersonalEditor(kind, id = '', context = {}) {
         void offlineOutbox.pump();
         return;
       }
-      const saved = await api(`/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}${item ? `/${item.id}` : ''}`, { method: item ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
+      const seriesUpdate = kind === 'plan' && item?.seriesId && form.get('applyToSeries') === 'on';
+      if (seriesUpdate && !payload.recurrence) { toast('Для изменения серии выберите ритм повторения', true); return; }
+      const endpoint = seriesUpdate ? `/api/personal/plans/${item.id}/series` : `/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}${item ? `/${item.id}` : ''}`;
+      const saved = await api(endpoint, { method: seriesUpdate ? 'PUT' : item ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
       if (editorOwner !== state.me?.id || !editorForm.isConnected) return;
       clearWorkingDraftFor(editorForm);
       const stillHere = editorForm.isConnected && dialog.open;
       if (stillHere) await requestDialogClose(dialog);
       await loadPersonal({ force: true });
       if (stillHere && !dialog.open && (context.planId || kind === 'plan')) openPersonalPlanDetails(context.planId || saved.id);
-      toast(`${title} ${kind === 'plan' ? 'сохранён' : 'сохранена'}`);
+      toast(`${title} ${['plan', 'project'].includes(kind) ? 'сохранён' : 'сохранена'}`);
     } catch (error) { toast(error.message, true); }
     finally { saving = false; submit.disabled = false; editorForm.inert = false; }
   });
@@ -2761,13 +2812,13 @@ function openPersonalEditor(kind, id = '', context = {}) {
       clearWorkingDraftFor(editorForm);
       await requestDialogClose(dialog);
       await loadPersonal({ force: true });
-      toast(`${title} ${kind === 'plan' ? 'перенесён' : 'перенесена'} в архив`);
+      toast(`${title} ${['plan', 'project'].includes(kind) ? 'перенесён' : 'перенесена'} в архив`);
     } catch (error) { toast(error.message, true); }
   });
   openModal(dialog);
   requestAnimationFrame(() => {
     resizeNoteTitle?.();
-    if (!item && kind !== 'habit') {
+    if (!item && ['note', 'plan'].includes(kind)) {
       focusNotebook($('.markdown-editor', editorForm));
     }
   });
@@ -8539,8 +8590,8 @@ function calendarColors() {
 }
 
 function personalPlanDateFields(plan) {
-  const mode = plan.startDate ? 'days' : plan.dueAt ? 'time' : 'none';
-  return `<div class="plan-date-fields"><label>Когда<select name="dateMode">${[['none', 'Без даты'], ['days', 'День или период'], ['time', 'Дата и время']].map(([key, label]) => `<option value="${key}" ${mode === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label><div class="form-grid two" data-plan-dates="days"><label>Начало<input type="date" name="startDate" value="${escapeHTML(plan.startDate || '')}"></label><label>Окончание<input type="date" name="endDate" value="${escapeHTML(plan.endDate || '')}"></label></div><label data-plan-dates="time">Дата и время<input type="datetime-local" name="dueAt" value="${escapeHTML(toLocalInput(plan.dueAt || ''))}"></label><fieldset class="plan-color-picker"><legend>Цвет</legend>${calendarColors().map(([key, label]) => `<label title="${label}"><input type="radio" name="colorKey" value="${key}" ${(plan.colorKey || 'green') === key ? 'checked' : ''} aria-label="${label}"><span class="planner-tone-${key}"></span></label>`).join('')}</fieldset></div>`;
+  const mode = plan.startDate ? 'days' : plan.startsAt ? 'block' : plan.dueAt ? 'time' : 'none';
+  return `<div class="plan-date-fields"><label>Когда<select name="dateMode">${[['none', 'Без даты'], ['days', 'День или период'], ['time', 'Срок'], ['block', 'Временной блок']].map(([key, label]) => `<option value="${key}" ${mode === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label><div class="form-grid two" data-plan-dates="days"><label>Начало<input type="date" name="startDate" value="${escapeHTML(plan.startDate || '')}"></label><label>Окончание<input type="date" name="endDate" value="${escapeHTML(plan.endDate || '')}"></label></div><label data-plan-dates="time">Срок<input type="datetime-local" name="dueAt" value="${escapeHTML(toLocalInput(plan.dueAt || ''))}"></label><div class="form-grid two" data-plan-dates="block"><label>Начало события<input type="datetime-local" name="startsAt" value="${escapeHTML(toLocalInput(plan.startsAt || ''))}"></label><label>Окончание события<input type="datetime-local" name="endsAt" value="${escapeHTML(toLocalInput(plan.endsAt || ''))}"></label></div><fieldset class="plan-color-picker"><legend>Цвет</legend>${calendarColors().map(([key, label]) => `<label title="${label}"><input type="radio" name="colorKey" value="${key}" ${(plan.colorKey || 'green') === key ? 'checked' : ''} aria-label="${label}"><span class="planner-tone-${key}"></span></label>`).join('')}</fieldset></div>`;
 }
 
 function bindPersonalPlanDates(form) {
@@ -8551,7 +8602,12 @@ function bindPersonalPlanDates(form) {
 }
 
 function personalPlanDateLabel(plan) {
-  if (!plan.startDate) return plan.dueAt ? formatDate(plan.dueAt, true) : 'Без даты';
+  if (plan.startsAt) return `${formatDate(plan.startsAt, true)} — ${new Date(plan.endsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+  if (!plan.startDate) {
+    if (plan.dueAt) return `Срок ${formatDate(plan.dueAt, true)}`;
+    if (plan.occurrenceDate) return `${dateFromKey(plan.occurrenceDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} · повторение`;
+    return 'Без даты';
+  }
   const label = (value) => dateFromKey(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
   return plan.endDate && plan.endDate !== plan.startDate ? `${label(plan.startDate)} - ${label(plan.endDate)}` : label(plan.startDate);
 }
@@ -8562,7 +8618,8 @@ function openPersonalPlanDetails(id) {
   const dialog = $('#personal-dialog'), content = $('#personal-dialog-content');
   const links = personalLinksFor(state.personal.links, 'plan', id);
   const notes = links.filter((link) => link.targetType === 'note').map((link) => ({ link, note: findPersonalItem('note', link.targetId) })).filter((item) => item.note);
-  content.innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon('lock')} Личный план</span><h2>${escapeHTML(plan.title)}</h2><p>${escapeHTML(personalPlanDateLabel(plan))}</p></div><button type="button" class="icon-button" data-plan-close aria-label="Закрыть">${icon('x')}</button></div><div class="dialog-form plan-hub"><div class="plan-hub-actions"><button type="button" class="secondary" data-plan-edit>${icon('edit')} Изменить</button><button type="button" class="secondary" data-plan-complete>${icon(plan.status === 'done' ? 'rotate' : 'check')} ${plan.status === 'done' ? 'Вернуть в планы' : 'Выполнено'}</button></div>${plan.notes ? `<div class="markdown-body">${renderMarkdown(plan.notes)}</div>` : ''}<section class="plan-hub-notes"><header><h3>Заметки <small>${notes.length}</small></h3><div><button type="button" class="secondary" data-plan-new-note>${icon('plus')} Заметка</button><button type="button" class="text-button" data-plan-link-note>${icon('link')} Связать</button></div></header>${notes.map(({ link, note }) => `<article><header><h4>${escapeHTML(note.title)}</h4><div><button type="button" class="icon-button" data-plan-note="${note.id}" title="Редактировать заметку" aria-label="Редактировать заметку">${icon('edit')}</button><button type="button" class="icon-button" data-unlink-note="${link.id}" title="Убрать связь с планом" aria-label="Убрать связь с планом">${icon('x')}</button></div></header><div class="markdown-body">${renderMarkdown(note.body)}</div></article>`).join('') || '<p class="muted">Связанных заметок пока нет.</p>'}</section>${renderPersonalLinkChips(links.filter((link) => link.targetType !== 'note'))}</div>`;
+  const project = state.personal.projects.find((item) => item.id === plan.projectId), goal = state.personal.goals.find((item) => item.id === plan.goalId), children = state.personal.plans.filter((item) => item.parentId === plan.id && item.status === 'planned');
+  content.innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon('lock')} ${plan.itemKind === 'event' ? 'Личное событие' : 'Личное дело'}</span><h2>${escapeHTML(plan.title)}</h2><p>${escapeHTML(personalPlanDateLabel(plan))}</p></div><button type="button" class="icon-button" data-plan-close aria-label="Закрыть">${icon('x')}</button></div><div class="dialog-form plan-hub"><div class="plan-hub-actions"><button type="button" class="secondary" data-plan-edit>${icon('edit')} Изменить</button><button type="button" class="secondary" data-plan-complete>${icon(plan.status === 'done' ? 'rotate' : 'check')} ${plan.status === 'done' ? 'Вернуть в дела' : 'Выполнено'}</button>${plan.seriesId && plan.status === 'planned' ? `<button type="button" class="secondary" data-plan-skip>${icon('chevronRight')} Пропустить экземпляр</button>` : ''}</div><div class="personal-plan-facts"><span>${formatMinutes(plan.actualMinutes)} факт</span><span>${formatMinutes(plan.plannedMinutes)} план</span>${plan.recurrence ? `<span>${plan.recurrence.active ? 'Серия активна' : 'Серия остановлена'} · ${escapeHTML(plan.recurrence.cadence)}</span>` : ''}</div>${project ? `<button type="button" class="personal-context-link" data-personal-edit="project" data-personal-id="${project.id}">${icon('folder')} ${escapeHTML(project.title)}</button>` : ''}${goal ? `<button type="button" class="personal-context-link" data-personal-edit="goal" data-personal-id="${goal.id}">${icon('target')} ${escapeHTML(goal.title)}</button>` : ''}${children.length ? `<section><h3>Подзадачи <small>${children.length}</small></h3>${children.map((child) => renderPlanRow(child, state.personal.links)).join('')}</section>` : ''}${plan.notes ? `<div class="markdown-body">${renderMarkdown(plan.notes)}</div>` : ''}<section class="plan-hub-notes"><header><h3>Заметки <small>${notes.length}</small></h3><div><button type="button" class="secondary" data-plan-new-note>${icon('plus')} Заметка</button><button type="button" class="text-button" data-plan-link-note>${icon('link')} Связать</button></div></header>${notes.map(({ link, note }) => `<article><header><h4>${escapeHTML(note.title)}</h4><div><button type="button" class="icon-button" data-plan-note="${note.id}" title="Редактировать заметку" aria-label="Редактировать заметку">${icon('edit')}</button><button type="button" class="icon-button" data-unlink-note="${link.id}" title="Убрать связь с планом" aria-label="Убрать связь с планом">${icon('x')}</button></div></header><div class="markdown-body">${renderMarkdown(note.body)}</div></article>`).join('') || '<p class="muted">Связанных заметок пока нет.</p>'}</section>${renderPersonalLinkChips(links.filter((link) => link.targetType !== 'note'))}</div>`;
   $('[data-plan-close]', content).addEventListener('click', () => requestDialogClose(dialog));
   $('[data-plan-edit]', content).addEventListener('click', () => openPersonalEditor('plan', id));
   $('[data-plan-new-note]', content).addEventListener('click', () => openPersonalEditor('note', '', { planId: id }));
@@ -8571,6 +8628,13 @@ function openPersonalPlanDetails(id) {
   const completeButton = $('[data-plan-complete]', content);
   if (plan.status !== 'done') completeButton.innerHTML = `${icon('check')} Завершить`;
   completeButton.addEventListener('click', async () => { completeButton.disabled = true; await togglePersonalPlan(id); if (completeButton.isConnected && dialog.open) openPersonalPlanDetails(id); });
+  $('[data-plan-skip]', content)?.addEventListener('click', async (event) => {
+    const button = event.currentTarget; button.disabled = true;
+    try { await api(`/api/personal/plans/${id}/skip`, { method: 'POST', body: JSON.stringify({ expectedUpdatedAt: plan.updatedAt }) }); await loadPersonal({ force: true }); if (dialog.open) openPersonalPlanDetails(id); toast('Экземпляр пропущен, следующий создан'); }
+    catch (error) { button.disabled = false; toast(error.message, true); }
+  });
+  $$('[data-personal-edit]', content).forEach((button) => button.addEventListener('click', () => openPersonalEditor(button.dataset.personalEdit, button.dataset.personalId)));
+  $$('[data-plan-toggle]', content).forEach((button) => button.addEventListener('click', () => togglePersonalPlan(button.dataset.planToggle)));
   $$('[data-unlink-note]', content).forEach((button) => button.addEventListener('click', async () => {
     if (!confirm('Убрать связь? Сама заметка останется в личном пространстве.')) return;
     button.disabled = true;
@@ -8625,6 +8689,8 @@ function openCalendar(scope = 'project', collectionID = '') {
 
 function plannerRange(item, personal) {
   if (personal && item.startDate) return [item.startDate, item.endDate || item.startDate];
+  if (personal && item.startsAt) { const key = localDateKey(new Date(item.startsAt)); return [key, key]; }
+  if (personal && item.occurrenceDate) return [item.occurrenceDate, item.occurrenceDate];
   if (!item.dueAt) return ['', ''];
   const key = localDateKey(new Date(item.dueAt));
   return [key, key];

@@ -39,18 +39,67 @@ type PersonalNote struct {
 }
 
 type PersonalPlan struct {
-	TitleGenerated bool    `json:"titleGenerated"`
-	ID             string  `json:"id"`
-	Title          string  `json:"title"`
-	Notes          string  `json:"notes"`
-	DueAt          *string `json:"dueAt"`
-	StartDate      string  `json:"startDate"`
-	EndDate        string  `json:"endDate"`
-	ColorKey       string  `json:"colorKey"`
-	Status         string  `json:"status"`
-	CompletedAt    *string `json:"completedAt"`
-	CreatedAt      string  `json:"createdAt"`
-	UpdatedAt      string  `json:"updatedAt"`
+	TitleGenerated  bool                    `json:"titleGenerated"`
+	ID              string                  `json:"id"`
+	Title           string                  `json:"title"`
+	Notes           string                  `json:"notes"`
+	DueAt           *string                 `json:"dueAt"`
+	StartDate       string                  `json:"startDate"`
+	EndDate         string                  `json:"endDate"`
+	ColorKey        string                  `json:"colorKey"`
+	Status          string                  `json:"status"`
+	CompletedAt     *string                 `json:"completedAt"`
+	CreatedAt       string                  `json:"createdAt"`
+	UpdatedAt       string                  `json:"updatedAt"`
+	ItemKind        string                  `json:"itemKind"`
+	ProjectID       string                  `json:"projectId,omitempty"`
+	GoalID          string                  `json:"goalId,omitempty"`
+	ParentID        string                  `json:"parentId,omitempty"`
+	PlannedMinutes  int                     `json:"plannedMinutes"`
+	ActualMinutes   int                     `json:"actualMinutes"`
+	StartsAt        *string                 `json:"startsAt"`
+	EndsAt          *string                 `json:"endsAt"`
+	SeriesID        string                  `json:"seriesId,omitempty"`
+	OccurrenceDate  string                  `json:"occurrenceDate,omitempty"`
+	OccurrenceState string                  `json:"occurrenceState"`
+	Recurrence      *PersonalRecurrenceRule `json:"recurrence,omitempty"`
+}
+
+type PersonalProject struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Notes     string `json:"notes"`
+	ColorKey  string `json:"colorKey"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+type PersonalGoal struct {
+	ID             string `json:"id"`
+	ProjectID      string `json:"projectId,omitempty"`
+	Title          string `json:"title"`
+	Notes          string `json:"notes"`
+	Horizon        string `json:"horizon"`
+	StartDate      string `json:"startDate"`
+	EndDate        string `json:"endDate"`
+	Progress       int    `json:"progress"`
+	PlannedMinutes int    `json:"plannedMinutes"`
+	ActualMinutes  int    `json:"actualMinutes"`
+	Status         string `json:"status"`
+	CreatedAt      string `json:"createdAt"`
+	UpdatedAt      string `json:"updatedAt"`
+}
+
+type PersonalRecurrenceRule struct {
+	SeriesID  string `json:"seriesId"`
+	Cadence   string `json:"cadence"`
+	Interval  int    `json:"interval"`
+	Timezone  string `json:"timezone"`
+	StartDate string `json:"startDate"`
+	UntilDate string `json:"untilDate"`
+	Active    bool   `json:"active"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 type HabitCheckin struct {
@@ -89,12 +138,14 @@ type PersonalLink struct {
 }
 
 type PersonalOverview struct {
-	Workspace Workspace        `json:"workspace"`
-	Settings  PersonalSettings `json:"settings"`
-	Notes     []PersonalNote   `json:"notes"`
-	Plans     []PersonalPlan   `json:"plans"`
-	Habits    []PersonalHabit  `json:"habits"`
-	Links     []PersonalLink   `json:"links"`
+	Workspace Workspace         `json:"workspace"`
+	Settings  PersonalSettings  `json:"settings"`
+	Projects  []PersonalProject `json:"projects"`
+	Goals     []PersonalGoal    `json:"goals"`
+	Notes     []PersonalNote    `json:"notes"`
+	Plans     []PersonalPlan    `json:"plans"`
+	Habits    []PersonalHabit   `json:"habits"`
+	Links     []PersonalLink    `json:"links"`
 }
 
 type PersonalSuggestion struct {
@@ -127,6 +178,8 @@ func (s *Server) handlePersonalSearch(w http.ResponseWriter, r *http.Request) {
 	ownerID := currentUser(r).ID
 	type source struct{ kind, sql string }
 	sources := []source{
+		{"project", `SELECT id,title,notes,status,updated_at FROM personal_projects WHERE owner_id=? AND status<>'archived'`},
+		{"goal", `SELECT id,title,notes,status,updated_at FROM personal_goals WHERE owner_id=? AND status<>'archived'`},
 		{"note", `SELECT id,title,body,'active',updated_at FROM personal_notes WHERE owner_id=? AND archived_at IS NULL`},
 		{"plan", `SELECT id,title,notes,status,updated_at FROM personal_plans WHERE owner_id=? AND status<>'archived'`},
 		{"habit", `SELECT id,title,unit,'active',updated_at FROM personal_habits WHERE owner_id=? AND archived_at IS NULL`},
@@ -221,6 +274,14 @@ func (s *Server) handlePersonalOverview(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить личные настройки")
 		return
 	}
+	if overview.Projects, err = s.listPersonalProjects(r, user.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось загрузить личные проекты")
+		return
+	}
+	if overview.Goals, err = s.listPersonalGoals(r, user.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось загрузить личные цели")
+		return
+	}
 	if overview.Notes, err = s.listPersonalNotes(r, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить заметки")
 		return
@@ -260,7 +321,7 @@ func (s *Server) listPersonalNotes(r *http.Request, ownerID int64) ([]PersonalNo
 }
 
 func (s *Server) listPersonalPlans(r *http.Request, ownerID int64) ([]PersonalPlan, error) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, notes, due_at, status, completed_at, created_at, updated_at, start_date, end_date, color_key, title_generated FROM personal_plans WHERE owner_id = ? AND status <> 'archived' ORDER BY CASE status WHEN 'planned' THEN 0 ELSE 1 END, due_at IS NULL, due_at, updated_at DESC`, ownerID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id,title,notes,due_at,status,completed_at,created_at,updated_at,start_date,end_date,color_key,title_generated,item_kind,COALESCE(project_id,''),COALESCE(goal_id,''),COALESCE(parent_id,''),planned_minutes,actual_minutes,starts_at,ends_at,series_id,occurrence_date,occurrence_state FROM personal_plans WHERE owner_id = ? AND status <> 'archived' ORDER BY CASE status WHEN 'planned' THEN 0 ELSE 1 END, CASE WHEN occurrence_date='' THEN 1 ELSE 0 END, occurrence_date, due_at IS NULL, due_at, updated_at DESC`, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -268,12 +329,27 @@ func (s *Server) listPersonalPlans(r *http.Request, ownerID int64) ([]PersonalPl
 	items := make([]PersonalPlan, 0)
 	for rows.Next() {
 		var item PersonalPlan
-		if err := rows.Scan(&item.ID, &item.Title, &item.Notes, &item.DueAt, &item.Status, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt, &item.StartDate, &item.EndDate, &item.ColorKey, &item.TitleGenerated); err != nil {
+		if err := scanPersonalPlan(rows, &item); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	rules, err := s.listPersonalRecurrenceRules(r, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	for index := range items {
+		if rule, ok := rules[items[index].SeriesID]; ok {
+			copy := rule
+			items[index].Recurrence = &copy
+		}
+	}
+	return items, nil
 }
 
 func (s *Server) listPersonalHabits(r *http.Request, ownerID int64) ([]PersonalHabit, error) {
@@ -291,6 +367,11 @@ func (s *Server) listPersonalHabits(r *http.Request, ownerID int64) ([]PersonalH
 		item.Checkins = make([]HabitCheckin, 0)
 		items = append(items, item)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close() // one DB connection: release it before loading child check-ins.
 	for index := range items {
 		checkins, err := s.listHabitCheckins(r, ownerID, items[index].ID)
 		if err != nil {
@@ -564,17 +645,42 @@ func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	plan, err = applyPersonalPlanInput(plan, input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rule, err := recurrenceForCreate(input.Recurrence, plan)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	id, ok := newPersonalID(w)
 	if !ok {
 		return
 	}
 	now := nowText()
 	user := currentUser(r)
+	plan.ID, plan.Title, plan.Notes, plan.Status, plan.CreatedAt, plan.UpdatedAt = id, input.Title, strings.TrimSpace(input.Notes), "planned", now, now
+	plan.TitleGenerated = titleGenerated
+	if rule != nil {
+		plan.SeriesID, plan.OccurrenceDate, plan.OccurrenceState = id, rule.StartDate, "scheduled"
+		rule.SeriesID, rule.UpdatedAt = id, now
+		plan.Recurrence = rule
+	}
+	hashPlan := plan
+	hashPlan.ID, hashPlan.CreatedAt, hashPlan.UpdatedAt, hashPlan.SeriesID = "", "", "", ""
+	hashPlan.Recurrence = nil
+	var hashRule *PersonalRecurrenceRule
+	if rule != nil {
+		copy := *rule
+		copy.SeriesID, copy.UpdatedAt = "", ""
+		hashRule = &copy
+	}
 	payloadHash, err := createPayloadHash(struct {
-		Title, Notes, StartDate, EndDate, ColorKey string
-		DueAt                                      *string
-		TitleGenerated                             bool
-	}{input.Title, strings.TrimSpace(input.Notes), plan.StartDate, plan.EndDate, plan.ColorKey, plan.DueAt, titleGenerated})
+		Plan       PersonalPlan
+		Recurrence *PersonalRecurrenceRule
+	}{hashPlan, hashRule})
 	if err != nil {
 		writeError(w, 400, "Некорректный план")
 		return
@@ -594,7 +700,14 @@ func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request
 		writePersonalCreateReplay(w, r, tx, "plan", existing)
 		return
 	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_plans(id, owner_id, title, notes, due_at, status, created_at, updated_at, start_date, end_date, color_key, title_generated) VALUES(?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, now, now, plan.StartDate, plan.EndDate, plan.ColorKey, titleGenerated)
+	if err := validatePersonalPlanReferences(r.Context(), tx, user.ID, &plan, ""); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_plans(id,owner_id,title,notes,due_at,status,completed_at,created_at,updated_at,start_date,end_date,color_key,title_generated,item_kind,project_id,goal_id,parent_id,planned_minutes,actual_minutes,starts_at,ends_at,series_id,occurrence_date,occurrence_state) VALUES(?,?,?,?,?,'planned',NULL,?,?,?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),NULLIF(?,''),?,?,?,?,?,?,?)`, id, user.ID, plan.Title, plan.Notes, plan.DueAt, now, now, plan.StartDate, plan.EndDate, plan.ColorKey, titleGenerated, plan.ItemKind, plan.ProjectID, plan.GoalID, plan.ParentID, plan.PlannedMinutes, plan.ActualMinutes, plan.StartsAt, plan.EndsAt, plan.SeriesID, plan.OccurrenceDate, plan.OccurrenceState)
+	if err == nil && rule != nil {
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_recurrence_rules(series_id,owner_id,cadence,interval_count,timezone,start_date,until_date,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, user.ID, rule.Cadence, rule.Interval, rule.Timezone, rule.StartDate, rule.UntilDate, boolInt(rule.Active), now, now)
+	}
 	if err == nil {
 		err = recordPersonalCreate(r.Context(), tx, user.ID, "plan", input.RequestKey, payloadHash, id, now)
 	}
@@ -605,8 +718,6 @@ func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить план")
 		return
 	}
-	plan.ID, plan.Title, plan.Notes, plan.Status, plan.CreatedAt, plan.UpdatedAt = id, input.Title, strings.TrimSpace(input.Notes), "planned", now, now
-	plan.TitleGenerated = titleGenerated
 	writeJSON(w, http.StatusCreated, plan)
 }
 
@@ -624,8 +735,13 @@ func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request
 		return
 	}
 	user := currentUser(r)
-	var current PersonalPlan
-	err := s.store.db.QueryRowContext(r.Context(), `SELECT due_at, start_date, end_date, color_key, completed_at, created_at, updated_at FROM personal_plans WHERE id = ? AND owner_id = ? AND status <> 'archived'`, r.PathValue("id"), user.ID).Scan(&current.DueAt, &current.StartDate, &current.EndDate, &current.ColorKey, &current.CompletedAt, &current.CreatedAt, &current.UpdatedAt)
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось начать сохранение плана")
+		return
+	}
+	defer tx.Rollback()
+	current, err := loadPersonalPlan(r.Context(), tx, user.ID, r.PathValue("id"))
 	if err != nil {
 		writeError(w, 404, "План не найден")
 		return
@@ -639,6 +755,15 @@ func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	plan, err = applyPersonalPlanInput(plan, input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validatePersonalPlanReferences(r.Context(), tx, user.ID, &plan, current.ID); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	now := nowText()
 	var completedAt *string
 	if input.Status == "done" {
@@ -647,13 +772,31 @@ func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request
 			completedAt = &now
 		}
 	}
-	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_plans SET title = ?, notes = ?, due_at = ?, status = ?, completed_at = ?, updated_at = ?, start_date = ?, end_date = ?, color_key = ?, title_generated = ? WHERE id = ? AND owner_id = ? AND status <> 'archived' AND updated_at = ?`, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, input.Status, completedAt, now, plan.StartDate, plan.EndDate, plan.ColorKey, titleGenerated, r.PathValue("id"), user.ID, current.UpdatedAt)
+	result, err := tx.ExecContext(r.Context(), `UPDATE personal_plans SET title=?,notes=?,due_at=?,status=?,completed_at=?,updated_at=?,start_date=?,end_date=?,color_key=?,title_generated=?,item_kind=?,project_id=NULLIF(?,''),goal_id=NULLIF(?,''),parent_id=NULLIF(?,''),planned_minutes=?,actual_minutes=?,starts_at=?,ends_at=?,occurrence_date=?,occurrence_state=? WHERE id=? AND owner_id=? AND status<>'archived' AND updated_at=?`, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, input.Status, completedAt, now, plan.StartDate, plan.EndDate, plan.ColorKey, titleGenerated, plan.ItemKind, plan.ProjectID, plan.GoalID, plan.ParentID, plan.PlannedMinutes, plan.ActualMinutes, plan.StartsAt, plan.EndsAt, plan.OccurrenceDate, plan.OccurrenceState, r.PathValue("id"), user.ID, current.UpdatedAt)
 	if err != nil || affectedRows(result) == 0 {
 		writeError(w, http.StatusConflict, "План изменён. Откройте актуальную версию.")
 		return
 	}
 	plan.ID, plan.Title, plan.Notes, plan.Status, plan.CompletedAt, plan.UpdatedAt = r.PathValue("id"), input.Title, strings.TrimSpace(input.Notes), input.Status, completedAt, now
 	plan.TitleGenerated = titleGenerated
+	if input.Status == "done" && current.Status != "done" {
+		if err := s.spawnNextPersonalOccurrence(r.Context(), tx, user.ID, plan, now); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось создать следующий экземпляр")
+			return
+		}
+	}
+	if current.SeriesID != "" {
+		var recurrence PersonalRecurrenceRule
+		var active int
+		if err := tx.QueryRowContext(r.Context(), `SELECT series_id,cadence,interval_count,timezone,start_date,until_date,active,updated_at FROM personal_recurrence_rules WHERE series_id=? AND owner_id=?`, current.SeriesID, user.ID).Scan(&recurrence.SeriesID, &recurrence.Cadence, &recurrence.Interval, &recurrence.Timezone, &recurrence.StartDate, &recurrence.UntilDate, &active, &recurrence.UpdatedAt); err == nil {
+			recurrence.Active = active == 1
+			plan.Recurrence = &recurrence
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось сохранить план")
+		return
+	}
 	writeJSON(w, http.StatusOK, plan)
 }
 
