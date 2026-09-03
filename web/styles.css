@@ -3241,7 +3241,7 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
 
 .collection-page-heading { align-items: center; }
 .collection-page-heading > div:first-child { min-width: 0; }
-.collection-page-heading > div:last-child { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.collection-page-heading > .collection-page-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .collection-empty { min-height: 360px; border-top: 0; }
 .collection-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 340px); align-items: center; gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--line); }
 .collection-tabs { min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
@@ -3367,8 +3367,8 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
 @media (max-width: 700px) {
   .workspace-switcher > div { position: absolute; left: 0; right: 0; top: calc(100% + 6px); width: auto; max-height: min(420px, calc(100dvh - 180px)); }
   .collection-page-heading { align-items: stretch; flex-direction: column; }
-  .collection-page-heading > div:last-child { display: grid; grid-template-columns: 1fr auto; justify-content: stretch; }
-  .collection-page-heading > div:last-child .primary { min-width: 0; }
+  .collection-page-heading > .collection-page-actions { display: grid; grid-template-columns: 1fr auto; justify-content: stretch; }
+  .collection-page-heading > .collection-page-actions .primary { min-width: 0; }
   .collection-board { grid-auto-columns: minmax(250px, 86vw); margin-inline: -14px; padding-inline: 14px; }
   .collection-filters { margin-inline: -14px; padding-inline: 14px; }
   .collection-filters label { flex-basis: 155px; }
@@ -3385,7 +3385,7 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
 }
 
 @media (max-width: 360px) {
-  .collection-page-heading > div:last-child { grid-template-columns: minmax(0, 1fr); }
+  .collection-page-heading > .collection-page-actions { grid-template-columns: minmax(0, 1fr); }
   .collection-tabs > button { grid-template-columns: 17px minmax(60px, auto) auto; padding-inline: 7px; }
   .collection-board { grid-auto-columns: calc(100vw - 28px); }
   .workspace-editor-shell { padding-inline: 11px; }
