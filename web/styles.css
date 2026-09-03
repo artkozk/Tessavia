@@ -3198,16 +3198,18 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
 .workspace-switcher > summary > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
 .workspace-switcher > summary strong, .workspace-switcher > summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-switcher > summary strong { font-size: 12px; }
+.workspace-switcher > summary strong { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.35; }
 .workspace-switcher > summary small { color: #8f9b96; font-size: 9px; }
 .workspace-switcher > summary > .icon { width: 14px; color: #77827d; transition: transform .15s; }
 .workspace-switcher[open] > summary > .icon { transform: rotate(90deg); }
-.workspace-switcher > div { position: absolute; left: 0; top: 58px; z-index: 80; width: 300px; max-height: min(420px, calc(100vh - 120px)); overflow-y: auto; padding: 7px; border: 1px solid #46524c; border-radius: 7px; background: #26302b; box-shadow: var(--shadow); }
+.workspace-switcher > div { position: absolute; left: 0; top: calc(100% + 6px); z-index: 80; width: 300px; max-height: min(420px, calc(100vh - 120px)); overflow-y: auto; padding: 7px; border: 1px solid #46524c; border-radius: 7px; background: #26302b; box-shadow: var(--shadow); }
 .workspace-switcher > div button { width: 100%; min-height: 52px; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 9px; border: 0; border-radius: 5px; background: transparent; color: #dce4df; padding: 8px; text-align: left; }
 .workspace-switcher > div button:hover, .workspace-switcher > div button.active { background: #35413c; }
 .workspace-switcher > div button > .icon, .workspace-switcher > div button > span:first-child .icon { width: 16px; color: #8fc2b2; }
 .workspace-switcher > div button > span:last-child { min-width: 0; display: grid; gap: 2px; }
 .workspace-switcher > div button strong, .workspace-switcher > div button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-switcher > div button strong { font-size: 12px; }
+.workspace-switcher .workspace-team-group > button strong { white-space: normal; overflow-wrap: anywhere; }
 .workspace-switcher > div button small { color: #94a19b; font-size: 9px; }
 
 .collection-page-heading { align-items: center; }
@@ -3336,7 +3338,7 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
 }
 
 @media (max-width: 700px) {
-  .workspace-switcher > div { position: fixed; left: 12px; right: 12px; top: 126px; width: auto; max-height: calc(100dvh - 142px); }
+  .workspace-switcher > div { position: absolute; left: 0; right: 0; top: calc(100% + 6px); width: auto; max-height: min(420px, calc(100dvh - 180px)); }
   .collection-page-heading { align-items: stretch; flex-direction: column; }
   .collection-page-heading > div:last-child { display: grid; grid-template-columns: 1fr auto; justify-content: stretch; }
   .collection-page-heading > div:last-child .primary { min-width: 0; }
