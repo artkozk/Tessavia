@@ -4,14 +4,14 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, 'app.js'), 'utf8');
 
-function harness() {
+function harness(bodyLabel = 'Текст заметки') {
   const handlers = {};
   const title = {value:'Title',style:{},scrollHeight:60,addEventListener:(name,fn)=>{handlers[name]=fn;}};
-  const body = {textContent:'Existing text',focusCount:0,setAttribute(){},focus(){this.focusCount++;}};
+  const body = {textContent:'Existing text',focusCount:0,setAttribute(name,value){assert.equal(name,'aria-label');assert.equal(value,bodyLabel);},focus(){this.focusCount++;}};
   const range = {selectNodeContents(node){assert.equal(node,body);},collapse(start){assert.equal(start,true);}};
   const context = vm.createContext({form:{elements:{title}},$:()=>body,document:{createRange:()=>range},window:{getSelection:()=>({removeAllRanges(){},addRange(value){assert.equal(value,range);}})}});
   vm.runInContext(source.slice(source.indexOf('function bindPersonalNoteSheet('),source.indexOf('function openPersonalEditor(')),context);
-  vm.runInContext('bindPersonalNoteSheet(form)()',context);
+  vm.runInContext(`bindPersonalNoteSheet(form, ${JSON.stringify(bodyLabel)})()`,context);
   const fire = (type, values) => { const event={type,prevented:false,stopped:false,preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;},...values}; handlers[type](event); return event; };
   return {title,body,fire};
 }
@@ -50,6 +50,30 @@ test('title grows without imposing a single clipped line', () => {
   h.title.scrollHeight=100;
   h.fire('input',{});
   assert.equal(h.title.style.height,'100px');
+});
+
+test('project incoming shares Enter and mobile input behavior', () => {
+  const h=harness('Текст входящего');
+  assert.equal(h.fire('keydown',{key:'Enter'}).prevented,true);
+  assert.equal(h.fire('beforeinput',{inputType:'insertParagraph'}).prevented,true);
+  assert.equal(h.body.focusCount,2);
+});
+
+test('one sheet preserves personal defaults and project draft field names', () => {
+  const calls=[];
+  const context=vm.createContext({escapeHTML:value=>value.replaceAll('<','&lt;'),icon:()=>'',markdownEditor:(...args)=>{calls.push(args);return '<editor>';}});
+  vm.runInContext(source.slice(source.indexOf('function personalNoteSheet('),source.indexOf('function bindPersonalNoteSheet(')),context);
+  const personal=vm.runInContext(`personalNoteSheet({title:'<Title>',body:'Text',pinned:true})`,context);
+  assert.match(personal,/name="pinned"/);
+  assert.match(personal,/&lt;Title>/);
+  assert.equal(calls[0][0],'body');
+  const inbox=vm.runInContext(`personalNoteSheet({title:'Title',body:'Text'},{bodyName:'description',pin:false})`,context);
+  assert.doesNotMatch(inbox,/name="pinned"|required/);
+  assert.match(inbox,/inbox-note-sheet/);
+  assert.equal(calls[1][0],'description');
+  assert.equal(calls[1][1],'Текст входящего');
+  assert.equal(calls[1][2],'Text');
+  assert.equal(calls[1][6].ai,false);
 });
 
 function markdown(children) {

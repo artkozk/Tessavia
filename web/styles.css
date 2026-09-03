@@ -4126,6 +4126,11 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .capture-form .form-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 0; }
 .personal-tabs { display: flex; flex-wrap: wrap; max-width: 100%; }
 .personal-tabs .segment { flex: 1 1 92px; min-width: 0; min-height: 42px; }
+.inbox-note-sheet .personal-note-title-row { grid-template-columns: minmax(0, 1fr); }
+.inbox-note-sheet .markdown-toolbar { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.inbox-note-sheet .markdown-toolbar::-webkit-scrollbar { display: none; }
+.inbox-record-form { gap: 18px; background: transparent; }
+.inbox-record-form .create-organization { margin-top: 0; }
 .personal-note { grid-template-columns: minmax(0, 1fr); }
 .personal-note .personal-link-chips { min-width: 0; }
 .personal-note .personal-link-chips button { white-space: normal; overflow-wrap: anywhere; text-align: left; min-height: 32px; }
