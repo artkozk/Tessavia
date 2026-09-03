@@ -67,3 +67,16 @@ test('reload restores section but does not resurrect an orphaned dialog', () => 
   assert.equal(h.state.personalTab, 'notes');
   assert.equal(h.history.state.businessControlOverlay, undefined);
 });
+
+test('a delayed Back cannot replace a newer navigation or a different account', async () => {
+  for(const change of ['view','account']) {
+    const h=harness();let finish;
+    h.context.switchWorkspace=async id=>{h.state.activeWorkspaceId=id;await new Promise(resolve=>{finish=resolve;});return true;};
+    h.context.entry={businessControlAccount:1,businessControlView:{workspaceId:'two',view:'chat',scrollY:900}};
+    const restoring=h.run('restoreViewHistory(entry)');
+    if(change==='view')h.run('navigateToView("personal")');else h.state.me={id:2};
+    const expectedView=h.state.view,expectedScroll=h.window.scrollY;
+    finish();await restoring;
+    assert.equal(h.state.view,expectedView);assert.equal(h.window.scrollY,expectedScroll);
+  }
+});

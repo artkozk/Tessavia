@@ -26,9 +26,28 @@ test('a dropped read retries once, while writes and validation failures never re
   const c = client(async () => { if (++calls === 1) throw new TypeError('connection lost'); return response({id:1}); });
   assert.equal((await c.api('/api/records')).id,1); assert.equal(calls,2);
   calls=0; const write = client(async () => { calls++; throw new TypeError('connection lost'); });
-  await assert.rejects(write.api('/api/records',{method:'POST',body:'{}'})); assert.equal(calls,1);
+  await assert.rejects(write.api('/api/records',{method:'POST',body:'{}'}), {code:'NETWORK_UNAVAILABLE',message:/проверьте результат перед повтором/}); assert.equal(calls,1);
   calls=0; const denied = client(async () => { calls++; return response({error:'Denied'},403); });
   await assert.rejects(denied.api('/api/records'), {status:403}); assert.equal(calls,1);
+});
+
+test('an unavailable connection ends with a localized retry message after two reads', async () => {
+  let calls=0;
+  const c=client(async()=>{calls++;throw new TypeError('Failed to fetch');});
+  await assert.rejects(c.api('/api/records'),{code:'NETWORK_UNAVAILABLE',message:/Проверьте подключение и повторите загрузку/});
+  assert.equal(calls,2);
+});
+
+test('late access failures do not clear a reentered project or a newer account session', async () => {
+  for(const [status,change] of [[403,'epoch'],[403,'account'],[401,'epoch']]) {
+    const gate=deferred();let recoveries=0;
+    const c=client(()=>gate.promise);c.recoverWorkspaceAccess=()=>{recoveries++;};
+    const pending=c.api('/api/records');
+    if(change==='epoch')c.state.projectContextEpoch=1;else c.state.me={id:2};
+    gate.resolve(response({error:'Old denied request',code:'workspace_unavailable'},status));
+    await assert.rejects(pending,{status});
+    assert.equal(recoveries,0);assert.equal(c.signedOut,undefined);
+  }
 });
 
 test('the deadline also covers a stalled response body, then releases the pending request', async () => {

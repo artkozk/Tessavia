@@ -3742,6 +3742,7 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
 
 /* The note is one writing surface; its fields retain separate storage and draft tracking. */
 .personal-note-form { grid-template-rows: minmax(min-content, 1fr) auto; background: transparent; }
+.personal-note-form:has(> .working-draft-note) { grid-template-rows: auto minmax(min-content, 1fr) auto auto; }
 .personal-note-sheet { position: relative; display: flex; flex-direction: column; min-width: 0; background: transparent; }
 .personal-note-sheet > .personal-note-pin { position: absolute; top: 0; right: 0; z-index: 1; }
 .personal-note-sheet [data-notebook-title] { position: relative; min-height: 44px; padding: 4px 0 10px; margin: 0 0 8px; font-size: 22px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }

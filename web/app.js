@@ -1030,6 +1030,7 @@ async function api(path, options = {}) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const workspace = state.activeWorkspaceId;
   const userID = state.me?.id;
+  const projectEpoch = state.projectContextEpoch || 0;
   const accountPath = path.split('?')[0];
   const accountScoped = accountPath === '/api/me' || accountPath.startsWith('/api/me/') || accountPath === '/api/workspaces' || accountPath === '/api/teams' || accountPath.startsWith('/api/teams/') || accountPath.startsWith('/api/personal/') || accountPath === '/api/invitations/accept' || accountPath === '/api/auth/logout';
   const requestedWorkspace = options.headers?.['X-Workspace-ID'] || state.activeWorkspaceId;
@@ -1052,11 +1053,11 @@ async function api(path, options = {}) {
         if (response.status === 204) { if (method !== 'GET') pendingAPIReads.clear(); return null; }
         const data = await response.json().catch(error => { if (controller.signal.aborted) throw error; return {}; });
         if (!response.ok) {
-          if (response.status === 401 && !path.startsWith('/api/auth/') && userID === state.me?.id) showAuth();
+          if (response.status === 401 && !path.startsWith('/api/auth/') && userID === state.me?.id && projectEpoch === (state.projectContextEpoch || 0)) showAuth();
           const error = new Error(data.error || 'Ошибка запроса');
           error.status = response.status;
           error.code = data.code;
-          if(data.code === 'workspace_unavailable' && requestedWorkspace === state.activeWorkspaceId && !accountScoped) void recoverWorkspaceAccess();
+          if(data.code === 'workspace_unavailable' && requestedWorkspace === state.activeWorkspaceId && userID === state.me?.id && projectEpoch === (state.projectContextEpoch || 0) && !accountScoped) void recoverWorkspaceAccess();
           throw error;
         }
         if (workspace === state.activeWorkspaceId && userID === state.me?.id && response.headers.has('X-Unread-Count')) state.unreadCount = Number(response.headers.get('X-Unread-Count'));
@@ -1070,6 +1071,11 @@ async function api(path, options = {}) {
           const timeout = new Error(method === 'GET' ? 'Сервер долго отвечает. Повторите загрузку.' : 'Ответ сервера задержался. Результат операции пока не подтверждён — проверьте его перед повтором.');
           timeout.code = 'REQUEST_TIMEOUT';
           throw timeout;
+        }
+        if (error instanceof TypeError) {
+          const connection = new Error(method === 'GET' ? 'Не удалось связаться с сервером. Проверьте подключение и повторите загрузку.' : 'Связь с сервером прервалась. Изменения могли сохраниться — проверьте результат перед повтором.');
+          connection.code = 'NETWORK_UNAVAILABLE';
+          throw connection;
         }
         throw error;
       } finally {
@@ -1171,6 +1177,7 @@ async function bootstrap() {
 }
 
 function clearProjectClientState({ closeWindows = true } = {}) {
+  state.projectContextEpoch = (state.projectContextEpoch || 0) + 1;
   state.projectDataReady = false;
   if(closeWindows) $$('dialog[open]').forEach(dialog=>{
     flushDialogDrafts(dialog);
@@ -1194,6 +1201,22 @@ function clearProjectClientState({ closeWindows = true } = {}) {
   state.calendarCollection='';state.calendarOwner='';state.calendarStatus='active';
   state.syncRecordsSince='1970-01-01T00:00:00Z';state.syncActivitySince='1970-01-01T00:00:00Z';state.syncAppliedCheckpoint='';
   closeGlobalSearch({clear:true});
+}
+
+function captureProjectContext() {
+  return { user: state.me?.id, workspace: state.activeWorkspaceId, epoch: state.projectContextEpoch || 0 };
+}
+
+function isProjectContextCurrent(context) {
+  return context.user === state.me?.id && context.workspace === state.activeWorkspaceId && context.epoch === (state.projectContextEpoch || 0);
+}
+
+function captureRecordView(recordID) {
+  return { ...captureProjectContext(), recordID, request: state.activeRecordRequest, version: state.activeDetail?.record.updatedAt };
+}
+
+function isRecordViewCurrent(context) {
+  return isProjectContextCurrent(context) && context.request === state.activeRecordRequest && state.activeDetail?.record.id === context.recordID && state.activeDetail.record.updatedAt === context.version && $('#record-dialog').open;
 }
 
 function renderProjectLoadError(error) {
@@ -1293,6 +1316,7 @@ async function loadData(silent = false) {
 async function switchWorkspace(workspaceID, { restoring = false, keepView = false } = {}) {
   if(!workspaceID)return false;
   if(workspaceID===state.activeWorkspaceId)return true;
+  for (const dialog of $$('dialog[open]')) if (!await confirmDialogTransition(dialog)) return false;
   if(!leavePageLayoutEditor())return false;
   if(state.layoutDraft&&!confirm('Выйти без сохранения раскладки?'))return false;
   state.layoutDraft=null;
@@ -1385,6 +1409,8 @@ async function refreshProjectCompanions(workspace) {
 }
 
 function closeGlobalSearch({ clear = false, restoreFocus = false } = {}) {
+  state.globalSearchRequest = (state.globalSearchRequest || 0) + 1;
+  clearTimeout(state.searchTimer);
   const search = $('#global-search');
   const input = $('#global-search-input');
   const results = $('#global-search-results');
@@ -1430,29 +1456,19 @@ function bindGlobalEvents() {
       event.preventDefault(); globalSearchInput.focus(); globalSearchInput.select();
     }
     if (event.key === 'Escape') {
-      const transientOpen = Boolean(document.querySelector('.custom-select.open, .workspace-switcher[open], .personal-create-menu[open], .work-filter-menu[open], .work-create-menu[open], .record-more-actions[open], .chat-header-more[open], .chat-composer-more[open]'));
-      $('.workspace-switcher[open]')?.removeAttribute('open');
-      $('.personal-create-menu[open]')?.removeAttribute('open');
+      if (closeTopTransientPanel()) { event.preventDefault(); event.stopPropagation(); return; }
       const searchOpen = $('#global-search').classList.contains('search-open') || !$('#global-search-results').hidden;
-      closeCustomSelects();
-      if ($('#global-search').classList.contains('search-open')) {
+      if (searchOpen) {
         event.preventDefault();
         closeGlobalSearch({ clear: true, restoreFocus: true });
-      } else if (!$('#global-search-results').hidden) $('#global-search-results').hidden = true;
-      $('.work-filter-menu[open]')?.removeAttribute('open');
-      $('.work-create-menu[open]')?.removeAttribute('open');
-      $('.record-more-actions[open]')?.removeAttribute('open');
-      $('.chat-header-more[open]')?.removeAttribute('open');
-      $('.chat-composer-more[open]')?.removeAttribute('open');
-      if (transientOpen) {
-        event.preventDefault();
-        event.stopPropagation();
-      } else if (!searchOpen) {
+      } else {
         const dialog = topOpenDialog();
         if (dialog) {
           event.preventDefault();
           event.stopPropagation();
           requestDialogClose(dialog);
+        } else if ($('.sidebar').classList.contains('open')) {
+          event.preventDefault(); setSidebarOpen(false);
         } else if (state.calendarExpanded) {
           event.preventDefault();
           state.calendarExpanded = '';
@@ -1466,8 +1482,7 @@ function bindGlobalEvents() {
     if (!event.target.closest('.custom-select')) closeCustomSelects();
     if (!event.target.closest('.create-control')) $('#create-menu').hidden = true;
     if (!event.target.closest('#global-search')) {
-      if (window.matchMedia('(max-width: 820px)').matches) closeGlobalSearch();
-      else $('#global-search-results').hidden = true;
+      closeGlobalSearch();
     }
     if (!event.target.closest('.work-filter-menu')) $('.work-filter-menu[open]')?.removeAttribute('open');
     if (!event.target.closest('.work-create-menu')) $('.work-create-menu[open]')?.removeAttribute('open');
@@ -1502,7 +1517,7 @@ function bindGlobalEvents() {
       const afterClose = state.afterOverlayClose; state.afterOverlayClose = null; afterClose?.();
       return;
     }
-    const dialog = [...$$('dialog[open]')].pop();
+    const dialog = topOpenDialog();
     if (dialog) {
       flushDialogDrafts(dialog);
       if (protectedWorkspaceDialogs.has(dialog.id)) {
@@ -1527,10 +1542,8 @@ function bindGlobalEvents() {
   });
   window.addEventListener('beforeunload', (event) => {
     if (state.layoutDraft || pageLayoutDirty()) { event.preventDefault(); event.returnValue = ''; }
-    const dialog = [...$$('dialog[open]')].pop();
-    if (!dialog) return;
-    flushDialogDrafts(dialog);
-    if (!dialogHasUnsavedChanges(dialog)) return;
+    const unsaved = $$('dialog[open]').map(dialog => { flushDialogDrafts(dialog); return dialogHasUnsavedChanges(dialog); }).some(Boolean);
+    if (!unsaved) return;
     event.preventDefault();
     event.returnValue = '';
   });
@@ -1806,6 +1819,9 @@ async function sendPresence() {
 }
 
 async function runGlobalSearch(query) {
+  const request = state.globalSearchRequest = (state.globalSearchRequest || 0) + 1;
+  const context = captureProjectContext();
+  const current = () => request === state.globalSearchRequest && isProjectContextCurrent(context) && $('#global-search-input').value.trim() === normalized;
   const resultsNode = $('#global-search-results');
   const normalized = query.trim();
   if (!normalized) { resultsNode.hidden = true; resultsNode.innerHTML = ''; return; }
@@ -1813,14 +1829,16 @@ async function runGlobalSearch(query) {
   resultsNode.innerHTML = `<div class="search-loading"><span class="spinner"></span> Ищем во всём проекте</div>`;
   try {
     const results = await api(`/api/search?q=${encodeURIComponent(normalized)}`);
-    if ($('#global-search-input').value.trim() !== normalized) return;
+    if (!current()) return;
     resultsNode.innerHTML = results.length ? results.map(renderSearchResult).join('') : `<div class="search-empty">Ничего не найдено</div>`;
     $$('[data-search-result]', resultsNode).forEach((button) => button.addEventListener('click', async () => {
+      if (!current()) return;
       closeGlobalSearch({ clear: true });
       const tab = button.dataset.targetTab || (button.dataset.researchOptionId ? 'content' : button.dataset.questionId ? 'questions' : 'overview');
       await openRecord(button.dataset.recordId, { tab, questionId: button.dataset.questionId, workspace: $('#record-dialog').open });
     }));
   } catch (error) {
+    if (!current()) return;
     resultsNode.innerHTML = `<div class="search-empty">${escapeHTML(error.message)}</div>`;
   }
 }
@@ -2786,6 +2804,7 @@ function navigateToView(view, options = {}) {
 	const normalized = ({ goals: 'goal', tasks: 'work', ideas: 'idea' })[view] || view;
   if (!leavePageLayoutEditor()) return;
   if (state.layoutDraft && !confirm('Выйти без сохранения раскладки?')) return;
+  state.viewRestoreRequest = (state.viewRestoreRequest || 0) + 1;
   state.layoutDraft = null;
   rememberView();
   const changedView = normalized !== state.view;
@@ -5295,6 +5314,7 @@ function cachedRecordDetail(id) {
   const detail = state.detailCache.get(id);
   const summary = state.records.find((record) => record.id === id);
   if (!detail || (summary && summary.updatedAt !== detail.record.updatedAt)) return null;
+  if (detail.record.workspaceId && detail.record.workspaceId !== state.activeWorkspaceId) return null;
   return detail;
 }
 
@@ -5304,7 +5324,9 @@ async function fetchRecordDetail(id, force = false) {
     if (cached) return cached;
   }
   if (state.detailRequests.has(id)) return state.detailRequests.get(id);
+  const context = captureProjectContext();
   const request = api(`/api/records/${id}`).then((detail) => {
+    if (!isProjectContextCurrent(context)) return detail;
     const previous = state.detailCache.get(id);
     if (previous?.relationsLoaded && previous.record.updatedAt === detail.record.updatedAt) {
       detail.links = previous.links;
@@ -5319,7 +5341,7 @@ async function fetchRecordDetail(id, force = false) {
     }
     state.detailCache.set(id, detail);
     return detail;
-  }).finally(() => state.detailRequests.delete(id));
+  }).finally(() => { if (state.detailRequests.get(id) === request) state.detailRequests.delete(id); });
   state.detailRequests.set(id, request);
   return request;
 }
@@ -5347,6 +5369,7 @@ async function openRecord(id, options = {}) {
     if (!await confirmDialogTransition(recordDialog)) return false;
   }
   const requestID = ++state.activeRecordRequest;
+  const context = captureProjectContext();
   if (state.activeWorkspaceRecordId !== id) state.editingQuestionAnswerId = '';
   if (state.activeWorkspaceRecordId !== id || options.edit !== true) {
     state.recordEditMode = Boolean(options.edit);
@@ -5368,12 +5391,12 @@ async function openRecord(id, options = {}) {
   openModal($('#record-dialog'));
   try {
     const detail = await fetchRecordDetail(id, Boolean(cached));
-    if (requestID !== state.activeRecordRequest || !$('#record-dialog').open) return;
+    if (requestID !== state.activeRecordRequest || !isProjectContextCurrent(context) || !$('#record-dialog').open) return;
     state.activeDetail = detail;
     addRecordWorkspaceItem(id, detail.record, true);
     renderRecordDialog();
   } catch (error) {
-    if (requestID === state.activeRecordRequest) renderRecordLoadError(id, error.message);
+    if (requestID === state.activeRecordRequest && isProjectContextCurrent(context) && $('#record-dialog').open) renderRecordLoadError(id, error.message);
   }
   return true;
 }
@@ -6686,13 +6709,15 @@ async function mutateResearchComparison(recordID, url, options, successMessage) 
 }
 
 async function loadRecordRelations(recordID) {
+  const context = captureRecordView(recordID);
   try {
     const relations = await api(`/api/records/${recordID}/relations`);
-    if (!state.activeDetail || state.activeDetail.record.id !== recordID) return;
+    if (!isRecordViewCurrent(context)) return;
     state.activeDetail = { ...state.activeDetail, ...relations, relationsLoaded: true };
     state.detailCache.set(recordID, state.activeDetail);
     renderRecordDialog();
   } catch (error) {
+    if (!isRecordViewCurrent(context)) return;
     const loading = $('.relations-loading');
     if (loading) loading.innerHTML = `${icon('help')}<strong>Связи не загрузились</strong><small>${escapeHTML(error.message)}</small><button type="button" class="secondary" data-retry-relations>Повторить</button>`;
     $('[data-retry-relations]')?.addEventListener('click', () => loadRecordRelations(recordID));
@@ -6736,25 +6761,29 @@ function askChoice({ title, label, choices }) {
 }
 
 async function loadRecordActivity(recordID) {
+  const context = captureRecordView(recordID);
   try {
     const activity = await api(`/api/activity?entityId=${encodeURIComponent(recordID)}&limit=500`);
-    if (!state.activeDetail || state.activeDetail.record.id !== recordID) return;
+    if (!isRecordViewCurrent(context)) return;
     state.activeDetail = { ...state.activeDetail, activity, activityLoaded: true };
     state.detailCache.set(recordID, state.activeDetail);
     renderRecordDialog();
   } catch (error) {
+    if (!isRecordViewCurrent(context)) return;
     toast(`История карточки не загрузилась: ${error.message}`, true);
   }
 }
 
 async function loadRecordWorkflow(recordID) {
+  const context = captureRecordView(recordID);
   try {
     const workflow = await api(`/api/records/${recordID}/workflow`);
-    if (!state.activeDetail || state.activeDetail.record.id !== recordID) return;
+    if (!isRecordViewCurrent(context)) return;
     state.activeDetail = { ...state.activeDetail, workflow, workflowLoaded: true };
     state.detailCache.set(recordID, state.activeDetail);
     renderRecordDialog();
   } catch (error) {
+    if (!isRecordViewCurrent(context)) return;
     const loading = $(`[data-record-pane="${state.activeRecordTab}"] .relations-loading`);
     if (loading) loading.innerHTML = `${icon('help')}<strong>Рабочие данные не загрузились</strong><small>${escapeHTML(error.message)}</small><button type="button" class="secondary" data-retry-workflow>Повторить</button>`;
     $('[data-retry-workflow]')?.addEventListener('click', () => loadRecordWorkflow(recordID));
@@ -6762,9 +6791,10 @@ async function loadRecordWorkflow(recordID) {
 }
 
 async function refreshActiveRecordWorkflow(recordID) {
+  const context = captureRecordView(recordID);
   state.detailCache.delete(recordID);
   const [detail, workflow] = await Promise.all([fetchRecordDetail(recordID, true), api(`/api/records/${recordID}/workflow`), syncProjectChanges()]);
-  if (!state.activeDetail || state.activeDetail.record.id !== recordID) return;
+  if (!isRecordViewCurrent(context)) return;
   state.activeDetail = { ...detail, workflow, workflowLoaded: true };
   state.detailCache.set(recordID, state.activeDetail);
   renderRecordDialog();
@@ -7639,19 +7669,35 @@ function pushViewHistory() {
 
 async function restoreViewHistory(entry) {
   if (!entry?.businessControlView || entry.businessControlAccount !== state.me?.id) return;
+  const request = state.viewRestoreRequest = (state.viewRestoreRequest || 0) + 1;
+  const userID = state.me.id;
+  const current = () => request === state.viewRestoreRequest && state.me?.id === userID;
   state.layoutDraft = null;
   const route = entry.businessControlView;
-  if (route.workspaceId !== state.activeWorkspaceId && !await switchWorkspace(route.workspaceId, { restoring: true })) { rememberView(); return; }
+  if (route.workspaceId !== state.activeWorkspaceId && !await switchWorkspace(route.workspaceId, { restoring: true })) { if (current()) rememberView(); return; }
+  if (!current() || route.workspaceId !== state.activeWorkspaceId) return;
   routeFields.forEach((key) => { if (Object.hasOwn(route, key)) state[key] = structuredClone(route[key]); });
   if (state.view === 'notifications') { state.notificationInbox = null; state.notificationError = ''; }
   render();
-  requestAnimationFrame(() => window.scrollTo({ top: route.scrollY || 0, behavior: 'instant' }));
+  requestAnimationFrame(() => { if (current()) window.scrollTo({ top: route.scrollY || 0, behavior: 'instant' }); });
 }
 
 function closeTransientPanels(target = null) {
-  const selectors = '.workspace-switcher[open], .personal-create-menu[open], .work-filter-menu[open], .work-create-menu[open], .record-more-actions[open], .chat-header-more[open], .chat-composer-more[open]';
+  const selectors = '.workspace-switcher[open], .personal-create-menu[open], .work-filter-menu[open], .work-create-menu[open], .record-more-actions[open], .chat-header-more[open], .chat-composer-more[open], .chat-message-menu[open]';
   $$(selectors).forEach((panel) => { if (!target || !panel.contains(target)) panel.open = false; });
   closeCustomSelects(target?.closest('.custom-select') || null);
+}
+
+function closeTopTransientPanel() {
+  const select = $('.custom-select.open');
+  if (select) { closeCustomSelects(); $('.custom-select-trigger', select)?.focus({ preventScroll: true }); return true; }
+  const emoji = $('.chat-emoji-picker');
+  if (emoji) { state.chatEmojiTarget = ''; emoji.remove(); $('#chat-composer textarea[name="body"]')?.focus({ preventScroll: true }); return true; }
+  const panel = $$('.workspace-switcher[open], .personal-create-menu[open], .work-filter-menu[open], .work-create-menu[open], .record-more-actions[open], .chat-header-more[open], .chat-composer-more[open], .chat-message-menu[open]').pop();
+  if (panel) { panel.open = false; $('summary', panel)?.focus({ preventScroll: true }); return true; }
+  const create = $('#create-menu');
+  if (create && !create.hidden) { create.hidden = true; $('#new-record-button')?.focus({ preventScroll: true }); return true; }
+  return false;
 }
 
 function discardComposerChanges(dialog = $('#workspace-dialog')) {
