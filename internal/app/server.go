@@ -224,7 +224,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/chat/calls/{callId}/candidates", s.requireAuth(http.HandlerFunc(s.handleListChatCallCandidates)))
 	s.mux.Handle("POST /api/chat/calls/{callId}/end", s.requireAuth(http.HandlerFunc(s.handleEndChatCall)))
 
-	s.mux.Handle("GET /", http.FileServer(http.FS(web.Files)))
+	s.mux.Handle("GET /", cacheEmbeddedAssets(http.FileServer(http.FS(web.Files))))
 }
 
 func (s *Server) securityHeaders(next http.Handler) http.Handler {

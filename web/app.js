@@ -944,24 +944,61 @@ function sortWorkRecords(a, b) {
   return new Date(b.updatedAt) - new Date(a.updatedAt);
 }
 
+const pendingAPIReads = new Map();
+
 async function api(path, options = {}) {
-	const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
-	const workspaceHeader = state.activeWorkspaceId && !path.startsWith('/api/workspaces') ? { 'X-Workspace-ID': state.activeWorkspaceId } : {};
-  const response = await fetch(path, {
-    credentials: 'same-origin',
-    ...options,
-		headers: { ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}), ...workspaceHeader, ...(options.headers || {}) },
-  });
-  if (response.status === 204) return null;
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (response.status === 401 && !path.startsWith('/api/auth/')) showAuth();
-    const error = new Error(data.error || 'Ошибка запроса');
-    error.status = response.status;
-    throw error;
-  }
-  if (response.headers.has('X-Unread-Count')) state.unreadCount = Number(response.headers.get('X-Unread-Count'));
-  return data;
+  const method = (options.method || 'GET').toUpperCase();
+  if (method !== 'GET') pendingAPIReads.clear();
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const workspace = state.activeWorkspaceId;
+  const userID = state.me?.id;
+  const workspaceHeader = workspace && !path.startsWith('/api/workspaces') ? { 'X-Workspace-ID': workspace } : {};
+  const headers = { ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}), ...workspaceHeader, ...(options.headers || {}) };
+  const key = method === 'GET' && !options.signal ? JSON.stringify([userID, workspace, path, headers]) : null;
+  if (key && pendingAPIReads.has(key)) return pendingAPIReads.get(key);
+  const timeoutMs = options.timeoutMs ?? (method === 'GET' ? 6000 : isFormData ? 180000 : /\/ai[-/]/.test(path) ? 120000 : 20000);
+  const run = async () => {
+    for (let attempt = 0; ; attempt++) {
+      const controller = new AbortController();
+      let timedOut = false;
+      const abort = () => controller.abort();
+      options.signal?.addEventListener('abort', abort, { once: true });
+      if (options.signal?.aborted) abort();
+      const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+      try {
+        const { timeoutMs: ignoredTimeout, ...fetchOptions } = options;
+        const response = await fetch(path, { credentials: 'same-origin', ...fetchOptions, method, headers, signal: controller.signal });
+        if (response.status === 204) { if (method !== 'GET') pendingAPIReads.clear(); return null; }
+        const data = await response.json().catch(error => { if (controller.signal.aborted) throw error; return {}; });
+        if (!response.ok) {
+          if (response.status === 401 && !path.startsWith('/api/auth/') && userID === state.me?.id) showAuth();
+          const error = new Error(data.error || 'Ошибка запроса');
+          error.status = response.status;
+          throw error;
+        }
+        if (workspace === state.activeWorkspaceId && userID === state.me?.id && response.headers.has('X-Unread-Count')) state.unreadCount = Number(response.headers.get('X-Unread-Count'));
+        if (method !== 'GET') pendingAPIReads.clear();
+        return data;
+      } catch (error) {
+        const transient = timedOut || error instanceof TypeError || [502, 503, 504].includes(error.status);
+        // Reads may be retried once; a write can have succeeded even if its reply was lost.
+        if (method === 'GET' && attempt === 0 && transient && !options.signal?.aborted) continue;
+        if (timedOut) {
+          const timeout = new Error(method === 'GET' ? 'Сервер долго отвечает. Повторите загрузку.' : 'Ответ сервера задержался. Результат операции пока не подтверждён — проверьте его перед повтором.');
+          timeout.code = 'REQUEST_TIMEOUT';
+          throw timeout;
+        }
+        throw error;
+      } finally {
+        clearTimeout(timer);
+        options.signal?.removeEventListener('abort', abort);
+      }
+    }
+  };
+  const pending = run();
+  if (key) pendingAPIReads.set(key, pending);
+  try { return await pending; }
+  finally { if (key && pendingAPIReads.get(key) === pending) pendingAPIReads.delete(key); }
 }
 
 function toast(message, error = false) {
@@ -1114,9 +1151,8 @@ function latestTimestamp(items, field, fallback = '1970-01-01T00:00:00Z') {
 async function syncProjectChanges({ renderCurrent = false, includeCompanions = true } = {}) {
   const workspace = state.activeWorkspaceId;
   const query = new URLSearchParams({ recordsSince: state.syncRecordsSince, activitySince: state.syncActivitySince });
-  const requests = [api(`/api/sync?${query}`)];
-  if (includeCompanions) requests.push(api('/api/notifications'), api('/api/questions/pending'), api('/api/chat/threads'));
-  const [changes, notifications, pendingQuestions, chatThreads] = await Promise.all(requests);
+  if (includeCompanions) refreshProjectCompanions(workspace).catch(() => {});
+  const changes = await api(`/api/sync?${query}`);
   if (workspace !== state.activeWorkspaceId) return { changed: false, activityChanged: false };
   const recordsByID = new Map(state.records.map((record) => [record.id, record]));
   let changed = false;
@@ -1138,7 +1174,6 @@ async function syncProjectChanges({ renderCurrent = false, includeCompanions = t
   if (newActivity.length) state.activity = [...newActivity.slice().reverse(), ...state.activity].slice(0, 500);
   state.syncRecordsSince = latestTimestamp(changes.records || [], 'updatedAt', state.syncRecordsSince);
   state.syncActivitySince = latestTimestamp(changes.activity || [], 'createdAt', state.syncActivitySince);
-  if (includeCompanions) Object.assign(state, { notifications, pendingQuestions, chatThreads });
   if (changed || newActivity.length) {
     state.contentRefreshPending = true;
     state.qualityReport = null;
@@ -1148,6 +1183,19 @@ async function syncProjectChanges({ renderCurrent = false, includeCompanions = t
   renderNotificationBadge();
   if (renderCurrent && (changed || newActivity.length || state.view === 'notifications')) renderContent();
   return { changed, activityChanged: Boolean(newActivity.length) };
+}
+
+async function refreshProjectCompanions(workspace) {
+  const userID = state.me?.id;
+  await Promise.allSettled([
+    ['notifications', '/api/notifications'], ['pendingQuestions', '/api/questions/pending'], ['chatThreads', '/api/chat/threads'],
+  ].map(async ([field, path]) => {
+    const value = await api(path);
+    if (workspace !== state.activeWorkspaceId || userID !== state.me?.id) return;
+    state[field] = value;
+    renderNav();
+    renderNotificationBadge();
+  }));
 }
 
 function closeGlobalSearch({ clear = false, restoreFocus = false } = {}) {
