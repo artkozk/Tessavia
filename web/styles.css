@@ -2888,8 +2888,10 @@ button.dossier-property:hover > .icon, button.dossier-property:focus-visible > .
 /* Personal workspace uses the current BizFlow palette and control language. */
 .personal-heading .eyebrow { display: flex; align-items: center; gap: 6px; }
 .personal-heading .eyebrow .icon { width: 14px; height: 14px; }
-.personal-create-menu { position: relative; align-self: start; }
-.personal-create-menu > summary { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; list-style: none; cursor: pointer; }
+.personal-create-menu { position: relative; align-self: auto; }
+.personal-create-menu > summary { min-height: 44px; display: flex; align-items: center; gap: 8px; list-style: none; cursor: pointer; white-space: nowrap; }
+.personal-heading > [data-personal-calendar] { min-height: 44px; white-space: nowrap; }
+.workspace-page-grid .personal-heading > .personal-create-menu, .workspace-page-grid .personal-heading > [data-personal-calendar] { min-width: max-content; }
 .personal-create-menu > summary::-webkit-details-marker { display: none; }
 .personal-create-menu > summary .icon { width: 18px; height: 18px; }
 .personal-create-menu > div { position: absolute; top: calc(100% + 7px); right: 0; z-index: 40; width: min(280px, calc(100vw - 28px)); display: grid; padding: 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 18px 48px rgba(24,31,27,.16); }
