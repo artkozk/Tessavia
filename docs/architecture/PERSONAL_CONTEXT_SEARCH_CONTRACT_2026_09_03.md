@@ -84,3 +84,26 @@ SQLite `NOCASE`. Архивные сущности исключаются, за�
 повторён: 132 Node-теста, `go test ./...` и `go vet ./...` прошли. Отдельный
 класс `collection-page-actions` и его адаптивные стили сохранены; верхний маркер
 ресурсов остаётся более новым `20260903-personal-context-1`.
+
+## Production
+
+Кандидат опубликован release
+`/opt/business-control/releases/20260903-personal-context-ceaf966` из commit
+`ceaf9663a9b8fd4b8d6b55e6c2a6c7f64154174e`. SHA-256 бинарника:
+`6b386969f45e7539a5dbb061fabd6d7efb7d53c48cc6a6d3669f095b223d32e7`.
+Резервная копия до переключения:
+`/var/lib/business-control/backups/pre-personal-context-20260903T173256Z`;
+предыдущий release —
+`/opt/business-control/releases/20260903-collection-heading-d35f13a`.
+
+Деплой подтвердил `DATA_PRESERVATION=ok`, `DRY_RUN=ok`, `DEPLOY=ok`.
+После переключения сервис активен, БД имеет `integrity_check=ok`, 0 ошибок
+внешних ключей, временный загруженный бинарник удалён. Внешний маршрут вернул
+200 для HTML, версионного `app.js` и `sw.js`; HTML и service worker содержат
+маркер `20260903-personal-context-1`, API health вернул `ok`, а личный поиск без
+сессии — 401. HTML и service worker отдаются с `no-cache`, версионный JS —
+`public, max-age=31536000, immutable`.
+
+В каноническую карточку добавлено доказательство
+`[verified:personal-context-ceaf966]`. Её статус оставлен `in_progress` по
+зафиксированной выше причине: выпуск личных целей ещё не выполнен.

@@ -291,3 +291,18 @@ Personal workspace теперь является явным пунктом пе�
 132 Node-теста, `go test ./...`, `go vet ./...`. Деплой должен начинаться с
 `/opt/business-control/releases/20260903-collection-heading-d35f13a` и проверяет
 его точно перед созданием резервной копии.
+
+## Личная область и поиск — опубликовано
+
+- Commit: `ceaf9663a9b8fd4b8d6b55e6c2a6c7f64154174e`.
+- Release: `/opt/business-control/releases/20260903-personal-context-ceaf966`.
+- SHA-256: `6b386969f45e7539a5dbb061fabd6d7efb7d53c48cc6a6d3669f095b223d32e7`.
+- Backup: `/var/lib/business-control/backups/pre-personal-context-20260903T173256Z`.
+- Предыдущий release: `/opt/business-control/releases/20260903-collection-heading-d35f13a`.
+
+Получены `DATA_PRESERVATION=ok`, `DRY_RUN=ok`, `DEPLOY=ok`; сервис активен,
+целостность и внешние ключи БД проверены. Публично подтверждены новый HTML,
+версионный JS, некешируемый service worker, приватный endpoint и health.
+Доказательство `[verified:personal-context-ceaf966]` добавлено в каноническую
+задачу. Статус `in_progress` сохранён до реализации личных целей задачей
+`1aba51a72a4aa853e3ca13d3fd1201b0`.
