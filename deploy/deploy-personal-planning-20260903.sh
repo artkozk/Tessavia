@@ -16,7 +16,7 @@ db=/var/lib/business-control/business-control.db
 previous=$(readlink -f "$root/current")
 test "$previous" = "$EXPECTED_PREVIOUS"
 backup="/var/lib/business-control/backups/pre-personal-planning-$(date -u +%Y%m%dT%H%M%SZ)"
-dry=''; dry_pid=''; switch_started=0
+dry=''; dry_pid=''; switch_started=0; release_created=0
 cleanup() {
   result=$?
   trap - EXIT
@@ -28,6 +28,10 @@ cleanup() {
     mv -Tf "$root/current.next" "$root/current"
     systemctl start business-control
     printf 'ROLLED_BACK=%s\n' "$previous" >&2
+  fi
+  if [[ "$result" -ne 0 && "$switch_started" -eq 0 && "$release_created" -eq 1 ]]; then
+    [[ "$release" == "$root/releases/$RELEASE_NAME" ]]
+    rm -rf -- "$release"
   fi
   exit "$result"
 }
@@ -49,6 +53,7 @@ test "$(sqlite3 "$backup/business-control.db" 'PRAGMA integrity_check;')" = ok
 test "$(sqlite3 "$backup/business-control.db" 'SELECT COUNT(*) FROM pragma_foreign_key_check;')" = 0
 printf 'BACKUP=%s\n' "$backup"
 install -d -m 0755 "$release"
+release_created=1
 install -m 0755 "$staged" "$release/business-control"
 cmp -- "$staged" "$release/business-control"
 rm -f -- "$staged"
@@ -71,7 +76,12 @@ for table in tables:
     columns = [r[1] for r in before.execute('PRAGMA table_info("'+table.replace('"','""')+'")')]
     quoted = ','.join('"'+column.replace('"','""')+'"' for column in columns)
     query = 'SELECT '+quoted+' FROM "'+table.replace('"','""')+'" ORDER BY rowid'
-    old, new = [dict(r) for r in before.execute(query)], [dict(r) for r in after.execute(query)]
+    old = [dict(r) for r in before.execute(query)]
+    if table == 'schema_migrations':
+        query = 'SELECT '+quoted+' FROM schema_migrations WHERE version<>? ORDER BY rowid'
+        new = [dict(r) for r in after.execute(query, ('035_personal_planning.sql',))]
+    else:
+        new = [dict(r) for r in after.execute(query)]
     assert old == new, table+' old-column content changed'
 old_tables = set(tables)
 new_tables = {r[0] for r in after.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
