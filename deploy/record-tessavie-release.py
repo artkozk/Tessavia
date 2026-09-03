@@ -86,9 +86,10 @@ try:
             api('POST', '/records/'+task['id']+'/proofs', {'kind':'text','content':evidence})
         current = api('GET', '/records/'+task['id'])['record']
         if current['status'] != 'completed':
-            api('PATCH', '/records/'+task['id'], {'expectedUpdatedAt':current['updatedAt'],
-                'status':'completed', 'progress':100, 'result':evidence,
-                'reason':'Технический выпуск установлен и проверен; отчёт сохранён в документации.'})
+            # Completion has a dedicated endpoint that checks the proof and
+            # preserves the task's review/recurrence lifecycle.
+            api('POST', '/records/'+task['id']+'/complete',
+                {'result':evidence, 'notifyPartners':False})
         task = api('GET', '/records/'+task['id'])['record']
         assert task['status'] == 'completed' and evidence_marker in task['result']
     print(json.dumps({'taskId':task['id'], 'status':task['status'], 'parentId':parent_id}, ensure_ascii=False))
