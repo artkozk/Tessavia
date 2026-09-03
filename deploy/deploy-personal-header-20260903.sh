@@ -13,6 +13,7 @@ release="$root/releases/$RELEASE_NAME"
 staged=/tmp/business-control-personal-header
 db=/var/lib/business-control/business-control.db
 previous=$(readlink -f "$root/current")
+test "$previous" = /opt/business-control/releases/20260903-tessavie-e307f13
 backup="/var/lib/business-control/backups/pre-personal-header-$(date -u +%Y%m%dT%H%M%SZ)"
 dry=''; dry_pid=''; switch_started=0
 cleanup() {
