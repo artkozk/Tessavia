@@ -1,4 +1,4 @@
-import { createIndexedOutbox, createOutboxQueue } from './offline-outbox.js?v=20260903-offline-outbox-1';
+import { createIndexedOutbox, createOutboxQueue } from './offline-outbox.js?v=20260903-offline-outbox-2';
 
 export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPersonal, onConfirmed, onOfflineIdentity, onAuthRequired, escapeHTML, toast }) {
   const store = createIndexedOutbox();

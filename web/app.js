@@ -1,4 +1,4 @@
-import { createOutboxUI } from './outbox-ui.js?v=20260903-offline-outbox-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260903-offline-outbox-2';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -2944,7 +2944,7 @@ const workTypeFilters = [
 ];
 
 function workFilterCount() {
-  return Number(state.workType !== 'all') + Number(state.workstreamFilter !== 'all') + Number(state.workStatus !== 'active') + Number(state.workOrder !== 'priority');
+  return Number(Boolean(state.ownerFilter)) + Number(state.workType !== 'all') + Number(state.workstreamFilter !== 'all') + Number(state.workStatus !== 'active') + Number(state.workOrder !== 'priority');
 }
 
 function hierarchyDepth(record) {
@@ -2990,7 +2990,6 @@ function filteredWorkRecords() {
   if (state.workCollection) records = state.records.filter((record) => record.collectionId === state.workCollection);
   if (state.ownerFilter) records = records.filter((record) => String(record.ownerId) === state.ownerFilter);
   else if (state.workScope === 'mine') records = records.filter((record) => record.ownerId === state.me.id);
-  else if (state.workScope === 'partner') records = records.filter((record) => record.ownerId !== state.me.id);
   if (state.workType !== 'all') records = records.filter((record) => record.type === state.workType);
   if (state.workstreamFilter !== 'all') records = records.filter((record) => record.workstream === state.workstreamFilter);
   if (state.workStatus === 'active') records = records.filter(isActiveRecord);
@@ -3156,7 +3155,6 @@ function calendarRecordPool() {
   if (state.workCollection) records = state.records.filter((record) => record.collectionId === state.workCollection);
   if (state.ownerFilter) records = records.filter((record) => String(record.ownerId) === state.ownerFilter);
   else if (state.workScope === 'mine') records = records.filter((record) => record.ownerId === state.me.id);
-  else if (state.workScope === 'partner') records = records.filter((record) => record.ownerId !== state.me.id);
   if (state.workType !== 'all') records = records.filter((record) => record.type === state.workType);
   if (state.workstreamFilter !== 'all') records = records.filter((record) => record.workstream === state.workstreamFilter);
   if (state.workStatus === 'active') records = records.filter((record) => isActiveRecord(record));
@@ -3480,17 +3478,19 @@ function currentWorkViewPayload() {
 }
 
 function renderWorkList() {
+  state.workScope = state.workScope === 'mine' ? 'mine' : 'all';
   if (!state.collections.some((item) => item.id === state.workCollection)) state.workCollection = '';
   const records = state.workViewMode === 'calendar' ? calendarRecordPool() : filteredWorkRecords();
   const activeFilters = workFilterCount();
   $('#main-content').innerHTML = `
     <div class="work-title-row"><div><p class="eyebrow">Единая очередь</p><h1>Работа команды</h1><p><strong>${records.length}</strong> ${recordsCountLabel(records.length).replace(/^\d+\s*/, '')} в текущем представлении</p></div><details class="work-create-menu"><summary class="primary">${icon('plus')} Создать работу</summary><div>${[['inbox', 'Входящее'], ['task', 'Задача'], ['question_set', 'Вопросы'], ['meeting', 'Встреча'], ['research', 'Сравнение вариантов'], ['experiment', 'Эксперимент']].map(([type, label]) => `<button type="button" data-work-create="${type}" ${type === 'research' ? 'data-work-mode="comparison"' : ''}>${icon(typeMeta[type].icon)}<span>${label}</span></button>`).join('')}</div></details></div>
     <section class="work-controls" aria-label="Фильтры рабочей очереди">
-      <div class="work-scope segmented compact">${[['all', 'Вся'], ['mine', 'Моя'], ['partner', 'Партнёра']].map(([value, label]) => `<button type="button" class="segment ${!state.ownerFilter && state.workScope === value ? 'active' : ''}" data-work-scope="${value}">${label}</button>`).join('')}</div>
-      <div class="search-box work-search">${icon('search')}<input id="work-search" type="search" placeholder="Найти в этой очереди" value="${escapeHTML(state.search)}"></div>
+      <div class="work-scope segmented compact" role="group" aria-label="Чья работа">${[['all', 'Вся'], ['mine', 'Моя']].map(([value, label]) => `<button type="button" class="segment ${!state.ownerFilter && state.workScope === value ? 'active' : ''}" aria-pressed="${!state.ownerFilter && state.workScope === value}" data-work-scope="${value}">${label}</button>`).join('')}</div>
+      <div class="search-box work-search">${icon('search')}<input id="work-search" type="search" aria-label="Поиск в очереди работы" placeholder="Найти в этой очереди" value="${escapeHTML(state.search)}"></div>
 		<div class="work-view-switch segmented compact" aria-label="Вид очереди">${[['list','menu','Список'],['kanban','network','Доска'],['calendar','calendar','Календарь']].map(([value, iconName, label]) => `<button type="button" class="segment ${state.workViewMode === value ? 'active' : ''}" data-work-view="${value}" title="${label}" aria-label="${label}">${icon(iconName)}<span>${label}</span></button>`).join('')}</div>
       <details class="work-filter-menu"><summary class="secondary">${icon('sliders')} Фильтры${activeFilters ? `<b>${activeFilters}</b>` : ''}</summary><button type="button" class="work-filter-backdrop" data-close-work-filters aria-label="Закрыть фильтры"></button><div class="work-filter-popover">
         <header><strong>Представление очереди</strong><button type="button" class="icon-button" data-close-work-filters aria-label="Закрыть фильтры">${icon('x')}</button></header>
+        <label>Ответственный<select id="work-owner-select"><option value="">Все участники</option>${userOptions(state.ownerFilter)}</select></label>
         <label>Состояние<select id="work-status-select">${[['active', 'Активная работа'], ['overdue', 'Только просроченная'], ['completed', 'Выполненная'], ['archived', 'Архив'], ['all', 'Все состояния']].map(([value, label]) => `<option value="${value}" ${state.workStatus === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
         <label>Тип работы<select id="work-type-select">${workTypeFilters.map(([value, label]) => `<option value="${value}" ${state.workType === value ? 'selected' : ''}>${escapeHTML(label)}</option>`).join('')}</select></label>
         <label>Направление<select id="workstream-select">${[['all', 'Все направления'], ...Object.entries(workstreamLabels)].map(([value, label]) => `<option value="${value}" ${state.workstreamFilter === value ? 'selected' : ''}>${escapeHTML(label)}</option>`).join('')}</select></label>
@@ -3513,6 +3513,7 @@ function renderWorkList() {
   });
   $$('[data-work-scope]').forEach((button) => button.addEventListener('click', () => { state.ownerFilter = ''; state.workScope = button.dataset.workScope; renderWorkList(); }));
   $('#work-status-select').addEventListener('change', (event) => { state.workStatus = event.target.value; renderWorkList(); });
+  $('#work-owner-select').addEventListener('change', (event) => { state.ownerFilter = event.target.value; state.workScope = 'all'; renderWorkList(); });
   $('#work-type-select').addEventListener('change', (event) => { state.workType = event.target.value; renderWorkList(); });
   $('#workstream-select').addEventListener('change', (event) => { state.workstreamFilter = event.target.value; renderWorkList(); });
   $$('[data-work-order]').forEach((button) => button.addEventListener('click', () => { state.workOrder = button.dataset.workOrder; renderWorkList(); }));
@@ -3522,7 +3523,7 @@ function renderWorkList() {
     renderWorkList();
   }));
   $$('[data-close-work-filters]').forEach((button) => button.addEventListener('click', () => $('.work-filter-menu').removeAttribute('open')));
-  $('[data-reset-work-filters]')?.addEventListener('click', () => { state.workType = 'all'; state.workstreamFilter = 'all'; state.workStatus = 'active'; state.workOrder = 'priority'; renderWorkList(); });
+  $('[data-reset-work-filters]')?.addEventListener('click', () => { state.ownerFilter = ''; state.workType = 'all'; state.workstreamFilter = 'all'; state.workStatus = 'active'; state.workOrder = 'priority'; renderWorkList(); });
   $$('[data-work-create]').forEach((button) => button.addEventListener('click', () => {
     state.workCollection = '';
     openCreateDialog(button.dataset.workCreate, { comparisonMode: button.dataset.workMode === 'comparison' });
