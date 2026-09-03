@@ -267,22 +267,24 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scoreRows, err := s.store.db.QueryContext(r.Context(), `
-		SELECT id, record_id, criterion_id, score
-		FROM criterion_scores
-		ORDER BY updated_at`)
+		SELECT cs.id, cs.record_id, cs.criterion_id, cs.score, u.username
+		FROM criterion_scores cs JOIN users u ON u.id = cs.evaluated_by
+		JOIN records r ON r.id = cs.record_id
+		WHERE r.workspace_id = ?
+		ORDER BY cs.updated_at, cs.id`, currentWorkspace(r).ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить оценки карты")
 		return
 	}
 	for scoreRows.Next() {
-		var id, recordID, criterionID string
+		var id, recordID, criterionID, evaluator string
 		var score int
-		if err := scoreRows.Scan(&id, &recordID, &criterionID, &score); err != nil {
+		if err := scoreRows.Scan(&id, &recordID, &criterionID, &score, &evaluator); err != nil {
 			scoreRows.Close()
 			writeError(w, http.StatusInternalServerError, "Не удалось прочитать оценку карты")
 			return
 		}
-		addEdge(GraphEdge{ID: "score:" + id, Source: graphRecordID(recordID), Target: graphRecordID(criterionID), RelationType: "evaluated_by", Label: fmt.Sprintf("оценено %d/10", score)})
+		addEdge(GraphEdge{ID: "score:" + id, Source: graphRecordID(recordID), Target: graphRecordID(criterionID), RelationType: "evaluated_by", Label: fmt.Sprintf("%s: %d/10", evaluator, score)})
 	}
 	if err := scoreRows.Close(); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить чтение оценок")

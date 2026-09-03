@@ -175,6 +175,8 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/records/{id}/links", s.requireAuth(http.HandlerFunc(s.handleCreateLink)))
 	s.mux.Handle("POST /api/records/{id}/links/{linkId}/remove", s.requireAuth(http.HandlerFunc(s.handleRemoveLink)))
 	s.mux.Handle("PUT /api/records/{id}/criteria/{criterionId}", s.requireAuth(http.HandlerFunc(s.handleScoreCriterion)))
+	s.mux.Handle("DELETE /api/records/{id}/criteria/{criterionId}", s.requireAuth(http.HandlerFunc(s.handleWithdrawCriterionScore)))
+	s.mux.Handle("PUT /api/records/{id}/criteria/{criterionId}/decision", s.requireAuth(http.HandlerFunc(s.handleCriterionDecision)))
 	s.mux.Handle("POST /api/records/{id}/proofs", s.requireAuth(http.HandlerFunc(s.handleAddProof)))
 	s.mux.Handle("POST /api/records/{id}/complete", s.requireAuth(http.HandlerFunc(s.handleCompleteTask)))
 	s.mux.Handle("POST /api/records/{id}/notify", s.requireAuth(http.HandlerFunc(s.handleNotifyPartners)))
@@ -579,7 +581,7 @@ const recordSelect = `
 		business.record_id, business.probability, business.impact, business.mitigation_md,
 		business.occurred, business.metric, business.success_threshold, business.experiment_method_md,
 		business.verdict, business.decision_state, business.effective_at, business.review_at, business.supersedes_id,
-		business.applicability, business.source_excerpt_md, r.title_generated
+		business.applicability, business.source_excerpt_md, r.title_generated, r.criterion_weight
 	FROM records r
 	LEFT JOIN workspace_collections collection ON collection.id = r.collection_id
 	LEFT JOIN collection_stages stage ON stage.id = r.stage_id
@@ -601,7 +603,7 @@ func scanRecord(scanner recordScanner) (Record, error) {
 		&record.EstimateMinutes, &record.ActualMinutes, &record.Progress,
 		&record.ProgressNote, &record.Result, &completedAt, &record.CreatedAt, &record.UpdatedAt, &record.ProofCount,
 		&businessRecordID, &probability, &impact, &mitigation, &occurred, &metric, &threshold, &method,
-		&verdict, &decisionState, &effectiveAt, &reviewAt, &supersedesID, &applicability, &sourceExcerpt, &record.TitleGenerated)
+		&verdict, &decisionState, &effectiveAt, &reviewAt, &supersedesID, &applicability, &sourceExcerpt, &record.TitleGenerated, &record.CriterionWeight)
 	if decisionMakerID.Valid {
 		record.DecisionMakerID = &decisionMakerID.Int64
 	}
@@ -1203,7 +1205,7 @@ func (s *Server) handleGetRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Server-Timing", fmt.Sprintf("record-detail;dur=%.2f", float64(time.Since(startedAt).Microseconds())/1000))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"record": record, "sections": sections, "links": []RecordLink{}, "scores": []CriterionScore{},
+		"record": record, "sections": sections, "links": []RecordLink{}, "scores": []CriterionScore{}, "scoreDecisions": []CriterionDecision{},
 		"proofs": proofs, "questionWorkflow": workflow, "derivation": derivation, "relationsLoaded": false,
 	})
 }
@@ -1232,6 +1234,11 @@ func (s *Server) handleGetRecordRelations(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
+	decisions, err := s.listCriterionDecisions(r.Context(), record.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось загрузить принятые итоги")
+		return
+	}
 	researchOptions := make([]ResearchRelationOption, 0)
 	if record.Type == "research" {
 		var comparisonErr error
@@ -1242,10 +1249,11 @@ func (s *Server) handleGetRecordRelations(w http.ResponseWriter, r *http.Request
 		}
 	}
 	w.Header().Set("Server-Timing", fmt.Sprintf("record-relations;dur=%.2f", float64(time.Since(startedAt).Microseconds())/1000))
-	writeJSON(w, http.StatusOK, map[string]any{"links": links, "scores": scores, "researchOptions": researchOptions})
+	writeJSON(w, http.StatusOK, map[string]any{"links": links, "scores": scores, "scoreDecisions": decisions, "researchOptions": researchOptions})
 }
 
 type updateRecordRequest struct {
+	CriterionWeight    *float64              `json:"criterionWeight"`
 	Title              *string               `json:"title"`
 	Description        *string               `json:"description"`
 	Status             *string               `json:"status"`
@@ -1495,6 +1503,17 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 			changes["parentId"] = map[string]any{"before": before.ParentID, "after": nil}
 		}
 	}
+	if input.CriterionWeight != nil {
+		weight := *input.CriterionWeight
+		if before.Type != "criterion" || weight < 0 || weight > 100 {
+			writeError(w, http.StatusBadRequest, "Вес критерия должен быть от 0 до 100")
+			return
+		}
+		if weight != before.CriterionWeight {
+			add("criterion_weight", weight)
+			changes["criterionWeight"] = map[string]any{"before": before.CriterionWeight, "after": weight}
+		}
+	}
 	if input.EstimateMinutes != nil {
 		if before.Type == "decision" {
 			writeError(w, http.StatusBadRequest, "Решение не является работой и не имеет оценки времени")
@@ -1606,9 +1625,20 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET `+strings.Join(updates, ", ")+` WHERE id = ?`, args...); err != nil {
+	// Check the supplied version at the write, including concurrent weight edits.
+	versionClause := ""
+	if input.ExpectedUpdatedAt != nil {
+		versionClause = " AND updated_at = ?"
+		args = append(args, *input.ExpectedUpdatedAt)
+	}
+	result, err := tx.ExecContext(r.Context(), `UPDATE records SET `+strings.Join(updates, ", ")+` WHERE id = ?`+versionClause, args...)
+	if err != nil {
 		log.Printf("update record: %v", err)
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить карточку")
+		return
+	}
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		writeError(w, http.StatusConflict, "Карточка уже изменена. Обновите её и повторите правку")
 		return
 	}
 	user := currentUser(r)
@@ -2113,75 +2143,6 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request) {
 	}
 	links, _ := s.listLinks(r.Context(), record.ID)
 	writeJSON(w, http.StatusOK, links)
-}
-
-func (s *Server) listScores(ctx context.Context, recordID string) ([]CriterionScore, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT cs.id, cs.record_id, cs.criterion_id, c.title, cs.score, cs.note, cs.evaluated_by, u.username, cs.updated_at FROM criterion_scores cs JOIN records c ON c.id = cs.criterion_id JOIN users u ON u.id = cs.evaluated_by WHERE cs.record_id = ? ORDER BY c.title`, recordID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	scores := make([]CriterionScore, 0)
-	for rows.Next() {
-		var score CriterionScore
-		if err := rows.Scan(&score.ID, &score.RecordID, &score.CriterionID, &score.CriterionTitle, &score.Score, &score.Note, &score.EvaluatedBy, &score.EvaluatorUsername, &score.UpdatedAt); err != nil {
-			return nil, err
-		}
-		scores = append(scores, score)
-	}
-	return scores, rows.Err()
-}
-
-func (s *Server) handleScoreCriterion(w http.ResponseWriter, r *http.Request) {
-	record, err := s.getRecord(r.Context(), r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusNotFound, "Карточка не найдена")
-		return
-	}
-	if !s.requireRecordEdit(w, r, record) {
-		return
-	}
-	criterion, err := s.getRecord(r.Context(), r.PathValue("criterionId"))
-	if err != nil || criterion.Type != "criterion" {
-		writeError(w, http.StatusBadRequest, "Критерий не найден")
-		return
-	}
-	var input struct {
-		Score  int    `json:"score"`
-		Note   string `json:"note"`
-		Reason string `json:"reason"`
-	}
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if input.Score < 0 || input.Score > 10 {
-		writeError(w, http.StatusBadRequest, "Оценка должна быть от 0 до 10")
-		return
-	}
-	user := currentUser(r)
-	tx, err := s.store.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось начать оценку")
-		return
-	}
-	defer tx.Rollback()
-	now := nowText()
-	id, _ := newID()
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO criterion_scores(id, record_id, criterion_id, score, note, evaluated_by, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(record_id, criterion_id) DO UPDATE SET score = excluded.score, note = excluded.note, evaluated_by = excluded.evaluated_by, updated_at = excluded.updated_at`, id, record.ID, criterion.ID, input.Score, strings.TrimSpace(input.Note), user.ID, now, now)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось сохранить оценку")
-		return
-	}
-	if err := writeActivity(r.Context(), tx, user.ID, record.Type, record.ID, "criterion_scored", input.Reason, map[string]any{"criterionId": criterion.ID, "criterion": criterion.Title, "score": input.Score, "note": input.Note}); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось записать историю")
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось завершить оценку")
-		return
-	}
-	scores, _ := s.listScores(r.Context(), record.ID)
-	writeJSON(w, http.StatusOK, scores)
 }
 
 func (s *Server) listProofs(ctx context.Context, recordID string) ([]Proof, error) {

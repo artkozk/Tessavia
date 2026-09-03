@@ -380,6 +380,21 @@ dialog.dismiss-attention { animation: dialog-dismiss-attention .3s ease; }
 .inline-editor { display: grid; gap: 10px; padding: 14px; }
 .inline-editor .secondary { justify-self: start; }
 .criteria-list, .linked-list, .proof-list { display: grid; }
+.criterion-aggregate, .criterion-card { padding: 14px; min-width: 0; border-bottom: 1px solid var(--line); }
+.criterion-card { display: grid; gap: 12px; overflow-wrap: anywhere; }
+.criterion-card header, .criterion-metrics, .criterion-decision { display: grid; gap: 5px; }
+.criterion-card p, .criterion-aggregate p { margin: 4px 0; white-space: pre-wrap; font-size: 12px; }
+.criterion-metrics, .criterion-card small, .criterion-aggregate p { color: var(--muted); }
+.criterion-votes { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.criterion-personal-form, .criterion-decision-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.criterion-card label { display: grid; gap: 5px; min-width: 0; font-size: 12px; }
+.criterion-card input, .criterion-card textarea { min-width: 0; width: 100%; box-sizing: border-box; }
+.criterion-card input[type="number"] { max-width: 140px; }
+.criterion-card button { justify-self: start; max-width: 100%; white-space: normal; }
+.criterion-weight-form { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.criterion-decision { border-top: 1px solid var(--line); padding-top: 12px; }
+.criterion-decision-form { padding-top: 12px; }
+.criterion-review { font-weight: 600; }
 .criterion-form { display: grid; grid-template-columns: minmax(180px, 1fr) 70px minmax(160px, .8fr) auto; align-items: center; gap: 9px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .criterion-form > div { min-width: 0; display: grid; gap: 3px; }
 .linked-item { display: grid; grid-template-columns: 1fr 38px; border-bottom: 1px solid var(--line); }

@@ -5226,6 +5226,7 @@ async function fetchRecordDetail(id, force = false) {
     if (previous?.relationsLoaded && previous.record.updatedAt === detail.record.updatedAt) {
       detail.links = previous.links;
       detail.scores = previous.scores;
+      detail.scoreDecisions = previous.scoreDecisions || [];
       detail.researchOptions = previous.researchOptions || [];
       detail.relationsLoaded = true;
     }
@@ -5786,7 +5787,7 @@ function renderDecisionComposer(question, compact = false) {
 
 function renderRecordRelations(record, detail, criteria, targets) {
   const content = detail.relationsLoaded
-    ? `<section class="accordion-stack content-stack">${record.type === 'idea' ? renderCriteriaBlock(criteria, detail.scores, true) : ''}${record.type === 'research' ? renderResearchStructuralRelations(detail.researchOptions || []) : ''}${renderLinksBlock(record, detail.links, targets, true)}</section>`
+    ? `<section class="accordion-stack content-stack">${record.type === 'idea' ? renderCriteriaBlock(record, criteria, detail.scores, detail.scoreDecisions || [], true) : ''}${record.type === 'research' ? renderResearchStructuralRelations(detail.researchOptions || []) : ''}${renderLinksBlock(record, detail.links, targets, true)}</section>`
     : `<div class="relations-loading"><span class="spinner"></span><strong>Подготавливаем связи</strong><small>Основная карточка уже доступна, эта часть загружается отдельно.</small></div>`;
   return `<div class="record-pane ${state.activeRecordTab === 'relations' ? 'active' : ''}" data-record-pane="relations">${content}</div>`;
 }
@@ -5920,7 +5921,7 @@ function renderRecordDialog() {
 	const allLinkTargets = state.records
 		.filter((item) => item.id !== record.id && !linkedIDs.has(item.id) && (state.linkTargetIncludeInactive || isActiveRecord(item)))
 		.sort((left, right) => Number(right.workstream === record.workstream) - Number(left.workstream === record.workstream) || new Date(right.updatedAt) - new Date(left.updatedAt));
-  const criteria = state.records.filter((item) => item.type === 'criterion' && item.status !== 'archived');
+  const criteria = state.records.filter((item) => item.type === 'criterion');
   const activity = recordActivity(detail);
   const hasDeadline = ['task', 'goal', 'question_set', 'research', 'disagreement', 'meeting', 'risk', 'hypothesis', 'experiment'].includes(record.type);
   const canEdit = record.editPolicy !== 'owner_only' || record.ownerId === state.me.id || record.authorId === state.me.id;
@@ -5996,10 +5997,67 @@ function renderSection(section) {
   return `<details class="accordion"><summary><span>${escapeHTML(section.title)}</span><small>${section.content ? 'Заполнено' : 'Не заполнено'}</small></summary><form class="section-form inline-editor" data-section-id="${escapeHTML(section.id)}" data-definition-id="${escapeHTML(section.definitionId || '')}"><label>Название<input name="title" value="${escapeHTML(section.title)}" ${section.definitionId ? 'readonly' : ''}></label>${markdownEditor('content', 'Содержание', section.content, 7, 'Запишите факты, позиции и выводы', `section-${section.id || section.definitionId || 'new'}`)}<label>Причина изменения (необязательно)<input name="reason" placeholder="Что уточнили и почему"></label><button class="secondary" type="submit">Сохранить раздел</button></form></details>`;
 }
 
-function renderCriteriaBlock(criteria, scores, open = false) {
-  const scoreMap = new Map(scores.map((score) => [score.criterionId, score]));
-  const kindLabels = { preference: 'Критерий', limitation: 'Ограничение' };
-  return `<details class="accordion" ${open ? 'open' : ''}><summary><span>Оценка по критериям</span><small>${scores.length} оценок · 0 не подходит, 10 полностью подходит</small></summary><div class="criteria-list">${criteria.map((criterion) => { const current = scoreMap.get(criterion.id); return `<form class="criterion-form" data-criterion-id="${criterion.id}"><div><span class="criterion-kind">${kindLabels[criterion.kind] || 'Критерий'}</span><strong>${escapeHTML(criterion.title)}</strong><small>${escapeHTML(criterion.description)}</small></div><input name="score" type="number" min="0" max="10" value="${current?.score ?? 0}" aria-label="Оценка соответствия от 0 до 10"><input name="note" value="${escapeHTML(current?.note || '')}" placeholder="Почему такая оценка"><button class="secondary" type="submit">Оценить</button></form>`; }).join('') || emptyState('Сначала зафиксируйте критерии в разделе «Правила и критерии».')}</div></details>`;
+function criterionAggregate(criteria, scores) {
+  const groups = new Map();
+  for (const score of scores) {
+    if (!Number.isInteger(score.score) || score.score < 0 || score.score > 10) continue;
+    if (!groups.has(score.criterionId)) groups.set(score.criterionId, []);
+    groups.get(score.criterionId).push(score);
+  }
+  let numerator = 0, denominator = 0;
+  const rows = criteria.map((criterion) => {
+    const votes = groups.get(criterion.id) || [];
+    const mean = votes.length ? votes.reduce((total, vote) => total + vote.score, 0) / votes.length : null;
+    const weight = criterion.criterionWeight ?? 1;
+    if (criterion.status !== 'archived' && mean !== null && weight > 0) { numerator += mean * weight; denominator += weight; }
+    return { criterion, votes, mean, weight };
+  });
+  return { rows, value: denominator > 0 ? numerator / denominator : null };
+}
+
+function canEditCriterionRecord(record) {
+  return record.editPolicy !== 'owner_only' || record.ownerId === state.me.id || record.authorId === state.me.id;
+}
+
+function renderCriteriaBlock(record, criteria, scores, decisions = [], open = false) {
+  const aggregate = criterionAggregate(criteria, scores);
+  const decisionMap = new Map(decisions.map((decision) => [decision.criterionId, decision]));
+  const canEdit = canEditCriterionRecord(record);
+  const canDecide = canEdit && (record.ownerId === state.me.id || record.decisionMakerId === state.me.id);
+  const number = (value) => value === null ? 'Не оценено' : `${Number(value.toFixed(2)).toLocaleString('ru-RU')} / 10`;
+  const version = (name, value) => `<input type="hidden" name="${name}" value="${escapeHTML(value || '')}">`;
+  const cards = aggregate.rows.filter(({criterion, votes}) => criterion.status !== 'archived' || votes.length || decisionMap.has(criterion.id)).map(({criterion, votes, mean, weight}) => {
+    const own = votes.find((vote) => vote.evaluatedBy === state.me.id);
+    const decision = decisionMap.get(criterion.id);
+    const archived = criterion.status === 'archived';
+    return `<article class="criterion-card" data-criterion-card="${criterion.id}">
+      <header><span class="criterion-kind">${archived ? 'Архив · ' : ''}${criterion.kind === 'limitation' ? 'Ограничение' : 'Критерий'}</span><strong>${escapeHTML(criterion.title)}</strong><p>${escapeHTML(criterion.description)}</p></header>
+      <div class="criterion-metrics"><span>Средняя личных оценок: <strong>${number(mean)}</strong></span><span>Участников: ${votes.length} · Вес: ${weight}${weight === 0 || archived ? ' · не входит в общий показатель' : ''}</span></div>
+      ${canEditCriterionRecord(criterion) && !archived ? `<form class="criterion-weight-form" data-criterion-id="${criterion.id}">${version('expectedUpdatedAt', criterion.updatedAt)}<label>Вес критерия<input name="criterionWeight" type="number" min="0" max="100" step="any" required value="${weight}"></label><button type="submit" class="text-button">Сохранить вес</button></form>` : ''}
+      <ul class="criterion-votes">${votes.map((vote) => `<li><strong>${escapeHTML(vote.evaluatorUsername)}${vote.evaluatedBy === state.me.id ? ' · вы' : ''}: ${vote.score} / 10</strong><p>${escapeHTML(vote.note || 'Обоснование не было указано')}</p></li>`).join('') || '<li>Личных оценок пока нет.</li>'}</ul>
+      ${canEdit && !archived ? `<form class="criterion-personal-form" data-criterion-id="${criterion.id}">${version('expectedUpdatedAt', own?.updatedAt)}<label>Ваша оценка<input name="score" type="number" min="0" max="10" step="1" required value="${own?.score ?? ''}" placeholder="Не оценено"></label><label>Обоснование<textarea name="note" rows="2" required maxlength="20000" placeholder="Почему такая оценка">${escapeHTML(own?.note || '')}</textarea></label><button class="secondary" type="submit">Сохранить свою оценку</button></form>` : ''}
+      ${canEdit && own ? `<button type="button" class="text-button" data-withdraw-score="${criterion.id}" data-score-version="${escapeHTML(own.updatedAt)}">Снять свою оценку</button>` : ''}
+      <section class="criterion-decision"><strong>Принятый итог: ${decision ? number(decision.score) : 'не утверждён'}</strong>${decision ? `<small>Утвердил ${escapeHTML(decision.deciderUsername)} · ${formatDate(decision.updatedAt, true)}</small><p>${escapeHTML(decision.reason)}</p>${decision.needsReview ? '<p class="criterion-review">После утверждения изменились оценки или критерий. Итог требует пересмотра.</p>' : ''}` : '<p>Итог фиксирует ответственный или назначенный принимающий решение.</p>'}
+      ${canDecide && !archived ? `<details><summary>${decision ? 'Пересмотреть итог' : 'Утвердить итог'}</summary><form class="criterion-decision-form" data-criterion-id="${criterion.id}">${version('expectedUpdatedAt', decision?.updatedAt)}${version('expectedRecordUpdatedAt', record.updatedAt)}${version('expectedCriterionUpdatedAt', criterion.updatedAt)}<label>Итоговая оценка<input name="score" type="number" min="0" max="10" step="1" required value="${decision?.score ?? ''}" placeholder="Не утверждено"></label><label>Основание решения<textarea name="reason" rows="2" required maxlength="20000">${escapeHTML(decision?.reason || '')}</textarea></label><button class="secondary" type="submit">Утвердить итог</button></form></details>` : ''}</section>
+    </article>`;
+  }).join('');
+  return `<details class="accordion" ${open ? 'open' : ''}><summary><span>Оценка по критериям</span><small>Личных оценок: ${scores.length} · 0 не подходит, 10 полностью подходит</small></summary><div class="criterion-aggregate"><strong>Общий показатель: ${number(aggregate.value)}</strong><p>Сумма (средняя личных оценок × вес) ÷ сумма весов оценённых активных критериев. Неоценённые критерии и вес 0 исключены. Принятые итоги показаны отдельно.</p></div><div class="criteria-list">${cards || emptyState('Сначала зафиксируйте критерии в разделе «Правила и критерии».')}</div></details>`;
+}
+
+async function submitCriterionForm(form, path, body, method = 'PUT') {
+  if (form.dataset.saving === 'true') return;
+  form.dataset.saving = 'true';
+  const buttons = $$('button[type="submit"]', form);
+  const fields = $$('input:not([type="hidden"]), textarea', form).map((field) => ({ field, readOnly: field.readOnly }));
+  buttons.forEach((button) => { button.disabled = true; });
+  fields.forEach(({ field }) => { field.readOnly = true; });
+  try {
+    await mutateDetail(path, { method, body: JSON.stringify(body) }, () => clearWorkingDraftFor(form));
+  } finally {
+    delete form.dataset.saving;
+    buttons.forEach((button) => { button.disabled = false; });
+    fields.forEach(({ field, readOnly }) => { field.readOnly = readOnly; });
+  }
 }
 
 function renderLinksBlock(record, links, targets, open = false) {
@@ -6324,7 +6382,22 @@ function bindRecordDialogEvents() {
     if (!reason) return;
     await mutateResearchComparison(record.id, `/api/records/${record.id}/research-fields/${button.dataset.archiveResearchField}/archive`, { method: 'POST', body: JSON.stringify({ reason }) }, 'Поле сравнения архивировано');
   }));
-  $$('.criterion-form').forEach((formNode) => formNode.addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); await mutateDetail(`/api/records/${record.id}/criteria/${event.currentTarget.dataset.criterionId}`, { method: 'PUT', body: JSON.stringify({ score: Number(form.get('score')), note: form.get('note'), reason: '' }) }); }));
+  $$('.criterion-personal-form, .criterion-decision-form, .criterion-weight-form').forEach((formNode) => formNode.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget, values = Object.fromEntries(new FormData(form));
+    const criterionID = form.dataset.criterionId;
+    if (form.classList.contains('criterion-weight-form')) {
+      await submitCriterionForm(form, `/api/records/${criterionID}`, { criterionWeight: Number(values.criterionWeight), expectedUpdatedAt: values.expectedUpdatedAt, reason: 'Уточнён вес критерия в оценке' }, 'PATCH');
+    } else {
+      const decision = form.classList.contains('criterion-decision-form');
+      await submitCriterionForm(form, `/api/records/${record.id}/criteria/${criterionID}${decision ? '/decision' : ''}`, { ...values, score: Number(values.score) });
+    }
+  }));
+  $$('[data-withdraw-score]').forEach((button) => button.addEventListener('click', async () => {
+    const reason = await askText({ title: 'Снять свою оценку', label: 'Почему оценка больше не актуальна?', required: true });
+    if (!reason) return;
+    await mutateDetail(`/api/records/${record.id}/criteria/${button.dataset.withdrawScore}`, { method: 'DELETE', body: JSON.stringify({ expectedUpdatedAt: button.dataset.scoreVersion, reason }) });
+  }));
   $('#link-form')?.addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); await mutateDetail(`/api/records/${record.id}/links`, { method: 'POST', body: JSON.stringify({ targetId: form.get('targetId'), relationType: form.get('relationType') }) }); });
 	$('[data-link-target-scope]')?.addEventListener('click', () => { state.linkTargetIncludeInactive = !state.linkTargetIncludeInactive; renderRecordDialog(); });
 	$('#link-target-search')?.addEventListener('input', (event) => {
@@ -6498,6 +6571,7 @@ function bindRecordDialogEvents() {
 }
 
 function bindRecordWorkingDrafts(recordID) {
+  $$('.criterion-personal-form, .criterion-decision-form, .criterion-weight-form').forEach((form) => bindWorkingDraft(form, `record:${recordID}:${form.className}:${form.dataset.criterionId}`));
   $$('.section-form').forEach((form) => bindWorkingDraft(form, `record:${recordID}:section:${form.dataset.sectionId || form.dataset.definitionId || 'new'}`));
   bindWorkingDraft($('#custom-section-form'), `record:${recordID}:section:custom`);
   bindWorkingDraft($('#research-option-form'), `record:${recordID}:research-option:${$('#research-option-form')?.dataset.optionId || 'new'}`);
@@ -6652,22 +6726,29 @@ function openQuestionOutputDialog(sourceRecord, question, kind, defaultTitle, pr
   openModal($('#create-dialog'));
 }
 
-async function mutateDetail(path, options) {
+async function mutateDetail(path, options, onSaved) {
+  const recordID = state.activeDetail.record.id;
+  const accountID = state.me.id, workspaceID = state.activeWorkspaceId, requestID = state.activeRecordRequest;
+  const sameWorkspace = () => state.me?.id === accountID && state.activeWorkspaceId === workspaceID;
+  const sameCard = () => sameWorkspace() && state.activeRecordRequest === requestID && state.activeDetail?.record.id === recordID;
   try {
-    const recordID = state.activeDetail.record.id;
-    await api(path, options);
+    await api(path, { ...options, headers: { ...options?.headers, 'X-Workspace-ID': workspaceID } });
+    if (!sameWorkspace()) return true;
+    onSaved?.();
     state.detailCache.delete(recordID);
     const [detail] = await Promise.all([fetchRecordDetail(recordID, true), syncProjectChanges()]);
+    if (!sameCard()) return true;
     state.activeDetail = detail;
     if (state.activeRecordTab === 'relations') {
-      const relations = await api(`/api/records/${recordID}/relations`);
+      const relations = await api(`/api/records/${recordID}/relations`, { headers: { 'X-Workspace-ID': workspaceID } });
+      if (!sameCard()) return true;
       state.activeDetail = { ...state.activeDetail, ...relations, relationsLoaded: true };
       state.detailCache.set(recordID, state.activeDetail);
     }
     renderRecordDialog();
     toast('Сохранено');
     return true;
-  } catch (error) { toast(error.message, true); return false; }
+  } catch (error) { if (sameCard()) toast(error.message, true); return false; }
 }
 
 async function mutateRecord(path, options, close = false, clearDraftOnSuccess = false) {
@@ -6836,7 +6917,7 @@ function bindCreateSuggestion(form, recordType) {
 }
 
 function actionLabel(action) {
-  return ({ created: 'создал карточку', profile_updated: 'изменил профиль', avatar_updated: 'обновил фото профиля', avatar_removed: 'удалил фото профиля', capacity_updated: 'изменил доступное время', planning_cycle_created: 'начал 12-недельный цикл', planning_cycle_updated: 'изменил 12-недельный цикл', planning_cycle_replaced: 'заменил 12-недельный цикл', updated: 'изменил карточку', triaged: 'разобрал входящее', business_details_updated: 'обновил контрольные поля', change_undone: 'отменил ошибочное изменение', reordered: 'изменил порядок блоков', converted_to_questions: 'преобразовал в карточку вопросов', archived: 'перенёс в архив', section_updated: 'обновил раздел', link_created: 'создал связь', link_removed: 'убрал связь', criterion_scored: 'оценил по критерию', proof_added: 'добавил доказательство', completed: 'завершил задачу', partners_notified: 'уведомил партнёра', questions_added: 'добавил вопросы', question_answered: 'ответил на вопрос', question_decided: 'зафиксировал совместное решение', question_archived: 'архивировал вопрос', output_created: 'превратил вывод в рабочую карточку', created_from_question: 'создал карточку из совместного вывода', research_option_created: 'добавил вариант исследования', research_option_updated: 'обновил вариант исследования', research_option_archived: 'архивировал вариант исследования', research_field_created: 'добавил поле сравнения', research_field_archived: 'архивировал поле сравнения', comment_added: 'добавил комментарий', checklist_added: 'добавил шаг', checklist_updated: 'обновил шаг', review_submitted: 'отправил результат на проверку', review_accepted: 'принял результат', review_rework: 'вернул задачу на доработку', attachment_added: 'приложил файл', recurrence_created: 'создал следующее повторение', recurrence_updated: 'изменил повторение' }[action] || action);
+  return ({ created: 'создал карточку', profile_updated: 'изменил профиль', avatar_updated: 'обновил фото профиля', avatar_removed: 'удалил фото профиля', capacity_updated: 'изменил доступное время', planning_cycle_created: 'начал 12-недельный цикл', planning_cycle_updated: 'изменил 12-недельный цикл', planning_cycle_replaced: 'заменил 12-недельный цикл', updated: 'изменил карточку', triaged: 'разобрал входящее', business_details_updated: 'обновил контрольные поля', change_undone: 'отменил ошибочное изменение', reordered: 'изменил порядок блоков', converted_to_questions: 'преобразовал в карточку вопросов', archived: 'перенёс в архив', section_updated: 'обновил раздел', link_created: 'создал связь', link_removed: 'убрал связь', criterion_scored: 'сохранил личную оценку', criterion_score_withdrawn: 'снял личную оценку', criterion_decision_updated: 'утвердил итог по критерию', proof_added: 'добавил доказательство', completed: 'завершил задачу', partners_notified: 'уведомил партнёра', questions_added: 'добавил вопросы', question_answered: 'ответил на вопрос', question_decided: 'зафиксировал совместное решение', question_archived: 'архивировал вопрос', output_created: 'превратил вывод в рабочую карточку', created_from_question: 'создал карточку из совместного вывода', research_option_created: 'добавил вариант исследования', research_option_updated: 'обновил вариант исследования', research_option_archived: 'архивировал вариант исследования', research_field_created: 'добавил поле сравнения', research_field_archived: 'архивировал поле сравнения', comment_added: 'добавил комментарий', checklist_added: 'добавил шаг', checklist_updated: 'обновил шаг', review_submitted: 'отправил результат на проверку', review_accepted: 'принял результат', review_rework: 'вернул задачу на доработку', attachment_added: 'приложил файл', recurrence_created: 'создал следующее повторение', recurrence_updated: 'изменил повторение' }[action] || action);
 }
 
 function activityActionLabel(item) {
@@ -6869,7 +6950,7 @@ function activityDisplayValue(field, value, truncate = true) {
 }
 
 function activityChanges(item, full = false) {
-  const fieldLabels = { username: 'Логин', type: 'Тип карточки', title: 'Название', description: 'Описание', status: 'Статус', ownerId: 'Ответственный', decisionMakerId: 'Принимает решение', dueAt: 'Срок', priority: 'Приоритет', workstream: 'Направление', editPolicy: 'Доступ', parentId: 'Родитель', isRoot: 'Иерархия', estimateMinutes: 'Оценка времени', actualMinutes: 'Фактическое время', progress: 'Прогресс', progressNote: 'Ход работы', result: 'Результат', summaryMd: 'Краткий вывод', prosMd: 'Плюсы', consMd: 'Минусы', notesMd: 'Заметки', rating: 'Оценка' };
+  const fieldLabels = { criterionWeight: 'Вес критерия', username: 'Логин', type: 'Тип карточки', title: 'Название', description: 'Описание', status: 'Статус', ownerId: 'Ответственный', decisionMakerId: 'Принимает решение', dueAt: 'Срок', priority: 'Приоритет', workstream: 'Направление', editPolicy: 'Доступ', parentId: 'Родитель', isRoot: 'Иерархия', estimateMinutes: 'Оценка времени', actualMinutes: 'Фактическое время', progress: 'Прогресс', progressNote: 'Ход работы', result: 'Результат', summaryMd: 'Краткий вывод', prosMd: 'Плюсы', consMd: 'Минусы', notesMd: 'Заметки', rating: 'Оценка' };
   const changes = Object.entries(item.details || {}).filter(([field, value]) => value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'before') && Object.prototype.hasOwnProperty.call(value, 'after') && activityDisplayValue(field, value.before, false) !== activityDisplayValue(field, value.after, false));
   if (!changes.length && Object.prototype.hasOwnProperty.call(item.details || {}, 'before') && Object.prototype.hasOwnProperty.call(item.details || {}, 'after')) {
     changes.push([item.details?.section || 'Содержание', { before: item.details.before, after: item.details.after }]);
@@ -6887,8 +6968,9 @@ function activityDetails(item) {
   if (item.action === 'questions_added' && details.count) rows.push(['Добавлено вопросов', String(details.count)]);
   if (['link_created', 'link_removed'].includes(item.action) && target) rows.push(['Связанная карточка', `${typeMeta[target.type]?.singular || 'Карточка'} «${target.title}»`]);
   if (['link_created', 'link_removed'].includes(item.action) && details.relationType) rows.push(['Характер связи', relationLabels[details.relationType] || details.relationType]);
-  if (item.action === 'criterion_scored' && details.score !== undefined) rows.push(['Оценка', `${details.score} из 10`]);
+  if (['criterion_scored', 'criterion_decision_updated'].includes(item.action) && details.score !== undefined) rows.push(['Оценка', `${details.score} из 10`]);
   if (item.action === 'criterion_scored' && details.note) rows.push(['Обоснование', details.note]);
+  if (item.action === 'criterion_score_withdrawn' && details.before) rows.push(['Снятая оценка', `${details.before.score} / 10 · ${details.before.note || 'Без обоснования'}`]);
   if (item.action === 'proof_added') rows.push(['Подтверждение', details.kind === 'link' ? 'Ссылка' : 'Текстовый результат']);
   if (item.action === 'completed' && details.result) rows.push(['Полученный результат', details.result]);
   if (item.action === 'partners_notified' && details.message) rows.push(['Сообщение партнёру', details.message]);

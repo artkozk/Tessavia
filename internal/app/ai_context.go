@@ -163,11 +163,23 @@ func (s *Server) buildAIRecordContext(ctx context.Context, record Record) (map[s
 	for _, score := range scores {
 		scoreContext = append(scoreContext, map[string]any{
 			"criterionId": score.CriterionID, "criterion": budget.take(score.CriterionTitle),
-			"score": score.Score, "note": budget.take(score.Note), "evaluatedBy": score.EvaluatorUsername,
+			"score": score.Score, "note": budget.take(score.Note), "evaluatedBy": score.EvaluatorUsername, "weight": score.CriterionWeight,
 		})
 	}
 	coverage.CriterionScores = len(scoreContext)
 	dossier["criterionScores"] = scoreContext
+	decisions, err := s.listCriterionDecisions(ctx, record.ID)
+	if err != nil {
+		return nil, coverage, err
+	}
+	decisionContext := make([]map[string]any, 0, len(decisions))
+	for _, decision := range decisions {
+		decisionContext = append(decisionContext, map[string]any{
+			"criterionId": decision.CriterionID, "score": decision.Score, "reason": budget.take(decision.Reason),
+			"decidedBy": decision.DeciderUsername, "needsReview": decision.NeedsReview,
+		})
+	}
+	dossier["criterionDecisions"] = decisionContext
 
 	if record.Type == "question_set" {
 		workflow, loadErr := s.listQuestionWorkflow(ctx, record.ID)

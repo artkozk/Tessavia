@@ -38,6 +38,7 @@ type User struct {
 }
 
 type Record struct {
+	CriterionWeight   float64                `json:"criterionWeight"`
 	TitleGenerated    bool                   `json:"titleGenerated"`
 	ID                string                 `json:"id"`
 	WorkspaceID       string                 `json:"workspaceId"`
@@ -145,15 +146,27 @@ type RecordDerivation struct {
 }
 
 type CriterionScore struct {
-	ID                string `json:"id"`
-	RecordID          string `json:"recordId"`
-	CriterionID       string `json:"criterionId"`
-	CriterionTitle    string `json:"criterionTitle"`
-	Score             int    `json:"score"`
-	Note              string `json:"note"`
-	EvaluatedBy       int64  `json:"evaluatedBy"`
-	EvaluatorUsername string `json:"evaluatorUsername"`
-	UpdatedAt         string `json:"updatedAt"`
+	CriterionWeight   float64 `json:"criterionWeight"`
+	ID                string  `json:"id"`
+	RecordID          string  `json:"recordId"`
+	CriterionID       string  `json:"criterionId"`
+	CriterionTitle    string  `json:"criterionTitle"`
+	Score             int     `json:"score"`
+	Note              string  `json:"note"`
+	EvaluatedBy       int64   `json:"evaluatedBy"`
+	EvaluatorUsername string  `json:"evaluatorUsername"`
+	UpdatedAt         string  `json:"updatedAt"`
+}
+
+type CriterionDecision struct {
+	RecordID        string `json:"recordId"`
+	CriterionID     string `json:"criterionId"`
+	Score           int    `json:"score"`
+	Reason          string `json:"reason"`
+	DecidedBy       int64  `json:"decidedBy"`
+	DeciderUsername string `json:"deciderUsername"`
+	UpdatedAt       string `json:"updatedAt"`
+	NeedsReview     bool   `json:"needsReview"`
 }
 
 type Proof struct {

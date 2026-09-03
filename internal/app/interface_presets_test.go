@@ -134,7 +134,7 @@ func TestInterfacePresetsPublishApplyAndUndoWithoutProjectData(t *testing.T) {
 		Tables        map[string][]map[string]any `json:"tables"`
 	}
 	requestWorkspaceJSON(t, ownerClient, http.MethodGet, server.URL+"/api/export", source.ID, nil, http.StatusOK, &exported)
-	if exported.SchemaVersion != 15 || len(exported.Tables["myInterfacePresets"]) != 1 {
+	if exported.SchemaVersion != 16 || len(exported.Tables["myInterfacePresets"]) != 1 {
 		t.Fatal("owned presets missing from account export")
 	}
 	requestWorkspaceJSON(t, recipientClient, http.MethodGet, server.URL+"/api/export", target.ID, nil, http.StatusOK, &exported)
