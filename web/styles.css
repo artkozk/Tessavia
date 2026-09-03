@@ -1333,8 +1333,8 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   .work-create { width: 100%; }
   .work-create button { flex: 1; }
   .work-controls { gap: 9px; }
-  .work-scope { width: 100%; }
-  .work-scope .segment { flex: 1 1 auto; }
+  .work-scope { width: max-content; max-width: 100%; }
+  .work-scope .segment { flex: 0 0 auto; }
   .work-search { width: 100%; min-width: 0; }
   .work-type-tabs { margin: 0 -14px; padding: 0 14px; }
   .work-row { gap: 9px; padding: 14px 4px; }
@@ -1619,6 +1619,7 @@ dialog, .dialog-header, .dialog-layout, .record-tabs { background: var(--surface
 
 .work-controls { min-height: 74px; display: grid; grid-template-columns: auto minmax(260px, 1fr) auto; gap: 12px; padding: 14px 0; }
 .work-search { width: 100%; }
+.work-scope { width: max-content; max-width: 100%; justify-self: start; }
 .work-scope .segment { min-width: 0; white-space: normal; }
 .work-search input { min-height: 42px; }
 .work-filter-menu > summary { min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 8px 12px; }
@@ -1719,9 +1720,9 @@ dialog, .dialog-header, .dialog-layout, .record-tabs { background: var(--surface
   .work-create-menu > summary { width: 100%; justify-content: center; }
   .work-create-menu > div { left: 0; right: 0; width: auto; }
   .work-controls { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
-  .work-scope { order: 0; grid-column: 1 / -1; width: 100%; }
+  .work-scope { order: 0; grid-column: 1 / -1; width: max-content; max-width: 100%; }
   .work-search, .work-filter-menu { order: 0; }
-  .work-scope .segment { flex: 1 1 auto; }
+  .work-scope .segment { flex: 0 0 auto; }
   .work-filter-popover { position: fixed; left: 14px; right: 14px; top: 72px; z-index: 122; width: auto; max-height: calc(100dvh - 88px); overflow-y: auto; }
   .work-filter-backdrop { position: fixed; inset: 0; z-index: 121; display: block; border: 0; background: rgba(20,28,24,.34); backdrop-filter: blur(3px); }
   .work-view-summary { align-items: flex-start; flex-direction: column; gap: 4px; padding: 10px 0; }
