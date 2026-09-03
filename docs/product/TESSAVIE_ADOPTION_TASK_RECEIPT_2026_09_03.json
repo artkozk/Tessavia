@@ -1,0 +1,157 @@
+{
+  "verifiedAt": "2026-09-03T10:45:00Z",
+  "workspace": "bizflow-team",
+  "initialSync": {
+    "updated": 17,
+    "created": 4
+  },
+  "repeatSync": [
+    {
+      "key": "onboarding",
+      "id": "54f7cd0225c5ef0f5eba56e3ffb71e51",
+      "title": "Сделать понятный первый запуск и контекстные подсказки",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "pagination",
+      "id": "7576b830735c5b225f7242c2ead9be7e",
+      "title": "Убрать скрытый предел 500 карточек и добавить пагинацию",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "scores",
+      "id": "aa7c0389686c6955947685f0092396d5",
+      "title": "Сохранить персональные оценки критериев без перезаписи партнёра",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "recovery",
+      "id": "a9020000000000000000000000000002",
+      "title": "Подключить доставку кодов и восстановление доступа",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "restore",
+      "id": "a884188bdc07d57ebe3c48987d208815",
+      "title": "Добавить центр сохранности данных и проверяемое восстановление",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "offline",
+      "id": "3d9a860505030ea14061633f22b115fd",
+      "title": "Сохранять новые записи без сети и безопасно синхронизировать",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "reminders",
+      "id": "a57de109f2d1876d30dd9135627657a8",
+      "title": "Настроить напоминания, тихие часы и сводки",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "recurrence",
+      "id": "1aba51a72a4aa853e3ca13d3fd1201b0",
+      "title": "Добавить личные проекты, цели и повторяющиеся планы",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "notes",
+      "id": "55f55a231e05ee5e2653b8b902be5aba",
+      "title": "Добавить папки, метки, дневные заметки и шаблоны",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "personal-search",
+      "id": "cf8fd7f89027490aceec013d3f10cb3c",
+      "title": "Отделить личную навигацию и поиск от выбранного проекта",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "client",
+      "id": "e09e2ec9360709f8c2f8c9723d246267",
+      "title": "Сверить и завершить перенос данных первого клиента",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "import",
+      "id": "de6d721308310a2b8c39b45c1759bcc9",
+      "title": "Добавить безопасный импорт с сопоставлением полей",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "private-access",
+      "id": "661f3fd2756a25945b39e4146bbfd716",
+      "title": "Закрепить сквозную приватность личного пространства",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "ai-context",
+      "id": "f631148fd434fea24cb8f449ba7e47a6",
+      "title": "Показывать и настраивать контекст AI-запроса",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "context",
+      "id": "69cbb0883d66dd8a85d416bed1b6c3ca",
+      "title": "Показывать причинную цепочку и следующий шаг прямо в карточке",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "actions",
+      "id": "367c7dcd4dc87dc1847ae53dd5f56d0c",
+      "title": "Проверить путь от вопроса и исследования до решения и правил",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "today",
+      "id": "cf22d3a3a52d33eef11e8118a232d9a4",
+      "title": "Довести личный экран Сегодня и личные напоминания",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "personal-adoption",
+      "id": "f4da04b313e80415cab1a2ef30959a3a",
+      "title": "Проверить добровольный переход сотрудника к личному использованию",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "payment-policy",
+      "id": "d10a743912eaaf775b58205523d3a8e4",
+      "title": "Определить личные и командные права оплаты без двойного списания",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "repeatable-pilot",
+      "id": "2c99ab798d2a061c693836f225eaea8d",
+      "title": "Проверить полезность пилота и повторяемое внедрение у похожих команд",
+      "action": "unchanged",
+      "status": "planned"
+    },
+    {
+      "key": "inbox-notebook",
+      "id": "3dd58f8cffea6504454b4f7f99bb9bc8",
+      "title": "Сделать проектное входящее единым листом как заметка",
+      "action": "unchanged",
+      "status": "completed"
+    }
+  ]
+}
