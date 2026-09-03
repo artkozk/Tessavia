@@ -138,6 +138,7 @@ func (s *Server) routes() {
 	s.mux.Handle("PUT /api/personal/habits/{id}/checkins/{date}", s.requireAuth(http.HandlerFunc(s.handleSetHabitCheckin)))
 	s.mux.Handle("DELETE /api/personal/habits/{id}/checkins/{date}", s.requireAuth(http.HandlerFunc(s.handleDeleteHabitCheckin)))
 	s.mux.Handle("GET /api/personal/suggestions", s.requireAuth(http.HandlerFunc(s.handlePersonalSuggestions)))
+	s.mux.Handle("GET /api/personal/search", s.requireAuth(http.HandlerFunc(s.handlePersonalSearch)))
 	s.mux.Handle("POST /api/personal/links", s.requireAuth(http.HandlerFunc(s.handleCreatePersonalLink)))
 	s.mux.Handle("DELETE /api/personal/links/{id}", s.requireAuth(http.HandlerFunc(s.handleRemovePersonalLink)))
 	s.mux.Handle("PUT /api/users/{id}/capacity", s.requireAuth(http.HandlerFunc(s.handleUpdateUserCapacity)))

@@ -1845,26 +1845,37 @@ async function sendPresence() {
 async function runGlobalSearch(query) {
   const request = state.globalSearchRequest = (state.globalSearchRequest || 0) + 1;
   const context = captureProjectContext();
-  const current = () => request === state.globalSearchRequest && isProjectContextCurrent(context) && $('#global-search-input').value.trim() === normalized;
-  const resultsNode = $('#global-search-results');
+  const personal = state.workspaces?.find(workspace=>workspace.id===state.activeWorkspaceId)?.kind === 'personal';
   const normalized = query.trim();
+  const current = () => request === state.globalSearchRequest && isProjectContextCurrent(context) && personal === (state.workspaces?.find(workspace=>workspace.id===state.activeWorkspaceId)?.kind === 'personal') && $('#global-search-input').value.trim() === normalized;
+  const resultsNode = $('#global-search-results');
   if (!normalized) { resultsNode.hidden = true; resultsNode.innerHTML = ''; return; }
   resultsNode.hidden = false;
-  resultsNode.innerHTML = `<div class="search-loading"><span class="spinner"></span> Ищем во всём проекте</div>`;
+  resultsNode.innerHTML = `<div class="search-loading"><span class="spinner"></span> ${personal ? 'Ищем в личном пространстве' : 'Ищем во всём проекте'}</div>`;
   try {
-    const results = await api(`/api/search?q=${encodeURIComponent(normalized)}`);
+    const results = await api(`${personal ? '/api/personal/search' : '/api/search'}?q=${encodeURIComponent(normalized)}`);
     if (!current()) return;
-    resultsNode.innerHTML = results.length ? results.map(renderSearchResult).join('') : `<div class="search-empty">Ничего не найдено</div>`;
-    $$('[data-search-result]', resultsNode).forEach((button) => button.addEventListener('click', async () => {
+    resultsNode.innerHTML = results.length ? results.map(personal ? renderPersonalSearchResult : renderSearchResult).join('') : `<div class="search-empty">Ничего не найдено</div>`;
+    $$('[data-search-result]', resultsNode).forEach(button => button.addEventListener('click', async () => {
       if (!current()) return;
       closeGlobalSearch({ clear: true });
+      if (button.dataset.personalId) {
+        await loadPersonal();
+        if (!isProjectContextCurrent(context)) return;
+        if (button.dataset.personalType === 'plan') openPersonalPlanDetails(button.dataset.personalId);
+        else openPersonalEditor(button.dataset.personalType,button.dataset.personalId);
+        return;
+      }
       const tab = button.dataset.targetTab || (button.dataset.researchOptionId ? 'content' : button.dataset.questionId ? 'questions' : 'overview');
       await openRecord(button.dataset.recordId, { tab, questionId: button.dataset.questionId, workspace: $('#record-dialog').open });
     }));
-  } catch (error) {
-    if (!current()) return;
-    resultsNode.innerHTML = `<div class="search-empty">${escapeHTML(error.message)}</div>`;
-  }
+  } catch (error) { if (current()) resultsNode.innerHTML = `<div class="search-empty">${escapeHTML(error.message)}</div>`; }
+}
+
+function renderPersonalSearchResult(result) {
+  const labels={note:'Заметка',plan:'План',habit:'Привычка'},icons={note:'edit',plan:'calendar',habit:'checkSquare'};
+  const context=markdownPlain(result.context||'','').replace(/\s+/g,' ').trim();
+  return `<button type="button" class="global-search-result" data-search-result="${escapeHTML(result.id)}" data-personal-id="${escapeHTML(result.id)}" data-personal-type="${escapeHTML(result.type)}"><span class="type-icon">${icon(icons[result.type]||'fileText')}</span><span><small>${labels[result.type]||'Личная запись'} · Только для вас</small><strong>${escapeHTML(result.title)}</strong>${context?`<em>${escapeHTML(context.slice(0,150))}${context.length>150?'…':''}</em>`:''}</span>${icon('chevronRight')}</button>`;
 }
 
 function renderSearchResult(result) {
@@ -1977,6 +1988,7 @@ function renderWorkspaceControl() {
 	const root = $('#workspace-control');
 	if (!root) return;
 	const projects = state.workspaces.filter((workspace) => workspace.kind === 'team');
+  const personalWorkspace = state.workspaces.find(workspace => workspace.kind === 'personal');
 	const current = activeWorkspace();
 	const grouped = new Map((state.teams || []).filter(team => !team.deletedAt).map(team => [team.id, { ...team, projects: [] }]));
 	projects.forEach((project) => {
@@ -1989,8 +2001,10 @@ function renderWorkspaceControl() {
 	const projectName = personal ? 'Личное пространство' : current?.name || 'Выбрать проект';
 	const contextLabel = personal ? 'Только вы' : '';
 	const switcherTitle = `${projectName}${personal ? ` · ${contextLabel}` : current ? ` · ${roleLabel}` : ''}. Сменить проект`;
+  const personalOption = personalWorkspace ? `<button type="button" class="workspace-personal-option ${personalWorkspace.id === state.activeWorkspaceId ? 'active' : ''}" data-switch-personal="${personalWorkspace.id}" aria-current="${personalWorkspace.id === state.activeWorkspaceId ? 'page' : 'false'}"><span>${icon(personalWorkspace.id === state.activeWorkspaceId ? 'check' : 'lock')}</span><span><strong>Личное пространство</strong><small>Только вы · независимо от команд</small></span></button>` : '';
 	const teamGroups = [...grouped.values()].map((team) => `<section class="workspace-team-group"><header><span><strong>${escapeHTML(team.name)}</strong><small>${team.projects.length} ${team.projects.length === 1 ? 'проект' : 'проекта'}</small></span><button type="button" class="icon-button" data-team-settings="${team.id}" title="Команда и участие" aria-label="Открыть команду ${escapeHTML(team.name)}">${icon('settings')}</button></header>${team.projects.map((project) => `<button type="button" class="${project.id === state.activeWorkspaceId ? 'active' : ''}" data-switch-workspace="${project.id}" aria-current="${project.id === state.activeWorkspaceId ? 'page' : 'false'}" title="${escapeHTML(project.name)}"><span>${icon(project.id === state.activeWorkspaceId ? 'check' : 'network')}</span><span><strong>${escapeHTML(project.name)}</strong><small>${escapeHTML(project.description || 'Проект команды')}</small></span></button>`).join('')}</section>`).join('');
-	root.innerHTML = `<details class="workspace-switcher"><summary title="${escapeHTML(switcherTitle)}" aria-label="${escapeHTML(`${projectName}. Сменить проект`)}"><span>${icon(personal ? 'lock' : 'network')}</span><span><strong>${escapeHTML(projectName)}</strong>${personal ? `<small>${escapeHTML(contextLabel)}</small>` : ''}</span>${icon('chevronRight')}</summary><div>${teamGroups || '<p class="workspace-switcher-empty">Командных проектов пока нет.</p>'}<button type="button" data-join-workspace>${icon('link')}<span><strong>Ввести код приглашения</strong><small>Присоединиться к команде</small></span></button><button type="button" data-create-workspace>${icon('plus')}<span><strong>Новая команда</strong><small>Команда и её первый проект</small></span></button></div></details>`;
+	root.innerHTML = `<details class="workspace-switcher"><summary title="${escapeHTML(switcherTitle)}" aria-label="${escapeHTML(`${projectName}. Сменить проект`)}"><span>${icon(personal ? 'lock' : 'network')}</span><span><strong>${escapeHTML(projectName)}</strong>${personal ? `<small>${escapeHTML(contextLabel)}</small>` : ''}</span>${icon('chevronRight')}</summary><div>${personalOption}${teamGroups || '<p class="workspace-switcher-empty">Командных проектов пока нет.</p>'}<button type="button" data-join-workspace>${icon('link')}<span><strong>Ввести код приглашения</strong><small>Присоединиться к команде</small></span></button><button type="button" data-create-workspace>${icon('plus')}<span><strong>Новая команда</strong><small>Команда и её первый проект</small></span></button></div></details>`;
+  $('[data-switch-personal]',root)?.addEventListener('click',async event=>{ try { if(await switchWorkspace(event.currentTarget.dataset.switchPersonal)) navigateToView('personal'); } catch (_) {} });
 	$$('[data-switch-workspace]', root).forEach((button) => button.addEventListener('click', () => { void switchWorkspace(button.dataset.switchWorkspace).catch(() => {}); }));
 	$$('[data-team-settings]', root).forEach((button) => button.addEventListener('click', () => openTeamSettings(button.dataset.teamSettings)));
 	$('[data-join-workspace]', root)?.addEventListener('click', () => openJoinTeamDialog());
@@ -2224,6 +2238,7 @@ function deviceSelector(device) {
 }
 
 function navigationCatalog(preferences = state.interfacePreferences) {
+  if (state.workspaces?.find(workspace=>workspace.id===state.activeWorkspaceId)?.kind === 'personal') return [['personal','Сегодня','lock','Личное'],['calendar','Календарь','calendar','Личное']].map(([key,label,iconName,group])=>({key,label,iconName,group}));
   const enabled = new Set(state.projectNavigation.enabledViews || []);
   const builtin = navItems.filter(([key]) => key === 'personal' || enabled.has(key)).map(([key, label, iconName, group]) => ({ key, label, iconName, group }));
   const pages = state.workspacePages.filter((page) => !page.archived).map((page) => ({ key: `page:${page.id}`, label: page.name, iconName: page.viewMode === 'board' ? 'network' : 'fileText', group: 'Свои страницы' }));
@@ -2248,11 +2263,12 @@ function renderNav() {
   const hidden = new Set(preferences.hiddenNavItems || []);
   const groups = new Set(preferences.hiddenNavGroups || []);
   const items = navigationCatalog().filter((item) => !hidden.has(item.key) && !groups.has(item.group));
-  $('#main-nav').innerHTML = `<div class="project-nav-items">${items.map((item) => { const count = navCount(item.key); return `<button type="button" class="nav-item ${state.view === item.key ? 'active' : ''}" data-view="${escapeHTML(item.key)}" title="${escapeHTML(item.label)}">${icon(item.iconName)}<span>${escapeHTML(item.label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`; }).join('')}</div><button type="button" class="nav-item nav-configure" data-configure-navigation>${icon('sliders')}<span>Настроить меню</span></button>`;
+  const personal = activeWorkspace()?.kind === 'personal';
+  $('#main-nav').innerHTML = `<div class="project-nav-items">${items.map((item) => { const count = navCount(item.key); return `<button type="button" class="nav-item ${state.view === item.key ? 'active' : ''}" data-view="${escapeHTML(item.key)}" title="${escapeHTML(item.label)}">${icon(item.iconName)}<span>${escapeHTML(item.label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`; }).join('')}</div>${personal ? '' : `<button type="button" class="nav-item nav-configure" data-configure-navigation>${icon('sliders')}<span>Настроить меню</span></button>`}`;
   $$('[data-view]', $('#main-nav')).forEach((button) => button.addEventListener('click', () => navigateToView(button.dataset.view)));
   $('#main-nav').insertAdjacentHTML('beforeend', `<button type="button" class="nav-item" data-teams-directory>${icon('users')}<span>Команды и проекты</span></button>`);
   $('[data-teams-directory]').addEventListener('click', () => { setSidebarOpen(false); openTeamsDirectory(); });
-  $('[data-configure-navigation]').addEventListener('click', () => { setSidebarOpen(false); openNavigationSettings(); });
+  $('[data-configure-navigation]')?.addEventListener('click', () => { setSidebarOpen(false); openNavigationSettings(); });
 }
 
 async function saveInterfacePreferences(preferences = state.interfacePreferences) {
@@ -2289,6 +2305,11 @@ function renderContent() {
     state.graphInstance.destroy(); state.graphInstance = null; state.graphLayoutContext = null; state.graphRenderRequest++;
   }
   if (state.view !== 'graph') state.graphLayoutContext = null;
+  const personalArea = activeWorkspace()?.kind === 'personal';
+  $('#global-search-input').placeholder = personalArea ? 'Найти в личном пространстве' : 'Найти во всём проекте';
+  $('#global-search-input').setAttribute('aria-label',personalArea ? 'Поиск в личном пространстве' : 'Глобальный поиск по проекту');
+  $('#notification-button').title = personalArea ? 'Личные уведомления' : 'Уведомления проекта';
+  $('#notification-button').setAttribute('aria-label',$('#notification-button').title);
   $('#page-title').textContent = titles[state.view] || (state.view === 'notifications' ? 'Уведомления' : state.view === 'quality' ? 'Качество базы' : 'Обзор');
   const createButton = $('#new-record-button');
   const personalCreate = personalWorkspacePage();

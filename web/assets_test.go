@@ -221,7 +221,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260903-offline-outbox-2")) != 2 {
+	if bytes.Count(index, []byte("20260903-personal-context-1")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }

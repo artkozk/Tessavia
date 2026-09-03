@@ -57,10 +57,20 @@ func TestInterfaceDevicesRemainIndependent(t *testing.T) {
 	client, other := testClient(t), testClient(t)
 	registerVerifiedWithoutFixture(t, client, server.URL, "devices@example.test", "devices_owner")
 	registerVerifiedWithoutFixture(t, other, server.URL, "devices-other@example.test", "devices_other")
+	var personalWorkspaces []Workspace
+	requestJSON(t, client, "GET", server.URL+"/api/workspaces", nil, 200, &personalWorkspaces)
+	if len(personalWorkspaces) != 1 || personalWorkspaces[0].Kind != "personal" {
+		t.Fatalf("personal workspace missing before teams: %#v", personalWorkspaces)
+	}
+	personal := personalWorkspaces[0]
 	var project, second Workspace
 	requestJSON(t, client, "POST", server.URL+"/api/workspaces", map[string]any{"name": "Devices"}, 201, &project)
 	requestJSON(t, client, "POST", server.URL+"/api/workspaces", map[string]any{"name": "Other project"}, 201, &second)
 	var saved InterfacePreferences
+	personalDesktop := InterfacePreferences{DashboardWidgets: []string{"focus"}, Layout: InterfaceLayout{ContentWidth: 1100}}
+	requestWorkspaceJSON(t, client, "PUT", server.URL+"/api/interface/preferences?device=desktop", personal.ID, personalDesktop, 200, &saved)
+	personalMobile := InterfacePreferences{DashboardWidgets: []string{"capture"}, Layout: InterfaceLayout{Density: "compact", ContentWidth: 1200}}
+	requestWorkspaceJSON(t, client, "PUT", server.URL+"/api/interface/preferences?device=mobile", personal.ID, personalMobile, 200, &saved)
 	mobile := InterfacePreferences{HiddenNavItems: []string{"chat", "invalid"}, NavOrder: []string{"personal", "work"}, DashboardWidgets: []string{"focus"}, Layout: InterfaceLayout{Density: "compact", ToolbarActions: []string{}, QuickActions: []string{}}}
 	mobile.Layout.Pages = map[string]PageLayout{"work": {HiddenBlocks: []string{"summary"}, HiddenFields: []string{"owner"}, ContentWidth: 1200}, "idea": {Density: "comfortable"}}
 	requestWorkspaceJSON(t, client, "PUT", server.URL+"/api/interface/preferences?device=mobile", project.ID, mobile, 200, &saved)
@@ -92,6 +102,16 @@ func TestInterfaceDevicesRemainIndependent(t *testing.T) {
 	}
 	if len(saved.Layout.Pages) != 0 {
 		t.Fatal("page settings leaked into another project")
+	}
+	saved = InterfacePreferences{}
+	requestWorkspaceJSON(t, client, "GET", server.URL+"/api/interface/preferences?device=desktop", personal.ID, nil, 200, &saved)
+	if saved.Device != "desktop" || saved.Layout.ContentWidth != 1100 || len(saved.DashboardWidgets) != 1 || saved.DashboardWidgets[0] != "focus" {
+		t.Fatalf("team desktop preferences changed personal desktop: %#v", saved)
+	}
+	saved = InterfacePreferences{}
+	requestWorkspaceJSON(t, client, "GET", server.URL+"/api/interface/preferences?device=mobile", personal.ID, nil, 200, &saved)
+	if saved.Device != "mobile" || saved.Layout.Density != "compact" || saved.Layout.ContentWidth != 1200 || len(saved.DashboardWidgets) != 1 || saved.DashboardWidgets[0] != "capture" {
+		t.Fatalf("team preferences changed personal mobile: %#v", saved)
 	}
 	saved = InterfacePreferences{}
 	requestJSON(t, other, "GET", server.URL+"/api/interface/preferences?device=mobile", nil, 200, &saved)

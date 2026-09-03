@@ -105,6 +105,76 @@ type PersonalSuggestion struct {
 	Score    int    `json:"-"`
 }
 
+type PersonalSearchResult struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Context   string `json:"context"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+func (s *Server) handlePersonalSearch(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		writeJSON(w, http.StatusOK, []PersonalSearchResult{})
+		return
+	}
+	if len([]rune(query)) > 200 {
+		writeError(w, http.StatusBadRequest, "Поисковый запрос слишком длинный")
+		return
+	}
+	ownerID := currentUser(r).ID
+	type source struct{ kind, sql string }
+	sources := []source{
+		{"note", `SELECT id,title,body,'active',updated_at FROM personal_notes WHERE owner_id=? AND archived_at IS NULL`},
+		{"plan", `SELECT id,title,notes,status,updated_at FROM personal_plans WHERE owner_id=? AND status<>'archived'`},
+		{"habit", `SELECT id,title,unit,'active',updated_at FROM personal_habits WHERE owner_id=? AND archived_at IS NULL`},
+	}
+	normalized := strings.ToLower(query)
+	results := make([]PersonalSearchResult, 0)
+	for _, source := range sources {
+		rows, err := s.store.db.QueryContext(r.Context(), source.sql, ownerID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось выполнить личный поиск")
+			return
+		}
+		for rows.Next() {
+			var item PersonalSearchResult
+			item.Type = source.kind
+			if err := rows.Scan(&item.ID, &item.Title, &item.Context, &item.Status, &item.UpdatedAt); err != nil {
+				rows.Close()
+				writeError(w, http.StatusInternalServerError, "Не удалось прочитать результаты личного поиска")
+				return
+			}
+			if strings.Contains(strings.ToLower(item.Title+" "+item.Context), normalized) {
+				results = append(results, item)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать результаты личного поиска")
+			return
+		}
+		rows.Close() // one DB connection: close before opening the next source.
+	}
+	sort.Slice(results, func(left, right int) bool {
+		leftPrefix := strings.HasPrefix(strings.ToLower(results[left].Title), normalized)
+		rightPrefix := strings.HasPrefix(strings.ToLower(results[right].Title), normalized)
+		if leftPrefix != rightPrefix {
+			return leftPrefix
+		}
+		if results[left].UpdatedAt != results[right].UpdatedAt {
+			return results[left].UpdatedAt > results[right].UpdatedAt
+		}
+		return results[left].ID < results[right].ID
+	})
+	if len(results) > 40 {
+		results = results[:40]
+	}
+	writeJSON(w, http.StatusOK, results)
+}
+
 func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
 	rows, err := s.store.db.QueryContext(r.Context(), `
