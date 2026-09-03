@@ -38,6 +38,7 @@ type User struct {
 }
 
 type Record struct {
+	TitleGenerated    bool                   `json:"titleGenerated"`
 	ID                string                 `json:"id"`
 	WorkspaceID       string                 `json:"workspaceId"`
 	CollectionID      string                 `json:"collectionId,omitempty"`

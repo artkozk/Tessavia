@@ -84,10 +84,7 @@ func TestCalendarNotesAreAtomicAndRespectProjectAccess(t *testing.T) {
 	}
 	linkPayload := map[string]any{"sourceType": "note", "sourceId": note.ID, "targetType": "record", "targetId": record.ID}
 	requestJSON(t, ownerClient, "POST", server.URL+"/api/personal/links", linkPayload, 404, nil)
-	_, err = store.db.Exec(`INSERT INTO workspace_members(workspace_id,user_id,role,status,joined_at) VALUES(?,?,'member','active',?)`, workspace.ID, owner.ID, nowText())
-	if err != nil {
-		t.Fatal(err)
-	}
+	requestJSON(t, otherClient, "POST", server.URL+"/api/teams/"+workspace.TeamID+"/members", map[string]any{"username": owner.Username, "role": "member", "projectIds": []string{workspace.ID}}, 200, nil)
 	requestJSON(t, ownerClient, "POST", server.URL+"/api/personal/links", linkPayload, 201, nil)
 	requestJSON(t, ownerClient, "GET", server.URL+"/api/personal/overview", nil, 200, &overview)
 	if len(overview.Links) != 2 {

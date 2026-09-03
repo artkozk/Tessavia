@@ -43,8 +43,12 @@ func (s *Server) canViewUserProfile(r *http.Request, targetUserID int64) (bool, 
 		SELECT 1
 		FROM workspace_members viewer
 		JOIN workspace_members target ON target.workspace_id = viewer.workspace_id
+		JOIN workspaces w ON w.id = viewer.workspace_id
 		WHERE viewer.user_id = ? AND viewer.status = 'active'
 			AND target.user_id = ? AND target.status = 'active'
+			AND w.archived_at IS NULL AND (w.team_id IS NULL OR EXISTS (
+			SELECT 1 FROM teams t JOIN team_members tm ON tm.team_id = t.id
+			WHERE t.id = w.team_id AND t.deleted_at IS NULL AND tm.user_id = viewer.user_id AND tm.status = 'active'))
 		LIMIT 1`, viewer.ID, targetUserID).Scan(&allowed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil

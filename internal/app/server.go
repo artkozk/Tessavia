@@ -89,6 +89,12 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/workspaces", s.requireAuth(http.HandlerFunc(s.handleCreateWorkspace)))
 	s.mux.Handle("GET /api/teams", s.requireAuth(http.HandlerFunc(s.handleListTeams)))
 	s.mux.Handle("POST /api/teams", s.requireAuth(http.HandlerFunc(s.handleCreateTeam)))
+	s.mux.Handle("PATCH /api/teams/{id}", s.requireAuth(http.HandlerFunc(s.handleRenameTeam)))
+	s.mux.Handle("DELETE /api/teams/{id}", s.requireAuth(http.HandlerFunc(s.handleDeleteTeam)))
+	s.mux.Handle("POST /api/teams/{id}/restore", s.requireAuth(http.HandlerFunc(s.handleRestoreTeam)))
+	s.mux.Handle("POST /api/teams/{id}/leave", s.requireAuth(http.HandlerFunc(s.handleLeaveTeam)))
+	s.mux.Handle("POST /api/teams/{id}/ownership", s.requireAuth(http.HandlerFunc(s.handleTransferTeamOwnership)))
+	s.mux.Handle("DELETE /api/teams/{id}/members/{userId}", s.requireAuth(http.HandlerFunc(s.handleRemoveTeamMember)))
 	s.mux.Handle("GET /api/teams/{id}", s.requireAuth(http.HandlerFunc(s.handleGetTeam)))
 	s.mux.Handle("POST /api/teams/{id}/projects", s.requireAuth(http.HandlerFunc(s.handleCreateTeamProject)))
 	s.mux.Handle("POST /api/teams/{id}/members", s.requireAuth(http.HandlerFunc(s.handleAddTeamMember)))
@@ -269,9 +275,13 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 		}
 		setUserAvatar(&user, avatarStoredName, avatarUpdatedAt)
 		ctx := context.WithValue(r.Context(), userContextKey, user)
-		workspace, workspaceErr := s.resolveWorkspaceAccess(ctx, user.ID, r.Header.Get("X-Workspace-ID"))
+		requestedWorkspace := r.Header.Get("X-Workspace-ID")
+		if accountScopedPath(r.URL.Path) {
+			requestedWorkspace = ""
+		}
+		workspace, workspaceErr := s.resolveWorkspaceAccess(ctx, user.ID, requestedWorkspace)
 		if errors.Is(workspaceErr, sql.ErrNoRows) {
-			writeError(w, http.StatusForbidden, "Рабочее пространство недоступно")
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Рабочее пространство недоступно", "code": "workspace_unavailable"})
 			return
 		}
 		if workspaceErr != nil {
@@ -568,7 +578,7 @@ const recordSelect = `
 		business.record_id, business.probability, business.impact, business.mitigation_md,
 		business.occurred, business.metric, business.success_threshold, business.experiment_method_md,
 		business.verdict, business.decision_state, business.effective_at, business.review_at, business.supersedes_id,
-		business.applicability, business.source_excerpt_md
+		business.applicability, business.source_excerpt_md, r.title_generated
 	FROM records r
 	LEFT JOIN workspace_collections collection ON collection.id = r.collection_id
 	LEFT JOIN collection_stages stage ON stage.id = r.stage_id
@@ -590,7 +600,7 @@ func scanRecord(scanner recordScanner) (Record, error) {
 		&record.EstimateMinutes, &record.ActualMinutes, &record.Progress,
 		&record.ProgressNote, &record.Result, &completedAt, &record.CreatedAt, &record.UpdatedAt, &record.ProofCount,
 		&businessRecordID, &probability, &impact, &mitigation, &occurred, &metric, &threshold, &method,
-		&verdict, &decisionState, &effectiveAt, &reviewAt, &supersedesID, &applicability, &sourceExcerpt)
+		&verdict, &decisionState, &effectiveAt, &reviewAt, &supersedesID, &applicability, &sourceExcerpt, &record.TitleGenerated)
 	if decisionMakerID.Valid {
 		record.DecisionMakerID = &decisionMakerID.Int64
 	}
@@ -931,6 +941,7 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Неизвестный тип карточки")
 		return
 	}
+	titleGenerated := input.Type == "inbox" && strings.TrimSpace(input.Title) == ""
 	if input.Type == "inbox" {
 		if !validatePersonalText(w, &input.Title, input.Description) {
 			return
@@ -1098,7 +1109,7 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 		collectionID = input.CollectionID
 		stageID = input.StageID
 	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, workspace_id, collection_id, stage_id, type, subtype, record_kind, business_kind, title, description, status, author_id, owner_id, decision_maker_id, due_at, priority, workstream, edit_policy, parent_id, is_root, estimate_minutes, actual_minutes, progress, completed_at, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, workspaceID, collectionID, stageID, databaseType, subtype, recordKind, businessKind, input.Title, strings.TrimSpace(input.Description), input.Status, user.ID, input.OwnerID, input.DecisionMakerID, dueAt, input.Priority, input.Workstream, input.EditPolicy, parentID, input.IsRoot, input.EstimateMinutes, input.ActualMinutes, progress, completedAt, now, now)
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO records(id, workspace_id, collection_id, stage_id, type, subtype, record_kind, business_kind, title, description, status, author_id, owner_id, decision_maker_id, due_at, priority, workstream, edit_policy, parent_id, is_root, estimate_minutes, actual_minutes, progress, completed_at, created_at, updated_at, title_generated) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, workspaceID, collectionID, stageID, databaseType, subtype, recordKind, businessKind, input.Title, strings.TrimSpace(input.Description), input.Status, user.ID, input.OwnerID, input.DecisionMakerID, dueAt, input.Priority, input.Workstream, input.EditPolicy, parentID, input.IsRoot, input.EstimateMinutes, input.ActualMinutes, progress, completedAt, now, now, titleGenerated)
 	if err != nil {
 		log.Printf("create record: %v", err)
 		writeError(w, http.StatusInternalServerError, "Не удалось создать карточку")
@@ -1288,6 +1299,7 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 		title, description := before.Title, before.Description
 		if input.Title != nil {
 			title = *input.Title
+			add("title_generated", strings.TrimSpace(title) == "")
 		}
 		if input.Description != nil {
 			description = *input.Description

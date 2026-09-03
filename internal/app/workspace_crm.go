@@ -75,7 +75,9 @@ func (s *Server) resolveWorkspaceAccess(ctx context.Context, userID int64, reque
 	requestedID = strings.TrimSpace(requestedID)
 	query := `SELECT w.id, w.kind, wm.role
 		FROM workspaces w JOIN workspace_members wm ON wm.workspace_id = w.id
-		WHERE wm.user_id = ? AND wm.status = 'active'`
+		WHERE wm.user_id = ? AND wm.status = 'active' AND w.archived_at IS NULL
+		AND (w.team_id IS NULL OR EXISTS (SELECT 1 FROM teams t JOIN team_members tm ON tm.team_id = t.id
+		WHERE t.id = w.team_id AND t.deleted_at IS NULL AND tm.user_id = wm.user_id AND tm.status = 'active'))`
 	args := []any{userID}
 	if requestedID != "" {
 		query += ` AND w.id = ?`
