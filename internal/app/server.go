@@ -105,6 +105,8 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/invitations/accept", s.requireAuth(http.HandlerFunc(s.handleAcceptTeamInvitation)))
 	s.mux.Handle("GET /api/interface/preferences", s.requireAuth(http.HandlerFunc(s.handleGetInterfacePreferences)))
 	s.mux.Handle("PUT /api/interface/preferences", s.requireAuth(http.HandlerFunc(s.handleUpdateInterfacePreferences)))
+	s.mux.Handle("GET /api/graph/layout", s.requireAuth(http.HandlerFunc(s.handleGetGraphLayout)))
+	s.mux.Handle("PUT /api/graph/layout", s.requireAuth(http.HandlerFunc(s.handlePutGraphLayout)))
 	s.mux.Handle("GET /api/interface/presets", s.requireAuth(http.HandlerFunc(s.handleListInterfacePresets)))
 	s.mux.Handle("POST /api/interface/presets", s.requireAuth(http.HandlerFunc(s.handleCreateInterfacePreset)))
 	s.mux.Handle("GET /api/interface/presets/{id}", s.requireAuth(http.HandlerFunc(s.handleGetInterfacePreset)))

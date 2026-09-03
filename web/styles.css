@@ -1212,7 +1212,9 @@ dialog.dismiss-attention { animation: dialog-dismiss-attention .3s ease; }
 .work-empty { min-height: 300px; }
 
 .graph-main-content { max-width: none; height: calc(100vh - 70px); padding: 0; overflow: hidden; }
-.graph-workspace { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #e6e9e5; }
+.graph-workspace { min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; background: #e6e9e5; }
+.graph-layout-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px; font-size: 11px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.graph-layout-status button { min-height: 32px; padding: 5px 10px; white-space: normal; }
 .graph-toolbar { min-height: 62px; display: flex; align-items: center; gap: 10px; padding: 9px 18px; border-bottom: 1px solid #c9d0cb; background: #f1f2ee; }
 .graph-toolbar select { width: 176px; min-height: 38px; }
 .graph-search { position: relative; flex: 1; max-width: 420px; }

@@ -48,7 +48,7 @@ func TestMixedPageTypesPersistenceValidationAndExport(t *testing.T) {
 		Tables        map[string][]map[string]any `json:"tables"`
 	}
 	req("GET", "/api/export", nil, 200, &exported)
-	if exported.SchemaVersion != 16 {
+	if exported.SchemaVersion != 17 {
 		t.Fatal(exported.SchemaVersion)
 	}
 	var types []string

@@ -1,3 +1,5 @@
+import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
+
 ﻿const typeMeta = {
   goal: { label: 'Цели', singular: 'Цель', icon: 'target' },
   task: { label: 'Задачи', singular: 'Задача', icon: 'checkSquare' },
@@ -175,6 +177,7 @@ const state = {
   recordSearchTimer: null,
   graphResizeTimer: null,
   historyLoadedAll: false,
+  graphLayoutContext: null, graphLayoutInstances: new WeakMap(), graphRenderRequest: 0, graphPendingBranch: null, graphDataRequest: null, graphDataKey: '',
   graphData: null, graphInstance: null, graphFocusRecordId: '', graphDepth: 2, graphShowDiscussion: graphSettingDefaults.showDiscussion,
   graphBranchRootId: '', graphMoveBranch: true, graphMobileInitialized: false,
   graphTypeFilter: 'all', graphSearch: '', graphSelectedId: '', graphLinkSourceId: '', graphSettingsOpen: false,
@@ -1183,6 +1186,8 @@ function clearProjectClientState({ closeWindows = true } = {}) {
   state.detailCache.clear();state.detailRequests.clear();state.researchComparisons.clear();state.researchComparisonRequests.clear();
   state.aiAnalyses.clear();state.aiQuestionDrafts.clear();
   state.graphInstance?.destroy();state.graphInstance=null;state.graphData=null;
+  state.graphLayoutContext=null;state.graphRenderRequest++;state.graphDataRequest=null;state.graphDataKey='';
+  state.graphFocusRecordId='';state.graphBranchRootId='';state.graphSelectedId='';state.graphLinkSourceId='';state.graphPendingBranch=null;
   state.notificationInbox=null;state.unreadCount=null;state.notificationLoading=false;
   state.qualityReport=null;state.teamCapacity=null;state.planningCycles=[];state.activePlanningCycle=null;
   state.activeCollectionId='';state.collectionSearch='';state.collectionOwnerFilter='';state.collectionFieldFilters={};
@@ -2239,8 +2244,9 @@ function renderContent() {
   const titles = Object.fromEntries(navItems);
   $('#main-content').classList.toggle('graph-main-content', state.view === 'graph');
   if (state.view !== 'graph' && state.graphInstance) {
-    state.graphInstance.destroy(); state.graphInstance = null;
+    state.graphInstance.destroy(); state.graphInstance = null; state.graphLayoutContext = null; state.graphRenderRequest++;
   }
+  if (state.view !== 'graph') state.graphLayoutContext = null;
   $('#page-title').textContent = titles[state.view] || (state.view === 'notifications' ? 'Уведомления' : state.view === 'quality' ? 'Качество базы' : 'Обзор');
   const createButton = $('#new-record-button');
   const personalCreate = personalWorkspacePage();
@@ -4382,58 +4388,126 @@ async function endChatCall() {
 	cleanupChatCall(); state.chatIncomingCall = null; await loadChatThread(state.activeChatThreadId);
 }
 
-function graphSettingsKey() {
-  return `business-control:graph-settings:${state.me?.id || 'anonymous'}:v1`;
+function normalizeGraphLayoutData(data = {}) {
+  data = data && typeof data === 'object' ? data : {};
+  const positions = {};
+  for (const [id, point] of Object.entries(data.positions || {})) {
+    if (/^(record|question|answer|decision|research-option):[A-Za-z0-9_-]{1,100}$/.test(id) && Number.isFinite(point?.x) && Number.isFinite(point?.y) && Math.abs(point.x) <= 1e6 && Math.abs(point.y) <= 1e6) positions[id] = { x: point.x, y: point.y };
+  }
+  const source = data.settings || {}, settings = { ...graphSettingDefaults, moveBranch: true, hiddenGroups: [], groupColors: Object.fromEntries(graphGroups.map(group => [group.key, group.color])) };
+  for (const key of ['showDiscussion', 'showOrphans', 'showArrows', 'physics', 'moveBranch']) if (typeof source[key] === 'boolean') settings[key] = source[key];
+  for (const [key, min, max] of [['textFade',0,100],['nodeSize',70,150],['linkThickness',60,180],['centerForce',0,100],['repelForce',0,100],['linkForce',0,100],['linkDistance',0,100]]) if (Number.isFinite(source[key])) settings[key] = Math.max(min, Math.min(max, source[key]));
+  const groups = new Set(graphGroups.map(group => group.key));
+  settings.hiddenGroups = Array.isArray(source.hiddenGroups) ? source.hiddenGroups.filter(key => groups.has(key)) : [];
+  for (const [key, color] of Object.entries(source.groupColors || {})) if (groups.has(key) && /^#[a-f0-9]{6}$/i.test(color)) settings.groupColors[key] = color;
+  return { positions, settings, search: String(data.search || '').slice(0,240), branchRootId: /^record:[A-Za-z0-9_-]{1,100}$/.test(data.branchRootId || '') ? data.branchRootId : '', depth: Math.max(1, Math.min(4, Math.round(Number(data.depth) || 2))) };
 }
 
-function loadGraphSettings() {
-  if (state.graphSettingsLoaded) return;
-  state.graphSettingsLoaded = true;
+const graphDraftWindowId = (() => {
   try {
-    const saved = JSON.parse(localStorage.getItem(graphSettingsKey()) || '{}');
-    state.graphShowDiscussion = saved.showDiscussion ?? graphSettingDefaults.showDiscussion;
-    state.graphShowOrphans = saved.showOrphans ?? graphSettingDefaults.showOrphans;
-    state.graphShowArrows = saved.showArrows ?? graphSettingDefaults.showArrows;
-    state.graphPhysics = saved.physics ?? graphSettingDefaults.physics;
-    state.graphTextFade = Number(saved.textFade ?? graphSettingDefaults.textFade);
-    state.graphNodeSize = Number(saved.nodeSize ?? graphSettingDefaults.nodeSize);
-    state.graphLinkThickness = Number(saved.linkThickness ?? graphSettingDefaults.linkThickness);
-    state.graphCenterForce = Number(saved.centerForce ?? graphSettingDefaults.centerForce);
-    state.graphRepelForce = Number(saved.repelForce ?? graphSettingDefaults.repelForce);
-    state.graphLinkForce = Number(saved.linkForce ?? graphSettingDefaults.linkForce);
-    state.graphLinkDistance = Number(saved.linkDistance ?? graphSettingDefaults.linkDistance);
-    state.graphMoveBranch = saved.moveBranch ?? true;
-    state.graphHiddenGroups = new Set(Array.isArray(saved.hiddenGroups) ? saved.hiddenGroups : []);
-    state.graphGroupColors = { ...state.graphGroupColors, ...(saved.groupColors || {}) };
-  } catch (_) {}
+    const key = 'business-control:graph-draft-window:v1';
+    let id = sessionStorage.getItem(key);
+    if (!id) { id = crypto.randomUUID(); sessionStorage.setItem(key, id); }
+    return id;
+  } catch (_) { return null; }
+})();
+
+const graphLayoutStore = createGraphLayoutStore({
+  api: (path, options) => api(path, options),
+  draftId: graphDraftWindowId || 'temporary',
+  storage: {
+    getItem: key => graphDraftWindowId ? localStorage.getItem(key) : null,
+    setItem: (key, value) => { if (!graphDraftWindowId) throw new Error('Черновик доступен только в текущем окне'); localStorage.setItem(key, value); },
+    removeItem: key => localStorage.removeItem(key),
+  },
+  normalize: normalizeGraphLayoutData, isUserActive: user => state.me?.id === user,
+  onChange: ctx => updateGraphLayoutStatus(ctx),
+});
+
+function graphLayoutView() { return state.graphFocusRecordId ? `record:${state.graphFocusRecordId}` : 'project'; }
+function graphLayoutIsCurrent(ctx) {
+  return state.graphLayoutContext === ctx && state.me?.id === ctx.user && state.activeWorkspaceId === ctx.workspace && graphLayoutView() === ctx.view;
+}
+
+function applyGraphLayoutData(data) {
+  const saved = normalizeGraphLayoutData(data);
+  for (const [key, value] of Object.entries(saved.settings)) {
+    if (key === 'hiddenGroups') state.graphHiddenGroups = new Set(value);
+    else if (key === 'groupColors') state.graphGroupColors = { ...value };
+    else state[`graph${key[0].toUpperCase()}${key.slice(1)}`] = value;
+  }
+  state.graphSearch = saved.search; state.graphBranchRootId = saved.branchRootId; state.graphDepth = saved.depth;
+}
+
+function graphLayoutFromControls(ctx) {
+  return { ...ctx.data, search: state.graphSearch, branchRootId: state.graphBranchRootId, depth: state.graphDepth, settings: {
+    showDiscussion: state.graphShowDiscussion, showOrphans: state.graphShowOrphans, showArrows: state.graphShowArrows, physics: state.graphPhysics,
+    textFade: state.graphTextFade, nodeSize: state.graphNodeSize, linkThickness: state.graphLinkThickness,
+    centerForce: state.graphCenterForce, repelForce: state.graphRepelForce, linkForce: state.graphLinkForce, linkDistance: state.graphLinkDistance,
+    moveBranch: state.graphMoveBranch, hiddenGroups: [...state.graphHiddenGroups], groupColors: { ...state.graphGroupColors },
+  }};
 }
 
 function saveGraphSettings() {
-  try {
-    localStorage.setItem(graphSettingsKey(), JSON.stringify({
-      showDiscussion: state.graphShowDiscussion, showOrphans: state.graphShowOrphans,
-      showArrows: state.graphShowArrows, physics: state.graphPhysics,
-      textFade: state.graphTextFade, nodeSize: state.graphNodeSize, linkThickness: state.graphLinkThickness,
-      centerForce: state.graphCenterForce, repelForce: state.graphRepelForce,
-      linkForce: state.graphLinkForce, linkDistance: state.graphLinkDistance,
-      moveBranch: state.graphMoveBranch,
-      hiddenGroups: [...state.graphHiddenGroups], groupColors: state.graphGroupColors,
-    }));
-  } catch (_) {}
+  const ctx = state.graphLayoutContext;
+  if (ctx && graphLayoutIsCurrent(ctx)) graphLayoutStore.change(ctx, graphLayoutFromControls(ctx));
 }
 
 function resetGraphSettings() {
-  Object.assign(state, {
-    graphShowDiscussion: graphSettingDefaults.showDiscussion, graphShowOrphans: graphSettingDefaults.showOrphans,
-    graphShowArrows: graphSettingDefaults.showArrows, graphPhysics: graphSettingDefaults.physics,
-    graphTextFade: graphSettingDefaults.textFade, graphNodeSize: graphSettingDefaults.nodeSize,
-    graphLinkThickness: graphSettingDefaults.linkThickness, graphCenterForce: graphSettingDefaults.centerForce,
-    graphRepelForce: graphSettingDefaults.repelForce, graphLinkForce: graphSettingDefaults.linkForce,
-    graphLinkDistance: graphSettingDefaults.linkDistance, graphMoveBranch: true,
-  });
-  state.graphHiddenGroups = new Set();
-  state.graphGroupColors = Object.fromEntries(graphGroups.map((group) => [group.key, group.color]));
-  saveGraphSettings();
+  const ctx = state.graphLayoutContext;
+  if (!ctx || !graphLayoutIsCurrent(ctx)) return;
+  graphLayoutStore.change(ctx, { ...normalizeGraphLayoutData(), positions: ctx.data.positions });
+  applyGraphLayoutData(ctx.data);
+}
+
+function importLegacyGraphLayout(ctx, data) {
+  if (ctx.legacyChecked || !ctx.loaded || ctx.version || ctx.dirty || ctx.hadCache) return;
+  ctx.legacyChecked = true;
+  try {
+    const positions = JSON.parse(localStorage.getItem(`business-control:graph-positions:${ctx.user}:v4`) || '{}');
+    const settings = JSON.parse(localStorage.getItem(`business-control:graph-settings:${ctx.user}:v1`) || '{}');
+    const ids = new Set(data.nodes.map(node => node.id));
+    const scoped = Object.fromEntries(Object.entries(positions).filter(([id]) => ids.has(id)));
+    if (Object.keys(scoped).length || Object.keys(settings).length) graphLayoutStore.change(ctx, { ...ctx.data, positions: scoped, settings }, { remember: false });
+  } catch (_) {}
+}
+
+function updateGraphLayoutStatus(ctx = state.graphLayoutContext) {
+  if (!ctx || !graphLayoutIsCurrent(ctx) || state.view !== 'graph') return;
+  const target = $('#graph-layout-status');
+  if (!target) return;
+  const local = ctx.cacheError ? 'Черновик пока только в открытом окне.' : 'Ваш вариант сохранён в этом браузере.';
+  target.innerHTML = ctx.conflict
+    ? `<span>Раскладка изменилась в другом окне. ${local}</span><button type="button" data-graph-layout-action="remote">Загрузить серверную</button><button type="button" data-graph-layout-action="mine">Сохранить мою</button>`
+    : ctx.error ? `<span>Не удалось синхронизировать раскладку. ${local} ${escapeHTML(ctx.error)}</span><button type="button" data-graph-layout-action="retry">Повторить</button>`
+    : `<span>${ctx.saving ? 'Сохраняем раскладку…' : ctx.loading ? 'Проверяем раскладку…' : ctx.dirty ? (ctx.cacheError ? local : 'Изменения сохранены локально, ждём синхронизации…') : ctx.version ? 'Раскладка сохранена для этого проекта и вида' : 'Переместите узлы, чтобы сохранить раскладку'}</span>`;
+  const undo = $('#graph-undo-layout'); if (undo) undo.disabled = !ctx.undo.length;
+  $$('[data-graph-layout-action]', target).forEach(button => button.addEventListener('click', async () => {
+    if (!graphLayoutIsCurrent(ctx)) return;
+    button.disabled = true;
+    const action = button.dataset.graphLayoutAction;
+    const ok = await (action === 'remote' ? graphLayoutStore.acceptServer(ctx) : action === 'mine' ? graphLayoutStore.keepLocal(ctx) : graphLayoutStore.retry(ctx));
+    if (ok && graphLayoutIsCurrent(ctx)) { applyGraphLayoutData(ctx.data); renderGraph(); }
+    else updateGraphLayoutStatus(ctx);
+  }));
+}
+
+async function ensureGraphData(force = false) {
+  const user = state.me?.id, workspace = state.activeWorkspaceId, key = JSON.stringify([user, workspace]);
+  if (!force && state.graphData && state.graphDataKey === key) return state.graphData;
+  if (state.graphDataRequest?.key === key) return state.graphDataRequest.promise;
+  const request = { key };
+  request.promise = api('/api/graph', { headers: { 'X-Workspace-ID': workspace } }).then(data => {
+    if (state.me?.id === user && state.activeWorkspaceId === workspace) { state.graphData = data; state.graphDataKey = key; }
+    return data;
+  }).finally(() => { if (state.graphDataRequest === request) state.graphDataRequest = null; });
+  state.graphDataRequest = request;
+  return request.promise;
+}
+
+function showGraphBranch(id) {
+  state.graphFocusRecordId = ''; state.graphPendingBranch = { workspace: state.activeWorkspaceId, id };
+  state.graphSelectedId = id; renderGraph();
 }
 
 function graphGroupKey(node) {
@@ -4467,15 +4541,21 @@ function graphBranchChoices() {
 }
 
 async function renderGraph() {
-  loadGraphSettings();
+  const request = ++state.graphRenderRequest;
+  const ctx = graphLayoutStore.context({ user: state.me.id, workspace: state.activeWorkspaceId, view: graphLayoutView() });
+  const entered = state.graphLayoutContext !== ctx;
+  state.graphLayoutContext = ctx;
   $('#main-content').classList.add('graph-main-content');
-  if (window.innerWidth <= 560 && state.graphData && !state.graphMobileInitialized) {
-    state.graphMobileInitialized = true;
-    if (!state.graphFocusRecordId && !state.graphBranchRootId) {
-      const preferredBranch = graphBranchChoices()[0];
-      if (preferredBranch) state.graphBranchRootId = preferredBranch.id;
+  if (!state.graphData || (entered && !ctx.loaded)) $('#main-content').innerHTML = '<div class="graph-loading"><span class="spinner"></span><strong>Открываем карту проекта</strong></div>';
+  try {
+    const [data] = await Promise.all([ensureGraphData(entered), entered || !ctx.loaded ? graphLayoutStore.load(ctx) : Promise.resolve(ctx)]);
+    if (request !== state.graphRenderRequest || state.view !== 'graph' || !graphLayoutIsCurrent(ctx)) return;
+    importLegacyGraphLayout(ctx, data);
+    if (ctx.view === 'project' && state.graphPendingBranch?.workspace === ctx.workspace) {
+      graphLayoutStore.change(ctx, { ...ctx.data, branchRootId: state.graphPendingBranch.id }); state.graphPendingBranch = null;
     }
-  }
+    applyGraphLayoutData(ctx.data);
+    if (entered) { state.graphSelectedId = state.graphFocusRecordId ? `record:${state.graphFocusRecordId}` : state.graphBranchRootId; state.graphLinkSourceId = ''; }
   const branchChoices = graphBranchChoices();
   $('#main-content').innerHTML = `
     <section class="graph-workspace">
@@ -4486,22 +4566,18 @@ async function renderGraph() {
         <button type="button" class="graph-branch-move ${state.graphMoveBranch ? 'active' : ''}" id="graph-move-branch" aria-pressed="${state.graphMoveBranch}" title="${state.graphMoveBranch ? 'Родитель перемещается вместе со всеми дочерними узлами' : 'Перемещать только один выбранный узел'}">${icon('network')}<span><strong>${state.graphMoveBranch ? 'Ветка целиком' : 'Один узел'}</strong><small>${state.graphMoveBranch ? 'родитель + потомки' : 'без потомков'}</small></span></button>
         ${state.graphFocusRecordId ? `<label class="graph-depth">Глубина <input id="graph-depth" type="range" min="1" max="4" value="${state.graphDepth}"><b>${state.graphDepth}</b></label>` : ''}
         <span class="graph-count" id="graph-count"></span>
-        <div class="graph-icon-actions"><button type="button" class="icon-button" id="graph-zoom-out" title="Уменьшить" aria-label="Уменьшить">${icon('minus')}</button><button type="button" class="icon-button" id="graph-zoom-in" title="Увеличить" aria-label="Увеличить">${icon('plus')}</button><button type="button" class="icon-button" id="graph-relayout" title="Перестроить карту" aria-label="Перестроить карту">${icon('rotate')}</button><button type="button" class="icon-button" id="graph-fit" title="Показать карту целиком" aria-label="Показать карту целиком">${icon('maximize')}</button><button type="button" class="icon-button ${state.graphSettingsOpen ? 'active' : ''}" id="graph-settings-toggle" title="Настройки карты" aria-label="Настройки карты">${icon('settings')}</button></div>
+        <div class="graph-icon-actions"><button type="button" class="icon-button" id="graph-undo-layout" title="Отменить изменение раскладки" aria-label="Отменить изменение раскладки" disabled>${icon('undo')}</button><button type="button" class="icon-button" id="graph-zoom-out" title="Уменьшить" aria-label="Уменьшить">${icon('minus')}</button><button type="button" class="icon-button" id="graph-zoom-in" title="Увеличить" aria-label="Увеличить">${icon('plus')}</button><button type="button" class="icon-button" id="graph-relayout" title="Перестроить карту" aria-label="Перестроить карту">${icon('rotate')}</button><button type="button" class="icon-button" id="graph-fit" title="Показать карту целиком" aria-label="Показать карту целиком">${icon('maximize')}</button><button type="button" class="icon-button ${state.graphSettingsOpen ? 'active' : ''}" id="graph-settings-toggle" title="Настройки карты" aria-label="Настройки карты">${icon('settings')}</button></div>
       </header>
-      <div class="graph-stage"><div id="relationship-graph" tabindex="0" role="application" aria-label="Интерактивная карта связей"><div class="graph-loading"><span class="spinner"></span><strong>Строим карту проекта</strong></div></div><aside id="graph-inspector" class="graph-inspector ${state.graphSelectedId && !state.graphSettingsOpen ? 'open' : ''}" aria-hidden="${state.graphSelectedId && !state.graphSettingsOpen ? 'false' : 'true'}" ${state.graphSelectedId && !state.graphSettingsOpen ? '' : 'inert'}>${renderGraphInspector()}</aside>${renderGraphSettings()}<div id="graph-context-menu" class="graph-context-menu"></div></div>
+      <div id="graph-layout-status" class="graph-layout-status" role="status" aria-live="polite"></div><div class="graph-stage"><div id="relationship-graph" tabindex="0" role="application" aria-label="Интерактивная карта связей"><div class="graph-loading"><span class="spinner"></span><strong>Строим карту проекта</strong></div></div><aside id="graph-inspector" class="graph-inspector ${state.graphSelectedId && !state.graphSettingsOpen ? 'open' : ''}" aria-hidden="${state.graphSelectedId && !state.graphSettingsOpen ? 'false' : 'true'}" ${state.graphSelectedId && !state.graphSettingsOpen ? '' : 'inert'}>${renderGraphInspector()}</aside>${renderGraphSettings()}<div id="graph-context-menu" class="graph-context-menu"></div></div>
       <footer class="graph-legend"><span><i class="legend-card"></i> Карточка</span><span><i class="legend-question"></i> Вопрос</span><span><i class="legend-answer"></i> Ответ</span><span><i class="legend-decision"></i> Итог</span><em>${state.graphMoveBranch ? 'Перетаскивание родителя двигает всю его ветку' : 'Перетаскивание двигает только выбранный узел'} · правый клик: действия</em></footer>
     </section>`;
   bindGraphControls();
-  try {
-    if (!state.graphData) {
-      state.graphData = await api('/api/graph');
-      if (state.view === 'graph') renderGraph();
-      return;
-    }
-    if (state.view !== 'graph') return;
-    mountGraph();
+  updateGraphLayoutStatus(ctx);
+  mountGraph();
+  if (ctx.dirty && !ctx.conflict && !ctx.error) void graphLayoutStore.save(ctx);
   } catch (error) {
-    $('#relationship-graph').innerHTML = `<div class="graph-error">${icon('help')}<strong>Карта не загрузилась</strong><p>${escapeHTML(error.message)}</p><button type="button" class="secondary" id="graph-retry">Повторить</button></div>`;
+    if (request !== state.graphRenderRequest || state.view !== 'graph' || !graphLayoutIsCurrent(ctx)) return;
+    $('#main-content').innerHTML = `<div class="graph-error"><strong>Карта не загрузилась</strong><p>${escapeHTML(error.message)}</p><button type="button" class="secondary" id="graph-retry">Повторить</button></div>`;
     $('#graph-retry')?.addEventListener('click', () => { state.graphData = null; renderGraph(); });
   }
 }
@@ -4579,23 +4655,19 @@ function graphNodeLabel(node) {
   return title.length > 58 ? `${title.slice(0, 55)}…` : title;
 }
 
-function graphPositionKey() {
-  return `business-control:graph-positions:${state.me?.id || 'anonymous'}:v4`;
-}
-
-function loadGraphPositions() {
-  try { return JSON.parse(localStorage.getItem(graphPositionKey()) || '{}'); } catch (_) { return {}; }
-}
+function loadGraphPositions() { return state.graphLayoutContext?.data.positions || {}; }
 
 function saveGraphPositions(cy = state.graphInstance) {
-  if (!cy) return;
-  const positions = loadGraphPositions();
-  cy.nodes().forEach((node) => { positions[node.id()] = node.position(); });
-  try { localStorage.setItem(graphPositionKey(), JSON.stringify(positions)); } catch (_) {}
+  const ctx = cy && state.graphLayoutInstances.get(cy);
+  if (!ctx || cy !== state.graphInstance || !graphLayoutIsCurrent(ctx) || cy.destroyed()) return;
+  const positions = { ...ctx.data.positions };
+  cy.nodes().forEach(node => { const point = node.position(); positions[node.id()] = { x: point.x, y: point.y }; });
+  graphLayoutStore.change(ctx, { ...ctx.data, positions }, { remember: false });
 }
 
 function clearGraphPositions() {
-  try { localStorage.removeItem(graphPositionKey()); } catch (_) {}
+  const ctx = state.graphLayoutContext;
+  if (ctx && graphLayoutIsCurrent(ctx)) graphLayoutStore.change(ctx, { ...ctx.data, positions: {} });
 }
 
 function graphHierarchyDescendants(cy, rootID) {
@@ -4668,7 +4740,7 @@ function mountGraph() {
   edges.forEach((edge) => { degree.set(edge.source, (degree.get(edge.source) || 0) + 1); degree.set(edge.target, (degree.get(edge.target) || 0) + 1); });
   const savedPositions = loadGraphPositions();
   const positioned = nodes.filter((node) => savedPositions[node.id]).length;
-  const usePreset = nodes.length > 0 && positioned / nodes.length >= .75;
+  const usePreset = positioned > 0;
   const positionedPoints = Object.values(savedPositions).filter((position) => Number.isFinite(position?.x) && Number.isFinite(position?.y));
   const savedCenter = positionedPoints.length ? positionedPoints.reduce((total, position) => ({ x: total.x + position.x / positionedPoints.length, y: total.y + position.y / positionedPoints.length }), { x: 0, y: 0 }) : { x: 0, y: 0 };
   const fallbackPosition = (index) => {
@@ -4712,9 +4784,11 @@ function mountGraph() {
     layout: usePreset ? { name: 'preset', fit: true, padding: window.innerWidth <= 560 ? 44 : 48, animate: false } : (nodes.length > 1 ? graphLayoutOptions(true, nodes.length) : { name: 'grid', fit: true, padding: 48 }),
   });
   state.graphInstance = cy;
+  state.graphLayoutInstances.set(cy, state.graphLayoutContext);
   $('#graph-count').textContent = `${nodes.length} · ${edges.length}`;
-  cy.one('layoutstop', () => { ensureReadableGraphView(cy); saveGraphPositions(cy); updateGraphZoomStyles(); });
+  cy.one('layoutstop', () => { if (state.graphInstance !== cy || cy.destroyed()) return; ensureReadableGraphView(cy); saveGraphPositions(cy); updateGraphZoomStyles(); });
   cy.ready(() => requestAnimationFrame(() => {
+    if (state.graphInstance !== cy || cy.destroyed()) return;
     // Preset layouts can finish before the layoutstop listener is registered.
     // Reapplying the readable floor keeps labels and tap targets usable on mobile.
     ensureReadableGraphView(cy);
@@ -4728,6 +4802,7 @@ function mountGraph() {
   cy.on('tap', (event) => { closeGraphContextMenu(); if (event.target === cy) selectGraphNode(''); });
   cy.on('cxttap', 'node', (event) => openGraphContextMenu(event.target.id()));
   cy.on('grab', 'node', (event) => {
+    graphLayoutStore.checkpoint(state.graphLayoutInstances.get(cy));
     const root = event.target;
     const descendants = (state.graphMoveBranch ? graphHierarchyDescendants(cy, root.id()) : [])
       .map((id) => cy.$id(id))
@@ -4880,7 +4955,7 @@ function openGraphContextMenu(nodeID) {
     if (!current) return;
     if (action === 'open') openGraphNode(current);
     if (action === 'focus') { state.graphFocusRecordId = current.recordId; state.graphSelectedId = current.id; renderGraph(); }
-    if (action === 'branch') { state.graphFocusRecordId = ''; state.graphBranchRootId = current.id; state.graphSelectedId = current.id; renderGraph(); }
+    if (action === 'branch') showGraphBranch(current.id);
     if (action === 'link') {
       selectGraphNode(current.id, true);
       if (!state.graphLinkSourceId) state.graphLinkSourceId = current.id;
@@ -4914,6 +4989,7 @@ function arrangeSelectedGraphBranch() {
 	if (!cy || !root?.length) return;
 	const descendants = graphHierarchyDescendants(cy, root.id()).map((id) => cy.$id(id)).filter((node) => node.length);
 	if (!descendants.length) { toast('У выбранного объекта нет дочерней ветки'); return; }
+	graphLayoutStore.checkpoint(state.graphLayoutInstances.get(cy));
 	const levels = new Map([[root.id(), 0]]); const queue = [root.id()];
 	const childRelations = new Set(['parent_of', 'contains', 'answered_by', 'decided_as', 'contains_option', 'produced', 'leads_to']);
 	while (queue.length) {
@@ -4926,7 +5002,7 @@ function arrangeSelectedGraphBranch() {
 		const spacing = Math.max(112, 360 / Math.max(1, nodes.length));
 		node.animate({ position: { x: rootPosition.x + level * 225, y: rootPosition.y + (index - (nodes.length - 1) / 2) * spacing }, duration: 260, easing: 'ease-out-cubic' });
 	})));
-	setTimeout(() => { saveGraphPositions(cy); cy.animate({ fit: { eles: root.union(descendants.reduce((collection, node) => collection.union(node), cy.collection())), padding: 90 }, duration: 240 }); }, 290);
+	setTimeout(() => { if (state.graphInstance !== cy || cy.destroyed()) return; saveGraphPositions(cy); cy.animate({ fit: { eles: root.union(descendants.reduce((collection, node) => collection.union(node), cy.collection())), padding: 90 }, duration: 240 }); }, 290);
 }
 
 function stopGraphTimeline(reveal = true) {
@@ -4988,18 +5064,20 @@ function bindGraphKeyboard() {
 
 function bindGraphControls() {
   $$('[data-graph-mode]').forEach((button) => button.addEventListener('click', () => { if (button.dataset.graphMode === 'global') state.graphFocusRecordId = ''; renderGraph(); }));
-  $('#graph-search').addEventListener('input', (event) => { state.graphSearch = event.target.value; applyGraphSearch(); });
-  $('#graph-branch-filter')?.addEventListener('change', (event) => { state.graphBranchRootId = event.target.value; state.graphFocusRecordId = ''; state.graphSelectedId = event.target.value || ''; mountGraph(); });
+  $('#graph-search').addEventListener('input', (event) => { state.graphSearch = event.target.value; saveGraphSettings(); applyGraphSearch(); });
+  $('#graph-branch-filter')?.addEventListener('change', event => showGraphBranch(event.target.value));
   $('#graph-move-branch')?.addEventListener('click', () => { state.graphMoveBranch = !state.graphMoveBranch; saveGraphSettings(); renderGraph(); toast(state.graphMoveBranch ? 'Режим ветки включён: родитель двигается вместе с потомками' : 'Теперь перемещается только один узел'); });
-  $('#graph-depth')?.addEventListener('input', (event) => { state.graphDepth = Number(event.target.value); event.target.nextElementSibling.textContent = String(state.graphDepth); mountGraph(); });
+  $('#graph-depth')?.addEventListener('input', (event) => { state.graphDepth = Number(event.target.value); event.target.nextElementSibling.textContent = String(state.graphDepth); saveGraphSettings(); mountGraph(); });
+  $('#graph-undo-layout')?.addEventListener('click', () => { const ctx = state.graphLayoutContext; if (graphLayoutStore.undo(ctx)) { applyGraphLayoutData(ctx.data); renderGraph(); } });
   $('#graph-fit').addEventListener('click', fitGraph);
   $('#graph-zoom-in').addEventListener('click', () => zoomGraph(1.18));
   $('#graph-zoom-out').addEventListener('click', () => zoomGraph(1 / 1.18));
   $('#graph-relayout').addEventListener('click', () => {
-    if (!state.graphInstance) return;
+    const cy = state.graphInstance;
+    if (!cy) return;
     clearGraphPositions();
-    const layout = state.graphInstance.layout(graphLayoutOptions(true));
-    state.graphInstance.one('layoutstop', () => { ensureReadableGraphView(state.graphInstance); saveGraphPositions(); updateGraphZoomStyles(); });
+    const layout = cy.layout(graphLayoutOptions(true));
+    cy.one('layoutstop', () => { if (state.graphInstance !== cy || cy.destroyed()) return; ensureReadableGraphView(cy); saveGraphPositions(cy); updateGraphZoomStyles(); });
     layout.run();
   });
   $('#graph-settings-toggle').addEventListener('click', () => {
@@ -5043,7 +5121,7 @@ function bindGraphInspector() {
     const node = state.graphData.nodes.find((item) => item.id === state.graphSelectedId); if (!node) return;
     state.graphFocusRecordId = node.recordId; state.graphDepth = 2; renderGraph();
   });
-  $('[data-show-graph-branch]')?.addEventListener('click', () => { if (!state.graphSelectedId) return; state.graphFocusRecordId = ''; state.graphBranchRootId = state.graphSelectedId; renderGraph(); });
+  $('[data-show-graph-branch]')?.addEventListener('click', () => { if (state.graphSelectedId) showGraphBranch(state.graphSelectedId); });
 	$('[data-arrange-graph-branch]')?.addEventListener('click', arrangeSelectedGraphBranch);
   $$('[data-graph-neighbor]').forEach((button) => button.addEventListener('click', () => selectGraphNode(button.dataset.graphNeighbor)));
   $('[data-graph-link-source]')?.addEventListener('click', () => {
@@ -5058,13 +5136,17 @@ function bindGraphInspector() {
 }
 
 async function createGraphLink() {
+  const ctx = state.graphLayoutContext;
   const source = state.graphData.nodes.find((item) => item.id === state.graphLinkSourceId);
   const target = state.graphData.nodes.find((item) => item.id === state.graphSelectedId);
   if (!source || !target || source.entityKind !== 'record' || target.entityKind !== 'record') return;
   try {
     await api(`/api/records/${source.recordId}/links`, { method: 'POST', body: JSON.stringify({ targetId: target.recordId, relationType: $('#graph-relation-type').value, reason: 'Связь создана на карте проекта' }) });
-    state.graphData = await api('/api/graph'); state.graphLinkSourceId = ''; state.detailCache.delete(source.recordId); state.detailCache.delete(target.recordId); mountGraph(); selectGraphNode(target.id, true); toast('Связь добавлена');
-  } catch (error) { toast(error.message, true); }
+    if (!ctx || !graphLayoutIsCurrent(ctx) || state.view !== 'graph') return;
+    await ensureGraphData(true);
+    if (!graphLayoutIsCurrent(ctx) || state.view !== 'graph') return;
+    state.graphLinkSourceId = ''; state.detailCache.delete(source.recordId); state.detailCache.delete(target.recordId); mountGraph(); selectGraphNode(target.id, true); toast('Связь добавлена');
+  } catch (error) { if (ctx && graphLayoutIsCurrent(ctx)) toast(error.message, true); }
 }
 
 function openGraphNode(node) {
@@ -5096,12 +5178,13 @@ function renderValidation() {
 }
 
 async function renderOutcomes() {
+  const workspace = state.activeWorkspaceId, user = state.me?.id;
   const renderLoading = !state.graphData;
   if (renderLoading) {
     $('#main-content').innerHTML = `<div class="entity-list-heading"><div><p class="eyebrow">Память проекта</p><h1>Решения и выводы</h1><p>Принятые решения, результаты исследований и совместные итоги вопросов.</p></div><button type="button" class="primary" data-outcome-create>${icon('plus')} Зафиксировать решение</button></div><div class="relations-loading page-loading"><span class="spinner"></span><strong>Собираем итоговые знания проекта</strong></div>`;
     $('[data-outcome-create]')?.addEventListener('click', () => openCreateDialog('decision'));
-    try { state.graphData = await api('/api/graph'); } catch (error) { toast(error.message, true); }
-    if (state.view !== 'outcomes') return;
+    try { await ensureGraphData(); } catch (error) { if (state.activeWorkspaceId === workspace && state.me?.id === user) toast(error.message, true); }
+    if (state.view !== 'outcomes' || state.activeWorkspaceId !== workspace || state.me?.id !== user) return;
   }
   const decisions = state.records
     .filter((record) => record.type === 'decision' && record.status !== 'archived' && record.status !== 'cancelled')

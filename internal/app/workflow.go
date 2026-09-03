@@ -1175,6 +1175,7 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 		"recordBusinessDetails":  {`SELECT d.* FROM record_business_details d JOIN records r ON r.id = d.record_id WHERE r.workspace_id = ?`, workspaceArg},
 		"sections":               {`SELECT s.* FROM record_sections s JOIN records r ON r.id = s.record_id WHERE r.workspace_id = ?`, workspaceArg},
 		"links":                  {`SELECT l.* FROM record_links l JOIN records r ON r.id = l.source_id WHERE r.workspace_id = ?`, workspaceArg},
+		"myGraphLayouts":         {`SELECT * FROM user_graph_layouts WHERE workspace_id=? AND user_id=?`, []any{workspaceID, currentUser(r).ID}},
 		"criterionDecisions":     {`SELECT d.* FROM criterion_decisions d JOIN records r ON r.id = d.record_id WHERE r.workspace_id = ?`, workspaceArg},
 		"criterionScores":        {`SELECT s.* FROM criterion_scores s JOIN records r ON r.id = s.record_id WHERE r.workspace_id = ?`, workspaceArg},
 		"proofs":                 {`SELECT p.* FROM task_proofs p JOIN records r ON r.id = p.record_id WHERE r.workspace_id = ?`, workspaceArg},
@@ -1190,7 +1191,7 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 		"activity":               {`SELECT * FROM activity WHERE workspace_id = ?`, workspaceArg},
 		"activityUndos":          {`SELECT u.* FROM activity_undos u JOIN activity a ON a.id = u.activity_id WHERE a.workspace_id = ?`, workspaceArg},
 	}
-	payload := map[string]any{"schemaVersion": 16, "workspaceId": workspaceID, "exportedAt": nowText(), "exportedBy": currentUser(r).Username, "tables": map[string]any{}}
+	payload := map[string]any{"schemaVersion": 17, "workspaceId": workspaceID, "exportedAt": nowText(), "exportedBy": currentUser(r).Username, "tables": map[string]any{}}
 	data := payload["tables"].(map[string]any)
 	for name, item := range tables {
 		rows, err := exportRows(r.Context(), s.store.db, item.query, item.args...)
