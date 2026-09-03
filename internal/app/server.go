@@ -931,7 +931,11 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Неизвестный тип карточки")
 		return
 	}
-	if input.Title == "" || len(input.Title) > 240 {
+	if input.Type == "inbox" {
+		if !validatePersonalText(w, &input.Title, input.Description) {
+			return
+		}
+	} else if input.Title == "" || len(input.Title) > 240 {
 		writeError(w, http.StatusBadRequest, "Название обязательно и не длиннее 240 символов")
 		return
 	}
@@ -1280,9 +1284,22 @@ func (s *Server) handleUpdateRecord(w http.ResponseWriter, r *http.Request) {
 	businessDetailsChanged := false
 	var nextBusinessDetails RecordBusinessDetails
 	add := func(column string, value any) { updates = append(updates, column+" = ?"); args = append(args, value) }
+	if before.Type == "inbox" && (input.Title != nil || input.Description != nil) {
+		title, description := before.Title, before.Description
+		if input.Title != nil {
+			title = *input.Title
+		}
+		if input.Description != nil {
+			description = *input.Description
+		}
+		if !validatePersonalText(w, &title, description) {
+			return
+		}
+		input.Title = &title
+	}
 	if input.Title != nil {
 		value := strings.TrimSpace(*input.Title)
-		if value == "" || len(value) > 240 {
+		if value == "" || (before.Type != "inbox" && len(value) > 240) {
 			writeError(w, http.StatusBadRequest, "Некорректное название")
 			return
 		}
