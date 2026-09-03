@@ -13,7 +13,7 @@ import (
 func cacheEmbeddedAssets(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, "/")
-		versioned := r.URL.Query().Get("v") != "" && (name == "app.js" || name == "styles.css" || strings.HasPrefix(name, "brand/"))
+		versioned := r.URL.Query().Get("v") != "" && (strings.HasSuffix(name, ".js") || name == "styles.css" || strings.HasPrefix(name, "brand/"))
 		stable := strings.HasPrefix(name, "fonts/") || strings.HasPrefix(name, "vendor/")
 		if info, err := fs.Stat(web.Files, name); err == nil && !info.IsDir() && (versioned || stable) {
 			if versioned {

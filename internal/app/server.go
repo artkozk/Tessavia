@@ -274,6 +274,10 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			writeError(w, http.StatusInternalServerError, "Не удалось проверить сессию")
 			return
 		}
+		if expected := r.Header.Get("X-Outbox-Owner"); expected != "" && expected != strconv.FormatInt(user.ID, 10) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "Аккаунт изменился. Очередь прежнего пользователя приостановлена", "code": "outbox_owner_changed"})
+			return
+		}
 		lastSeen, parseErr := time.Parse(time.RFC3339Nano, lastSeenAt)
 		if parseErr != nil || time.Since(lastSeen) >= 5*time.Minute {
 			_, _ = s.store.db.ExecContext(r.Context(), `UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?`, nowText(), hashToken(cookie.Value))

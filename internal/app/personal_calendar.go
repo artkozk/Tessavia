@@ -6,6 +6,7 @@ import (
 )
 
 type personalPlanInput struct {
+	RequestKey        string  `json:"requestKey"`
 	Title             string  `json:"title"`
 	Notes             string  `json:"notes"`
 	Status            string  `json:"status"`

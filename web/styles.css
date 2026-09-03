@@ -4217,3 +4217,16 @@ body:has(.calendar-expanded) { overflow: hidden; }
   .team-lifecycle-dialog .form-actions, .team-lifecycle-actions { flex-direction: column; align-items: stretch; }
   .team-lifecycle-dialog .form-actions > button, .team-lifecycle-actions > button { width: 100%; }
 }
+
+/* Durable outbox uses the existing palette and stays usable at 320 px. */
+.outbox-trigger { position: relative; }
+.outbox-trigger b { position: absolute; right: -3px; top: -3px; min-width: 17px; padding: 1px 3px; border-radius: 9px; background: var(--accent, #14725e); color: white; font-size: 10px; }
+.outbox-dialog { width: min(680px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
+.outbox-item { display: grid; gap: 8px; padding: 16px 0; border-bottom: 1px solid var(--border, #ddd); overflow-wrap: anywhere; }
+.outbox-item small { opacity: .75; }
+.outbox-actions, .offline-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.outbox-text { width: 100%; min-height: 160px; max-height: 50dvh; white-space: pre-wrap; }
+.offline-root { width: min(680px, 100%); padding: 24px; margin: 8vh auto; overflow-wrap: anywhere; }
+.offline-root p { margin: 16px 0; }
+.offline-root img { height: auto; }
+@media (max-width: 420px) { .outbox-dialog { width: calc(100vw - 16px); max-width: calc(100vw - 16px); } .offline-root { padding: 16px; margin-top: 24px; } .outbox-actions button { max-width: 100%; } }

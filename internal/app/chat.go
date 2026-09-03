@@ -17,6 +17,8 @@ import (
 	"time"
 )
 
+const chatMessageSelect = `SELECT m.id, m.thread_id, m.author_id, u.username, COALESCE(m.reply_to_id, ''), COALESCE(ru.username, ''), COALESCE(rm.body, ''), COALESCE(m.linked_record_id, ''), COALESCE(CASE WHEN lr.business_kind <> '' THEN lr.business_kind WHEN lr.subtype = 'question_set' THEN 'question_set' WHEN lr.record_kind = 'meeting' THEN 'meeting' ELSE lr.type END, ''), COALESCE(lr.title, ''), COALESCE(m.attachment_id, ''), COALESCE(a.original_name, ''), COALESCE(a.content_type, ''), COALESCE(a.size_bytes, 0), m.message_type, m.body, EXISTS(SELECT 1 FROM chat_favorites f WHERE f.message_id = m.id AND f.user_id = ?), m.created_at, m.edited_at FROM chat_messages m JOIN users u ON u.id = m.author_id LEFT JOIN chat_messages rm ON rm.id = m.reply_to_id LEFT JOIN users ru ON ru.id = rm.author_id LEFT JOIN records lr ON lr.id = m.linked_record_id LEFT JOIN chat_attachments a ON a.id = m.attachment_id`
+
 type ChatThread struct {
 	ID              string  `json:"id"`
 	Kind            string  `json:"kind"`
@@ -231,7 +233,7 @@ func (s *Server) listChatMessages(ctx context.Context, threadID string, userID i
 		where += " AND EXISTS(SELECT 1 FROM chat_favorites f WHERE f.message_id = m.id AND f.user_id = ?)"
 		args = append(args, userID)
 	}
-	rows, err := s.store.db.QueryContext(ctx, `SELECT m.id, m.thread_id, m.author_id, u.username, COALESCE(m.reply_to_id, ''), COALESCE(ru.username, ''), COALESCE(rm.body, ''), COALESCE(m.linked_record_id, ''), COALESCE(CASE WHEN lr.business_kind <> '' THEN lr.business_kind WHEN lr.subtype = 'question_set' THEN 'question_set' WHEN lr.record_kind = 'meeting' THEN 'meeting' ELSE lr.type END, ''), COALESCE(lr.title, ''), COALESCE(m.attachment_id, ''), COALESCE(a.original_name, ''), COALESCE(a.content_type, ''), COALESCE(a.size_bytes, 0), m.message_type, m.body, EXISTS(SELECT 1 FROM chat_favorites f WHERE f.message_id = m.id AND f.user_id = ?), m.created_at, m.edited_at FROM chat_messages m JOIN users u ON u.id = m.author_id LEFT JOIN chat_messages rm ON rm.id = m.reply_to_id LEFT JOIN users ru ON ru.id = rm.author_id LEFT JOIN records lr ON lr.id = m.linked_record_id LEFT JOIN chat_attachments a ON a.id = m.attachment_id WHERE `+where+` ORDER BY m.created_at DESC LIMIT 200`, args...)
+	rows, err := s.store.db.QueryContext(ctx, chatMessageSelect+` WHERE `+where+` ORDER BY m.created_at DESC LIMIT 200`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -309,46 +311,78 @@ func (s *Server) handleListChatMessages(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, messages)
 }
 
+// A receipt is read before commit, so a failed response cannot undo a stored file.
 func (s *Server) createChatMessage(ctx context.Context, threadID string, user User, messageType, body, replyToID, linkedRecordID, attachmentID, clientNonce string) (ChatMessage, error) {
 	body = strings.TrimSpace(body)
 	replyToID = strings.TrimSpace(replyToID)
 	linkedRecordID = strings.TrimSpace(linkedRecordID)
 	clientNonce = strings.TrimSpace(clientNonce)
 	if body == "" && linkedRecordID == "" && attachmentID == "" {
-		return ChatMessage{}, errors.New("empty message")
+		return ChatMessage{}, errChatContent
 	}
-	if len([]rune(body)) > 50000 {
-		return ChatMessage{}, errors.New("message too long")
+	if len([]rune(body)) > 50000 || len(clientNonce) > 100 {
+		return ChatMessage{}, errChatContent
 	}
-	if len(clientNonce) > 100 {
-		return ChatMessage{}, errors.New("invalid client nonce")
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ChatMessage{}, err
+	}
+	defer tx.Rollback()
+	var exists int
+	if err = tx.QueryRowContext(ctx, `SELECT 1 FROM chat_threads t JOIN chat_members cm ON cm.thread_id=t.id JOIN workspace_members wm ON wm.workspace_id=t.workspace_id AND wm.user_id=cm.user_id WHERE t.id=? AND cm.user_id=? AND t.workspace_id=? AND wm.status='active'`, threadID, user.ID, workspaceIDFromContext(ctx)).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ChatMessage{}, errChatAccess
+		}
+		return ChatMessage{}, err
+	}
+	var fileHash, fileName, fileType string
+	var fileSize int64
+	if attachmentID != "" {
+		if err = tx.QueryRowContext(ctx, `SELECT sha256,original_name,content_type,size_bytes FROM chat_attachments WHERE id=? AND uploader_id=?`, attachmentID, user.ID).Scan(&fileHash, &fileName, &fileType, &fileSize); err != nil {
+			return ChatMessage{}, err
+		}
+	}
+	fingerprint, err := createPayloadHash([]any{messageType, body, replyToID, linkedRecordID, fileHash, fileName, fileType, fileSize})
+	if err != nil {
+		return ChatMessage{}, err
 	}
 	if clientNonce != "" {
-		var existingID string
-		if err := s.store.db.QueryRowContext(ctx, `SELECT id FROM chat_messages WHERE thread_id = ? AND author_id = ? AND client_nonce = ?`, threadID, user.ID, clientNonce).Scan(&existingID); err == nil {
-			messages, listErr := s.listChatMessages(ctx, threadID, user.ID, false)
-			if listErr != nil {
-				return ChatMessage{}, listErr
+		var previousID, previousHash string
+		var archived sql.NullString
+		err = tx.QueryRowContext(ctx, `SELECT id,client_payload_hash,archived_at FROM chat_messages WHERE thread_id=? AND author_id=? AND client_nonce=?`, threadID, user.ID, clientNonce).Scan(&previousID, &previousHash, &archived)
+		if err == nil {
+			if archived.Valid {
+				return ChatMessage{}, errChatArchived
 			}
-			for index := len(messages) - 1; index >= 0; index-- {
-				if messages[index].ID == existingID {
-					return messages[index], nil
-				}
+			if previousHash != "" && previousHash != fingerprint {
+				return ChatMessage{}, errCreateRequestConflict
 			}
+			return readChatCreateReceipt(ctx, tx, previousID, user.ID)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return ChatMessage{}, err
 		}
 	}
 	if replyToID != "" {
-		var exists int
-		if s.store.db.QueryRowContext(ctx, `SELECT 1 FROM chat_messages WHERE id = ? AND thread_id = ?`, replyToID, threadID).Scan(&exists) != nil {
-			return ChatMessage{}, errors.New("reply not found")
+		if err = tx.QueryRowContext(ctx, `SELECT 1 FROM chat_messages WHERE id=? AND thread_id=? AND archived_at IS NULL`, replyToID, threadID).Scan(&exists); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ChatMessage{}, errChatReference
+			}
+			return ChatMessage{}, err
 		}
 	}
 	if linkedRecordID != "" {
-		if _, err := s.getRecord(ctx, linkedRecordID); err != nil {
-			return ChatMessage{}, errors.New("record not found")
+		if err = tx.QueryRowContext(ctx, `SELECT 1 FROM records WHERE id=? AND workspace_id=?`, linkedRecordID, workspaceIDFromContext(ctx)).Scan(&exists); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ChatMessage{}, errChatReference
+			}
+			return ChatMessage{}, err
 		}
 	}
-	id, _ := newID()
+	id, err := newID()
+	if err != nil {
+		return ChatMessage{}, err
+	}
 	now := nowText()
 	nullable := func(value string) any {
 		if value == "" {
@@ -356,33 +390,23 @@ func (s *Server) createChatMessage(ctx context.Context, threadID string, user Us
 		}
 		return value
 	}
-	tx, err := s.store.db.BeginTx(ctx, nil)
+	if _, err = tx.ExecContext(ctx, `INSERT INTO chat_messages(id,thread_id,author_id,reply_to_id,linked_record_id,attachment_id,message_type,body,client_nonce,client_payload_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, id, threadID, user.ID, nullable(replyToID), nullable(linkedRecordID), nullable(attachmentID), messageType, body, clientNonce, fingerprint, now); err != nil {
+		return ChatMessage{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE chat_threads SET updated_at=? WHERE id=?`, now, threadID); err != nil {
+		return ChatMessage{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE chat_members SET last_read_at=? WHERE thread_id=? AND user_id=?`, now, threadID, user.ID); err != nil {
+		return ChatMessage{}, err
+	}
+	message, err := readChatCreateReceipt(ctx, tx, id, user.ID)
 	if err != nil {
-		return ChatMessage{}, err
-	}
-	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO chat_messages(id, thread_id, author_id, reply_to_id, linked_record_id, attachment_id, message_type, body, client_nonce, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, threadID, user.ID, nullable(replyToID), nullable(linkedRecordID), nullable(attachmentID), messageType, body, clientNonce, now); err != nil {
-		return ChatMessage{}, err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE chat_threads SET updated_at = ? WHERE id = ?`, now, threadID); err != nil {
-		return ChatMessage{}, err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE chat_members SET last_read_at = ? WHERE thread_id = ? AND user_id = ?`, now, threadID, user.ID); err != nil {
 		return ChatMessage{}, err
 	}
 	if err = tx.Commit(); err != nil {
 		return ChatMessage{}, err
 	}
-	messages, err := s.listChatMessages(ctx, threadID, user.ID, false)
-	if err != nil {
-		return ChatMessage{}, err
-	}
-	for index := len(messages) - 1; index >= 0; index-- {
-		if messages[index].ID == id {
-			return messages[index], nil
-		}
-	}
-	return ChatMessage{}, sql.ErrNoRows
+	return message, nil
 }
 
 func (s *Server) handleCreateChatMessage(w http.ResponseWriter, r *http.Request) {
@@ -399,9 +423,12 @@ func (s *Server) handleCreateChatMessage(w http.ResponseWriter, r *http.Request)
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	if r.Header.Get("X-Outbox-Owner") != "" && !validateCreateRequestKey(w, r, &input.ClientNonce) {
+		return
+	}
 	message, err := s.createChatMessage(r.Context(), threadID, currentUser(r), "text", input.Body, input.ReplyToID, input.LinkedRecordID, "", input.ClientNonce)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Сообщение должно содержать текст или связанную карточку")
+		writeChatCreateError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, message)
@@ -564,6 +591,11 @@ func (s *Server) handleUploadChatAttachment(w http.ResponseWriter, r *http.Reque
 		writeError(w, 413, "Файл должен быть не больше 15 МБ")
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
+	clientNonce := r.FormValue("clientNonce")
+	if r.Header.Get("X-Outbox-Owner") != "" && !validateCreateRequestKey(w, r, &clientNonce) {
+		return
+	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		writeError(w, 400, "Выберите файл")
@@ -627,11 +659,14 @@ func (s *Server) handleUploadChatAttachment(w http.ResponseWriter, r *http.Reque
 	if strings.HasPrefix(contentType, "audio/") {
 		messageType = "voice"
 	}
-	message, err := s.createChatMessage(r.Context(), threadID, currentUser(r), messageType, r.FormValue("body"), r.FormValue("replyToId"), r.FormValue("linkedRecordId"), id, "")
+	message, err := s.createChatMessage(r.Context(), threadID, currentUser(r), messageType, r.FormValue("body"), r.FormValue("replyToId"), r.FormValue("linkedRecordId"), id, clientNonce)
+	// Also discard a newly uploaded duplicate after a successful replay. A referenced
+	// attachment is never deleted, even if commit succeeded but the response was lost.
+	if err != nil || message.Attachment == nil || message.Attachment.ID != id {
+		s.removeUnusedChatUpload(r.Context(), id, finalPath)
+	}
 	if err != nil {
-		os.Remove(finalPath)
-		_, _ = s.store.db.ExecContext(r.Context(), `DELETE FROM chat_attachments WHERE id = ?`, id)
-		writeError(w, 500, "Не удалось отправить файл")
+		writeChatCreateError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, message)

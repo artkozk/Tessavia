@@ -346,6 +346,7 @@ func (s *Server) personalTargetTitle(r *http.Request, ownerID int64, targetType,
 
 func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request) {
 	var input struct {
+		RequestKey    string  `json:"requestKey"`
 		ScheduledDate *string `json:"scheduledDate"`
 		Title         string  `json:"title"`
 		Body          string  `json:"body"`
@@ -353,6 +354,9 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 		LinkPlanID    string  `json:"linkPlanId"`
 	}
 	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if !validateCreateRequestKey(w, r, &input.RequestKey) {
 		return
 	}
 	titleGenerated := strings.TrimSpace(input.Title) == ""
@@ -369,12 +373,30 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 	}
 	now := nowText()
 	user := currentUser(r)
+	payloadHash, err := createPayloadHash(struct {
+		Title, Body, LinkPlanID string
+		Pinned, TitleGenerated  bool
+		ScheduledDate           *string
+	}{input.Title, strings.TrimSpace(input.Body), input.LinkPlanID, input.Pinned, titleGenerated, input.ScheduledDate})
+	if err != nil {
+		writeError(w, 400, "Некорректная заметка")
+		return
+	}
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, 500, "Не удалось сохранить заметку")
 		return
 	}
 	defer tx.Rollback()
+	existing, err := lookupPersonalCreate(r.Context(), tx, user.ID, "note", input.RequestKey, payloadHash)
+	if err != nil {
+		writeCreateReceiptError(w, err)
+		return
+	}
+	if existing != "" {
+		writePersonalCreateReplay(w, r, tx, "note", existing)
+		return
+	}
 	if input.LinkPlanID != "" {
 		var found int
 		if tx.QueryRowContext(r.Context(), `SELECT 1 FROM personal_plans WHERE id = ? AND owner_id = ? AND status <> 'archived'`, input.LinkPlanID, user.ID).Scan(&found) != nil {
@@ -389,6 +411,9 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 			return
 		}
 		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_links(id, owner_id, source_type, source_id, target_type, target_id, relation_type, created_at) VALUES(?, ?, 'note', ?, 'plan', ?, 'related', ?)`, linkID, user.ID, id, input.LinkPlanID, now)
+	}
+	if err == nil {
+		err = recordPersonalCreate(r.Context(), tx, user.ID, "note", input.RequestKey, payloadHash, id, now)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -457,6 +482,9 @@ func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	if !validateCreateRequestKey(w, r, &input.RequestKey) {
+		return
+	}
 	titleGenerated := strings.TrimSpace(input.Title) == ""
 	if !validatePersonalText(w, &input.Title, input.Notes) {
 		return
@@ -472,7 +500,37 @@ func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request
 	}
 	now := nowText()
 	user := currentUser(r)
-	_, err = s.store.db.ExecContext(r.Context(), `INSERT INTO personal_plans(id, owner_id, title, notes, due_at, status, created_at, updated_at, start_date, end_date, color_key, title_generated) VALUES(?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, now, now, plan.StartDate, plan.EndDate, plan.ColorKey, titleGenerated)
+	payloadHash, err := createPayloadHash(struct {
+		Title, Notes, StartDate, EndDate, ColorKey string
+		DueAt                                      *string
+		TitleGenerated                             bool
+	}{input.Title, strings.TrimSpace(input.Notes), plan.StartDate, plan.EndDate, plan.ColorKey, plan.DueAt, titleGenerated})
+	if err != nil {
+		writeError(w, 400, "Некорректный план")
+		return
+	}
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, 500, "Не удалось начать сохранение плана")
+		return
+	}
+	defer tx.Rollback()
+	existing, err := lookupPersonalCreate(r.Context(), tx, user.ID, "plan", input.RequestKey, payloadHash)
+	if err != nil {
+		writeCreateReceiptError(w, err)
+		return
+	}
+	if existing != "" {
+		writePersonalCreateReplay(w, r, tx, "plan", existing)
+		return
+	}
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_plans(id, owner_id, title, notes, due_at, status, created_at, updated_at, start_date, end_date, color_key, title_generated) VALUES(?, ?, ?, ?, ?, 'planned', ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Notes), plan.DueAt, now, now, plan.StartDate, plan.EndDate, plan.ColorKey, titleGenerated)
+	if err == nil {
+		err = recordPersonalCreate(r.Context(), tx, user.ID, "plan", input.RequestKey, payloadHash, id, now)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить план")
 		return

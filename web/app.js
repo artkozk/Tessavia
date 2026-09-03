@@ -1,3 +1,5 @@
+import { createOutboxUI } from './outbox-ui.js?v=20260903-offline-outbox-1';
+let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
 ﻿const typeMeta = {
@@ -1120,6 +1122,8 @@ function showAuth() {
 }
 
 function clearPrivateClientState() {
+  if (typeof offlineOutbox !== 'undefined') void offlineOutbox?.signOut();
+  state.offlineMode = false;
   state.loadDataAbort?.abort();
   state.loadDataRequest = (state.loadDataRequest || 0) + 1;
   clearProjectClientState();
@@ -1144,6 +1148,8 @@ function clearPrivateClientState() {
 }
 
 function showApp() {
+  state.offlineMode = false;
+  void offlineOutbox?.signIn(state.me);
   $('#auth-root').hidden = true;
   $('#app-root').hidden = false;
   $('#user-name').textContent = state.me.username;
@@ -1151,7 +1157,22 @@ function showApp() {
   setSidebarOpen(false);
 }
 
+function initializeOfflineOutbox() {
+offlineOutbox = createOutboxUI({
+  user: () => state.me, workspace: () => state.activeWorkspaceId,
+  openDialog: openModal, closeDialog: requestDialogClose, newPersonal: openPersonalEditor,
+  escapeHTML, toast, onAuthRequired: showAuth,
+  onOfflineIdentity: account => { state.me = account; state.offlineMode = true; },
+  onConfirmed: (item) => {
+    if (item.owner !== state.me?.id || state.offlineMode) return;
+    if (item.kind === 'note' || item.kind === 'plan') void loadPersonal({ force: true });
+    else if (item.workspace === state.activeWorkspaceId && item.thread === state.activeChatThreadId) void loadChatThread(item.thread,true);
+  },
+});
+}
+
 async function bootstrap() {
+  initializeOfflineOutbox();
   bindGlobalEvents();
   enhanceSelects(document);
   bindDragScroll(document);
@@ -1166,13 +1187,14 @@ async function bootstrap() {
   });
   interfaceObserver.observe(document.body, { childList: true, subtree: true });
   try {
+    if (!navigator.onLine && await offlineOutbox.offline()) return;
     state.me = await api('/api/me');
     showApp();
     await loadData();
 		maybeShowOnboarding();
 		if (!maybeOpenPendingInvitation()) maybeOpenPendingInterfacePreset();
   } catch (error) {
-    if(state.me) renderProjectLoadError(error); else showAuth();
+    if(state.me) renderProjectLoadError(error); else if (![401,403].includes(error.status) && await offlineOutbox.offline()) return; else showAuth();
   }
 }
 
@@ -1429,7 +1451,7 @@ function bindGlobalEvents() {
   $$('[data-auth-mode]').forEach((button) => button.addEventListener('click', () => setAuthMode(button.dataset.authMode)));
   $('#auth-form').addEventListener('submit', submitAuth);
 	$('#auth-change-registration').addEventListener('click', () => resetRegistrationVerification());
-  $('#logout-button').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.reload(); });
+  $('#logout-button').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); await offlineOutbox.signOut({ broadcast: true }); location.reload(); });
   $('#profile-button').addEventListener('click', () => { setSidebarOpen(false); openProfile(state.me.id); });
   $('#new-record-button').addEventListener('click', (event) => {
     event.stopPropagation();
@@ -1792,6 +1814,7 @@ function refreshPendingContent() {
 }
 
 async function refreshLiveData() {
+  if (state.offlineMode) return;
   if (!state.me || document.hidden || state.liveRefreshRunning) return;
   state.liveRefreshRunning = true;
   try {
@@ -1809,6 +1832,7 @@ async function refreshLiveData() {
 }
 
 async function sendPresence() {
+  if (state.offlineMode) return;
   if (!state.me || document.hidden) return;
   const now = Date.now();
   const active = now - state.lastInteractionAt < 90000;
@@ -2344,14 +2368,19 @@ async function loadPersonal({ force = false } = {}) {
   if (!force && (state.personal || state.personalError)) return;
   state.personalLoading = true;
   state.personalError = '';
+  const expectedOwner = state.me?.id;
+  const request = state.personalLoadRequest = (state.personalLoadRequest || 0) + 1;
   state.personalLoadPromise = api('/api/personal/overview');
   try {
-    state.personal = await state.personalLoadPromise;
+    const result = await state.personalLoadPromise;
+    if (expectedOwner !== state.me?.id || request !== state.personalLoadRequest) return;
+    state.personal = result;
   } catch (error) {
+    if (expectedOwner !== state.me?.id || request !== state.personalLoadRequest) return;
     state.personalError = error.message;
     toast(`Личное пространство не загрузилось: ${error.message}`, true);
   } finally {
-    state.personalLoading = false;
+    if (expectedOwner === state.me?.id && request === state.personalLoadRequest) state.personalLoading = false;
   }
   renderNav();
   if (state.view === 'personal') renderPersonal();
@@ -2648,6 +2677,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
   content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind !== 'habit' ? 'personal-note-form' : ''}" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
   $$('[data-close-personal]', dialog).forEach((button) => button.addEventListener('click', async () => { if (await requestDialogClose(dialog) && context.planId) openPersonalPlanDetails(context.planId); }));
   const editorForm = $('#personal-editor-form', dialog);
+  const editorOwner = state.me.id;
   const draftScope = `personal:${state.me.id}:${kind}:${item?.id || context.planId || (context.date ? `day:${context.date}` : 'new')}`;
   bindWorkingDraft(editorForm, draftScope);
   if (kind === 'note') {
@@ -2683,7 +2713,18 @@ function openPersonalEditor(kind, id = '', context = {}) {
     saving = true;
     submit.disabled = true;
     try {
+      if (!item && (kind === 'note' || kind === 'plan')) {
+        editorForm.inert = true;
+        const snapshot = JSON.stringify(workingDraftValues(editorForm));
+        await offlineOutbox.addPersonal(kind, payload, editorOwner);
+        const current = editorOwner === state.me?.id && editorForm.isConnected && dialog.open && snapshot === JSON.stringify(workingDraftValues(editorForm));
+        if (current) { clearWorkingDraftFor(editorForm); await requestDialogClose(dialog); }
+        if (editorOwner === state.me?.id) toastAction('Сохранено в этом браузере. Ожидает отправки.', 'Очередь', () => offlineOutbox.open());
+        void offlineOutbox.pump();
+        return;
+      }
       const saved = await api(`/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}${item ? `/${item.id}` : ''}`, { method: item ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
+      if (editorOwner !== state.me?.id || !editorForm.isConnected) return;
       clearWorkingDraftFor(editorForm);
       const stillHere = editorForm.isConnected && dialog.open;
       if (stillHere) await requestDialogClose(dialog);
@@ -2691,7 +2732,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
       if (stillHere && !dialog.open && (context.planId || kind === 'plan')) openPersonalPlanDetails(context.planId || saved.id);
       toast(`${title} ${kind === 'plan' ? 'сохранён' : 'сохранена'}`);
     } catch (error) { toast(error.message, true); }
-    finally { saving = false; submit.disabled = false; }
+    finally { saving = false; submit.disabled = false; editorForm.inert = false; }
   });
   $('[data-archive-personal]', dialog)?.addEventListener('click', async () => {
     try {
@@ -4053,16 +4094,20 @@ function renderChat() {
 }
 
 async function loadChatThread(threadID, silent = false) {
+  const context = captureProjectContext();
+  const request = state.chatLoadRequest = (state.chatLoadRequest || 0) + 1;
 	try {
 		const [messages, threads] = await Promise.all([api(`/api/chat/threads/${threadID}/messages${state.chatFavoritesOnly ? '?favorites=true' : ''}`), api('/api/chat/threads')]);
+		if (!isProjectContextCurrent(context) || request !== state.chatLoadRequest) return;
 		state.chatMessages = messages; state.chatThreads = threads; state.chatLoadedThreadId = threadID; state.activeChatThreadId = threadID;
 		await api(`/api/chat/threads/${threadID}/read`, { method: 'POST' });
+		if (!isProjectContextCurrent(context) || request !== state.chatLoadRequest) return;
 		const activeThread = state.chatThreads.find((item) => item.id === threadID);
 		if (activeThread) activeThread.unreadCount = 0;
 		renderNav();
 		if (!silent && state.view === 'chat') renderChat();
 		else if (silent && state.view === 'chat' && !workspaceHasActiveInput()) renderChat();
-	} catch (error) { if (!silent) toast(error.message, true); }
+	} catch (error) { if (!silent && isProjectContextCurrent(context) && request === state.chatLoadRequest) toast(error.message, true); }
 }
 
 function scheduleChatPoll() {
@@ -4082,34 +4127,23 @@ function renderChatUploadProgress() {
 	progressBox.innerHTML = state.chatUploadItems.map((item) => `<div class="chat-upload-item ${item.status}"><span><strong>${escapeHTML(item.name)}</strong><small>${item.status === 'done' ? 'Загружено' : item.status === 'error' ? escapeHTML(item.error || 'Ошибка') : `${item.progress}%`}</small></span><progress max="100" value="${item.progress}"></progress></div>`).join('');
 }
 
-async function sendChatAttachment(file, itemID = '') {
-	const item = state.chatUploadItems.find((entry) => entry.id === itemID);
-	if (item) { item.status = 'uploading'; renderChatUploadProgress(); }
-	return new Promise((resolve, reject) => {
-		const xhr = new XMLHttpRequest(); xhr.open('POST', `/api/chat/threads/${state.activeChatThreadId}/attachments`); xhr.withCredentials = true;
-		xhr.upload.onprogress = (event) => { if (event.lengthComputable && item) { item.progress = Math.round(event.loaded * 100 / event.total); renderChatUploadProgress(); } };
-		xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error((() => { try { return JSON.parse(xhr.responseText).error; } catch (_) { return 'Файл не отправлен'; } })()));
-		xhr.onerror = () => reject(new Error('Соединение прервано'));
-		const body = new FormData(); body.append('file', file, file.name); body.append('replyToId', state.chatReplyToId); body.append('linkedRecordId', state.chatLinkedRecordId); xhr.send(body);
-	}).then(() => { if (item) { item.progress = 100; item.status = 'done'; renderChatUploadProgress(); } }).catch((error) => { if (item) { item.status = 'error'; item.error = error.message; renderChatUploadProgress(); } throw error; });
-}
-
-async function uploadChatFiles(files) {
-	const queue = [...files].filter((file) => file?.size > 0);
-	if (!queue.length) return;
-	state.chatUploadItems = queue.map((file, index) => ({ id: `${Date.now()}-${index}`, name: file.name, progress: 0, status: 'waiting', error: '' }));
-	renderChatUploadProgress();
-	for (let index = 0; index < queue.length; index += 1) {
-		try { await sendChatAttachment(queue[index], state.chatUploadItems[index].id); }
-		catch (error) { toast(`${queue[index].name}: ${error.message}`, true); }
-	}
-	await loadChatThread(state.activeChatThreadId);
-	renderChatUploadProgress();
-	setTimeout(() => { state.chatUploadItems = []; renderChatUploadProgress(); }, 1800);
+async function uploadChatFiles(files, context = null, payload = null) {
+  const batch = [...files].filter(file => file?.size > 0);
+  if (!batch.length) return false;
+  context ||= offlineOutbox.context(state.activeChatThreadId, state.chatThreads.find(thread => thread.id === state.activeChatThreadId)?.title);
+  payload ||= { replyToId: state.chatReplyToId, linkedRecordId: state.chatLinkedRecordId };
+  try {
+    await offlineOutbox.addFiles(batch,context,payload);
+    if (context.owner === state.me?.id) toastAction('Файлы сохранены в браузере и ожидают отправки.', 'Очередь', () => offlineOutbox.open());
+    void offlineOutbox.pump();
+    return true;
+  } catch (error) { toast(error.message || 'Не удалось сохранить файлы в браузере',true); return false; }
 }
 
 async function startChatRecording(kind = 'voice') {
 	if (state.chatRecording) return;
+  const destination = offlineOutbox.context(state.activeChatThreadId,state.chatThreads.find(thread => thread.id === state.activeChatThreadId)?.title);
+  const messagePayload = { replyToId: state.chatReplyToId, linkedRecordId: state.chatLinkedRecordId };
 	try {
 		const constraints = kind === 'video' ? { audio: true, video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } } } : { audio: true };
 		const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -4129,7 +4163,7 @@ async function startChatRecording(kind = 'voice') {
 			const blob = new Blob(recording.chunks, { type });
 			const prefix = kind === 'video' ? 'video-note' : 'voice';
 			const file = new File([blob], `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`, { type });
-			await uploadChatFiles([file]);
+			await uploadChatFiles([file],destination,messagePayload);
 		};
 		state.chatRecording = recording;
 		recorder.start(250);
@@ -4318,16 +4352,21 @@ function bindChatEvents() {
 		}
 		if (!body && !state.chatLinkedRecordId) return;
 		const clientNonce = chatClientNonce();
+    const context = offlineOutbox.context(state.activeChatThreadId,state.chatThreads.find(thread => thread.id === state.activeChatThreadId)?.title);
+    const payload = { body, replyToId: state.chatReplyToId, linkedRecordId: state.chatLinkedRecordId };
 		state.chatSending = true; renderChat();
 		try {
-			await api(`/api/chat/threads/${state.activeChatThreadId}/messages`, { method: 'POST', body: JSON.stringify({ body, replyToId: state.chatReplyToId, linkedRecordId: state.chatLinkedRecordId, clientNonce }) });
-			state.chatReplyToId = ''; state.chatLinkedRecordId = ''; state.chatDraftNonce = ''; state.chatDraftText = '';
-			await loadChatThread(state.activeChatThreadId);
+      await offlineOutbox.addMessage(payload,context);
+      if (context.owner === state.me?.id && context.workspace === state.activeWorkspaceId && context.thread === state.activeChatThreadId && state.chatDraftNonce === clientNonce) {
+        state.chatReplyToId = ''; state.chatLinkedRecordId = ''; state.chatDraftNonce = ''; state.chatDraftText = '';
+      }
+      if (context.owner === state.me?.id) toastAction('Сообщение в очереди отправки.', 'Очередь', () => offlineOutbox.open());
+      void offlineOutbox.pump();
 		} catch (error) { toast(error.message, true); }
 		finally { state.chatSending = false; if (state.view === 'chat') renderChat(); }
 	});
 	$('[data-chat-attach]', form).addEventListener('click', () => input.click());
-	input.addEventListener('change', async () => { await uploadChatFiles(input.files); input.value = ''; });
+	input.addEventListener('change', async () => { if (await uploadChatFiles(input.files)) input.value = ''; });
 	['dragenter','dragover'].forEach((name) => drop.addEventListener(name, (event) => { event.preventDefault(); drop.classList.add('drag-active'); }));
 	drop.addEventListener('dragleave', () => drop.classList.remove('drag-active'));
 	drop.addEventListener('drop', async (event) => { event.preventDefault(); event.stopPropagation(); drop.classList.remove('drag-active'); await uploadChatFiles(event.dataTransfer.files); });
@@ -8949,5 +8988,6 @@ function bindBlockResize(node, block) {
     update(current.span+(desktop?(event.key==='ArrowLeft'?-1:event.key==='ArrowRight'?1:0):0),(current.height||node.clientHeight)+(event.key==='ArrowUp'?-20:event.key==='ArrowDown'?20:0));
   });
 }
+
 
 bootstrap();
