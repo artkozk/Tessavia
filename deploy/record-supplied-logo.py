@@ -14,7 +14,7 @@ parser.add_argument('--commit',required=True)
 parser.add_argument('--release',required=True)
 args=parser.parse_args()
 assert len(args.commit)==40 and all(c in '0123456789abcdef' for c in args.commit)
-assert args.release.startswith('/opt/business-control/releases/20260903-classic-brand-')
+assert args.release.startswith('/opt/business-control/releases/20260903-supplied-logo-')
 assert str(Path('/opt/business-control/current').resolve())==args.release
 db=sqlite3.connect('/var/lib/business-control/business-control.db',timeout=15)
 owner=db.execute("SELECT id FROM users WHERE username='artkozk'").fetchone()[0]
@@ -27,7 +27,7 @@ db.execute('INSERT INTO sessions(user_id,token_hash,expires_at,created_at,last_s
 db.commit()
 opener=request.build_opener(request.ProxyHandler({}))
 task_id='c0fd9c05fb729716cc0fcee1392673e4'
-marker='[verified:classic-brand-'+args.commit[:7]+']'
+marker='[verified:supplied-logo-'+args.commit[:7]+']'
 def api(method,path,body=None):
     payload=None if body is None else json.dumps(body,ensure_ascii=False).encode()
     req=request.Request('http://127.0.0.1:8522/api'+path,payload,
@@ -37,12 +37,13 @@ try:
     detail=api('GET','/records/'+task_id)
     record=detail['record']
     assert record['workspaceId']=='bizflow-team' and record['ownerId']==owner
-    evidence=marker+'\nУточнение пользователя: оставить только новое название Tessavie; вернуть прежние цвета и знак.\n'
-    evidence+='Восстановлены исходные CSS-переменные и знак из трёх связанных точек, прежняя страница входа; новый декоративный CSS удалён. '
-    evidence+='Название Tessavie, совместимость и исправление личного заголовка сохранены. '
-    evidence+='Go test/vet, 67 Node-проверок, браузер 1280/390/320 px, меню и восстановление черновика прошли. '
-    evidence+='Backup и dry-run на копии: ни одна таблица не изменилась; публичный smoke прошёл. '
-    evidence+='Физические телефоны не проверялись.\nCommit: '+args.commit+'\nRelease: '+args.release+'\nhttps://control.e-rd.ru'
+    evidence=marker+'\nУстановлен последний логотип пользователя: три окна и надпись Tessavie.\n'
+    evidence+='Ранний вариант с двумя рамками отменён до публикации. Прежняя палитра интерфейса сохранена. '
+    evidence+='Контуры надписи из вложения перенесены в SVG; обновлены вход, меню и favicon/PWA. '
+    evidence+='Go test/vet, Node-тесты, браузер 1280/390/320 px, меню и восстановление черновика прошли. '
+    evidence+='Backup и dry-run на копии: таблицы не изменились; публичный smoke прошёл. '
+    evidence+='Физические телефоны и обновление установленной PWA не проверялись.\n'
+    evidence+='Commit: '+args.commit+'\nRelease: '+args.release+'\nhttps://control.e-rd.ru'
     if not any(marker in proof['content'] for proof in detail.get('proofs',[])):
         api('POST','/records/'+task_id+'/proofs',{'kind':'text','content':evidence})
     record=api('GET','/records/'+task_id)['record']
@@ -50,8 +51,8 @@ try:
         api('PATCH','/records/'+task_id,{
             'expectedUpdatedAt':record['updatedAt'],
             'result':record['result']+'\n\n'+evidence,
-            'description':record['description']+'\n\n'+marker+'\nПрежний визуальный вариант отклонён пользователем. '
-                'Актуальное решение — название Tessavie при прежней палитре и логотипе. '
+            'description':record['description']+'\n\n'+marker+'\nПользователь выбрал последнее присланное изображение с тремя окнами. '
+                'Актуальное решение — название Tessavie, прежняя палитра и новый логотип из вложения. '
                 'Проверенный результат добавлен без удаления истории.'})
     verified=api('GET','/records/'+task_id)
     assert marker in verified['record']['result']

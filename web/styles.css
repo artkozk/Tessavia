@@ -4113,3 +4113,8 @@ body:has(.calendar-expanded) { overflow: hidden; }
   .section-heading > div { min-width: 0; }
   .record-table { min-width: 360px; }
 }
+
+/* User-supplied Tessavie artwork: geometry only; the interface palette stays unchanged. */
+.tessavie-logo { display: block; width: 196px; max-width: 100%; height: auto; }
+.brand > .tessavie-logo { width: 174px; min-width: 0; flex: 0 1 174px; }
+.brand > .sidebar-close { flex-shrink: 0; }
