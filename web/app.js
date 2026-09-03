@@ -7657,6 +7657,12 @@ function startPageLayoutEditor(device = interfaceDevice()) {
   $$('[data-page-block]').forEach((node) => node.parentElement.pageReorderCleanup?.());
   const key = pageLayoutKey();
   const value = structuredClone(savedPageLayout(state.interfaceProfiles[device]));
+  for (const widget of value.widgets || []) {
+    try {
+      const zoom = Number(localStorage.getItem(widgetScaleKey(widget, device)));
+      if (zoom) value.blockSettings = {...value.blockSettings, [widget]: {...value.blockSettings?.[widget], scale: Math.max(40, Math.min(100, zoom))}};
+    } catch (_) {}
+  }
   state.pageLayoutDraft = { key, device, value, baseline: JSON.stringify(value) };
   rememberView(); state.layoutHistoryEntry = structuredClone(history.state);
   applyInterfaceLayout(); applyPageLayout();
@@ -7702,6 +7708,7 @@ function bindPageLayoutEditor(editor, catalog) {
       preferences.layout.pages = { ...preferences.layout.pages, [draft.key]: structuredClone(draft.value) };
       await saveInterfacePreferences(preferences);
       if (workspace !== state.activeWorkspaceId || state.pageLayoutDraft !== draft) return;
+      for (const widget of workspaceWidgetCatalog()) { try { localStorage.removeItem(widgetScaleKey(widget.key, draft.device)); } catch (_) {} }
       state.pageLayoutDraft = null; editor.remove(); applyInterfaceLayout(); applyPageLayout(); toast('Настройка страницы сохранена');
     } catch (error) { toast(error.message, true); refresh(); }
     finally { state.pageLayoutSaving = false; $('#main-content').inert = false; }
@@ -8042,8 +8049,8 @@ function workspaceWidgetCatalog() {
   return definitions.map(([key,label,image,span]) => ({key:'widget:'+key,label,image,span,required:false,selector:'[data-page-widget="'+key+'"]'}));
 }
 
-function widgetScaleKey(key) {
-  return `business-control:widget-size:${state.me?.id}:${state.activeWorkspaceId}:${state.pageLayoutDraft?.device || interfaceDevice()}:${pageLayoutKey()}:${key}`;
+function widgetScaleKey(key, device = state.pageLayoutDraft?.device || interfaceDevice()) {
+  return `business-control:widget-size:${state.me?.id}:${state.activeWorkspaceId}:${device}:${pageLayoutKey()}:${key}`;
 }
 
 function widgetScale(block, settings) {
@@ -8198,7 +8205,7 @@ function bindBlockResize(node, block) {
     if(event.button!==0||state.pageLayoutSaving)return;
     event.preventDefault();event.stopPropagation();
     const value=state.pageLayoutDraft.value,box=node.getBoundingClientRect();
-    resize={x:event.clientX,y:event.clientY,width:box.width,height:box.height,geometry:pageBlockGeometry(value,block),settings:structuredClone(value.blockSettings?.[block.key]||{}),id:event.pointerId};
+    resize={x:event.clientX,y:event.clientY,width:box.width,height:box.height,geometry:pageBlockGeometry(value,block),spans:structuredClone(value.blockSpans),settings:structuredClone(value.blockSettings),id:event.pointerId};
     node.classList.add('page-block-resizing');handle.setPointerCapture(event.pointerId);
   });
   handle.addEventListener('pointermove',event=>{
@@ -8211,11 +8218,14 @@ function bindBlockResize(node, block) {
     if(!resize||resize.id!==event.pointerId)return;
     const previous=resize;resize=null;node.classList.remove('page-block-resizing');
     if(handle.hasPointerCapture(event.pointerId))handle.releasePointerCapture(event.pointerId);
-    if(event.type==='pointercancel') {
-      const value=state.pageLayoutDraft.value;value.blockSpans={...value.blockSpans,[block.key]:previous.geometry.span};value.blockSettings={...value.blockSettings,[block.key]:previous.settings};applyBlockGeometry(node,block,value);
+    if(event.type==='pointercancel' || event.type==='lostpointercapture') {
+      const value=state.pageLayoutDraft.value;
+      if(previous.spans===undefined)delete value.blockSpans;else value.blockSpans=previous.spans;
+      if(previous.settings===undefined)delete value.blockSettings;else value.blockSettings=previous.settings;
+      applyBlockGeometry(node,block,value);
     }
   };
-  handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',finish);
+  handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',finish);handle.addEventListener('lostpointercapture',finish);
   handle.addEventListener('keydown',event=>{
     if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
     event.preventDefault();const current=pageBlockGeometry(state.pageLayoutDraft.value,block),desktop=state.pageLayoutDraft.device==='desktop';

@@ -61,3 +61,17 @@ test('an option outside the dialog rectangle remains part of the dialog, not its
   assert.equal(vm.runInContext('pointerIsOutsideDialog({target,clientX:200,clientY:350},dialog)',context),false);
   assert.equal(vm.runInContext('pointerIsOutsideDialog({target:dialog,clientX:200,clientY:350},dialog)',context),true);
 });
+
+test('interrupted resize restores the exact draft and releases the render guard',()=>{
+  const events={},classes=new Set(),value={},state={pageLayoutDraft:{value,device:'desktop'}};
+  const handle={addEventListener:(key,fn)=>events[key]=fn,setPointerCapture(){},hasPointerCapture:()=>false};
+  const node={getBoundingClientRect:()=>({width:400,height:300}),parentElement:{clientWidth:1200},classList:{add:key=>classes.add(key),remove:key=>classes.delete(key)}};
+  const context=vm.createContext({state,innerWidth:1440,structuredClone,$:()=>handle,applyBlockGeometry(){},pageBlockGeometry:()=>({span:4,height:0})});
+  vm.runInContext(source.slice(source.indexOf('function bindBlockResize('),source.lastIndexOf('bootstrap();')),context);
+  context.node=node;context.block={key:'widget:calendar'};vm.runInContext('bindBlockResize(node,block)',context);
+  const event={pointerId:1,button:0,clientX:400,clientY:300,preventDefault(){},stopPropagation(){}};
+  events.pointerdown(event);events.pointermove({...event,clientX:510,clientY:390});
+  assert.ok(value.blockSpans);assert.ok(classes.has('page-block-resizing'));
+  events.lostpointercapture({...event,type:'lostpointercapture'});
+  assert.deepEqual(value,{});assert.equal(classes.has('page-block-resizing'),false);
+});
