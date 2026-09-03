@@ -48,6 +48,25 @@ test('core controls cannot be hidden and the chat composer is not movable', () =
   }
   h.state.view='chat'; assert.ok(h.run('pageLayoutCatalog().blocks.every(b=>!b.selector.includes("composer"))'));
 });
+
+test('work boards are registered after their controls, including custom-stage boards', () => {
+  const h = harness();
+  const expected = ['heading', 'filters', 'summary', 'boards', 'records'];
+  for (const [mode, label, surface] of [
+    ['list', 'Карточки', '.table-panel'],
+    ['kanban', 'Доска', '.work-kanban'],
+    ['kanban', 'Доска', '.collection-board'],
+    ['calendar', 'Календарь', '.work-calendar'],
+  ]) {
+    h.state.workViewMode = mode;
+    const blocks = h.run('pageLayoutCatalog().blocks');
+    assert.deepEqual(Array.from(blocks, b => b.key), expected);
+    const records = blocks.find(b => b.key === 'records');
+    assert.ok(records.selector.split(', ').includes(':scope > ' + surface), surface);
+    assert.equal(records.label, label);
+    assert.equal(records.required, true);
+  }
+});
 test('cancelled navigation retains changes; unchanged drafts leave without confirmation', () => {
   const h = harness();
   h.state.pageLayoutDraft={key:'work',value:{density:'compact'},baseline:'{}'};

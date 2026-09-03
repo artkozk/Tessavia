@@ -7602,12 +7602,14 @@ function pageLayoutCatalog() {
     field('due', 'Дата и прогресс', '.record-table > span:nth-child(4), .kanban-card .deadline'),
   ];
   const heading = block('heading', 'Заголовок и создание', ':scope > .page-heading, :scope > .personal-heading, :scope > .entity-list-heading, :scope > .work-title-row, :scope > .history-title');
-  const list = block('records', 'Карточки', ':scope > .table-panel, :scope > .work-kanban, :scope > .work-calendar, :scope > .idea-stage-board', true);
+  const list = block('records', 'Карточки', ':scope > .table-panel, :scope > .work-kanban, :scope > .work-calendar, :scope > .idea-stage-board, :scope > .collection-board', true);
+  // All work views share one layout key, including boards with custom stages.
+  const workRecords = { ...list, label: state.workViewMode === 'kanban' ? 'Доска' : state.workViewMode === 'calendar' ? 'Календарь' : 'Карточки' };
   const catalog = {
     dashboard: [block('heading', 'Заголовок', '.dashboard-config-row'), ...[['focus','Следующая работа',8],['capture','Быстрая фиксация',4],['capacity','Недельная загрузка',6],['quality','Качество базы',6]].map(([key,label,span]) => block(key,label,`.dashboard-widget-${key}`,false,span))],
     day: [block('heading','Дата и действия','.day-workspace-heading',true), block('records','Планы и карточки','.day-workspace-records',true,6), block('notes','Заметки дня','.day-workspace-notes',false,6)],
     calendar: [heading, block('filters', 'Вид и фильтры', '.planner-controls', true), block('month', 'Календарь и расписание', '.planner-body', true), block('undated', 'Без даты', '.planner-undated')],
-    work: [heading, block('filters', 'Поиск и фильтры', ':scope > .work-controls', true), block('summary', 'Сводка и представления', ':scope > .work-view-summary'), block('boards', 'Выбор доски', '.work-board-toolbar'), list],
+    work: [heading, block('filters', 'Поиск и фильтры', ':scope > .work-controls', true), block('summary', 'Сводка и представления', ':scope > .work-view-summary'), block('boards', 'Доска и её настройки', '.work-board-toolbar'), workRecords],
     personal: [heading, block('summary', 'Личная сводка', '.personal-summary'), block('tabs', 'Разделы', '.personal-tabs', true), block('habits', 'Привычки', '.personal-today-grid .personal-section:has(> .habit-list)', false, 6), block('plans', 'Ближайшие планы', '.personal-today-grid .personal-section:has(> .personal-list)', false, 6), block('life', 'Карта времени', '.personal-today-grid .life-section', false, 6), block('notes', 'Последние заметки', '.personal-today-grid .personal-section:has(> .personal-notes-preview)', false, 6)],
     collections: [heading, block('search', 'Доски и поиск', '.collection-toolbar', true), block('filters', 'Фильтры', '.collection-filters', true), block('records', 'Доска', ':scope > .collection-board', true)],
     principles: [heading, ...[['preference', 'Критерии'], ['limitation', 'Ограничения'], ['rule', 'Правила']].map(([key, label]) => block(key, label, `.principle-column:has([data-create-principle="${key}"])`, false, 4))],
