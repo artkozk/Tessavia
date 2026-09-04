@@ -243,6 +243,18 @@ func TestHomegroupReadingWorkflowAndIsolation(t *testing.T) {
 	if err = store.db.QueryRow("SELECT COUNT(*) FROM reading_entries WHERE workspace_id=? AND user_id=? AND book=43 AND chapter=10", workspace.ID, ownerUser.ID).Scan(&duplicates); err != nil || duplicates != 1 {
 		t.Fatal("concurrent duplicates", duplicates, err)
 	}
+	// The primary grid action sends a complete one-chapter personal mark with
+	// no note. Repeating that tap must remain idempotent and never add score.
+	quickMark := map[string]any{"day": today, "book": 43, "first": 11, "last": 11, "complete": true, "stream": "personal", "note": "", "shared": false}
+	var quickResult map[string]any
+	req(owner, "POST", "/api/reading/entries", quickMark, 200, &quickResult)
+	if quickResult["added"] != float64(1) {
+		t.Fatal("quick mark did not add one chapter", quickResult)
+	}
+	req(owner, "POST", "/api/reading/entries", quickMark, 200, &quickResult)
+	if quickResult["added"] != float64(0) {
+		t.Fatal("repeated quick mark was not idempotent", quickResult)
+	}
 	var integrity string
 	if err = store.db.QueryRow("PRAGMA integrity_check").Scan(&integrity); err != nil || integrity != "ok" {
 		t.Fatal(integrity, err)

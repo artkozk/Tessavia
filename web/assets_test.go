@@ -221,8 +221,22 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260904-reading-reflections-1")) != 2 {
+	if bytes.Count(index, []byte("20260905-reading-grid-1")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	}
+	styles, err := Files.ReadFile("styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+	for _, marker := range [][]byte{
+		[]byte(".reading-chapter-circles"),
+		[]byte("grid-template-columns: repeat(5, minmax(0, 1fr))"),
+		[]byte(".reading-testament-grid"),
+		[]byte("min-width: 44px; min-height: 44px"),
+	} {
+		if !bytes.Contains(styles, marker) {
+			t.Fatalf("styles.css does not contain reading grid marker %q", marker)
+		}
 	}
 	if _, err := Files.ReadFile("personal-review.js"); err != nil {
 		t.Fatalf("embedded personal review module missing: %v", err)

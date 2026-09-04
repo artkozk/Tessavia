@@ -4710,6 +4710,24 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .reading-age-distant { background: #f3f1e9; color: #615e50; }
 .reading-chapters { display: grid; grid-template-columns: repeat(auto-fill,minmax(60px,1fr)); gap: 7px; }
 .reading-chapters button { min-height: 44px; border: 1px solid var(--line); }
+.reading-reader { display: grid; gap: 16px; }
+.reading-reader-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.reading-reader-heading h3, .reading-reader-heading p, .reading-catalog h3, .reading-catalog h4 { margin: 0; }
+.reading-next { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.reading-chapter-circles { display: grid; grid-template-columns: repeat(5, minmax(44px, 64px)); justify-content: start; gap: 12px; max-width: 420px; }
+.reading-chapter-circles button { position: relative; aspect-ratio: 1; min-width: 44px; min-height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 50%; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+.reading-chapter-circles button > span { line-height: 1; }
+.reading-chapter-circles button > small { position: absolute; right: -2px; bottom: -1px; width: 17px; height: 17px; display: grid; place-items: center; border-radius: 50%; background: var(--surface, #fff); color: var(--accent); font-size: 10px; font-weight: 800; }
+.reading-chapter-circles button.is-next { box-shadow: 0 0 0 2px var(--surface, #fff), 0 0 0 4px var(--accent); }
+.reading-chapter-circles button.is-read-today { border: 2px solid var(--accent); font-weight: 800; }
+.reading-catalog { display: grid; gap: 16px; }
+.reading-catalog > div:first-child { display: grid; gap: 7px; }
+.reading-catalog h4 { padding-top: 5px; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.reading-testament-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 7px; }
+.reading-testament-book { min-width: 0; min-height: 52px; padding: 6px 4px; border: 1px solid var(--line); border-radius: 8px; display: grid; place-items: center; align-content: center; gap: 3px; text-align: center; }
+.reading-testament-book strong { max-width: 100%; overflow-wrap: anywhere; font-size: 12px; line-height: 1.15; }
+.reading-testament-book small { font-size: 9px; line-height: 1; opacity: .8; }
+.reading-testament-book[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 2px; font-weight: 800; }
 .reading-plan, .reading-journal-row { padding: 18px 0; border-top: 1px solid var(--line); margin-top: 15px; }
 .reading-plan header, .reading-journal-row header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 .reading-plan header span, .reading-journal-row header span, .reading-journal-row small { color: var(--muted); font-size: 12px; }
@@ -4733,6 +4751,9 @@ body:has(.calendar-expanded) { overflow: hidden; }
  .reading-summary strong { font-size: 26px; }
  .reading-books { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
  .reading-book { padding: 12px; }
+ .reading-chapter-circles { width: 100%; max-width: 360px; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; }
+ .reading-testament-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+ .reading-testament-book { min-height: 48px; }
  .reading-form { padding: 16px; }
  .reading-ranking article { grid-template-columns: 30px minmax(0,1fr); }
  .reading-ranking article > div:last-child { grid-column: 2; }
