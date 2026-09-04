@@ -2,7 +2,7 @@ import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal
 import { createPersonalWaitingUI } from './personal-waiting.js?v=20260904-waiting-ping-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
 import { createPersonalRemindersUI } from './personal-reminders.js?v=20260904-habit-reminders-1';
-import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-habit-reminders-1';
+import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
 import { createPersonalTodayUI } from './personal-today.js?v=20260904-personal-day-3';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
@@ -2967,6 +2967,10 @@ async function navigateToView(view, options = {}) {
   const changedView = changedWorkspace || normalized !== state.view;
 	state.view = normalized;
   if (['personal', 'calendar', 'day'].includes(normalized)) state.calendarScope = route.calendarScope;
+  if (normalized === 'personal' && Object.hasOwn(options, 'personalTab')) {
+	state.personalTab = options.personalTab;
+	if (state.personalTab === 'review') personalReviewUI.invalidate();
+  }
   for (const key of ['calendarDay', 'calendarCollection', 'calendarOwner', 'calendarStatus', 'calendarExpanded']) {
     if (Object.hasOwn(options, key)) state[key] = options[key];
   }
@@ -7976,6 +7980,8 @@ function renderNotifications() {
       await api(`/api/notifications/${item.id}/read`, { method: 'POST' });
       if(item.entityType==='personal_plan'&&item.entityId){await openPersonalReminderSource(item.entityId);}
       else if(item.entityType==='personal_habit'&&item.entityId){await openHabitReminderSource(item.entityId);}
+	  else if(item.entityType==='personal_digest'&&item.entityId?.startsWith('weekly:')){await navigateToView('personal',{personalTab:'review'});}
+	  else if(item.entityType==='personal_digest'){await navigateToView('personal',{personalTab:'today'});}
       else if(item.entityType==='waiting_ping'&&item.workspaceId&&item.workspaceId!==state.activeWorkspaceId){await switchWorkspace(item.workspaceId,{keepView:true});}
       else if (item.entityId) {
         if (item.workspaceId && item.workspaceId !== state.activeWorkspaceId) await switchWorkspace(item.workspaceId, { keepView: true });

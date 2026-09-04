@@ -8,14 +8,19 @@ import (
 )
 
 type reminderPreferences struct {
-	HabitsEnabled   bool                        `json:"habitsEnabled"`
-	PersonalEnabled bool                        `json:"personalEnabled"`
-	DeadlineEnabled bool                        `json:"deadlineEnabled"`
-	Timezone        string                      `json:"timezone"`
-	QuietStart      string                      `json:"quietStart"`
-	QuietEnd        string                      `json:"quietEnd"`
-	UpdatedAt       string                      `json:"updatedAt"`
-	Projects        []reminderProjectPreference `json:"projects"`
+	HabitsEnabled       bool                        `json:"habitsEnabled"`
+	PersonalEnabled     bool                        `json:"personalEnabled"`
+	DeadlineEnabled     bool                        `json:"deadlineEnabled"`
+	DailyDigestEnabled  bool                        `json:"dailyDigestEnabled"`
+	DailyDigestTime     string                      `json:"dailyDigestTime"`
+	WeeklyDigestEnabled bool                        `json:"weeklyDigestEnabled"`
+	WeeklyDigestWeekday int                         `json:"weeklyDigestWeekday"`
+	WeeklyDigestTime    string                      `json:"weeklyDigestTime"`
+	Timezone            string                      `json:"timezone"`
+	QuietStart          string                      `json:"quietStart"`
+	QuietEnd            string                      `json:"quietEnd"`
+	UpdatedAt           string                      `json:"updatedAt"`
+	Projects            []reminderProjectPreference `json:"projects"`
 }
 type reminderProjectPreference struct {
 	WorkspaceID string `json:"workspaceId"`
@@ -28,8 +33,8 @@ const reminderWorkspaceAccess = `w.archived_at IS NULL AND m.status='active'
  WHERE t.id=w.team_id AND t.deleted_at IS NULL AND tm.user_id=m.user_id AND tm.status='active'))`
 
 func loadReminderPreferences(ctx context.Context, q personalQueryer, user int64) (reminderPreferences, error) {
-	p := reminderPreferences{HabitsEnabled: true, PersonalEnabled: true, DeadlineEnabled: true, Timezone: "Europe/Moscow", Projects: []reminderProjectPreference{}}
-	err := q.QueryRowContext(ctx, `SELECT deadline_enabled,timezone,quiet_start,quiet_end,updated_at,personal_enabled,habits_enabled FROM reminder_preferences WHERE user_id=?`, user).Scan(&p.DeadlineEnabled, &p.Timezone, &p.QuietStart, &p.QuietEnd, &p.UpdatedAt, &p.PersonalEnabled, &p.HabitsEnabled)
+	p := reminderPreferences{HabitsEnabled: true, PersonalEnabled: true, DeadlineEnabled: true, DailyDigestTime: "08:00", WeeklyDigestWeekday: 7, WeeklyDigestTime: "18:00", Timezone: "Europe/Moscow", Projects: []reminderProjectPreference{}}
+	err := q.QueryRowContext(ctx, `SELECT deadline_enabled,timezone,quiet_start,quiet_end,updated_at,personal_enabled,habits_enabled,daily_digest_enabled,daily_digest_time,weekly_digest_enabled,weekly_digest_weekday,weekly_digest_time FROM reminder_preferences WHERE user_id=?`, user).Scan(&p.DeadlineEnabled, &p.Timezone, &p.QuietStart, &p.QuietEnd, &p.UpdatedAt, &p.PersonalEnabled, &p.HabitsEnabled, &p.DailyDigestEnabled, &p.DailyDigestTime, &p.WeeklyDigestEnabled, &p.WeeklyDigestWeekday, &p.WeeklyDigestTime)
 	if err == sql.ErrNoRows {
 		err = nil
 	}
@@ -59,9 +64,14 @@ func (s *Server) handleReminderPreferences(w http.ResponseWriter, r *http.Reques
 	if r.Method == http.MethodPut {
 		var input struct {
 			reminderPreferences
-			HabitsEnabled     *bool   `json:"habitsEnabled"`
-			PersonalEnabled   *bool   `json:"personalEnabled"`
-			ExpectedUpdatedAt *string `json:"expectedUpdatedAt"`
+			HabitsEnabled       *bool   `json:"habitsEnabled"`
+			PersonalEnabled     *bool   `json:"personalEnabled"`
+			DailyDigestEnabled  *bool   `json:"dailyDigestEnabled"`
+			DailyDigestTime     *string `json:"dailyDigestTime"`
+			WeeklyDigestEnabled *bool   `json:"weeklyDigestEnabled"`
+			WeeklyDigestWeekday *int    `json:"weeklyDigestWeekday"`
+			WeeklyDigestTime    *string `json:"weeklyDigestTime"`
+			ExpectedUpdatedAt   *string `json:"expectedUpdatedAt"`
 		}
 		if !decodeJSON(w, r, &input) {
 			return
@@ -97,7 +107,28 @@ func (s *Server) handleReminderPreferences(w http.ResponseWriter, r *http.Reques
 		if input.PersonalEnabled != nil {
 			personalEnabled = *input.PersonalEnabled
 		}
-		changed := old.HabitsEnabled != habitsEnabled || old.PersonalEnabled != personalEnabled || old.DeadlineEnabled != input.DeadlineEnabled || old.Timezone != input.Timezone || old.QuietStart != input.QuietStart || old.QuietEnd != input.QuietEnd
+		dailyDigestEnabled, dailyDigestTime := old.DailyDigestEnabled, old.DailyDigestTime
+		weeklyDigestEnabled, weeklyDigestWeekday, weeklyDigestTime := old.WeeklyDigestEnabled, old.WeeklyDigestWeekday, old.WeeklyDigestTime
+		if input.DailyDigestEnabled != nil {
+			dailyDigestEnabled = *input.DailyDigestEnabled
+		}
+		if input.DailyDigestTime != nil {
+			dailyDigestTime = *input.DailyDigestTime
+		}
+		if input.WeeklyDigestEnabled != nil {
+			weeklyDigestEnabled = *input.WeeklyDigestEnabled
+		}
+		if input.WeeklyDigestWeekday != nil {
+			weeklyDigestWeekday = *input.WeeklyDigestWeekday
+		}
+		if input.WeeklyDigestTime != nil {
+			weeklyDigestTime = *input.WeeklyDigestTime
+		}
+		if !validDayClock(dailyDigestTime) || !validDayClock(weeklyDigestTime) || weeklyDigestWeekday < 1 || weeklyDigestWeekday > 7 {
+			writeError(w, 400, "Укажите корректное время сводок и день недели")
+			return
+		}
+		changed := old.HabitsEnabled != habitsEnabled || old.PersonalEnabled != personalEnabled || old.DeadlineEnabled != input.DeadlineEnabled || old.DailyDigestEnabled != dailyDigestEnabled || old.DailyDigestTime != dailyDigestTime || old.WeeklyDigestEnabled != weeklyDigestEnabled || old.WeeklyDigestWeekday != weeklyDigestWeekday || old.WeeklyDigestTime != weeklyDigestTime || old.Timezone != input.Timezone || old.QuietStart != input.QuietStart || old.QuietEnd != input.QuietEnd
 		seen := map[string]bool{}
 		for _, project := range input.Projects {
 			if project.WorkspaceID == "" || seen[project.WorkspaceID] {
@@ -128,7 +159,7 @@ func (s *Server) handleReminderPreferences(w http.ResponseWriter, r *http.Reques
 				return
 			}
 			stamp := nowText()
-			if _, err = tx.ExecContext(r.Context(), `INSERT INTO reminder_preferences(user_id,deadline_enabled,timezone,quiet_start,quiet_end,updated_at,personal_enabled,habits_enabled) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET deadline_enabled=excluded.deadline_enabled,timezone=excluded.timezone,quiet_start=excluded.quiet_start,quiet_end=excluded.quiet_end,updated_at=excluded.updated_at,personal_enabled=excluded.personal_enabled,habits_enabled=excluded.habits_enabled`, user, input.DeadlineEnabled, input.Timezone, input.QuietStart, input.QuietEnd, stamp, personalEnabled, habitsEnabled); err != nil {
+			if _, err = tx.ExecContext(r.Context(), `INSERT INTO reminder_preferences(user_id,deadline_enabled,timezone,quiet_start,quiet_end,updated_at,personal_enabled,habits_enabled,daily_digest_enabled,daily_digest_time,weekly_digest_enabled,weekly_digest_weekday,weekly_digest_time) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET deadline_enabled=excluded.deadline_enabled,timezone=excluded.timezone,quiet_start=excluded.quiet_start,quiet_end=excluded.quiet_end,updated_at=excluded.updated_at,personal_enabled=excluded.personal_enabled,habits_enabled=excluded.habits_enabled,daily_digest_enabled=excluded.daily_digest_enabled,daily_digest_time=excluded.daily_digest_time,weekly_digest_enabled=excluded.weekly_digest_enabled,weekly_digest_weekday=excluded.weekly_digest_weekday,weekly_digest_time=excluded.weekly_digest_time`, user, input.DeadlineEnabled, input.Timezone, input.QuietStart, input.QuietEnd, stamp, personalEnabled, habitsEnabled, dailyDigestEnabled, dailyDigestTime, weeklyDigestEnabled, weeklyDigestWeekday, weeklyDigestTime); err != nil {
 				writeError(w, 500, "Не удалось сохранить настройки")
 				return
 			}

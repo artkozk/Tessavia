@@ -32,7 +32,8 @@ const notificationAccess = `n.user_id = ? AND ((n.entity_type='personal_plan' AN
 	WHERE ping.id=n.entity_id AND ping.recipient_id=n.user_id AND (workspace.team_id IS NULL OR EXISTS (
 	SELECT 1 FROM teams team JOIN team_members team_member ON team_member.team_id=team.id
 	WHERE team.id=workspace.team_id AND team.deleted_at IS NULL AND team_member.user_id=n.user_id AND team_member.status='active'))))
- OR (COALESCE(n.entity_type,'') NOT IN ('personal_plan','personal_habit','waiting_ping') AND (COALESCE(n.entity_id, '') = '' OR EXISTS (
+	OR n.entity_type='personal_digest'
+ OR (COALESCE(n.entity_type,'') NOT IN ('personal_plan','personal_habit','waiting_ping','personal_digest') AND (COALESCE(n.entity_id, '') = '' OR EXISTS (
 	SELECT 1 FROM records rec JOIN workspace_members member ON member.workspace_id = rec.workspace_id
 	JOIN workspaces w ON w.id = rec.workspace_id
 	WHERE rec.id = n.entity_id AND member.user_id = n.user_id AND member.status = 'active'
