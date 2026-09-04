@@ -10,16 +10,17 @@ import (
 )
 
 type Workspace struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Slug         string `json:"slug"`
-	Kind         string `json:"kind"`
-	Role         string `json:"role"`
-	DeletePolicy string `json:"deletePolicy"`
-	Description  string `json:"description"`
-	TeamID       string `json:"teamId,omitempty"`
-	TeamName     string `json:"teamName,omitempty"`
-	TeamRole     string `json:"teamRole,omitempty"`
+	ReadingEnabled bool   `json:"readingEnabled"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Slug           string `json:"slug"`
+	Kind           string `json:"kind"`
+	Role           string `json:"role"`
+	DeletePolicy   string `json:"deletePolicy"`
+	Description    string `json:"description"`
+	TeamID         string `json:"teamId,omitempty"`
+	TeamName       string `json:"teamName,omitempty"`
+	TeamRole       string `json:"teamRole,omitempty"`
 }
 
 type PersonalSettings struct {
@@ -256,7 +257,7 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
 	rows, err := s.store.db.QueryContext(r.Context(), `
 		SELECT w.id, w.name, w.slug, w.kind, wm.role, w.delete_policy, w.description,
-		       COALESCE(w.team_id, ''), COALESCE(t.name, ''), COALESCE(tm.role, '')
+		       COALESCE(w.team_id, ''), COALESCE(t.name, ''), COALESCE(tm.role, ''), EXISTS(SELECT 1 FROM reading_spaces rs WHERE rs.workspace_id=w.id)
 		FROM workspaces w JOIN workspace_members wm ON wm.workspace_id = w.id
 		LEFT JOIN teams t ON t.id = w.team_id
 		LEFT JOIN team_members tm ON tm.team_id = w.team_id AND tm.user_id = wm.user_id AND tm.status = 'active'
@@ -272,7 +273,7 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	items := make([]Workspace, 0)
 	for rows.Next() {
 		var item Workspace
-		if err := rows.Scan(&item.ID, &item.Name, &item.Slug, &item.Kind, &item.Role, &item.DeletePolicy, &item.Description, &item.TeamID, &item.TeamName, &item.TeamRole); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Slug, &item.Kind, &item.Role, &item.DeletePolicy, &item.Description, &item.TeamID, &item.TeamName, &item.TeamRole, &item.ReadingEnabled); err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось прочитать пространства")
 			return
 		}

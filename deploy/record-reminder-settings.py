@@ -31,7 +31,7 @@ def api(path, method='GET', body=None, workspace='bizflow-team'):
     with client.open(request, timeout=25) as response:
         raw=response.read(); return json.loads(raw) if raw else None
 try:
-    assert db.execute("SELECT COUNT(*) FROM schema_migrations WHERE version='046_reminder_preferences.sql'").fetchone()[0]==1
+    assert db.execute("SELECT COUNT(*) FROM schema_migrations WHERE version='047_reminder_preferences.sql'").fetchone()[0]==1
     before=list(db.execute('SELECT * FROM reminder_preferences WHERE user_id=1'))
     prefs=api('/me/reminders')
     assert isinstance(prefs['deadlineEnabled'],bool) and isinstance(prefs['projects'],list)
@@ -46,7 +46,7 @@ try:
     marker='[verified:reminder-settings-'+args.commit[:7]+']'
     result='В уведомлениях появились личные настройки сроков карточек: включение, часовой пояс, тихие часы через полночь и выбор проектов. Настройки действуют на всех устройствах только для владельца. GET не создаёт строки; отдельные проекты и общий выключатель проверяются перед доставкой. После тихого окна приходит только актуальное напоминание. История сохраняется. Форма сохраняет черновик и при конфликте предлагает сравнить текущую версию перед явным применением.'
     limits='Общая задача остаётся в работе: личные планы/привычки, snooze, сводки, дополнительные типы и push этим этапом не завершены. Изменение часового пояса делает прежние сообщения историческими; уже прочитанное не стирается.'
-    checks='Пройдены go test ./..., go vet ./..., 182 Node-теста. Go: приватность, CAS и безопасный повтор, проекты, тихие часы, обе границы и DST. Браузер: сохранение и reload, восстановление черновика, конфликт с другим окном и явное применение, 320 px. Миграция 046 на серверной копии сохраняет старые столбцы всех таблиц, добавляет пустые настройки и пояс Europe/Moscow к прежним источникам. Контракт: docs/architecture/REMINDER_DELIVERY_2026_09_04.md.'
+    checks='Пройдены go test ./..., go vet ./..., 186 Node-тестов. Go: приватность, CAS и безопасный повтор, проекты, тихие часы, обе границы и DST. Браузер: сохранение и reload, восстановление черновика, конфликт с другим окном и явное применение, 320 px. Миграции 046/047 объединены с чтением из main: серверная копия сохраняет старые столбцы всех таблиц, добавляет пустые таблицы и пояс Europe/Moscow к прежним источникам. Контракт: docs/architecture/REMINDER_DELIVERY_2026_09_04.md.'
     evidence=marker+'\n'+result+'\n'+limits+'\n'+checks+'\nCommit: '+args.commit+'\nRelease: '+args.release+'\nSHA256: '+args.sha256
     if not any(marker in proof['content'] for proof in detail.get('proofs',[])):api('/records/'+task_id+'/proofs','POST',{'kind':'text','content':evidence})
     task=api('/records/'+task_id)['record']

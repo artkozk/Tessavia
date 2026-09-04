@@ -10,6 +10,7 @@ import (
 )
 
 var projectViewKeys = map[string]bool{
+	"reading":   true,
 	"dashboard": true, "work": true, "collections": true, "chat": true, "calendar": true,
 	"principles": true, "goal": true, "idea": true, "research": true,
 	"validation": true, "outcomes": true, "document": true, "graph": true,

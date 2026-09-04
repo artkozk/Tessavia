@@ -74,6 +74,9 @@ python3 /tmp/verify-reminder-settings-migration.py "$backup/business-control.db"
 
 check_http() {
   local base="$1"
+  curl --max-time 15 -fsS "$base/reading.js?v=20260904-reading-1" > "$dry/reading.js"
+  grep -qF 'createReadingUI' "$dry/reading.js"
+  test "$(curl --max-time 10 -s -o /dev/null -w '%{http_code}' "$base/api/reading")" = 401
   curl --max-time 15 -fsS "$base/reminder-settings.js?v=20260904-reminder-settings-2" > "$dry/reminder-settings.js"
   grep -qF 'createReminderSettingsUI' "$dry/reminder-settings.js"
   for method in GET PUT; do
@@ -143,7 +146,7 @@ check_http() {
 
   curl --max-time 15 -fsS "$base/" > "$dry/index.html"
   grep -q '<title>Tessavie</title>' "$dry/index.html"
-  grep -q '20260904-reminder-settings-2' "$dry/index.html"
+  grep -q '20260904-reminder-settings-3' "$dry/index.html"
   ! grep -qi 'bizflow' "$dry/index.html"
   ! grep -q 'tessavie.css\|auth-weave' "$dry/index.html"
   ! grep -q 'brand-symbol' "$dry/index.html"
@@ -193,7 +196,7 @@ check_http() {
   curl --max-time 15 -fsS "$base/offline-outbox.js?v=20260903-offline-outbox-3" > "$dry/offline-outbox.js"
   curl --max-time 15 -fsS "$base/outbox-ui.js?v=20260904-first-use-4" > "$dry/outbox-ui.js"
   curl --max-time 15 -fsS "$base/sw.js" > "$dry/sw.js"
-  grep -qF "20260904-reminder-settings-2" "$dry/sw.js"
+  grep -qF "20260904-reminder-settings-3" "$dry/sw.js"
   grep -qF 'createIndexedOutbox' "$dry/offline-outbox.js"
   grep -qF 'id="work-owner-select"' "$dry/app.js"
   grep -qF "function hasOtherProjectParticipants()" "$dry/app.js"
@@ -281,4 +284,4 @@ test "$(sqlite3 "$db" "SELECT COUNT(*) FROM schema_migrations WHERE version='044
 
 test "$(sqlite3 "$db" "SELECT COUNT(*) FROM schema_migrations WHERE version='045_deadline_delivery_sources.sql';")" = 1
 
-test "$(sqlite3 "$db" "SELECT COUNT(*) FROM schema_migrations WHERE version='046_reminder_preferences.sql';")" = 1
+test "$(sqlite3 "$db" "SELECT COUNT(*) FROM schema_migrations WHERE version='047_reminder_preferences.sql';")" = 1

@@ -69,6 +69,15 @@ func NewServer(store *Store, config Config) http.Handler {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/health", s.handleHealth)
+	s.mux.Handle("GET /api/reading", s.requireAuth(http.HandlerFunc(s.handleReadingOverview)))
+	s.mux.Handle("POST /api/reading/enable", s.requireAuth(http.HandlerFunc(s.handleReadingEnable)))
+	s.mux.Handle("POST /api/reading/join", s.requireAuth(http.HandlerFunc(s.handleReadingJoin)))
+	s.mux.Handle("POST /api/reading/groups", s.requireAuth(http.HandlerFunc(s.handleReadingGroup)))
+	s.mux.Handle("PATCH /api/reading/groups/{id}", s.requireAuth(http.HandlerFunc(s.handleReadingGroup)))
+	s.mux.Handle("POST /api/reading/entries", s.requireAuth(http.HandlerFunc(s.handleReadingEntry)))
+	s.mux.Handle("PATCH /api/reading/entries/{id}", s.requireAuth(http.HandlerFunc(s.handleReadingEntryUpdate)))
+	s.mux.Handle("POST /api/reading/plans", s.requireAuth(http.HandlerFunc(s.handleReadingPlan)))
+	s.mux.Handle("POST /api/reading/plans/{id}/cancel", s.requireAuth(http.HandlerFunc(s.handleReadingPlanCancel)))
 	s.mux.HandleFunc("POST /api/auth/register", s.handleRegister)
 	s.mux.HandleFunc("POST /api/auth/register/verify", s.handleVerifyRegistration)
 	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
