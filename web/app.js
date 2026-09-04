@@ -1,3 +1,4 @@
+import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
 import { createPersonalWaitingUI } from './personal-waiting.js?v=20260904-personal-waiting-4';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
 import { createPersonalRemindersUI } from './personal-reminders.js?v=20260904-habit-reminders-1';
@@ -2433,6 +2434,8 @@ async function loadPersonal({ force = false } = {}) {
     if (expectedOwner !== state.me?.id || request !== state.personalLoadRequest) return;
     state.personal = result;
     personalTodayUI.invalidate();
+    personalWaitingUI.invalidate();
+    personalReviewUI.invalidate();
     personalRemindersUI.invalidate();
   } catch (error) {
     if (expectedOwner !== state.me?.id || request !== state.personalLoadRequest) return;
@@ -2459,7 +2462,7 @@ function renderPersonal() {
   const openPlans = data.plans.filter((plan) => plan.status === 'planned');
   const doneToday = data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.state === 'success')).length;
   const inboxCount = data.notes.filter(note => note.inInbox).length;
-  const tabs = [['today', 'Сегодня'], ['waiting', 'Ожидания'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['projects', 'Проекты'], ['goals', 'Цели'], ['notes', 'Заметки'], ['plans', 'Дела'], ['habits', 'Привычки'], ['life', 'Карта времени']];
+  const tabs = [['today', 'Сегодня'], ['review', 'Обзор недели'], ['waiting', 'Ожидания'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['projects', 'Проекты'], ['goals', 'Цели'], ['notes', 'Заметки'], ['plans', 'Дела'], ['habits', 'Привычки'], ['life', 'Карта времени']];
   $('#main-content').innerHTML = `
     <div class="page-heading personal-heading">
       <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>Личное пространство</h1><p>${escapeHTML(state.me.displayName || state.me.username)}</p></div>
@@ -2468,7 +2471,7 @@ function renderPersonal() {
     ${emptyPersonal ? '' : `<section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.planned)).length}</strong><small>отмечено</small></article><article><span>Незавершённые дела</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate || plan.startsAt || plan.occurrenceDate).length} запланировано</small></article><article><span>Проекты и цели</span><strong>${data.projects.length}/${data.goals.length}</strong><small>открыто</small></article></section>`}
     <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}</div>
     <div class="personal-content">${renderPersonalTab(data)}</div>`;
-  $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; renderPersonal(); }));
+  $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; if(state.personalTab==='review')personalReviewUI.invalidate(); renderPersonal(); }));
   bindPersonalInteractions();
   $('.personal-heading').insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-personal-calendar>${icon('calendar')} Календарь</button>`);
   $('[data-personal-calendar]').addEventListener('click', () => openCalendar('personal'));
@@ -2487,6 +2490,7 @@ function renderPersonalTab(data) {
   if (state.personalTab === 'notes') return renderPersonalNotes(data.notes, data.links);
   if (state.personalTab === 'plans') return renderPersonalPlans(data.plans, data.links);
   if (state.personalTab === 'habits') return renderPersonalHabits(data.habits, data.links);
+  if (state.personalTab === 'review') return personalReviewUI.render();
   if (state.personalTab === 'waiting') return personalWaitingUI.renderList();
   const notes = [...data.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)).slice(0, 4);
   return `<section class="personal-today-grid"><div class="personal-column">${personalTodayUI.renderBlocks(data)}${personalWaitingUI.renderToday()}${personalRemindersUI.render()}<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ритм дня</p><h2>Привычки</h2></div>${data.habits.length ? `<span class="panel-note">${data.habits.filter((habit) => habit.currentStreak > 0).length} серий</span>` : ''}</div><div class="habit-list">${data.habits.filter(h => !h.archivedAt && !h.paused).map((habit) => renderHabitRow(habit, data.links, true)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section>${personalTodayUI.renderPlans(data)}</div><div class="personal-column"><section class="personal-section life-section">${renderLifeMap(data.settings)}</section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Под рукой</p><h2>Заметки</h2></div><button type="button" class="text-button" data-personal-tab-jump="notes">Все заметки</button></div><div class="personal-notes-preview">${notes.map((note) => renderNoteCard(note, data.links, true)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section></div></section>`;
@@ -2597,6 +2601,17 @@ async function openHabitReminderSource(id) {
 }
 const habitReminderUI=createHabitReminderUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,loadPersonal});
 const habitUI = createHabitUI({ openReminder:id=>habitReminderUI.open(id), outbox: () => offlineOutbox, escapeHTML, icon, api, state, toast, loadPersonal, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, findHabit: id => findPersonalItem('habit', id), openLinks: openPersonalLinkDialog, renderPersonal });
+async function openPersonalReviewSource(item) {
+  const owner=state.me?.id;if(!owner)return;
+  if(item.sourceKind==='plan')return openPersonalPlanDetails(item.sourceId);
+  if(item.sourceKind==='waiting')return personalWaitingUI.open(item.sourceId);
+  if(item.sourceKind==='habit')return habitUI.open(item.sourceId);
+  if(item.sourceKind==='record'&&item.workspaceId){
+    if(item.workspaceId!==state.activeWorkspaceId&&!await switchWorkspace(item.workspaceId))return;
+    if(owner===state.me?.id&&item.workspaceId===state.activeWorkspaceId)await openRecord(item.sourceId);
+  }
+}
+const personalReviewUI=createPersonalReviewUI({state,api,escapeHTML,icon,renderPersonal,toast,openSource:openPersonalReviewSource});
 const readingUI = createReadingUI({ escapeHTML, icon, api, state, toast, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, loadData });
 function renderHabitRow(habit, links, compact = false) { return habitUI.renderRow(habit, compact); }
 
@@ -2643,6 +2658,7 @@ function bindPersonalInteractions() {
   lifeMapUI.bind();
   personalTodayUI.bind();
   personalWaitingUI.bind();
+  personalReviewUI.bind();
   personalRemindersUI.bind();
   $('[data-first-use-teams]')?.addEventListener('click',openTeamsDirectory);
   void personalInboxUI.bindList();

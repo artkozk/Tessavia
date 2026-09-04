@@ -208,6 +208,8 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/personal/waiting/{id}", s.requireAuth(http.HandlerFunc(s.handlePersonalWaitingItem)))
 	s.mux.Handle("PUT /api/personal/waiting/{id}", s.requireAuth(http.HandlerFunc(s.handlePersonalWaitingItem)))
 	s.mux.Handle("POST /api/personal/waiting/{id}/{action}", s.requireAuth(http.HandlerFunc(s.handlePersonalWaitingAction)))
+	s.mux.Handle("GET /api/personal/review", s.requireAuth(http.HandlerFunc(s.handlePersonalReview)))
+	s.mux.Handle("PUT /api/personal/review/{week}/{kind}/{id}", s.requireAuth(http.HandlerFunc(s.handlePersonalReviewChoice)))
 	s.mux.Handle("GET /api/personal/suggestions", s.requireAuth(http.HandlerFunc(s.handlePersonalSuggestions)))
 	s.mux.Handle("GET /api/personal/search", s.requireAuth(http.HandlerFunc(s.handlePersonalSearch)))
 	s.mux.Handle("POST /api/personal/links", s.requireAuth(http.HandlerFunc(s.handleCreatePersonalLink)))
