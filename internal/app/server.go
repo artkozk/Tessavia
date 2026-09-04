@@ -269,6 +269,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/chat/threads/{id}/ai-digest", s.requireAuth(http.HandlerFunc(s.handleAIChatDigest)))
 	s.mux.Handle("GET /api/chat/ice-config", s.requireAuth(http.HandlerFunc(s.handleChatICEConfig)))
 	s.mux.Handle("POST /api/chat/messages/{messageId}/reaction", s.requireAuth(http.HandlerFunc(s.handleToggleChatReaction)))
+	s.mux.Handle("PUT /api/chat/messages/{messageId}/reaction", s.requireAuth(http.HandlerFunc(s.handleToggleChatReaction)))
 	s.mux.Handle("POST /api/chat/messages/{messageId}/favorite", s.requireAuth(http.HandlerFunc(s.handleToggleChatFavorite)))
 	s.mux.Handle("PATCH /api/chat/messages/{messageId}", s.requireAuth(http.HandlerFunc(s.handleEditChatMessage)))
 	s.mux.Handle("DELETE /api/chat/messages/{messageId}", s.requireAuth(http.HandlerFunc(s.handleArchiveChatMessage)))

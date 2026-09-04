@@ -205,7 +205,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 		[]byte("function arrangeSelectedGraphBranch"),
 		[]byte("data-close-chat-threads"),
 		[]byte("chatClientNonce"),
-		[]byte("chatEmojiCatalog"),
+		[]byte("createEmojiPickerUI"),
 		[]byte("data-chat-video"),
 		[]byte("chat-drop-overlay"),
 		[]byte("data-chat-audio"),
@@ -221,7 +221,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260904-note-media-3")) != 2 {
+	if bytes.Count(index, []byte("20260904-chat-emoji-3")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 }

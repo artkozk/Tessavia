@@ -1,3 +1,4 @@
+import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-habit-layout-2';
@@ -4222,29 +4223,14 @@ function chatMessagePreview(message) {
 	return markdownPlain(message.body, message.linkedRecordTitle || 'Сообщение');
 }
 
-const chatEmojiCatalog = {
-	'Смайлы': ['😀','😃','😄','😁','😅','😂','🤣','😊','🙂','🙃','😉','😍','🥰','😘','😎','🤓','🧐','🤔','🫡','🤨','😐','😶','🙄','😬','😮','😴','🥳','😤','😢','😭','😡'],
-	'Жесты': ['👍','👎','👌','✌️','🤞','🤝','👏','🙌','🫶','🙏','💪','👀','🧠','🫂','☝️','✋','🤚','👋','🫡','💯'],
-	'Работа': ['✅','❌','⚠️','❗','❓','💡','🎯','🚀','📌','📎','📝','📊','📈','🔍','🧪','🛠️','⏳','🔥','⭐','🏆'],
-	'Знаки': ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','💔','✨','🎉','⚡','☀️','🌙','🔔','🔒','🔗','➡️','⬆️','⬇️'],
-};
+let chatEmojiStorage;
+try { chatEmojiStorage = window.localStorage; } catch (_) { /* Optional preferences. */ }
+const chatEmojiPreferences = createEmojiPreferences(chatEmojiStorage);
+const chatEmojiPicker = createEmojiPickerUI({ preferences: chatEmojiPreferences, escapeHTML });
+function chatRecentEmojiList() { return chatEmojiPreferences.quick(state.me?.id); }
 
-function chatRecentEmojiList() {
-	if (!state.chatRecentEmojis.length) {
-		try { state.chatRecentEmojis = JSON.parse(localStorage.getItem('business-control:chat-recent-emojis') || '[]'); } catch (_) { state.chatRecentEmojis = []; }
-	}
-	const used = state.chatMessages.flatMap((message) => message.reactions || []).sort((left, right) => right.count - left.count).map((reaction) => reaction.emoji);
-	return [...new Set([...state.chatRecentEmojis, ...used, '👍','✅','❤️','😂','🤔','🔥'])].slice(0, 12);
-}
-
-function rememberChatEmoji(emoji) {
-	state.chatRecentEmojis = [emoji, ...state.chatRecentEmojis.filter((item) => item !== emoji)].slice(0, 18);
-	try { localStorage.setItem('business-control:chat-recent-emojis', JSON.stringify(state.chatRecentEmojis)); } catch (_) { /* Recent reactions are an optional local convenience. */ }
-}
-
-function renderChatEmojiPicker() {
-	if (!state.chatEmojiTarget) return '';
-	return `<section class="chat-emoji-picker" aria-label="Выбор эмодзи"><header><strong>${state.chatEmojiTarget === 'composer' ? 'Добавить эмодзи' : 'Реакция на сообщение'}</strong><button type="button" class="icon-button" data-close-chat-emoji aria-label="Закрыть">${icon('x')}</button></header><div class="chat-emoji-recent"><span>Частые</span><div>${chatRecentEmojiList().map((emoji) => `<button type="button" data-chat-emoji-choice="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}</div></div><div class="chat-emoji-catalog">${Object.entries(chatEmojiCatalog).map(([label, emojis]) => `<section><span>${escapeHTML(label)}</span><div>${emojis.map((emoji) => `<button type="button" data-chat-emoji-choice="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}</div></section>`).join('')}</div><form class="chat-emoji-custom"><input type="text" maxlength="16" inputmode="text" placeholder="Вставьте любой эмодзи" aria-label="Любой эмодзи"><button type="submit" class="secondary">Добавить</button></form></section>`;
+function renderChatReactions(message) {
+  return message.reactions.map(reaction => `<button type="button" class="chat-reaction ${reaction.mine ? 'mine' : ''}" data-chat-reaction="${message.id}" data-emoji="${escapeHTML(reaction.emoji)}" aria-pressed="${reaction.mine}" title="${escapeHTML(reaction.usernames.join(', '))}"><span>${escapeHTML(reaction.emoji)}</span><b>${reaction.count}</b></button>`).join('');
 }
 
 function chatMediaMarkup(message, source) {
@@ -4267,13 +4253,13 @@ function renderChatMessage(message) {
 	const reply = message.replyToId ? `<button type="button" class="chat-reply-preview" data-scroll-message="${message.replyToId}"><strong>${escapeHTML(message.replyAuthor)}</strong><span>${escapeHTML(markdownPlain(message.replyBody).slice(0, 120))}</span></button>` : '';
 	const linked = message.linkedRecordId ? `<button type="button" class="chat-record-link" data-open-record="${message.linkedRecordId}"><span class="type-icon type-${message.linkedRecordType}">${icon(typeMeta[message.linkedRecordType]?.icon || 'fileText')}</span><span><small>${escapeHTML(typeMeta[message.linkedRecordType]?.singular || 'Карточка')}</small><strong>${escapeHTML(message.linkedRecordTitle)}</strong></span>${icon('chevronRight')}</button>` : '';
 	const media = message.attachment ? chatMediaMarkup(message, `/api/chat/attachments/${message.attachment.id}`) : '';
-	const reactions = message.reactions.map((reaction) => `<button type="button" class="chat-reaction ${reaction.mine ? 'mine' : ''}" data-chat-reaction="${message.id}" data-emoji="${escapeHTML(reaction.emoji)}" title="${escapeHTML(reaction.usernames.join(', '))}"><span>${escapeHTML(reaction.emoji)}</span><b>${reaction.count}</b></button>`).join('');
+	const reactions = renderChatReactions(message);
 	const receipt = message.readBy.at(-1);
 	const read = mine ? `<span class="chat-checks ${receipt ? 'read' : ''}" title="${receipt ? `Прочитано ${escapeHTML(formatDate(receipt.readAt, true))}` : 'Отправлено'}">${receipt ? '✓✓' : '✓'}</span>` : '';
 	const ownActions = mine ? `${message.messageType === 'text' ? `<button type="button" data-chat-edit="${message.id}">${icon('edit')} Редактировать</button>` : ''}<button type="button" data-chat-archive="${message.id}">${icon('archive')} Убрать из чата</button>` : '';
 	const projectActions = message.body ? `<button type="button" data-chat-create="decision" data-message-id="${message.id}">${icon('scale')} Зафиксировать решение</button><button type="button" data-chat-create="task" data-message-id="${message.id}">${icon('checkSquare')} Создать задачу</button>` : '';
 	const quick = chatRecentEmojiList().slice(0, 5);
-	return `<article class="chat-message ${mine ? 'mine' : ''} type-${message.messageType}" id="chat-message-${message.id}" data-chat-message="${message.id}"><div class="chat-message-actions"><button type="button" data-chat-reply="${message.id}" title="Ответить" aria-label="Ответить">${icon('reply')}</button><button type="button" data-chat-emoji-more="${message.id}" title="Реакция" aria-label="Добавить реакцию">${icon('smile')}</button><details class="chat-message-menu"><summary aria-label="Другие действия">•••</summary><div><button type="button" data-chat-reply="${message.id}">${icon('reply')} Ответить</button><button type="button" data-chat-copy="${message.id}">${icon('copy')} Копировать</button><button type="button" data-chat-favorite="${message.id}">${icon('bookmark')} ${message.favorite ? 'Убрать из сохранённых' : 'Сохранить сообщение'}</button>${projectActions}${ownActions}<span>${quick.map((emoji) => `<button type="button" data-chat-reaction="${message.id}" data-emoji="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}<button type="button" data-chat-emoji-more="${message.id}" aria-label="Все эмодзи">${icon('smile')}</button></span></div></details></div><div class="chat-bubble">${!mine ? `<header><strong>${escapeHTML(message.authorUsername)}</strong></header>` : ''}${reply}${message.body ? `<div class="markdown-body chat-message-body">${renderMarkdown(message.body)}</div>` : ''}${linked}${media}<footer>${message.favorite ? `<span class="chat-saved" title="Сохранено">${icon('bookmark')}</span>` : ''}<time>${formatDate(message.createdAt, true)}</time>${message.editedAt ? `<span title="Изменено ${escapeHTML(formatDate(message.editedAt, true))}">изменено</span>` : ''}${read}</footer></div>${reactions ? `<div class="chat-reactions">${reactions}<button type="button" class="chat-add-reaction" data-chat-emoji-more="${message.id}" aria-label="Добавить реакцию">${icon('smile')}</button></div>` : ''}${state.chatEmojiTarget === message.id ? renderChatEmojiPicker() : ''}</article>`;
+	return `<article class="chat-message ${mine ? 'mine' : ''} type-${message.messageType}" id="chat-message-${message.id}" data-chat-message="${message.id}"><div class="chat-message-actions"><button type="button" data-chat-reply="${message.id}" title="Ответить" aria-label="Ответить">${icon('reply')}</button><button type="button" data-chat-emoji-more="${message.id}" title="Реакция" aria-label="Добавить реакцию">${icon('smile')}</button><details class="chat-message-menu"><summary aria-label="Другие действия">•••</summary><div><button type="button" data-chat-reply="${message.id}">${icon('reply')} Ответить</button><button type="button" data-chat-copy="${message.id}">${icon('copy')} Копировать</button><button type="button" data-chat-favorite="${message.id}">${icon('bookmark')} ${message.favorite ? 'Убрать из сохранённых' : 'Сохранить сообщение'}</button>${projectActions}${ownActions}<span>${quick.map((emoji) => `<button type="button" data-chat-reaction="${message.id}" data-emoji="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}<button type="button" data-chat-emoji-more="${message.id}" aria-label="Все эмодзи">${icon('smile')}</button></span></div></details></div><div class="chat-bubble">${!mine ? `<header><strong>${escapeHTML(message.authorUsername)}</strong></header>` : ''}${reply}${message.body ? `<div class="markdown-body chat-message-body">${renderMarkdown(message.body)}</div>` : ''}${linked}${media}<footer>${message.favorite ? `<span class="chat-saved" title="Сохранено">${icon('bookmark')}</span>` : ''}<time>${formatDate(message.createdAt, true)}</time>${message.editedAt ? `<span title="Изменено ${escapeHTML(formatDate(message.editedAt, true))}">изменено</span>` : ''}${read}</footer></div>${reactions ? `<div class="chat-reactions">${reactions}<button type="button" class="chat-add-reaction" data-chat-emoji-more="${message.id}" aria-label="Добавить реакцию">${icon('smile')}</button></div>` : ''}</article>`;
 }
 
 function renderChatTimeline(messages) {
@@ -4305,7 +4291,6 @@ function decorateChatUI() {
 	main.insertAdjacentHTML('beforeend', `<div class="chat-drop-overlay" aria-hidden="true"><span>${icon('fileText')}</span><strong>Отправить файлы</strong><small>Отпустите их в любом месте диалога</small></div>`);
 	const form = $('#chat-composer');
 	if (!form) return;
-	if (state.chatEmojiTarget === 'composer') form.insertAdjacentHTML('beforebegin', renderChatEmojiPicker());
 	if (state.chatRecording) {
 		form.classList.add('is-recording');
 		form.innerHTML = `<div class="chat-recording-strip"><span class="chat-recording-pulse"></span><strong>${state.chatRecording.kind === 'video' ? 'Видеосообщение' : 'Голосовое сообщение'}</strong><time data-recording-duration>${recordingTimeLabel(state.chatRecording.startedAt)}</time><button type="button" class="text-button danger-text" data-cancel-chat-recording>${icon('trash')} Отмена</button><button type="button" class="primary" data-send-chat-recording>${icon('send')} Отправить</button></div>`;
@@ -4338,6 +4323,7 @@ function chatFilteredMessages() {
 }
 
 function renderChat() {
+  chatEmojiPicker.close(false);
 	clearTimeout(state.chatPollTimer);
 	if (!state.activeChatThreadId && state.chatThreads.length) state.activeChatThreadId = state.chatThreads[0].id;
 	const thread = state.chatThreads.find((item) => item.id === state.activeChatThreadId);
@@ -4348,11 +4334,13 @@ function renderChat() {
 	}
 	const messages = chatFilteredMessages();
 	const editingMessage = state.chatMessages.find((message) => message.id === state.chatEditingMessageId);
+	const editDraft = state.chatEditDraft;
+	const editingBody = editingMessage && editDraft?.messageID === editingMessage.id && editDraft.threadID === state.activeChatThreadId && isProjectContextCurrent(editDraft.context) ? editDraft.body : editingMessage?.body;
 	const threadTitle = chatThreadTitle(thread);
 	$('#main-content').innerHTML = `<section class="chat-shell">
 		<button type="button" class="chat-thread-backdrop" data-close-chat-threads aria-label="Закрыть список диалогов"></button>
 		<aside class="chat-thread-list"><header><div><h1>Сообщения</h1><p>Личный диалог и обсуждения карточек</p></div><button type="button" class="icon-button" data-new-chat-thread title="Новая ветка">${icon('plus')}</button></header><div>${state.chatThreads.map((item) => `<button type="button" class="chat-thread ${item.id === state.activeChatThreadId ? 'active' : ''}" data-chat-thread="${item.id}">${avatarMarkup(state.users.find((user) => user.username === item.partnerUsername) || { username: item.kind === 'team' ? item.partnerUsername || 'П' : item.title })}<span><strong>${escapeHTML(chatThreadTitle(item))}</strong><small>${escapeHTML(item.lastMessage || (item.kind === 'record' ? 'Обсуждение карточки' : chatPresenceLabel(item)))}</small></span><time>${item.lastMessageAt ? formatDate(item.lastMessageAt) : ''}</time>${item.unreadCount ? `<b>${item.unreadCount}</b>` : ''}</button>`).join('') || '<div class="guided-empty compact">Диалоги ещё не созданы</div>'}</div></aside>
-		<main class="chat-main">${thread ? `<header class="chat-header"><button type="button" class="chat-mobile-threads icon-button" data-toggle-chat-threads title="Диалоги" aria-label="Диалоги">${icon('menu')}</button>${avatarMarkup(state.users.find((user) => user.username === thread.partnerUsername) || { username: thread.partnerUsername || thread.title })}<div><h2>${escapeHTML(threadTitle)}</h2><p class="${thread.partnerOnline ? 'online' : ''}">${thread.kind === 'record' ? `Ветка карточки · ${escapeHTML(thread.recordTitle)}` : escapeHTML(chatPresenceLabel(thread))}</p></div><div class="chat-header-actions">${thread.recordId ? `<button type="button" class="icon-button" data-open-record="${thread.recordId}" title="Открыть карточку">${icon('link')}</button>` : ''}<button type="button" class="icon-button ${state.chatSearchOpen ? 'active' : ''}" data-toggle-chat-search title="Поиск в диалоге">${icon('search')}</button><details class="chat-header-more"><summary class="icon-button" aria-label="Действия диалога" title="Действия диалога">${icon('more')}</summary><div><button type="button" data-chat-ai-digest>${icon('sparkles')}<span>Собрать AI-выжимку</span></button><button type="button" class="${state.chatFavoritesOnly ? 'active' : ''}" data-chat-favorites>${icon('bookmark')}<span>${state.chatFavoritesOnly ? 'Все сообщения' : 'Сохранённые сообщения'}</span></button><button type="button" data-start-call>${icon('phone')}<span>Аудиозвонок</span></button></div></details></div>${state.chatSearchOpen ? `<label class="chat-search">${icon('search')}<input type="search" value="${escapeHTML(state.chatSearch)}" placeholder="Найти сообщение" aria-label="Поиск в диалоге"><button type="button" data-close-chat-search aria-label="Закрыть поиск">${icon('x')}</button></label>` : ''}</header><div class="chat-context-stack">${renderChatCallBanner(thread)}${renderChatDigest(thread)}</div><div class="chat-messages" data-drag-scroll="true">${renderChatTimeline(messages) || `<div class="chat-empty"><span>${icon(state.chatSearch ? 'search' : 'messages')}</span><strong>${state.chatSearch ? 'Совпадений нет' : 'Начните разговор'}</strong><p>${state.chatSearch ? 'Измените запрос или очистите поиск.' : `Напишите ${escapeHTML(threadTitle)} или прикрепите карточку проекта.`}</p></div>`}</div><div class="chat-composer-context">${editingMessage ? `<div><span>${icon('edit')}</span><span><strong>Редактирование сообщения</strong><small>Предыдущая версия останется в журнале.</small></span><button type="button" data-clear-chat-edit>${icon('x')}</button></div>` : ''}${state.chatReplyToId ? (() => { const reply = state.chatMessages.find((item) => item.id === state.chatReplyToId); return `<div><span>${icon('reply')}</span><span><strong>Ответ ${escapeHTML(reply?.authorUsername || '')}</strong><small>${escapeHTML(chatMessagePreview(reply || {}).slice(0, 120))}</small></span><button type="button" data-clear-chat-reply aria-label="Отменить ответ">${icon('x')}</button></div>`; })() : ''}${state.chatLinkedRecordId ? (() => { const linked = state.records.find((item) => item.id === state.chatLinkedRecordId); return `<div><span>${icon('link')}</span><span><strong>Прикреплена карточка</strong><small>${escapeHTML(linked?.title || '')}</small></span><button type="button" data-clear-chat-record>${icon('x')}</button></div>`; })() : ''}</div><form class="chat-composer" id="chat-composer"><label class="chat-drop" data-chat-drop><textarea name="body" rows="1" placeholder="${editingMessage ? 'Исправьте сообщение' : 'Сообщение'}" aria-label="Сообщение" ${state.chatSending ? 'disabled' : ''}>${escapeHTML(editingMessage?.body ?? state.chatDraftText)}</textarea><input type="file" name="file" multiple hidden></label><div class="chat-composer-actions"><details class="chat-composer-more"><summary class="icon-button" title="Вложения и дополнительные действия" aria-label="Вложения и дополнительные действия">${icon('plus')}</summary><div><button type="button" class="${state.chatEmojiTarget === 'composer' ? 'active' : ''}" data-chat-composer-emoji ${state.chatSending ? 'disabled' : ''}>${icon('smile')}<span>Эмодзи</span></button><button type="button" data-chat-attach ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('fileText')}<span>Отправить файл</span></button><button type="button" data-chat-link-record ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('link')}<span>Прикрепить карточку</span></button><button type="button" data-chat-video ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('video')}<span>Видеосообщение</span></button></div></details><button type="button" class="icon-button" data-chat-voice title="Записать голосовое" aria-label="Записать голосовое" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('mic')}</button><button type="submit" class="primary icon-button" title="${editingMessage ? 'Сохранить' : 'Отправить'}" aria-label="${editingMessage ? 'Сохранить сообщение' : 'Отправить сообщение'}" ${state.chatSending ? 'disabled' : ''}>${state.chatSending ? '<span class="spinner"></span>' : icon(editingMessage ? 'check' : 'send')}</button></div><div class="chat-upload-progress" hidden><span></span><progress max="100" value="0"></progress></div></form>` : `<div class="chat-empty"><strong>Выберите диалог</strong></div>`}</main>
+		<main class="chat-main">${thread ? `<header class="chat-header"><button type="button" class="chat-mobile-threads icon-button" data-toggle-chat-threads title="Диалоги" aria-label="Диалоги">${icon('menu')}</button>${avatarMarkup(state.users.find((user) => user.username === thread.partnerUsername) || { username: thread.partnerUsername || thread.title })}<div><h2>${escapeHTML(threadTitle)}</h2><p class="${thread.partnerOnline ? 'online' : ''}">${thread.kind === 'record' ? `Ветка карточки · ${escapeHTML(thread.recordTitle)}` : escapeHTML(chatPresenceLabel(thread))}</p></div><div class="chat-header-actions">${thread.recordId ? `<button type="button" class="icon-button" data-open-record="${thread.recordId}" title="Открыть карточку">${icon('link')}</button>` : ''}<button type="button" class="icon-button ${state.chatSearchOpen ? 'active' : ''}" data-toggle-chat-search title="Поиск в диалоге">${icon('search')}</button><details class="chat-header-more"><summary class="icon-button" aria-label="Действия диалога" title="Действия диалога">${icon('more')}</summary><div><button type="button" data-chat-ai-digest>${icon('sparkles')}<span>Собрать AI-выжимку</span></button><button type="button" class="${state.chatFavoritesOnly ? 'active' : ''}" data-chat-favorites>${icon('bookmark')}<span>${state.chatFavoritesOnly ? 'Все сообщения' : 'Сохранённые сообщения'}</span></button><button type="button" data-start-call>${icon('phone')}<span>Аудиозвонок</span></button></div></details></div>${state.chatSearchOpen ? `<label class="chat-search">${icon('search')}<input type="search" value="${escapeHTML(state.chatSearch)}" placeholder="Найти сообщение" aria-label="Поиск в диалоге"><button type="button" data-close-chat-search aria-label="Закрыть поиск">${icon('x')}</button></label>` : ''}</header><div class="chat-context-stack">${renderChatCallBanner(thread)}${renderChatDigest(thread)}</div><div class="chat-messages" data-drag-scroll="true">${renderChatTimeline(messages) || `<div class="chat-empty"><span>${icon(state.chatSearch ? 'search' : 'messages')}</span><strong>${state.chatSearch ? 'Совпадений нет' : 'Начните разговор'}</strong><p>${state.chatSearch ? 'Измените запрос или очистите поиск.' : `Напишите ${escapeHTML(threadTitle)} или прикрепите карточку проекта.`}</p></div>`}</div><div class="chat-composer-context">${editingMessage ? `<div><span>${icon('edit')}</span><span><strong>Редактирование сообщения</strong><small>Предыдущая версия останется в журнале.</small></span><button type="button" data-clear-chat-edit>${icon('x')}</button></div>` : ''}${state.chatReplyToId ? (() => { const reply = state.chatMessages.find((item) => item.id === state.chatReplyToId); return `<div><span>${icon('reply')}</span><span><strong>Ответ ${escapeHTML(reply?.authorUsername || '')}</strong><small>${escapeHTML(chatMessagePreview(reply || {}).slice(0, 120))}</small></span><button type="button" data-clear-chat-reply aria-label="Отменить ответ">${icon('x')}</button></div>`; })() : ''}${state.chatLinkedRecordId ? (() => { const linked = state.records.find((item) => item.id === state.chatLinkedRecordId); return `<div><span>${icon('link')}</span><span><strong>Прикреплена карточка</strong><small>${escapeHTML(linked?.title || '')}</small></span><button type="button" data-clear-chat-record>${icon('x')}</button></div>`; })() : ''}</div><form class="chat-composer" id="chat-composer"><label class="chat-drop" data-chat-drop><textarea name="body" rows="1" placeholder="${editingMessage ? 'Исправьте сообщение' : 'Сообщение'}" aria-label="Сообщение" ${state.chatSending ? 'disabled' : ''}>${escapeHTML(editingBody ?? state.chatDraftText)}</textarea><input type="file" name="file" multiple hidden></label><div class="chat-composer-actions"><details class="chat-composer-more"><summary class="icon-button" title="Вложения и дополнительные действия" aria-label="Вложения и дополнительные действия">${icon('plus')}</summary><div><button type="button" class="${state.chatEmojiTarget === 'composer' ? 'active' : ''}" data-chat-composer-emoji ${state.chatSending ? 'disabled' : ''}>${icon('smile')}<span>Эмодзи</span></button><button type="button" data-chat-attach ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('fileText')}<span>Отправить файл</span></button><button type="button" data-chat-link-record ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('link')}<span>Прикрепить карточку</span></button><button type="button" data-chat-video ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('video')}<span>Видеосообщение</span></button></div></details><button type="button" class="icon-button" data-chat-voice title="Записать голосовое" aria-label="Записать голосовое" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('mic')}</button><button type="submit" class="primary icon-button" title="${editingMessage ? 'Сохранить' : 'Отправить'}" aria-label="${editingMessage ? 'Сохранить сообщение' : 'Отправить сообщение'}" ${state.chatSending ? 'disabled' : ''}>${state.chatSending ? '<span class="spinner"></span>' : icon(editingMessage ? 'check' : 'send')}</button></div><div class="chat-upload-progress" hidden><span></span><progress max="100" value="0"></progress></div></form>` : `<div class="chat-empty"><strong>Выберите диалог</strong></div>`}</main>
 	</section>`;
 	decorateChatUI();
 	const mobileThreadsButton = $('[data-toggle-chat-threads]');
@@ -4468,20 +4456,85 @@ function bindChatMediaPlayers() {
 	});
 }
 
-async function applyChatEmoji(emoji) {
-	const value = String(emoji || '').trim();
-	if (!value) return;
-	rememberChatEmoji(value);
-	const target = state.chatEmojiTarget;
-	state.chatEmojiTarget = '';
-	if (target === 'composer') {
-		state.chatDraftText = `${state.chatDraftText}${state.chatDraftText && !/\s$/.test(state.chatDraftText) ? ' ' : ''}${value}`;
-		renderChat();
-		const textarea = $('#chat-composer textarea'); textarea?.focus(); textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
-		return;
-	}
-	try { await api(`/api/chat/messages/${target}/reaction`, { method: 'POST', body: JSON.stringify({ emoji: value }) }); await loadChatThread(state.activeChatThreadId); }
-	catch (error) { toast(error.message, true); }
+const chatReactionPending = new Set();
+function chatReactionIntent(messageID, value, context) {
+  const key = `${context.user}:${context.workspace}:${messageID}:${emojiKey(value)}`;
+  const message = state.chatMessages.find(item => item.id === messageID);
+  return { key, active: !message?.reactions.some(item => item.mine && emojiKey(item.emoji) === emojiKey(value)) };
+}
+
+async function saveChatReaction(messageID, value, context, threadID, intent) {
+  if (!isProjectContextCurrent(context) || state.activeChatThreadId !== threadID) throw new Error('Обсуждение изменилось. Откройте выбор реакции заново.');
+  if (chatReactionPending.has(intent.key)) return false;
+  chatReactionPending.add(intent.key);
+  try {
+    await api(`/api/chat/messages/${messageID}/reaction`, { method: 'PUT', headers: { 'X-Workspace-ID': context.workspace, 'X-Outbox-Owner': String(context.user) }, body: JSON.stringify({ emoji: value, active: intent.active }) });
+    if (!isProjectContextCurrent(context) || state.activeChatThreadId !== threadID || state.view !== 'chat') return false;
+    // Update only reactions. Replacing the chat would discard selection and unsaved edits.
+    const message = state.chatMessages.find(item => item.id === messageID);
+    if (message) {
+      const existing = message.reactions.find(item => emojiKey(item.emoji) === emojiKey(value));
+      if (existing && existing.mine !== intent.active) {
+        existing.count += intent.active ? 1 : -1; existing.mine = intent.active;
+        existing.usernames = existing.usernames.filter(name => name !== state.me.username);
+        if (intent.active) existing.usernames.push(state.me.username);
+      } else if (!existing && intent.active) message.reactions.push({ emoji: value, mine: true, count: 1, usernames: [state.me.username] });
+      message.reactions = message.reactions.filter(item => item.count > 0);
+      const article = document.getElementById(`chat-message-${messageID}`);
+      if (article) {
+        let strip = $('.chat-reactions', article);
+        if (!strip) { strip = document.createElement('div'); strip.className = 'chat-reactions'; article.append(strip); }
+        strip.innerHTML = renderChatReactions(message) + `<button type="button" class="chat-add-reaction" data-chat-emoji-more="${messageID}" aria-label="Добавить реакцию">${icon('smile')}</button>`;
+        bindChatReactionButtons(strip);
+      }
+    }
+    return intent.active;
+  } catch (error) {
+    if (['NETWORK_UNAVAILABLE', 'REQUEST_TIMEOUT'].includes(error.code)) error.message = 'Не удалось получить подтверждение. Повторите сохранение реакции.';
+    throw error;
+  } finally { chatReactionPending.delete(intent.key); }
+}
+
+function openChatEmojiPicker(target, trigger) {
+  const context = captureProjectContext(), threadID = state.activeChatThreadId, editingID = state.chatEditingMessageId;
+  const textarea = $('#chat-composer textarea'), selection = textarea ? [textarea.selectionStart, textarea.selectionEnd] : [0, 0];
+  const parent = $('.chat-main');
+  if (!parent) return;
+  const intents = new Map();
+  const current = () => isProjectContextCurrent(context) && state.view === 'chat' && state.activeChatThreadId === threadID && state.chatEditingMessageId === editingID;
+  chatEmojiPicker.open({ owner: context.user, target, trigger, restoreFocus: target === 'composer' ? textarea : trigger, parent, current,
+    onClose() { state.chatEmojiTarget = ''; },
+    async onChoose(value) {
+      if (!current()) throw new Error('Обсуждение изменилось. Откройте выбор эмодзи заново.');
+      if (target === 'composer') {
+        if (!textarea?.isConnected) throw new Error('Редактор закрыт. Откройте выбор эмодзи заново.');
+        insertEmojiAtSelection(textarea, value, ...selection);
+        textarea.focus({ preventScroll: true });
+        return true;
+      }
+      if (!intents.has(value)) intents.set(value, chatReactionIntent(target, value, context));
+      return saveChatReaction(target, value, context, threadID, intents.get(value));
+    },
+  });
+  state.chatEmojiTarget = document.querySelector('.chat-emoji-picker') ? target : '';
+}
+
+function bindChatReactionButtons(root = document) {
+  $$('[data-chat-emoji-more]', root).forEach(button => button.addEventListener('click', () => openChatEmojiPicker(button.dataset.chatEmojiMore, button)));
+  $$('[data-chat-reaction]', root).forEach(button => {
+    let intent;
+    button.addEventListener('click', async () => {
+    const context = captureProjectContext(), value = button.dataset.emoji, messageID = button.dataset.chatReaction;
+    intent ||= chatReactionIntent(messageID, value, context);
+    button.disabled = true;
+    try {
+      const remember = await saveChatReaction(messageID, value, context, state.activeChatThreadId, intent);
+      intent = null;
+      if (remember && isProjectContextCurrent(context)) chatEmojiPreferences.remember(context.user, value);
+    } catch (error) { if (isProjectContextCurrent(context)) toast(error.message, true); }
+    finally { button.disabled = false; }
+    });
+  });
 }
 
 function bindChatMessageGestures() {
@@ -4545,16 +4598,14 @@ function bindChatEvents() {
 	}));
 	$$('[data-chat-reply]').forEach((button) => button.addEventListener('click', () => { state.chatReplyToId = button.dataset.chatReply; renderChat(); $('#chat-composer textarea')?.focus(); }));
 	$$('[data-chat-copy]').forEach((button) => button.addEventListener('click', async () => { const message = state.chatMessages.find((item) => item.id === button.dataset.chatCopy); if (!message) return; try { await navigator.clipboard.writeText(message.body || chatMessagePreview(message)); toast('Сообщение скопировано'); } catch (_) { toast('Не удалось скопировать сообщение', true); } }));
-	$$('[data-chat-emoji-more]').forEach((button) => button.addEventListener('click', () => { state.chatEmojiTarget = state.chatEmojiTarget === button.dataset.chatEmojiMore ? '' : button.dataset.chatEmojiMore; renderChat(); }));
-	$('[data-chat-composer-emoji]')?.addEventListener('click', () => { state.chatEmojiTarget = state.chatEmojiTarget === 'composer' ? '' : 'composer'; renderChat(); $('#chat-composer textarea')?.focus(); });
-	$('[data-close-chat-emoji]')?.addEventListener('click', () => { state.chatEmojiTarget = ''; renderChat(); });
-	$$('[data-chat-emoji-choice]').forEach((button) => button.addEventListener('click', () => applyChatEmoji(button.dataset.chatEmojiChoice)));
-	$('.chat-emoji-custom')?.addEventListener('submit', (event) => { event.preventDefault(); applyChatEmoji($('input', event.currentTarget).value); });
+	bindChatReactionButtons();
+	$('[data-chat-composer-emoji]')?.addEventListener('click', event => openChatEmojiPicker('composer', event.currentTarget));
 	$('[data-clear-chat-reply]')?.addEventListener('click', () => { state.chatReplyToId = ''; renderChat(); });
 	$('[data-clear-chat-record]')?.addEventListener('click', () => { state.chatLinkedRecordId = ''; renderChat(); });
 	$('[data-clear-chat-edit]')?.addEventListener('click', () => { state.chatEditingMessageId = ''; renderChat(); $('#chat-composer textarea')?.focus(); });
 	$$('[data-chat-edit]').forEach((button) => button.addEventListener('click', () => {
 		state.chatEditingMessageId = button.dataset.chatEdit; state.chatReplyToId = ''; state.chatLinkedRecordId = '';
+		state.chatEditDraft = null;
 		renderChat(); const editor = $('#chat-composer textarea'); editor?.focus(); editor?.setSelectionRange(editor.value.length, editor.value.length);
 	}));
 	$$('[data-chat-archive]').forEach((button) => button.addEventListener('click', async () => {
@@ -4564,7 +4615,7 @@ function bindChatEvents() {
 		catch (error) { toast(error.message, true); }
 	}));
 	$$('[data-chat-favorite]').forEach((button) => button.addEventListener('click', async () => { await api(`/api/chat/messages/${button.dataset.chatFavorite}/favorite`, { method: 'POST' }); await loadChatThread(state.activeChatThreadId); }));
-	$$('[data-chat-reaction]').forEach((button) => button.addEventListener('click', async () => { rememberChatEmoji(button.dataset.emoji); await api(`/api/chat/messages/${button.dataset.chatReaction}/reaction`, { method: 'POST', body: JSON.stringify({ emoji: button.dataset.emoji }) }); await loadChatThread(state.activeChatThreadId); }));
+
 	$$('[data-chat-create]').forEach((button) => button.addEventListener('click', () => {
 		const message = state.chatMessages.find((item) => item.id === button.dataset.messageId);
 		if (!message?.body) return;
@@ -4602,7 +4653,10 @@ function bindChatEvents() {
 	}
 	const textarea = form.elements.body; const input = form.elements.file; const drop = $('[data-chat-drop]', form);
 	textarea.addEventListener('input', () => {
-		if (state.chatEditingMessageId) return;
+		if (state.chatEditingMessageId) {
+			state.chatEditDraft = { messageID: state.chatEditingMessageId, threadID: state.activeChatThreadId, context: captureProjectContext(), body: textarea.value };
+			return;
+		}
 		state.chatDraftText = textarea.value;
 		state.chatDraftNonce = '';
 	});
@@ -8007,7 +8061,7 @@ function closeTopTransientPanel() {
   const select = $('.custom-select.open');
   if (select) { closeCustomSelects(); $('.custom-select-trigger', select)?.focus({ preventScroll: true }); return true; }
   const emoji = $('.chat-emoji-picker');
-  if (emoji) { state.chatEmojiTarget = ''; emoji.remove(); $('#chat-composer textarea[name="body"]')?.focus({ preventScroll: true }); return true; }
+  if (emoji) { chatEmojiPicker.close(); return true; }
   const panel = $$('.workspace-switcher[open], .personal-create-menu[open], .work-filter-menu[open], .work-create-menu[open], .record-more-actions[open], .chat-header-more[open], .chat-composer-more[open], .chat-message-menu[open]').pop();
   if (panel) { panel.open = false; $('summary', panel)?.focus({ preventScroll: true }); return true; }
   const create = $('#create-menu');

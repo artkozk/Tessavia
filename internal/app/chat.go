@@ -1,6 +1,7 @@
 package app
 
 import (
+	"business-control/internal/emoji"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -546,24 +547,90 @@ func (s *Server) handleReadChatThread(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleToggleChatReaction(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Emoji string `json:"emoji"`
+		Emoji  string `json:"emoji"`
+		Active *bool  `json:"active"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
 	input.Emoji = strings.TrimSpace(input.Emoji)
-	if input.Emoji == "" || len([]rune(input.Emoji)) > 8 {
+	if input.Emoji == "" || len(input.Emoji) > 128 || (r.Method == http.MethodPut && input.Active == nil) {
 		writeError(w, 400, "Некорректная реакция")
 		return
 	}
-	var threadID string
-	if s.store.db.QueryRowContext(r.Context(), `SELECT thread_id FROM chat_messages WHERE id = ?`, r.PathValue("messageId")).Scan(&threadID) != nil || !s.requireChatMember(w, r, threadID) {
+	canonical, valid := emoji.Normalize(input.Emoji)
+	if !valid {
+		canonical = input.Emoji
+	} // Legacy arbitrary reactions can only be removed by their owner.
+	ctx, messageID, userID := r.Context(), r.PathValue("messageId"), currentUser(r).ID
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		writeError(w, 500, "Не удалось сохранить реакцию")
 		return
 	}
-	result, _ := s.store.db.ExecContext(r.Context(), `DELETE FROM chat_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?`, r.PathValue("messageId"), currentUser(r).ID, input.Emoji)
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
-		_, _ = s.store.db.ExecContext(r.Context(), `INSERT INTO chat_reactions(message_id, user_id, emoji, created_at) VALUES(?, ?, ?, ?)`, r.PathValue("messageId"), currentUser(r).ID, input.Emoji, nowText())
+	defer tx.Rollback()
+	var allowed bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chat_members cm WHERE cm.thread_id=m.thread_id AND cm.user_id=?) AND t.workspace_id=? FROM chat_messages m JOIN chat_threads t ON t.id=m.thread_id WHERE m.id=? AND m.archived_at IS NULL`, userID, currentWorkspace(r).ID, messageID).Scan(&allowed)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, 404, "Сообщение не найдено")
+		return
+	}
+	if err != nil {
+		writeError(w, 500, "Не удалось проверить сообщение")
+		return
+	}
+	if !allowed {
+		writeError(w, 403, "Нет доступа к обсуждению")
+		return
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT emoji FROM chat_reactions WHERE message_id=? AND user_id=?`, messageID, userID)
+	if err != nil {
+		writeError(w, 500, "Не удалось прочитать реакции")
+		return
+	}
+	var aliases []string
+	for rows.Next() {
+		var value string
+		if err = rows.Scan(&value); err != nil {
+			break
+		}
+		normalized, ok := emoji.Normalize(value)
+		if value == input.Emoji || (valid && ok && normalized == canonical) {
+			aliases = append(aliases, value)
+		}
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close() // SQLite uses one connection; never write with this cursor open.
+	if err != nil {
+		writeError(w, 500, "Не удалось прочитать реакции")
+		return
+	}
+	active := len(aliases) == 0
+	if r.Method == http.MethodPut {
+		active = *input.Active
+	}
+	if !valid && (active || len(aliases) == 0) {
+		writeError(w, 400, "Выберите один эмодзи из каталога")
+		return
+	}
+	if !active {
+		for _, value := range aliases {
+			if _, err = tx.ExecContext(ctx, `DELETE FROM chat_reactions WHERE message_id=? AND user_id=? AND emoji=?`, messageID, userID, value); err != nil {
+				break
+			}
+		}
+	} else if len(aliases) == 0 {
+		_, err = tx.ExecContext(ctx, `INSERT INTO chat_reactions(message_id,user_id,emoji,created_at) VALUES(?,?,?,?)`, messageID, userID, canonical, nowText())
+	}
+	if err != nil {
+		writeError(w, 500, "Не удалось сохранить реакцию")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		writeError(w, 500, "Не удалось сохранить реакцию")
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
