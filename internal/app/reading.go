@@ -25,6 +25,41 @@ type ReadingEntry struct {
 	Shared      bool    `json:"shared"`
 	UpdatedAt   string  `json:"updatedAt"`
 }
+type ReadingReflection struct {
+	ID        string `json:"id"`
+	UserID    int64  `json:"userId"`
+	Username  string `json:"username"`
+	GroupID   string `json:"groupId"`
+	Day       string `json:"day"`
+	Book      *int   `json:"book,omitempty"`
+	Chapter   *int   `json:"chapter,omitempty"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	Shared    bool   `json:"shared"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+type readingScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanReadingReflection(scanner readingScanner, reflection *ReadingReflection) error {
+	var book, chapter sql.NullInt64
+	if err := scanner.Scan(&reflection.ID, &reflection.UserID, &reflection.Username, &reflection.GroupID, &reflection.Day, &book, &chapter, &reflection.Title, &reflection.Body, &reflection.Shared, &reflection.CreatedAt, &reflection.UpdatedAt); err != nil {
+		return err
+	}
+	if book.Valid {
+		value := int(book.Int64)
+		reflection.Book = &value
+	}
+	if chapter.Valid {
+		value := int(chapter.Int64)
+		reflection.Chapter = &value
+	}
+	return nil
+}
+
 type ReadingGroup struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
@@ -66,21 +101,23 @@ type ReadingRank struct {
 	Place         int    `json:"place"`
 }
 type ReadingOverview struct {
-	Enabled          bool           `json:"enabled"`
-	Today            string         `json:"today"`
-	Timezone         string         `json:"timezone"`
-	GroupID          string         `json:"groupId"`
-	Books            []BibleBook    `json:"books"`
-	Entries          []ReadingEntry `json:"entries"`
-	CancelledEntries []ReadingEntry `json:"cancelledEntries"`
-	SharedNotes      []ReadingEntry `json:"sharedNotes"`
-	Groups           []ReadingGroup `json:"groups"`
-	Plans            []ReadingPlan  `json:"plans"`
-	Ranking          []ReadingRank  `json:"ranking"`
-	NextBook         int            `json:"nextBook"`
-	NextChapter      int            `json:"nextChapter"`
-	CurrentStreak    int            `json:"currentStreak"`
-	BestStreak       int            `json:"bestStreak"`
+	Enabled           bool                `json:"enabled"`
+	Today             string              `json:"today"`
+	Timezone          string              `json:"timezone"`
+	GroupID           string              `json:"groupId"`
+	Books             []BibleBook         `json:"books"`
+	Entries           []ReadingEntry      `json:"entries"`
+	CancelledEntries  []ReadingEntry      `json:"cancelledEntries"`
+	SharedNotes       []ReadingEntry      `json:"sharedNotes"`
+	Reflections       []ReadingReflection `json:"reflections"`
+	SharedReflections []ReadingReflection `json:"sharedReflections"`
+	Groups            []ReadingGroup      `json:"groups"`
+	Plans             []ReadingPlan       `json:"plans"`
+	Ranking           []ReadingRank       `json:"ranking"`
+	NextBook          int                 `json:"nextBook"`
+	NextChapter       int                 `json:"nextChapter"`
+	CurrentStreak     int                 `json:"currentStreak"`
+	BestStreak        int                 `json:"bestStreak"`
 }
 
 func readingError(w http.ResponseWriter, err error) bool {
@@ -361,6 +398,102 @@ func (s *Server) handleReadingEntryUpdate(w http.ResponseWriter, r *http.Request
 	writeJSON(w, 200, map[string]string{"updatedAt": stamp})
 }
 
+func validReflectionPassage(book, chapter *int) bool {
+	if book == nil || chapter == nil {
+		return book == nil && chapter == nil
+	}
+	return validReadingRange(*book, *chapter, *chapter)
+}
+
+func (s *Server) handleReadingReflection(w http.ResponseWriter, r *http.Request) {
+	if !s.readingAccess(w, r, true) {
+		return
+	}
+	var input struct {
+		ExpectedUpdatedAt string `json:"expectedUpdatedAt"`
+		Book              *int   `json:"book"`
+		Chapter           *int   `json:"chapter"`
+		Title             string `json:"title"`
+		Body              string `json:"body"`
+		Shared            bool   `json:"shared"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	input.Title = strings.TrimSpace(input.Title)
+	input.Body = strings.TrimSpace(input.Body)
+	if len([]rune(input.Title)) > 160 || input.Body == "" || len([]rune(input.Body)) > 10000 || !validReflectionPassage(input.Book, input.Chapter) {
+		writeError(w, 400, "Нужен текст мысли до 10000 символов; название — до 160, книга и глава должны существовать")
+		return
+	}
+	ws, user := currentWorkspace(r).ID, currentUser(r).ID
+	now := time.Now()
+	stamp := now.UTC().Format(time.RFC3339Nano)
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if readingError(w, err) {
+		return
+	}
+	defer tx.Rollback()
+	if r.Method == http.MethodPost {
+		var group string
+		if err = tx.QueryRowContext(r.Context(), `SELECT group_id FROM reading_members WHERE workspace_id=? AND user_id=?`, ws, user).Scan(&group); errors.Is(err, sql.ErrNoRows) {
+			writeError(w, 409, "Сначала выберите свою домашнюю группу")
+			return
+		} else if readingError(w, err) {
+			return
+		}
+		id, idErr := newID()
+		if readingError(w, idErr) {
+			return
+		}
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO reading_reflections(id,workspace_id,user_id,group_id,day,book,chapter,title,body,shared,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, id, ws, user, group, readingDay(now), input.Book, input.Chapter, input.Title, input.Body, input.Shared, stamp, stamp)
+		if readingError(w, err) || readingError(w, tx.Commit()) {
+			return
+		}
+		writeJSON(w, 201, map[string]string{"id": id, "updatedAt": stamp})
+		return
+	}
+	if input.ExpectedUpdatedAt == "" {
+		writeError(w, 400, "Нужна актуальная версия мысли")
+		return
+	}
+	id := r.PathValue("id")
+	var group string
+	if err = tx.QueryRowContext(r.Context(), `SELECT group_id FROM reading_members WHERE workspace_id=? AND user_id=?`, ws, user).Scan(&group); errors.Is(err, sql.ErrNoRows) {
+		writeError(w, 409, "Сначала выберите свою домашнюю группу")
+		return
+	} else if readingError(w, err) {
+		return
+	}
+	var wasShared bool
+	if err = tx.QueryRowContext(r.Context(), `SELECT shared FROM reading_reflections WHERE id=? AND workspace_id=? AND user_id=?`, id, ws, user).Scan(&wasShared); errors.Is(err, sql.ErrNoRows) {
+		writeError(w, 409, "Мысль недоступна или была изменена. Обновите страницу.")
+		return
+	} else if readingError(w, err) {
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `UPDATE reading_reflections SET group_id=?,book=?,chapter=?,title=?,body=?,shared=?,updated_at=? WHERE id=? AND workspace_id=? AND user_id=? AND updated_at=?`, group, input.Book, input.Chapter, input.Title, input.Body, input.Shared, stamp, id, ws, user, input.ExpectedUpdatedAt)
+	if readingError(w, err) {
+		return
+	}
+	changed, _ := result.RowsAffected()
+	if changed == 0 {
+		writeError(w, 409, "Мысль недоступна или была изменена. Обновите страницу.")
+		return
+	}
+	action := "edit"
+	if !wasShared && input.Shared {
+		action = "share"
+	} else if wasShared && !input.Shared {
+		action = "make_private"
+	}
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO reading_reflection_events(reflection_id,actor_id,action,happened_at) VALUES(?,?,?,?)`, id, user, action, stamp)
+	if readingError(w, err) || readingError(w, tx.Commit()) {
+		return
+	}
+	writeJSON(w, 200, map[string]string{"updatedAt": stamp})
+}
+
 func (s *Server) readingLeader(r *http.Request, group string) bool {
 	var leader int64
 	if s.store.db.QueryRowContext(r.Context(), `SELECT leader_id FROM reading_groups WHERE workspace_id=? AND id=?`, currentWorkspace(r).ID, group).Scan(&leader) != nil {
@@ -442,7 +575,7 @@ func (s *Server) loadReading(r *http.Request) (ReadingOverview, error) {
 	ws, user := currentWorkspace(r).ID, currentUser(r).ID
 	now := time.Now()
 	today := readingDay(now)
-	out := ReadingOverview{Enabled: true, Today: today, Timezone: "Europe/Moscow", Books: bibleBooks, Entries: []ReadingEntry{}, SharedNotes: []ReadingEntry{}, Groups: []ReadingGroup{}, Plans: []ReadingPlan{}, Ranking: []ReadingRank{}}
+	out := ReadingOverview{Enabled: true, Today: today, Timezone: "Europe/Moscow", Books: bibleBooks, Entries: []ReadingEntry{}, SharedNotes: []ReadingEntry{}, Reflections: []ReadingReflection{}, SharedReflections: []ReadingReflection{}, Groups: []ReadingGroup{}, Plans: []ReadingPlan{}, Ranking: []ReadingRank{}}
 	err := s.store.db.QueryRowContext(r.Context(), `SELECT group_id FROM reading_members WHERE workspace_id=? AND user_id=?`, ws, user).Scan(&out.GroupID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return out, err
@@ -476,6 +609,40 @@ func (s *Server) loadReading(r *http.Request) (ReadingOverview, error) {
 		return out, err
 	}
 	out.CurrentStreak, out.BestStreak = readingStreak(days, today)
+	rows, err = s.store.db.QueryContext(r.Context(), `SELECT reflection.id,reflection.user_id,user.username,reflection.group_id,reflection.day,reflection.book,reflection.chapter,reflection.title,reflection.body,reflection.shared,reflection.created_at,reflection.updated_at FROM reading_reflections reflection JOIN users user ON user.id=reflection.user_id WHERE reflection.workspace_id=? AND reflection.user_id=? ORDER BY reflection.created_at,reflection.id`, ws, user)
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var reflection ReadingReflection
+		if err = scanReadingReflection(rows, &reflection); err != nil {
+			rows.Close()
+			return out, err
+		}
+		out.Reflections = append(out.Reflections, reflection)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
+	rows, err = s.store.db.QueryContext(r.Context(), `SELECT reflection.id,reflection.user_id,user.username,reflection.group_id,reflection.day,reflection.book,reflection.chapter,reflection.title,reflection.body,reflection.shared,reflection.created_at,reflection.updated_at FROM reading_reflections reflection JOIN users user ON user.id=reflection.user_id JOIN workspace_members member ON member.workspace_id=reflection.workspace_id AND member.user_id=reflection.user_id AND member.status='active' JOIN reading_members current_group ON current_group.workspace_id=reflection.workspace_id AND current_group.user_id=reflection.user_id AND current_group.group_id=reflection.group_id WHERE reflection.workspace_id=? AND reflection.group_id=? AND reflection.shared=1 ORDER BY reflection.created_at DESC,reflection.id DESC LIMIT 100`, ws, out.GroupID)
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var reflection ReadingReflection
+		if err = scanReadingReflection(rows, &reflection); err != nil {
+			rows.Close()
+			return out, err
+		}
+		out.SharedReflections = append(out.SharedReflections, reflection)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
 	rows, err = s.store.db.QueryContext(r.Context(), `SELECT e.id,e.user_id,u.username,e.group_id,e.day,e.book,e.chapter,e.complete,e.stream,e.note,e.shared,e.updated_at FROM reading_entries e JOIN users u ON u.id=e.user_id WHERE e.workspace_id=? AND e.group_id=? AND e.shared=1 AND e.note<>'' AND e.cancelled_at IS NULL ORDER BY e.created_at DESC LIMIT 100`, ws, out.GroupID)
 	if err != nil {
 		return out, err

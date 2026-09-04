@@ -91,6 +91,34 @@ func TestHomegroupReadingWorkflowAndIsolation(t *testing.T) {
 	req(member, "POST", "/api/reading/enable", map[string]any{}, 403, nil)
 	req(stranger, "GET", "/api/reading", nil, 403, nil)
 	req(stranger, "POST", "/api/reading/join", map[string]any{"groupId": group}, 403, nil)
+	// Reflections are independent from scoreable reading facts. They may be edited
+	// later, but another member sees the text only after an explicit share.
+	req(owner, "POST", "/api/reading/reflections", map[string]any{"book": 43, "body": "missing chapter"}, 400, nil)
+	var reflectionCreated map[string]string
+	req(owner, "POST", "/api/reading/reflections", map[string]any{"title": "PRIVATE reflection", "body": "A thought without a reading mark", "shared": false}, 201, &reflectionCreated)
+	req(owner, "GET", "/api/reading", nil, 200, &overview)
+	if len(overview.Reflections) != 1 || overview.Reflections[0].Body != "A thought without a reading mark" || overview.CurrentStreak != 0 || overview.Ranking[0].Chapters != 0 {
+		t.Fatalf("private reflection changed reading facts: %+v", overview)
+	}
+	reflection := overview.Reflections[0]
+	req(member, "PATCH", "/api/reading/reflections/"+reflection.ID, map[string]any{"expectedUpdatedAt": reflection.UpdatedAt, "title": "stolen", "body": "stolen"}, 409, nil)
+	req(member, "GET", "/api/reading", nil, 200, &overview)
+	if len(overview.Reflections) != 0 || len(overview.SharedReflections) != 0 {
+		t.Fatal("private reflection leaked")
+	}
+	book, chapter := 43, 7
+	var reflectionUpdated map[string]string
+	req(owner, "PATCH", "/api/reading/reflections/"+reflection.ID, map[string]any{"expectedUpdatedAt": reflection.UpdatedAt, "book": book, "chapter": chapter, "title": "Надежда", "body": "Shared deliberately", "shared": true}, 200, &reflectionUpdated)
+	req(owner, "PATCH", "/api/reading/reflections/"+reflection.ID, map[string]any{"expectedUpdatedAt": reflection.UpdatedAt, "title": "stale", "body": "stale"}, 409, nil)
+	req(member, "GET", "/api/reading", nil, 200, &overview)
+	if len(overview.SharedReflections) != 1 || overview.SharedReflections[0].Body != "Shared deliberately" || overview.SharedReflections[0].Book == nil || *overview.SharedReflections[0].Book != 43 {
+		t.Fatalf("explicit reflection share missing: %+v", overview.SharedReflections)
+	}
+	// Unlike an immutable reading mark, a historical reflection remains editable.
+	if _, err = store.db.Exec("UPDATE reading_reflections SET day='2020-01-01' WHERE id=?", reflection.ID); err != nil {
+		t.Fatal(err)
+	}
+	req(owner, "PATCH", "/api/reading/reflections/"+reflection.ID, map[string]any{"expectedUpdatedAt": reflectionUpdated["updatedAt"], "book": book, "chapter": chapter, "title": "Надежда", "body": "Late clarification", "shared": true}, 200, nil)
 	today := readingDay(time.Now())
 	entry := map[string]any{"day": today, "book": 43, "first": 5, "last": 6, "complete": true, "stream": "personal", "note": "PRIVATE owner thought", "shared": false}
 	req(owner, "POST", "/api/reading/entries", entry, 200, nil)
@@ -145,8 +173,8 @@ func TestHomegroupReadingWorkflowAndIsolation(t *testing.T) {
 	plan["groupId"] = second["id"]
 	req(member, "POST", "/api/reading/plans", plan, 201, nil)
 	req(member, "GET", "/api/reading", nil, 200, &overview)
-	if len(overview.SharedNotes) != 0 {
-		t.Fatal("other group notes leaked")
+	if len(overview.SharedNotes) != 0 || len(overview.SharedReflections) != 0 {
+		t.Fatal("other group notes or reflections leaked")
 	}
 	req(owner, "POST", "/api/reading/plans/"+planID+"/cancel", map[string]any{"reason": "Заменили местописание"}, 200, nil)
 	req(owner, "PATCH", "/api/reading/entries/"+first.ID, map[string]any{"expectedUpdatedAt": first.UpdatedAt, "cancel": true, "complete": true, "note": first.Note}, 200, nil)
@@ -169,6 +197,9 @@ func TestHomegroupReadingWorkflowAndIsolation(t *testing.T) {
 	var auditCount int
 	if err = store.db.QueryRow("SELECT COUNT(*) FROM reading_entry_events WHERE entry_id=?", cancelled.ID).Scan(&auditCount); err != nil || auditCount != 2 {
 		t.Fatal("cancel/restore history", auditCount, err)
+	}
+	if err = store.db.QueryRow("SELECT COUNT(*) FROM reading_reflection_events WHERE reflection_id=?", reflection.ID).Scan(&auditCount); err != nil || auditCount != 2 {
+		t.Fatal("reflection edit/share history", auditCount, err)
 	}
 	// An old entry cannot be changed or restored, even by the workspace owner.
 	var oldVersion string

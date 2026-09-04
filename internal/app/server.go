@@ -81,6 +81,8 @@ func (s *Server) routes() {
 	s.mux.Handle("PATCH /api/reading/groups/{id}", s.requireAuth(http.HandlerFunc(s.handleReadingGroup)))
 	s.mux.Handle("POST /api/reading/entries", s.requireAuth(http.HandlerFunc(s.handleReadingEntry)))
 	s.mux.Handle("PATCH /api/reading/entries/{id}", s.requireAuth(http.HandlerFunc(s.handleReadingEntryUpdate)))
+	s.mux.Handle("POST /api/reading/reflections", s.requireAuth(http.HandlerFunc(s.handleReadingReflection)))
+	s.mux.Handle("PATCH /api/reading/reflections/{id}", s.requireAuth(http.HandlerFunc(s.handleReadingReflection)))
 	s.mux.Handle("POST /api/reading/plans", s.requireAuth(http.HandlerFunc(s.handleReadingPlan)))
 	s.mux.Handle("POST /api/reading/plans/{id}/cancel", s.requireAuth(http.HandlerFunc(s.handleReadingPlanCancel)))
 	s.mux.HandleFunc("POST /api/auth/register", s.handleRegister)

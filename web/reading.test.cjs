@@ -27,5 +27,13 @@ test('reading forms have scoped drafts, safe rendering and no offline writes',()
  assert.ok(!source.includes('outbox.enqueue'));
  assert.ok(source.includes('context !== key()'));
  const sw=fs.readFileSync(__dirname+'/sw.js','utf8');
- assert.ok(sw.includes("'/reading.js?v=20260904-reading-1'"));
+ assert.ok(sw.includes("'/reading.js?v=20260904-reading-reflections-1'"));
+});
+test('standalone reflections are private by default, editable and separate from reading marks',()=>{
+ const source=fs.readFileSync(__dirname+'/reading.js','utf8');
+ assert.ok(source.includes("call(item?`/reflections/${item.id}`:'/reflections'"));
+ assert.ok(source.includes("item?.shared?'checked':''"));
+ assert.ok(source.includes('она не отмечает чтение и не меняет серию'));
+ assert.ok(source.includes('e(item.body)'));
+ assert.ok(source.includes("`reflection:${item?.id||'new'}`"));
 });
