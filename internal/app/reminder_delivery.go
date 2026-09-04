@@ -22,6 +22,11 @@ func RunReminderWorker(ctx context.Context, store *Store) {
 			log.Printf("deadline reminder tick: %v", err)
 		}
 		cancel()
+		tick, cancel = context.WithTimeout(ctx, 10*time.Second)
+		if err := deliverPersonalPlanReminders(tick, store, time.Now()); err != nil && ctx.Err() == nil {
+			log.Printf("personal reminder tick: %v", err)
+		}
+		cancel()
 		select {
 		case <-ctx.Done():
 			return
@@ -220,8 +225,8 @@ func deliverDeadlineReminders(ctx context.Context, store *Store, now time.Time) 
 }
 
 // Old messages remain in history, but an unknown or changed deadline is not a live alert.
-const notificationFresh = `(n.type<>'deadline' OR EXISTS (
+const notificationFresh = `(` + personalReminderFresh + ` AND (n.type<>'deadline' OR EXISTS (
  SELECT 1 FROM deadline_delivery_sources ds JOIN records r ON r.id=n.entity_id
  WHERE ds.notification_id=n.id AND r.owner_id=n.user_id AND ` + reminderActiveRecord + `
  AND ds.timezone=COALESCE((SELECT timezone FROM reminder_preferences WHERE user_id=n.user_id),'Europe/Moscow')
- AND julianday(r.due_at)=julianday(ds.due_at) AND julianday(ds.valid_until)>julianday('now')))`
+ AND julianday(r.due_at)=julianday(ds.due_at) AND julianday(ds.valid_until)>julianday('now'))))`

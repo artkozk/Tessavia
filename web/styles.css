@@ -4736,3 +4736,14 @@ body:has(.calendar-expanded) { overflow: hidden; }
  .reading-ranking article { grid-template-columns: 30px minmax(0,1fr); }
  .reading-ranking article > div:last-child { grid-column: 2; }
 }
+
+.personal-reminder-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; border-bottom: 1px solid var(--line); }
+.personal-reminder-source { border: 0; background: transparent; padding: 0; text-align: left; display: grid; gap: 6px; min-width: 0; }
+.personal-reminder-source strong, .reminder-plan-title { overflow-wrap: anywhere; }
+.personal-reminder-source small { color: var(--muted); }
+.personal-reminder-actions, .personal-reminder-shortcuts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.personal-reminder-actions { flex-shrink: 0; }
+@media(max-width:600px) { .personal-reminder-row { flex-wrap: wrap; } .personal-reminder-source { flex: 1 1 100%; } }
+
+.personal-reminder-dialog { padding: 24px; display: grid; gap: 16px; }
+@media(max-width:600px) { .personal-reminder-dialog { padding: 16px; } }

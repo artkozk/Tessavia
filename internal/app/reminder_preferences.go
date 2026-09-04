@@ -8,6 +8,7 @@ import (
 )
 
 type reminderPreferences struct {
+	PersonalEnabled bool                        `json:"personalEnabled"`
 	DeadlineEnabled bool                        `json:"deadlineEnabled"`
 	Timezone        string                      `json:"timezone"`
 	QuietStart      string                      `json:"quietStart"`
@@ -26,8 +27,8 @@ const reminderWorkspaceAccess = `w.archived_at IS NULL AND m.status='active'
  WHERE t.id=w.team_id AND t.deleted_at IS NULL AND tm.user_id=m.user_id AND tm.status='active'))`
 
 func loadReminderPreferences(ctx context.Context, q personalQueryer, user int64) (reminderPreferences, error) {
-	p := reminderPreferences{DeadlineEnabled: true, Timezone: "Europe/Moscow", Projects: []reminderProjectPreference{}}
-	err := q.QueryRowContext(ctx, `SELECT deadline_enabled,timezone,quiet_start,quiet_end,updated_at FROM reminder_preferences WHERE user_id=?`, user).Scan(&p.DeadlineEnabled, &p.Timezone, &p.QuietStart, &p.QuietEnd, &p.UpdatedAt)
+	p := reminderPreferences{PersonalEnabled: true, DeadlineEnabled: true, Timezone: "Europe/Moscow", Projects: []reminderProjectPreference{}}
+	err := q.QueryRowContext(ctx, `SELECT deadline_enabled,timezone,quiet_start,quiet_end,updated_at,personal_enabled FROM reminder_preferences WHERE user_id=?`, user).Scan(&p.DeadlineEnabled, &p.Timezone, &p.QuietStart, &p.QuietEnd, &p.UpdatedAt, &p.PersonalEnabled)
 	if err == sql.ErrNoRows {
 		err = nil
 	}
@@ -57,6 +58,7 @@ func (s *Server) handleReminderPreferences(w http.ResponseWriter, r *http.Reques
 	if r.Method == http.MethodPut {
 		var input struct {
 			reminderPreferences
+			PersonalEnabled   *bool   `json:"personalEnabled"`
 			ExpectedUpdatedAt *string `json:"expectedUpdatedAt"`
 		}
 		if !decodeJSON(w, r, &input) {
@@ -85,7 +87,11 @@ func (s *Server) handleReminderPreferences(w http.ResponseWriter, r *http.Reques
 			writeError(w, 500, "Не удалось прочитать настройки")
 			return
 		}
-		changed := old.DeadlineEnabled != input.DeadlineEnabled || old.Timezone != input.Timezone || old.QuietStart != input.QuietStart || old.QuietEnd != input.QuietEnd
+		personalEnabled := old.PersonalEnabled
+		if input.PersonalEnabled != nil {
+			personalEnabled = *input.PersonalEnabled
+		}
+		changed := old.PersonalEnabled != personalEnabled || old.DeadlineEnabled != input.DeadlineEnabled || old.Timezone != input.Timezone || old.QuietStart != input.QuietStart || old.QuietEnd != input.QuietEnd
 		seen := map[string]bool{}
 		for _, project := range input.Projects {
 			if project.WorkspaceID == "" || seen[project.WorkspaceID] {
@@ -116,7 +122,7 @@ func (s *Server) handleReminderPreferences(w http.ResponseWriter, r *http.Reques
 				return
 			}
 			stamp := nowText()
-			if _, err = tx.ExecContext(r.Context(), `INSERT INTO reminder_preferences(user_id,deadline_enabled,timezone,quiet_start,quiet_end,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET deadline_enabled=excluded.deadline_enabled,timezone=excluded.timezone,quiet_start=excluded.quiet_start,quiet_end=excluded.quiet_end,updated_at=excluded.updated_at`, user, input.DeadlineEnabled, input.Timezone, input.QuietStart, input.QuietEnd, stamp); err != nil {
+			if _, err = tx.ExecContext(r.Context(), `INSERT INTO reminder_preferences(user_id,deadline_enabled,timezone,quiet_start,quiet_end,updated_at,personal_enabled) VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET deadline_enabled=excluded.deadline_enabled,timezone=excluded.timezone,quiet_start=excluded.quiet_start,quiet_end=excluded.quiet_end,updated_at=excluded.updated_at,personal_enabled=excluded.personal_enabled`, user, input.DeadlineEnabled, input.Timezone, input.QuietStart, input.QuietEnd, stamp, personalEnabled); err != nil {
 				writeError(w, 500, "Не удалось сохранить настройки")
 				return
 			}

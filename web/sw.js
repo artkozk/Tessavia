@@ -1,7 +1,8 @@
-const CACHE = 'tessavie-shell-20260904-reminder-settings-3';
+const CACHE = 'tessavie-shell-20260904-personal-reminders-2';
 const ASSETS = [
-  '/', '/app.js?v=20260904-reminder-settings-3', '/styles.css?v=20260904-reminder-settings-3',
-  '/reminder-settings.js?v=20260904-reminder-settings-2',
+  '/', '/app.js?v=20260904-personal-reminders-2', '/styles.css?v=20260904-personal-reminders-2',
+  '/reminder-settings.js?v=20260904-personal-reminders-2',
+  '/personal-reminders.js?v=20260904-personal-reminders-2',
   '/personal-navigation.js?v=20260904-personal-scope-1',
   '/personal-today.js?v=20260904-personal-day-3',
   '/life-map.js?v=20260904-personal-batch-3', '/personal-publish.js?v=20260904-personal-batch-3',

@@ -22,13 +22,15 @@ type notificationCursor struct{ CreatedAt, ID string }
 var errNotificationFilter = errors.New("invalid notification filter")
 
 // Notifications must not retain access to a project's content after access is revoked.
-const notificationAccess = `n.user_id = ? AND (COALESCE(n.entity_id, '') = '' OR EXISTS (
+const notificationAccess = `n.user_id = ? AND ((n.entity_type='personal_plan' AND EXISTS (
+ SELECT 1 FROM personal_plans p WHERE p.id=n.entity_id AND p.owner_id=n.user_id AND p.status<>'archived'))
+ OR (COALESCE(n.entity_type,'')<>'personal_plan' AND (COALESCE(n.entity_id, '') = '' OR EXISTS (
 	SELECT 1 FROM records rec JOIN workspace_members member ON member.workspace_id = rec.workspace_id
 	JOIN workspaces w ON w.id = rec.workspace_id
 	WHERE rec.id = n.entity_id AND member.user_id = n.user_id AND member.status = 'active'
 	AND w.archived_at IS NULL AND (w.team_id IS NULL OR EXISTS (
 	SELECT 1 FROM teams t JOIN team_members tm ON tm.team_id = t.id
-	WHERE t.id = w.team_id AND t.deleted_at IS NULL AND tm.user_id = member.user_id AND tm.status = 'active'))))`
+	WHERE t.id = w.team_id AND t.deleted_at IS NULL AND tm.user_id = member.user_id AND tm.status = 'active'))))))`
 
 func (s *Server) notificationPage(r *http.Request, limit int, filtered bool) (notificationInbox, error) {
 	page := notificationInbox{Items: []Notification{}}
