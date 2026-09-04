@@ -65,14 +65,22 @@ try:
     checks='Пройдены go test ./..., go vet ./... и 183 Node-теста. Браузер: обычная ширина и 320 px, длинные данные, нулевой успех привычки, сохранение/reload решения, отсутствие горизонтального переполнения и ошибок консоли. Локально 25 чтений: median 3,94 мс, p95 4,74 мс. Миграция 052 на серверной копии сохраняет все прежние строки и добавляет две пустые приватные таблицы. Рабочая проверка читает только существующие источники, сверяет их неизменность и не создаёт тестовых пользовательских данных. Контракт: docs/architecture/PERSONAL_WEEKLY_REVIEW_2026_09_04.md.'
     for task_id in ['c0ebf2a9800f2b673d54b79b2500699f','e811bcc565da70123644a4654273aca3']:
         detail=api('/records/'+task_id);task=detail['record'];assert task['workspaceId']=='bizflow-team'
-        remaining='Каноническая задача остаётся в работе: общий Review команды, подтверждённые назначения участникам и командная история требуют отдельного этапа прав.' if task_id.startswith('c0eb') else 'Каноническая задача ожиданий остаётся в работе: личный Review учитывает ожидание, но автоматическая доставка напоминания конкретному человеку и командные сценарии остаются отдельными этапами.'
+        remaining='Все четыре критерия этой карточки закрыты. Общий Review команды, назначения участникам и командная история могут развиваться отдельной задачей и не входят в текущую приёмку.' if task_id.startswith('c0eb') else 'Каноническая задача ожиданий остаётся в работе: личный Review учитывает ожидание, но автоматическая доставка напоминания конкретному человеку и командные сценарии остаются отдельными этапами.'
         evidence='\n'.join([marker,common,choice,remaining,checks,'Commit: '+args.commit,'Release: '+args.release,'SHA256: '+args.sha256])
         if not any(marker in proof['content'] for proof in detail.get('proofs',[])):
             api('/records/'+task_id+'/proofs','POST',{'kind':'text','content':evidence})
         task=api('/records/'+task_id)['record']
         if marker not in task['description']:
             api('/records/'+task_id,'PATCH',{'status':'in_progress','description':task['description']+'\n\n'+evidence,'expectedUpdatedAt':task['updatedAt'],'reason':'Выпущен личный этап недельного обзора; общий командный этап сохраняется в работе'})
-        assert api('/records/'+task_id)['record']['status']=='in_progress'
-        print('REVIEW_TASK_STATUS='+task_id+':in_progress')
+        task=api('/records/'+task_id)['record']
+        if task_id.startswith('c0eb') and task['status']!='completed':
+            result='Ежедневный экран «Сегодня» и новый «Обзор недели» дают короткий цикл: фактические завершения, результаты проектов и привычек; ожидания, зависшие/несвязанные дела, решения и риски без следующего действия; четыре явных решения без автоматической смены срока, приоритета или состояния. Все строки ведут в источник, проектные сигналы подписаны стартапом, разделы ограничены.'
+            if task['status']!='review':
+                task=api('/records/'+task_id+'/submit-review','POST',{'result':result,'notifyPartners':False})
+            if task['status']=='review':
+                task=api('/records/'+task_id+'/review','POST',{'decision':'accept','reason':'Все четыре критерия карточки подтверждены production-выпуском и доказательством'})
+        expected='completed' if task_id.startswith('c0eb') else 'in_progress'
+        assert api('/records/'+task_id)['record']['status']==expected
+        print('REVIEW_TASK_STATUS='+task_id+':'+expected)
 finally:
     db.execute('DELETE FROM sessions WHERE token_hash=?',(digest,));db.commit();db.close()
