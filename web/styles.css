@@ -4464,3 +4464,35 @@ body:has(.calendar-expanded) { overflow: hidden; }
   .bulk-work-toolbar { gap: 8px 12px; }
   .bulk-work-toolbar > strong { width: 100%; }
 }
+
+/* Personal note organization uses the existing notebook and neutral controls. */
+.note-library .section-heading h2 small { font-size: 14px; font-weight: 400; color: var(--muted); }
+.note-library-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 16px; }
+.note-library-filters { display: grid; grid-template-columns: minmax(180px,2fr) minmax(120px,1fr) minmax(120px,1fr) auto; gap: 10px; align-items: center; margin-bottom: 20px; }
+.note-library-filters > *, .note-library-filters label { min-width: 0; }
+.note-library-filters [aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); border-radius: 6px; }
+.note-card-organization { color: var(--muted); font-size: 12px; font-weight: 400; overflow-wrap: anywhere; }
+.note-organization { border-top: 1px solid var(--line); padding: 12px 0; }
+.note-organization summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.note-organization summary svg { width: 16px; height: 16px; vertical-align: middle; }
+.note-organization .form-grid { margin-top: 12px; }
+.note-library-dialog { max-width: 760px; margin: auto; }
+.note-library-dialog header { gap: 16px; }
+.note-library-dialog header h2 { min-width: 0; overflow-wrap: anywhere; }
+.note-library-dialog header .icon-button { flex: 0 0 44px; }
+.note-library-dialog form { display: grid; gap: 16px; min-width: 0; }
+.note-library-dialog label { display: grid; gap: 6px; min-width: 0; }
+.note-library-dialog .form-error:empty { display: none; }
+.note-library-dialog .form-error { color: var(--red); }
+.note-manager-list { margin: 16px 0 24px; }
+.note-manager-row { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 12px 0; }
+.note-manager-row > span, .note-manager-row > .note-template-use { display: grid; flex: 1; min-width: 0; gap: 5px; text-align: left; overflow-wrap: anywhere; }
+.note-manager-row small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.note-manager-row > .icon-button { flex: 0 0 44px; }
+.note-library-dialog .form-actions, .personal-editor-actions { flex-wrap: wrap; }
+@media (max-width: 800px) { .note-library-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } .note-library-search { grid-column: 1 / -1; } }
+@media (max-width: 540px) {
+  .note-library-filters, .note-organization .form-grid.two, .note-library-dialog .form-grid.two { grid-template-columns: minmax(0,1fr); }
+  .note-library-dialog header h2 { font-size: 20px; }
+  .note-library-dialog button, .personal-editor-actions button { white-space: normal; max-width: 100%; }
+}

@@ -1,3 +1,4 @@
+import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-organize-2';
 import { createHabitUI } from './habit-tracker.js?v=20260904-habit-layout-2';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
 import { createOutboxUI } from './outbox-ui.js?v=20260904-habits-3';
@@ -2477,9 +2478,7 @@ function formatMinutes(value) {
   return minutes >= 60 ? `${Math.floor(minutes / 60)} ч ${minutes % 60 ? `${minutes % 60} мин` : ''}`.trim() : `${minutes} мин`;
 }
 
-function renderPersonalNotes(notes, links) {
-  return `<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Личная память</p><h2>Заметки</h2></div><span class="panel-note">${notes.length}</span></div><div class="personal-note-grid">${notes.map((note) => renderNoteCard(note, links)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section>`;
-}
+function renderPersonalNotes(notes, links) { return noteLibraryUI.render(notes, links); }
 
 function personalInboxNotes(notes) {
   return notes.filter(note => note.inInbox).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -2575,7 +2574,7 @@ function renderNoteCard(note, links, compact = false) {
   const ownLinks = personalLinksFor(links, 'note', note.id);
   const body = markdownPlain(note.body).trim();
   const preview = body && body !== note.title ? `<div class="markdown-body">${renderMarkdown(note.body)}</div>` : '';
-  return `<article class="personal-note ${compact ? 'compact' : ''}"><button type="button" class="personal-card-main" data-personal-edit="note" data-personal-id="${note.id}"><span>${note.inInbox ? icon('inbox') : note.pinned ? icon('bookmark') : icon('edit')}</span><strong>${escapeHTML(note.title)}</strong>${preview}</button>${renderPersonalLinkChips(ownLinks)}<footer>${note.inInbox && !compact ? `<button type="button" class="text-button" data-inbox-keep-note="${note.id}">${icon('check')} Сохранить в заметках</button>` : ''}<time datetime="${escapeHTML(note.createdAt)}" title="Изменена ${escapeHTML(formatDate(note.updatedAt, true))}">Создана ${formatDate(note.createdAt, true)}</time><button type="button" class="text-button" data-personal-link="note" data-personal-id="${note.id}" data-personal-title="${escapeHTML(note.title)}">${icon('link')} Связать</button></footer></article>`;
+  return `<article class="personal-note ${compact ? 'compact' : ''}"><button type="button" class="personal-card-main" data-personal-edit="note" data-personal-id="${note.id}"><span>${note.inInbox ? icon('inbox') : note.pinned ? icon('bookmark') : icon('edit')}</span><strong>${escapeHTML(note.title)}</strong>${note.folderName || note.tags?.length ? `<small class="note-card-organization">${escapeHTML([note.folderName, ...(note.tags || []).map(tag => `#${tag}`)].filter(Boolean).join(' · '))}</small>` : ''}${preview}</button>${renderPersonalLinkChips(ownLinks)}<footer>${note.inInbox && !compact ? `<button type="button" class="text-button" data-inbox-keep-note="${note.id}">${icon('check')} Сохранить в заметках</button>` : ''}<time datetime="${escapeHTML(note.createdAt)}" title="Изменена ${escapeHTML(formatDate(note.updatedAt, true))}">Создана ${formatDate(note.createdAt, true)}</time><button type="button" class="text-button" data-personal-link="note" data-personal-id="${note.id}" data-personal-title="${escapeHTML(note.title)}">${icon('link')} Связать</button></footer></article>`;
 }
 
 function renderPlanRow(plan, links) {
@@ -2587,6 +2586,7 @@ function renderPlanRow(plan, links) {
   return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
+const noteLibraryUI = createNoteLibraryUI({state, api, escapeHTML, icon, renderNoteCard, renderPersonal, loadPersonal, openPersonalEditor, localISODate, openModal, closeDialog: requestDialogClose, enhanceSelects, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, askChoice, toast});
 const habitUI = createHabitUI({ outbox: () => offlineOutbox, escapeHTML, icon, api, state, toast, loadPersonal, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, findHabit: id => findPersonalItem('habit', id), openLinks: openPersonalLinkDialog, renderPersonal });
 function renderHabitRow(habit, links, compact = false) { return habitUI.renderRow(habit, compact); }
 
@@ -2638,6 +2638,7 @@ function lastDates(count) {
 }
 
 function bindPersonalInteractions() {
+  noteLibraryUI.bind();
   $$('[data-personal-capture]').forEach(button => button.addEventListener('click', openPersonalCapture));
   $$('[data-inbox-keep-note]').forEach(button => button.addEventListener('click', () => setPersonalInboxState(button.dataset.inboxKeepNote, false, button)));
   $$('[data-personal-tab-jump]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTabJump; renderPersonal(); }));
@@ -2727,7 +2728,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
   const labels = { note: 'Заметка', plan: 'Дело', habit: 'Привычка', project: 'Личный проект', goal: 'Цель' };
   const title = labels[kind] || labels.note;
   const body = kind === 'note'
-    ? `${personalNoteSheet(item)}<label class="note-schedule-field">${icon('calendar')}<span>В календаре</span><input type="date" name="scheduledDate" aria-label="Дата заметки в календаре" value="${escapeHTML(item ? noteCalendarDate(item) : context.date || localISODate())}"></label>${item?.createdAt ? `<small class="muted">Создана ${escapeHTML(formatDate(item.createdAt))}</small>` : ''}`
+    ? `${personalNoteSheet(item)}${noteLibraryUI.fields(item)}<label class="note-schedule-field">${icon('calendar')}<span>В календаре</span><input type="date" name="scheduledDate" aria-label="Дата заметки в календаре" value="${escapeHTML(item ? noteCalendarDate(item) : context.date || localISODate())}"></label>${item?.createdAt ? `<small class="muted">Создана ${escapeHTML(formatDate(item.createdAt))}</small>` : ''}`
     : kind === 'plan'
       ? `${personalNoteSheet(item ? { ...item, body: item.notes } : null, { bodyName: 'notes', pin: false })}${personalPlanContextFields(item || {})}${personalPlanDateFields(item || { startDate: context.date || '', endDate: context.date || '' })}`
       : kind === 'project' ? personalProjectFields(item)
@@ -2749,6 +2750,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
   }
   bindMarkdownEditors(dialog);
   const resizeNoteTitle = ['note', 'plan'].includes(kind) ? bindPersonalNoteSheet(editorForm, kind === 'plan' ? 'Дело' : 'Заметка') : null;
+  if (kind === 'note') noteLibraryUI.bindEditor(editorForm, () => { syncNotebook($('.markdown-editor', editorForm)); const values = new FormData(editorForm); return {title: values.get('title'), body: values.get('body'), sourceID: item?.id || 'new'}; });
   if (kind === 'plan') bindPersonalPlanDates(editorForm);
   if (item && kind === 'note') {
     $('.personal-note-sheet', editorForm).insertAdjacentHTML('afterend', renderPersonalLinkChips(personalLinksFor(state.personal.links, kind, id)));
@@ -2760,7 +2762,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
     if (saving) return;
     const form = new FormData(event.currentTarget);
     let payload;
-    if (kind === 'note') payload = { title: form.get('title'), ...(item ? { expectedUpdatedAt: item.updatedAt } : {}), body: form.get('body'), scheduledDate: form.get('scheduledDate') || '', pinned: form.get('pinned') === 'on', ...(!item && context.planId ? { linkPlanId: context.planId } : {}) };
+    if (kind === 'note') payload = { folderId: form.get('folderId') || '', tags: parseNoteTags(form.get('noteTags')), title: form.get('title'), ...(item ? { expectedUpdatedAt: item.updatedAt } : {}), body: form.get('body'), scheduledDate: form.get('scheduledDate') || '', pinned: form.get('pinned') === 'on', ...(!item && context.planId ? { linkPlanId: context.planId } : {}) };
     else if (kind === 'plan') {
       const mode = form.get('dateMode');
       if (mode === 'days' && !form.get('startDate') || mode === 'time' && !form.get('dueAt') || mode === 'block' && (!form.get('startsAt') || !form.get('endsAt'))) { toast('Заполните выбранные даты или выберите «Без даты»', true); return; }

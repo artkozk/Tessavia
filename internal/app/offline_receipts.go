@@ -69,8 +69,7 @@ func writePersonalCreateReplay(w http.ResponseWriter, r *http.Request, tx *sql.T
 	var err error
 	if kind == "note" {
 		var note PersonalNote
-		err = tx.QueryRowContext(r.Context(), `SELECT id,title,body,pinned,created_at,updated_at,scheduled_date,in_inbox,title_generated FROM personal_notes WHERE id=? AND owner_id=? AND archived_at IS NULL`, id, owner).
-			Scan(&note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate, &note.InInbox, &note.TitleGenerated)
+		note, err = scanPersonalNote(tx.QueryRowContext(r.Context(), personalNoteSelect+` WHERE n.id=? AND n.owner_id=? AND n.archived_at IS NULL`, id, owner))
 		result = note
 	} else {
 		var plan PersonalPlan

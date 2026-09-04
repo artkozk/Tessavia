@@ -2,6 +2,7 @@ package app
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"sort"
 	"strings"
@@ -27,15 +28,19 @@ type PersonalSettings struct {
 }
 
 type PersonalNote struct {
-	TitleGenerated bool    `json:"titleGenerated"`
-	InInbox        bool    `json:"inInbox"`
-	ScheduledDate  *string `json:"scheduledDate"`
-	ID             string  `json:"id"`
-	Title          string  `json:"title"`
-	Body           string  `json:"body"`
-	Pinned         bool    `json:"pinned"`
-	CreatedAt      string  `json:"createdAt"`
-	UpdatedAt      string  `json:"updatedAt"`
+	FolderID       string   `json:"folderId"`
+	FolderName     string   `json:"folderName"`
+	Tags           []string `json:"tags"`
+	DailyDate      string   `json:"dailyDate"`
+	TitleGenerated bool     `json:"titleGenerated"`
+	InInbox        bool     `json:"inInbox"`
+	ScheduledDate  *string  `json:"scheduledDate"`
+	ID             string   `json:"id"`
+	Title          string   `json:"title"`
+	Body           string   `json:"body"`
+	Pinned         bool     `json:"pinned"`
+	CreatedAt      string   `json:"createdAt"`
+	UpdatedAt      string   `json:"updatedAt"`
 }
 
 type PersonalPlan struct {
@@ -154,14 +159,16 @@ type PersonalLink struct {
 }
 
 type PersonalOverview struct {
-	Workspace Workspace         `json:"workspace"`
-	Settings  PersonalSettings  `json:"settings"`
-	Projects  []PersonalProject `json:"projects"`
-	Goals     []PersonalGoal    `json:"goals"`
-	Notes     []PersonalNote    `json:"notes"`
-	Plans     []PersonalPlan    `json:"plans"`
-	Habits    []PersonalHabit   `json:"habits"`
-	Links     []PersonalLink    `json:"links"`
+	NoteFolders   []PersonalNoteFolder   `json:"noteFolders"`
+	NoteTemplates []PersonalNoteTemplate `json:"noteTemplates"`
+	Workspace     Workspace              `json:"workspace"`
+	Settings      PersonalSettings       `json:"settings"`
+	Projects      []PersonalProject      `json:"projects"`
+	Goals         []PersonalGoal         `json:"goals"`
+	Notes         []PersonalNote         `json:"notes"`
+	Plans         []PersonalPlan         `json:"plans"`
+	Habits        []PersonalHabit        `json:"habits"`
+	Links         []PersonalLink         `json:"links"`
 }
 
 type PersonalSuggestion struct {
@@ -196,7 +203,7 @@ func (s *Server) handlePersonalSearch(w http.ResponseWriter, r *http.Request) {
 	sources := []source{
 		{"project", `SELECT id,title,notes,status,updated_at FROM personal_projects WHERE owner_id=? AND status<>'archived'`},
 		{"goal", `SELECT id,title,notes,status,updated_at FROM personal_goals WHERE owner_id=? AND status<>'archived'`},
-		{"note", `SELECT id,title,body,'active',updated_at FROM personal_notes WHERE owner_id=? AND archived_at IS NULL`},
+		{"note", `SELECT n.id,n.title,n.body || char(10) || COALESCE(f.name,'') || ' ' || n.tags_json,'active',n.updated_at FROM personal_notes n LEFT JOIN personal_note_folders f ON f.id=n.folder_id AND f.owner_id=n.owner_id AND f.archived_at IS NULL WHERE n.owner_id=? AND n.archived_at IS NULL`},
 		{"plan", `SELECT id,title,notes,status,updated_at FROM personal_plans WHERE owner_id=? AND status<>'archived'`},
 		{"habit", `SELECT id,title,unit,'active',updated_at FROM personal_habits WHERE owner_id=? AND archived_at IS NULL`},
 	}
@@ -302,6 +309,10 @@ func (s *Server) handlePersonalOverview(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить заметки")
 		return
 	}
+	if err = s.listNoteLibrary(r, &overview); err != nil {
+		writeError(w, 500, "Не удалось загрузить папки и шаблоны")
+		return
+	}
 	if overview.Plans, err = s.listPersonalPlans(r, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить планы")
 		return
@@ -318,19 +329,17 @@ func (s *Server) handlePersonalOverview(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) listPersonalNotes(r *http.Request, ownerID int64) ([]PersonalNote, error) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date, in_inbox, title_generated FROM personal_notes WHERE owner_id = ? AND archived_at IS NULL ORDER BY pinned DESC, updated_at DESC`, ownerID)
+	rows, err := s.store.db.QueryContext(r.Context(), personalNoteSelect+` WHERE n.owner_id = ? AND n.archived_at IS NULL ORDER BY n.pinned DESC, n.updated_at DESC,n.id`, ownerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := make([]PersonalNote, 0)
 	for rows.Next() {
-		var item PersonalNote
-		var pinned int
-		if err := rows.Scan(&item.ID, &item.Title, &item.Body, &pinned, &item.CreatedAt, &item.UpdatedAt, &item.ScheduledDate, &item.InInbox, &item.TitleGenerated); err != nil {
+		item, err := scanPersonalNote(rows)
+		if err != nil {
 			return nil, err
 		}
-		item.Pinned = pinned == 1
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -440,12 +449,14 @@ func (s *Server) personalTargetTitle(r *http.Request, ownerID int64, targetType,
 
 func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		RequestKey    string  `json:"requestKey"`
-		ScheduledDate *string `json:"scheduledDate"`
-		Title         string  `json:"title"`
-		Body          string  `json:"body"`
-		Pinned        bool    `json:"pinned"`
-		LinkPlanID    string  `json:"linkPlanId"`
+		FolderID      string   `json:"folderId"`
+		Tags          []string `json:"tags"`
+		RequestKey    string   `json:"requestKey"`
+		ScheduledDate *string  `json:"scheduledDate"`
+		Title         string   `json:"title"`
+		Body          string   `json:"body"`
+		Pinned        bool     `json:"pinned"`
+		LinkPlanID    string   `json:"linkPlanId"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -465,6 +476,11 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+	tags, tagErr := normalizeNoteTags(input.Tags)
+	if tagErr != nil {
+		writeError(w, 400, tagErr.Error())
+		return
+	}
 	now := nowText()
 	user := currentUser(r)
 	payloadHash, err := createPayloadHash(struct {
@@ -474,6 +490,11 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 	}{input.Title, strings.TrimSpace(input.Body), input.LinkPlanID, input.Pinned, titleGenerated, input.ScheduledDate})
 	if err != nil {
 		writeError(w, 400, "Некорректная заметка")
+		return
+	}
+	payloadHash, err = noteOrganizationHash(payloadHash, input.FolderID, tags)
+	if err != nil {
+		writeError(w, 400, "Некорректная организация заметки")
 		return
 	}
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
@@ -491,6 +512,10 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 		writePersonalCreateReplay(w, r, tx, "note", existing)
 		return
 	}
+	if !noteFolderExists(r.Context(), tx, user.ID, input.FolderID) {
+		writeError(w, 404, "Папка не найдена")
+		return
+	}
 	if input.LinkPlanID != "" {
 		var found int
 		if tx.QueryRowContext(r.Context(), `SELECT 1 FROM personal_plans WHERE id = ? AND owner_id = ? AND status <> 'archived'`, input.LinkPlanID, user.ID).Scan(&found) != nil {
@@ -498,7 +523,8 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_notes(id, owner_id, title, body, pinned, created_at, updated_at, scheduled_date, title_generated) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, user.ID, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, now, input.ScheduledDate, titleGenerated)
+	tagsJSON, _ := json.Marshal(tags)
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_notes(id, owner_id, title, body, pinned, created_at, updated_at, scheduled_date, title_generated,folder_id,tags_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?,NULLIF(?,''),?)`, id, user.ID, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, now, input.ScheduledDate, titleGenerated, input.FolderID, string(tagsJSON))
 	if err == nil && input.LinkPlanID != "" {
 		linkID, ok := newPersonalID(w)
 		if !ok {
@@ -516,16 +542,18 @@ func (s *Server) handleCreatePersonalNote(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить заметку")
 		return
 	}
-	writeJSON(w, http.StatusCreated, PersonalNote{ID: id, Title: input.Title, Body: strings.TrimSpace(input.Body), Pinned: input.Pinned, CreatedAt: now, UpdatedAt: now, ScheduledDate: input.ScheduledDate, TitleGenerated: titleGenerated})
+	writeJSON(w, http.StatusCreated, PersonalNote{ID: id, Title: input.Title, Body: strings.TrimSpace(input.Body), Pinned: input.Pinned, CreatedAt: now, UpdatedAt: now, ScheduledDate: input.ScheduledDate, TitleGenerated: titleGenerated, FolderID: input.FolderID, Tags: tags})
 }
 
 func (s *Server) handleUpdatePersonalNote(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		ExpectedUpdatedAt string  `json:"expectedUpdatedAt"`
-		ScheduledDate     *string `json:"scheduledDate"`
-		Title             string  `json:"title"`
-		Body              string  `json:"body"`
-		Pinned            bool    `json:"pinned"`
+		FolderID          *string   `json:"folderId"`
+		Tags              *[]string `json:"tags"`
+		ExpectedUpdatedAt string    `json:"expectedUpdatedAt"`
+		ScheduledDate     *string   `json:"scheduledDate"`
+		Title             string    `json:"title"`
+		Body              string    `json:"body"`
+		Pinned            bool      `json:"pinned"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -540,8 +568,24 @@ func (s *Server) handleUpdatePersonalNote(w http.ResponseWriter, r *http.Request
 	}
 	user := currentUser(r)
 	now := nowText()
+	var tagsValue any
+	if input.Tags != nil {
+		tags, tagErr := normalizeNoteTags(*input.Tags)
+		if tagErr != nil {
+			writeError(w, 400, tagErr.Error())
+			return
+		}
+		data, _ := json.Marshal(tags)
+		tagsValue = string(data)
+	}
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, 500, "Не удалось начать сохранение")
+		return
+	}
+	defer tx.Rollback()
 	var previousVersion string
-	if err := s.store.db.QueryRowContext(r.Context(), `SELECT updated_at FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, r.PathValue("id"), user.ID).Scan(&previousVersion); err != nil {
+	if err := tx.QueryRowContext(r.Context(), `SELECT updated_at FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, r.PathValue("id"), user.ID).Scan(&previousVersion); err != nil {
 		writeError(w, http.StatusNotFound, "Заметка не найдена")
 		return
 	}
@@ -549,7 +593,11 @@ func (s *Server) handleUpdatePersonalNote(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusConflict, "Заметка изменена в другом окне. Черновик сохранён; откройте актуальную версию.")
 		return
 	}
-	result, err := s.store.db.ExecContext(r.Context(), `UPDATE personal_notes SET title = ?, body = ?, pinned = ?, updated_at = ?, scheduled_date = COALESCE(?, scheduled_date), title_generated = ? WHERE id = ? AND owner_id = ? AND archived_at IS NULL AND updated_at = ?`, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, input.ScheduledDate, titleGenerated, r.PathValue("id"), user.ID, previousVersion)
+	if input.FolderID != nil && !noteFolderExists(r.Context(), tx, user.ID, *input.FolderID) {
+		writeError(w, 404, "Папка не найдена")
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `UPDATE personal_notes SET title = ?, body = ?, pinned = ?, updated_at = ?, scheduled_date = COALESCE(?, scheduled_date), title_generated = ?,folder_id = CASE WHEN ? IS NULL THEN folder_id ELSE NULLIF(?,'') END,tags_json=COALESCE(?,tags_json) WHERE id = ? AND owner_id = ? AND archived_at IS NULL AND updated_at = ?`, input.Title, strings.TrimSpace(input.Body), boolInt(input.Pinned), now, input.ScheduledDate, titleGenerated, input.FolderID, input.FolderID, tagsValue, r.PathValue("id"), user.ID, previousVersion)
 	if err != nil {
 		writeError(w, 500, "Не удалось сохранить заметку")
 		return
@@ -558,10 +606,13 @@ func (s *Server) handleUpdatePersonalNote(w http.ResponseWriter, r *http.Request
 		writeError(w, 409, "Заметка изменена. Откройте актуальную версию.")
 		return
 	}
-	var note PersonalNote
-	err = s.store.db.QueryRowContext(r.Context(), `SELECT id, title, body, pinned, created_at, updated_at, scheduled_date, in_inbox, title_generated FROM personal_notes WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, r.PathValue("id"), user.ID).Scan(&note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate, &note.InInbox, &note.TitleGenerated)
+	note, err := scanPersonalNote(tx.QueryRowContext(r.Context(), personalNoteSelect+` WHERE n.id=? AND n.owner_id=? AND n.archived_at IS NULL`, r.PathValue("id"), user.ID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать заметку")
+		return
+	}
+	if tx.Commit() != nil {
+		writeError(w, 500, "Не удалось завершить сохранение")
 		return
 	}
 	writeJSON(w, http.StatusOK, note)
