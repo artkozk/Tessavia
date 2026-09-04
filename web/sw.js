@@ -1,6 +1,6 @@
-const CACHE = 'tessavie-shell-20260904-habit-snooze-1';
+const CACHE = 'tessavie-shell-20260904-personal-waiting-4';
 const ASSETS = [
-  '/', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260904-habit-snooze-1', '/styles.css?v=20260904-habit-snooze-1',
+  '/', '/personal-waiting.js?v=20260904-personal-waiting-4', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260904-personal-waiting-4', '/styles.css?v=20260904-personal-waiting-4',
   '/reminder-settings.js?v=20260904-habit-reminders-1',
   '/personal-reminders.js?v=20260904-habit-reminders-1',
   '/personal-navigation.js?v=20260904-personal-scope-1',
@@ -13,7 +13,7 @@ const ASSETS = [
   '/note-media.js?v=20260904-note-media-3',
   '/note-library.js?v=20260904-note-media-3',
   '/bulk-work.js?v=20260904-bulk-actions-3',
-  '/habit-tracker.js?v=20260904-habit-snooze-1',
+  '/habit-tracker.js?v=20260904-personal-waiting-4',
   '/graph-layout-state.js?v=20260903-graph-layouts-1', '/manifest.webmanifest',
   '/vendor/cytoscape-3.34.1.min.js', '/vendor/marked-18.0.9.umd.js', '/vendor/dompurify-3.4.13.min.js',
   '/fonts/Inter-Regular.woff2', '/fonts/Inter-SemiBold.woff2', '/fonts/Inter-Bold.woff2', '/fonts/Onest-Variable.ttf',
