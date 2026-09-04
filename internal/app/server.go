@@ -176,6 +176,10 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/records/{id}/ai-draft-field", s.requireAuth(http.HandlerFunc(s.handleAIFieldDraft)))
 
 	s.mux.Handle("GET /api/records", s.requireAuth(http.HandlerFunc(s.handleListRecords)))
+	s.mux.Handle("POST /api/record-batches/preview", s.requireAuth(http.HandlerFunc(s.handlePreviewRecordBatch)))
+	s.mux.Handle("POST /api/record-batches/apply", s.requireAuth(http.HandlerFunc(s.handleApplyRecordBatch)))
+	s.mux.Handle("GET /api/record-batches/{id}", s.requireAuth(http.HandlerFunc(s.handleGetRecordBatch)))
+	s.mux.Handle("POST /api/record-batches/{id}/undo", s.requireAuth(http.HandlerFunc(s.handleUndoRecordBatch)))
 	s.mux.Handle("POST /api/records", s.requireAuth(http.HandlerFunc(s.handleCreateRecord)))
 	s.mux.Handle("GET /api/records/{id}", s.requireAuth(http.HandlerFunc(s.handleGetRecord)))
 	s.mux.Handle("GET /api/records/{id}/relations", s.requireAuth(http.HandlerFunc(s.handleGetRecordRelations)))

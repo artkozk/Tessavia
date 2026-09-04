@@ -1,4 +1,5 @@
 import { createHabitUI } from './habit-tracker.js?v=20260904-habit-layout-2';
+import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
 import { createOutboxUI } from './outbox-ui.js?v=20260904-habits-3';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
@@ -3642,6 +3643,8 @@ function currentWorkViewPayload() {
   };
 }
 
+const bulkWorkUI = createBulkWorkUI({ state, api, escapeHTML, icon, renderWorkList, renderCollections, currentWorkWindow, savedPageLayout, captureProjectContext, isProjectContextCurrent, syncProjectChanges, openModal, closeDialog: requestDialogClose, enhanceSelects, toast, priorityLabels, workstreamLabels, statusLabels });
+
 function renderWorkList() {
   normalizeWorkScope();
   if (!state.collections.some((item) => item.id === state.workCollection)) state.workCollection = '';
@@ -3718,6 +3721,7 @@ function renderWorkList() {
   if (state.workViewMode === 'calendar') bindCalendarControls();
   if (state.workViewMode !== 'kanban' || !state.workCollection) bindOpenRecords();
   bindWorkWindow(renderWorkList);
+  bulkWorkUI.mount();
 }
 
 function activeCollection() {
@@ -3887,6 +3891,7 @@ function renderCollections() {
 	$('[data-reset-collection-filters]')?.addEventListener('click', () => { state.collectionOwnerFilter = ''; state.collectionFieldFilters = {}; renderCollections(); });
 	bindCollectionBoard(collection);
   bindWorkWindow(renderCollections);
+  bulkWorkUI.mount();
 }
 
 async function reloadCollections({ render = true } = {}) {
@@ -7326,6 +7331,8 @@ function actionLabel(action) {
 }
 
 function activityActionLabel(item) {
+  if (item.action === 'bulk_updated') return 'изменил карточку массовым действием';
+  if (item.action === 'bulk_undone') return 'отменил массовое изменение';
   const schemaActions = {field_archived:'удалил поле доски',field_restored:'восстановил поле доски',stage_archived:'удалил колонку доски',stage_restored:'восстановил колонку доски',schema_reordered:'изменил порядок полей или колонок',collection_stage_relocated:'переместил карточку из удалённой колонки'};
   if (schemaActions[item.action]) return schemaActions[item.action];
   if (item.entityType === 'user' && item.action === 'created') return 'зарегистрировался в проекте';
@@ -7340,6 +7347,7 @@ function formatActivityValue(value, truncate = true) {
 }
 
 function activityDisplayValue(field, value, truncate = true) {
+  if (field === 'stageId' && value) return state.collections.flatMap(collection => collection.stages).find(stage => stage.id === value)?.name || 'Прежний этап доски';
   if (field === 'status' && value) return statusLabels[value] || value;
   if (field === 'type' && value) return typeMeta[value]?.singular || value;
   if ((field === 'ownerId' || field === 'decisionMakerId') && value) return state.users.find((user) => user.id === Number(value))?.username || value;
@@ -7357,7 +7365,7 @@ function activityDisplayValue(field, value, truncate = true) {
 }
 
 function activityChanges(item, full = false) {
-  const fieldLabels = { criterionWeight: 'Вес критерия', username: 'Логин', type: 'Тип карточки', title: 'Название', description: 'Описание', status: 'Статус', ownerId: 'Ответственный', decisionMakerId: 'Принимает решение', dueAt: 'Срок', priority: 'Приоритет', workstream: 'Направление', editPolicy: 'Доступ', parentId: 'Родитель', isRoot: 'Иерархия', estimateMinutes: 'Оценка времени', actualMinutes: 'Фактическое время', progress: 'Прогресс', progressNote: 'Ход работы', result: 'Результат', summaryMd: 'Краткий вывод', prosMd: 'Плюсы', consMd: 'Минусы', notesMd: 'Заметки', rating: 'Оценка' };
+  const fieldLabels = { stageId: 'Этап доски', criterionWeight: 'Вес критерия', username: 'Логин', type: 'Тип карточки', title: 'Название', description: 'Описание', status: 'Статус', ownerId: 'Ответственный', decisionMakerId: 'Принимает решение', dueAt: 'Срок', priority: 'Приоритет', workstream: 'Направление', editPolicy: 'Доступ', parentId: 'Родитель', isRoot: 'Иерархия', estimateMinutes: 'Оценка времени', actualMinutes: 'Фактическое время', progress: 'Прогресс', progressNote: 'Ход работы', result: 'Результат', summaryMd: 'Краткий вывод', prosMd: 'Плюсы', consMd: 'Минусы', notesMd: 'Заметки', rating: 'Оценка' };
   const changes = Object.entries(item.details || {}).filter(([field, value]) => value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'before') && Object.prototype.hasOwnProperty.call(value, 'after') && activityDisplayValue(field, value.before, false) !== activityDisplayValue(field, value.after, false));
   if (!changes.length && Object.prototype.hasOwnProperty.call(item.details || {}, 'before') && Object.prototype.hasOwnProperty.call(item.details || {}, 'after')) {
     changes.push([item.details?.section || 'Содержание', { before: item.details.before, after: item.details.after }]);

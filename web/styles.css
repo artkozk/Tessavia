@@ -4431,3 +4431,36 @@ body:has(.calendar-expanded) { overflow: hidden; }
 @media (max-width: 560px) {
   #personal-dialog:has(.habit-tracker) .dialog-header h2 { font-size: 18px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 }
+/* Bulk work uses the existing neutral toolbar and record separators. */
+.bulk-work-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding: 10px 0; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+.bulk-work-toolbar strong { font-size: 13px; font-weight: 600; }
+.work-board-toolbar > .bulk-work-toolbar { grid-column: 1 / -1; margin: 0; padding-bottom: 0; border-bottom: 0; }
+.collection-filters > .bulk-work-toolbar { flex: 1 0 100%; margin: 0; border-bottom: 0; }
+.work-table-panel:has(.bulk-work-row) > .work-header { padding-left: 42px; }
+.bulk-work-toolbar .text-button { min-height: 40px; }
+.bulk-work-row { display: grid; grid-template-columns: 42px minmax(0,1fr); align-items: stretch; }
+.bulk-work-row > .work-row { width: 100%; min-width: 0; }
+.bulk-record-check { display: flex; align-items: center; justify-content: center; min-height: 44px; margin: 0; cursor: pointer; gap: 8px; }
+.bulk-record-check input { accent-color: var(--accent); width: 18px; height: 18px; flex: 0 0 18px; }
+.bulk-record-check span { font-size: 12px; color: var(--muted); }
+.bulk-work-row .bulk-record-check span { display: none; }
+.kanban-card > .bulk-record-check, .collection-card > .bulk-record-check { justify-content: flex-start; padding: 0 14px; border-bottom: 1px solid var(--line); }
+.bulk-selectable.bulk-selected { outline: 1px solid var(--accent); outline-offset: -1px; }
+.bulk-selectable .kanban-move { display: none; }
+.bulk-editor { min-width: 0; }
+.bulk-editor [data-bulk-body], .bulk-editor form { min-width: 0; }
+.bulk-result-list { list-style: none; margin: 16px 0; padding: 0; max-height: 45dvh; overflow: auto; scrollbar-width: thin; }
+.bulk-result-list li { display: grid; gap: 5px; padding: 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.bulk-result-list strong { font-size: 14px; }
+.bulk-result-list span, .bulk-result-list small { font-size: 12px; line-height: 1.5; }
+.bulk-error { color: var(--danger, #a83145); overflow-wrap: anywhere; }
+@media (max-width: 540px) {
+  .bulk-editor .form-grid.two { grid-template-columns: minmax(0,1fr); }
+  .bulk-editor .form-actions { flex-wrap: wrap; }
+  .bulk-editor button { max-width: 100%; white-space: normal; }
+  .bulk-editor header { align-items: start; gap: 8px; }
+  .bulk-editor header h2 { font-size: 19px; min-width: 0; overflow-wrap: anywhere; }
+  .bulk-editor header .icon-button { flex: 0 0 40px; }
+  .bulk-work-toolbar { gap: 8px 12px; }
+  .bulk-work-toolbar > strong { width: 100%; }
+}

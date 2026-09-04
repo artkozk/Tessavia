@@ -14,6 +14,7 @@ func TestOnlyPublicAssetsReceiveLongLivedCaching(t *testing.T) {
 		{"/", "no-cache"}, {"/index.html?v=1", "no-cache"},
 		{"/manifest.webmanifest", "no-cache"}, {"/app.js", "no-cache"},
 		{"/app.js?v=release-1", "public, max-age=31536000, immutable"},
+		{"/bulk-work.js?v=release-1", "public, max-age=31536000, immutable"},
 		{"/offline-outbox.js", "no-cache"},
 		{"/offline-outbox.js?v=release-1", "public, max-age=31536000, immutable"},
 		{"/sw.js", "no-cache"},
