@@ -20,9 +20,9 @@ test('late capture responses only clear the submitted draft, not a newer note', 
 });
 
 test('quick capture keeps private ownership, request identity and a single text input', () => {
-  const capture = source.slice(source.indexOf('function openPersonalCapture('), source.indexOf('function renderPersonalPlans('));
-  assert.match(capture, /api\('\/api\/personal\/capture'/);
-  assert.match(capture, /bindWorkingDraft\(form, scope\)/);
+  const capture = fs.readFileSync(__dirname + '/personal-inbox.js', 'utf8').split('async function bindList')[0];
+  assert.match(capture, /await outbox\(\)\.addCapture\(body,key,owner\)/);
+  assert.match(capture, /bindDraft\(form,scope\)/);
   assert.match(capture, /name="requestKey"/);
   assert.match(capture, /name="body"/);
   assert.doesNotMatch(capture, /name="(?:title|ownerId|workspaceId|dueAt)"/);

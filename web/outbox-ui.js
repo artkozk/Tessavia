@@ -1,4 +1,5 @@
 import { createIndexedOutbox, createOutboxQueue } from './offline-outbox.js?v=20260903-offline-outbox-3';
+import { captureEntry } from './personal-inbox.js?v=20260904-first-use-4';
 
 export function noteCreateEntries(kind,payload,files=[],requestKey='') {
   if(files.length && (kind !== 'note' || !requestKey))throw new Error('Для файлов нужен ключ новой заметки.');
@@ -20,7 +21,7 @@ export function pendingNoteFileEntries(items) {
   return items.filter(item=>item.kind==='note-attachment'&&item.status!=='confirmed').map(item=>({...item,note:item.note||notes.get(`${item.owner}:${item.noteRequestKey}`)}));
 }
 
-export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPersonal, onConfirmed, onOfflineIdentity, onAuthRequired, escapeHTML, toast }) {
+export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPersonal, newCapture, onConfirmed, onOfflineIdentity, onAuthRequired, escapeHTML, toast }) {
   const store = createIndexedOutbox();
   let owner = null, refreshVersion = 0, lastMarkup = '', channel;
   const uploadProgress=new Map();
@@ -44,6 +45,9 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
   const local = document.createElement('main'); local.id = 'offline-root'; local.className = 'offline-root'; local.hidden = true;
   local.innerHTML = '<img src="/brand/tessavie-logo.svg?v=linked-1" width="180" alt="Tessavie"><h1>Работа без подключения</h1><p data-local-account></p><p>Данные с сервера сейчас недоступны. Здесь можно записать личную заметку или план и проверить очередь этого браузера.</p><div class="offline-actions"><button type="button" class="primary" data-new-note>Новая заметка</button><button type="button" class="secondary" data-new-plan>Новый план</button><button type="button" class="secondary" data-open-outbox>Очередь отправки</button><button type="button" class="secondary" data-reconnect>Открыть платформу</button><button type="button" class="quiet" data-offline-exit>Скрыть локальный аккаунт</button></div><p data-offline-ready></p>';
   document.body.append(local);
+  const captureButton=document.createElement('button');captureButton.type='button';captureButton.className='primary';captureButton.textContent='Записать во входящие';captureButton.onclick=()=>newCapture();local.querySelector('.offline-actions').prepend(captureButton);
+  local.querySelector('[data-new-note]').className='secondary';
+  local.querySelector('[data-new-plan]').textContent='Новое дело';
   local.querySelector('[data-new-note]').onclick = () => newPersonal('note');
   local.querySelector('[data-new-plan]').onclick = () => newPersonal('plan');
   local.querySelector('[data-reconnect]').onclick = () => location.reload();
@@ -73,7 +77,7 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
       trigger.setAttribute('aria-label', `Очередь отправки${count ? `: ${count}` : ''}`);
       if (!dialog.open) return;
       const labels = { queued: 'В браузере · ожидает отправки', sending: 'Отправляется', confirmed: 'Подтверждено сервером', blocked: 'Требует действия', paused: 'Повторы остановлены' };
-      const markup = all.map(item => `<article class="outbox-item" data-id="${escapeHTML(item.id)}"><strong>${escapeHTML(item.title || item.fileName || 'Запись')}</strong><small>${escapeHTML(labels[item.status])} · ${escapeHTML(['note','plan','habit-checkin','note-attachment'].includes(item.kind) ? 'Только для вас' : item.destination || 'Исходный диалог')}</small>${item.error ? `<p class="form-error">${escapeHTML(item.error)}</p>` : ''}${item.kind==='note-attachment'&&item.status!=='confirmed'?`<progress max="100" value="${uploadProgress.get(item.id)||0}" aria-label="Загрузка файла"></progress>`:''}<div class="outbox-actions"><button type="button" class="quiet" data-text>Открыть текст</button>${item.blob ? '<button type="button" class="quiet" data-file>Сохранить файл</button>' : ''}${['queued','blocked','paused'].includes(item.status) || item.status === 'sending' && item.leaseUntil <= Date.now() ? `<button type="button" class="secondary" data-retry>Повторить отправку</button><button type="button" class="quiet" data-stop>${item.attempts ? 'Остановить повторы' : 'Отменить'}</button>` : ''}</div><textarea class="outbox-text" aria-label="Сохранённый текст" readonly hidden>${escapeHTML([item.payload?.title, item.kind === 'habit-checkin' ? `Дата: ${item.date}\nРезультат: ${item.payload.state}\nФакт: ${item.payload.value}\n${item.payload.note || ''}` : item.payload?.body || item.payload?.notes].filter(Boolean).join('\n\n') || item.fileName || '')}</textarea></article>`).join('') || '<p>Очередь пуста.</p>';
+      const markup = all.map(item => `<article class="outbox-item" data-id="${escapeHTML(item.id)}"><strong>${escapeHTML(item.title || item.fileName || 'Запись')}</strong><small>${escapeHTML(labels[item.status])} · ${escapeHTML(['note','plan','habit-checkin','note-attachment','capture','note-to-plan'].includes(item.kind) ? 'Только для вас' : item.destination || 'Исходный диалог')}</small>${item.error ? `<p class="form-error">${escapeHTML(item.error)}</p>` : ''}${item.kind==='note-attachment'&&item.status!=='confirmed'?`<progress max="100" value="${uploadProgress.get(item.id)||0}" aria-label="Загрузка файла"></progress>`:''}<div class="outbox-actions"><button type="button" class="quiet" data-text>Открыть текст</button>${item.blob ? '<button type="button" class="quiet" data-file>Сохранить файл</button>' : ''}${['queued','blocked','paused'].includes(item.status) || item.status === 'sending' && item.leaseUntil <= Date.now() ? `<button type="button" class="secondary" data-retry>Повторить отправку</button><button type="button" class="quiet" data-stop>${item.attempts ? 'Остановить повторы' : 'Отменить'}</button>` : ''}</div><textarea class="outbox-text" aria-label="Сохранённый текст" readonly hidden>${escapeHTML([item.payload?.title, item.kind === 'habit-checkin' ? `Дата: ${item.date}\nРезультат: ${item.payload.state}\nФакт: ${item.payload.value}\n${item.payload.note || ''}` : item.payload?.body || item.payload?.notes].filter(Boolean).join('\n\n') || item.fileName || '')}</textarea></article>`).join('') || '<p>Очередь пуста.</p>';
       // Do not replace a selected text field during background checks.
       if (markup === lastMarkup || dialog.querySelector('.outbox-text:focus')) return;
       lastMarkup = markup;
@@ -91,6 +95,8 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
     verifyOwner: async expected => { const actual = await request('/api/me', { owner: expected }); if (actual.id !== expected) throw Object.assign(new Error('Аккаунт изменился'), { code: 'outbox_owner_changed' }); },
     online: () => navigator.onLine,
     send: item => {
+      if (item.kind === 'capture') return request('/api/personal/capture', { owner:item.owner, body:{...item.payload,requestKey:item.payload.requestKey || item.id.replaceAll('-','')} });
+      if (item.kind === 'note-to-plan') return request(`/api/personal/notes/${encodeURIComponent(item.note)}/plan`, { owner:item.owner, body:item.payload });
       if (item.kind === 'habit-checkin') return request(`/api/personal/habits/${encodeURIComponent(item.habit)}/checkins/${item.date}`, { owner: item.owner, method: 'PUT', body: item.payload }).then(result => ({ ...result, id: `${item.habit}:${item.date}` }));
       if (item.kind === 'note' || item.kind === 'plan') return request(`/api/personal/${item.kind}s`, { owner: item.owner, body: { ...item.payload, requestKey: item.noteRequestKey || item.id } });
       if (item.kind === 'note-attachment') return noteFileRequest(item);
@@ -141,6 +147,11 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
       if(files.length&&!requestKey)throw new Error('Не найден ключ заметки для файлов. Откройте редактор снова.');
       await queue.enqueue(noteCreateEntries(kind,payload,files,requestKey),expected);
     },
+    async addCapture(body,requestKey,expected){return queue.enqueue([captureEntry(body,requestKey)],expected);},
+    async pendingCaptures(expected){return (await store.list(expected)).filter(item=>item.kind==='capture'&&item.status!=='confirmed');},
+    async addTriage(note,payload,expected){return queue.enqueue([{kind:'note-to-plan',note,payload,title:payload.title}],expected);},
+    async pendingTriage(note,expected){return (await store.list(expected)).filter(item=>item.kind==='note-to-plan'&&item.note===note&&!['confirmed','paused'].includes(item.status));},
+    stop: id=>queue.stop(id),
     async addNoteFiles(files,context){await queue.enqueue(files.map(file=>({...context,kind:'note-attachment',payload:{},blob:file,fileName:file.name})),context.owner);},
     async pendingNoteFiles(expected){return pendingNoteFileEntries(await store.list(expected));},
     context(thread, destination) { return { owner: user()?.id, workspace: workspace(), thread, destination }; },

@@ -4,7 +4,7 @@ const fs = require('node:fs'), path = require('node:path'), vm = require('node:v
 const media = vm.createContext({});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'note-media.js'),'utf8').replaceAll('export function','function'),media);
 const outbox = vm.createContext({});
-vm.runInContext(fs.readFileSync(path.join(__dirname,'outbox-ui.js'),'utf8').replace(/^import .*;\r?\n/,'').replaceAll('export function','function'),outbox);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'outbox-ui.js'),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export function','function'),outbox);
 
 test('note files reject empty, oversized and excessive batches before enqueue',()=>{
   assert.throws(()=>media.validateNoteFiles([{size:0}]),/15 МБ/);

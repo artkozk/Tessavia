@@ -1,9 +1,10 @@
-const CACHE = 'tessavie-shell-20260904-personal-batch-3';
+const CACHE = 'tessavie-shell-20260904-first-use-4';
 const ASSETS = [
-  '/', '/app.js?v=20260904-personal-batch-3', '/styles.css?v=20260904-personal-batch-3',
+  '/', '/app.js?v=20260904-first-use-4', '/styles.css?v=20260904-first-use-4',
   '/life-map.js?v=20260904-personal-batch-3', '/personal-publish.js?v=20260904-personal-batch-3',
+  '/personal-inbox.js?v=20260904-first-use-4', '/first-use.js?v=20260904-first-use-4',
   '/emoji-picker.js?v=20260904-chat-emoji-3', '/vendor/emoji-17.0-cldr48.2.json',
-  '/outbox-ui.js?v=20260904-note-media-3', '/offline-outbox.js?v=20260903-offline-outbox-3',
+  '/outbox-ui.js?v=20260904-first-use-4', '/offline-outbox.js?v=20260903-offline-outbox-3',
   '/note-media.js?v=20260904-note-media-3',
   '/note-library.js?v=20260904-note-media-3',
   '/bulk-work.js?v=20260904-bulk-actions-3',

@@ -4581,6 +4581,23 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .publication-selected-files { padding: 18px 0 4px; }
 .publication-selected-files p { display: flex; align-items: start; gap: 8px; }
 .publication-selected-files p svg { flex: 0 0 18px; margin-top: 3px; }
+.inbox-triage-dialog { max-width: 720px; min-width: 0; margin: auto; }
+.inbox-triage-dialog header { gap: 12px; }
+.inbox-triage-dialog header h2 { min-width: 0; overflow-wrap: anywhere; }
+.inbox-triage-dialog header .icon-button { flex: 0 0 44px; }
+.inbox-triage-dialog p { margin: 14px 0; line-height: 1.6; }
+.inbox-triage-form { display: grid; gap: 18px; min-width: 0; }
+.inbox-triage-form label { display: grid; gap: 6px; }
+.inbox-triage-form details { border-top: 1px solid var(--line); padding-top: 14px; }
+.inbox-triage-form summary { cursor: pointer; color: var(--muted); }
+.inbox-triage-form details > label { margin-top: 12px; }
+.inbox-triage-source { overflow-wrap: anywhere; }
+.inbox-local-pending { border-block: 1px solid var(--line); padding: 14px 0; margin-bottom: 20px; }
+.inbox-local-pending h3 { font-size: 13px; color: var(--muted); }
+.inbox-pending-row { display: grid; gap: 6px; padding: 12px 0; width: 100%; border: 0; background: none; text-align: left; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.inbox-pending-row small { color: var(--muted); }
+.inbox-triage-form .form-actions { flex-wrap: wrap; }
+@media(max-width:540px){ .inbox-triage-dialog h2{font-size:20px;} .inbox-triage-dialog button {max-width:100%;white-space:normal;} }
 @media (max-width: 540px) {
  .life-period-grid { gap: 7px; }
  .life-map-toolbar { display: grid; }
@@ -4589,4 +4606,29 @@ body:has(.calendar-expanded) { overflow: hidden; }
  .personal-publish-dialog .form-grid.two { grid-template-columns: minmax(0,1fr); }
  .personal-publish-dialog button, .life-map-panel button { max-width: 100%; white-space: normal; }
  .personal-publish-dialog h2 { font-size: 20px; }
+}
+.context-help { display: grid; gap: 20px; padding: 28px; color: var(--ink); }
+.context-help header, .context-help-actions, .first-use-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.context-help header { justify-content: space-between; align-items: flex-start; }
+.context-help header > div { min-width: 0; flex: 1; }
+.context-help h2 { margin: 8px 0 0; font-size: 22px; overflow-wrap: anywhere; }
+.context-help p { margin: 0; line-height: 1.6; }
+.context-help details, .context-help-setting { border-top: 1px solid var(--line); padding-top: 18px; }
+.context-help details p { margin-top: 12px; }
+.context-help summary, .first-plan-options > summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.context-help-setting { display: flex; gap: 10px; align-items: flex-start; }
+.context-tip { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.context-tip p { flex: 1; margin: 0; line-height: 1.5; }
+.context-tip button { flex: none; }
+.first-use-start { display: grid; gap: 18px; max-width: 740px; padding: 24px; }
+.first-use-start h2, .first-use-start p { margin: 0; }
+.first-use-start > .text-button { justify-self: start; }
+.first-plan-options { border-top: 1px solid var(--line); padding-top: 16px; }
+.first-plan-options[open] > summary { margin-bottom: 18px; }
+.inbox-local-pending[hidden] { display: none; }
+@media (max-width: 600px) {
+  .context-help { padding: 20px 16px; gap: 18px; }
+  .context-help-actions > button, .first-use-actions > button { flex: 1 1 100%; }
+  .context-tip { align-items: flex-start; }
+  .first-use-start { padding: 20px 16px; }
 }
