@@ -8,6 +8,7 @@ import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSel
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-habit-layout-2';
+import { createReadingUI } from './reading.js?v=20260904-reading-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
 import { createOutboxUI } from './outbox-ui.js?v=20260904-first-use-4';
 let offlineOutbox;
@@ -160,6 +161,7 @@ const graphSettingDefaults = {
 };
 
 const navItems = [
+  ['reading', 'Чтение Библии', 'bookOpen', 'Домашка'],
   ['personal', 'Личное', 'lock', 'Личное'],
   ['dashboard', 'Обзор', 'dashboard', 'Работа'], ['work', 'Работа', 'checkSquare', 'Работа'],
   ['calendar', 'Календарь', 'calendar', 'Работа'],
@@ -1478,7 +1480,8 @@ function bindGlobalEvents() {
   $('#profile-button').addEventListener('click', () => { setSidebarOpen(false); openProfile(state.me.id); });
   $('#new-record-button').addEventListener('click', (event) => {
     event.stopPropagation();
-    if (personalWorkspacePage() && state.view !== 'day' && state.view !== 'calendar') openPersonalCapture();
+    if (activeWorkspace()?.readingEnabled && ['dashboard', 'reading'].includes(state.view)) readingUI.open();
+    else if (personalWorkspacePage() && state.view !== 'day' && state.view !== 'calendar') openPersonalCapture();
     else if (personalWorkspacePage()) openPersonalEditor('note', '', state.view === 'day' ? { date: state.calendarDay } : {});
     else if (state.view === 'calendar') createCalendarEntry();
     else toggleCreateMenu();
@@ -2261,6 +2264,7 @@ function deviceSelector(device) {
 function navigationCatalog(preferences = state.interfacePreferences) {
   if (state.workspaces?.find(workspace=>workspace.id===state.activeWorkspaceId)?.kind === 'personal') return [['personal','Сегодня','lock','Личное'],['calendar','Календарь','calendar','Личное']].map(([key,label,iconName,group])=>({key,label,iconName,group}));
   const enabled = new Set(state.projectNavigation.enabledViews || []);
+  if (state.workspaces?.find(workspace => workspace.id === state.activeWorkspaceId)?.readingEnabled) enabled.add('reading');
   const builtin = navItems.filter(([key]) => key === 'personal' || enabled.has(key)).map(([key, label, iconName, group]) => ({ key, label, iconName, group }));
   const pages = state.workspacePages.filter((page) => !page.archived).map((page) => ({ key: `page:${page.id}`, label: page.name, iconName: page.viewMode === 'board' ? 'network' : 'fileText', group: 'Свои страницы' }));
   const items = [...builtin, ...pages];
@@ -2340,6 +2344,12 @@ function renderContent() {
   createButton.title = createButton.getAttribute('aria-label');
   if (state.view.startsWith('page:')) { $('#page-title').textContent = state.workspacePages.find((page) => `page:${page.id}` === state.view)?.name || 'Страница'; return renderWorkspacePage(); }
   if (state.view === 'personal') return renderPersonal();
+  if (state.view === 'reading' || (state.view === 'dashboard' && activeWorkspace()?.readingEnabled)) {
+    $('#page-title').textContent = 'Чтение Библии';
+    createButton.innerHTML = `${icon('plus')} Чтение`;
+    createButton.setAttribute('aria-label', 'Отметить чтение');
+    return readingUI.render();
+  }
   if (state.view === 'calendar') return renderCalendarPage();
   if (state.view === 'day') { $('#page-title').textContent = 'День'; return renderDayWorkspace(); }
   if (state.view === 'dashboard') return renderDashboard();
@@ -2569,6 +2579,7 @@ const personalPublishUI = createPersonalPublishUI({state,api,escapeHTML,icon,ren
 const noteMediaUI = createNoteMediaUI({state, api, outbox: () => offlineOutbox, escapeHTML, icon, renderMarkdown, openModal, closeDialog: requestDialogClose, flushDrafts: flushDialogDrafts, loadPersonal, openPersonalEditor, toast, askChoice});
 const noteLibraryUI = createNoteLibraryUI({state, api, escapeHTML, icon, renderNoteCard, renderPersonal, loadPersonal, openPersonalEditor, localISODate, openModal, closeDialog: requestDialogClose, enhanceSelects, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, openArchive: () => noteMediaUI.openArchive(), askChoice, toast});
 const habitUI = createHabitUI({ outbox: () => offlineOutbox, escapeHTML, icon, api, state, toast, loadPersonal, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, findHabit: id => findPersonalItem('habit', id), openLinks: openPersonalLinkDialog, renderPersonal });
+const readingUI = createReadingUI({ escapeHTML, icon, api, state, toast, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, loadData });
 function renderHabitRow(habit, links, compact = false) { return habitUI.renderRow(habit, compact); }
 
 const lifeMapUI = createLifeMapUI({ state, api, escapeHTML, icon, localISODate, renderPersonal, toast, bindWorkingDraft, clearWorkingDraftFor });

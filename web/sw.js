@@ -1,10 +1,11 @@
-const CACHE = 'tessavie-shell-20260904-reminder-delivery-1';
+const CACHE = 'tessavie-shell-20260904-reading-1';
 const ASSETS = [
-  '/', '/app.js?v=20260904-reminder-delivery-1', '/styles.css?v=20260904-reminder-delivery-1',
+  '/', '/app.js?v=20260904-reading-1', '/styles.css?v=20260904-reading-1',
   '/personal-navigation.js?v=20260904-personal-scope-1',
   '/personal-today.js?v=20260904-personal-day-3',
   '/life-map.js?v=20260904-personal-batch-3', '/personal-publish.js?v=20260904-personal-batch-3',
   '/personal-inbox.js?v=20260904-first-use-4', '/first-use.js?v=20260904-first-use-4',
+  '/reading.js?v=20260904-reading-1',
   '/emoji-picker.js?v=20260904-chat-emoji-3', '/vendor/emoji-17.0-cldr48.2.json',
   '/outbox-ui.js?v=20260904-first-use-4', '/offline-outbox.js?v=20260903-offline-outbox-3',
   '/note-media.js?v=20260904-note-media-3',

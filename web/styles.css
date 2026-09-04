@@ -4659,3 +4659,72 @@ body:has(.calendar-expanded) { overflow: hidden; }
   .today-settings-dialog .form-actions { flex-wrap: wrap; }
   .today-settings-dialog .form-actions > button { max-width: 100%; white-space: normal; }
 }
+
+/* Reading is a team feature; keep the existing Tessavie palette and shell. */
+.reading-page { max-width: 1140px; margin: 0 auto; display: grid; gap: 20px; min-width: 0; }
+.reading-page h2 { margin: 4px 0 8px; font-size: clamp(24px, 3vw, 34px); }
+.reading-page h3 { margin: 0 0 10px; }
+.reading-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.reading-heading > div { min-width: 0; }
+.reading-muted, .reading-panel > p { color: var(--muted); line-height: 1.6; }
+.reading-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.reading-tabs button { border: 0; background: transparent; padding: 10px 14px; }
+.reading-tabs [aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.reading-summary { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.reading-summary > div { display: grid; gap: 7px; }
+.reading-summary strong { font-size: 30px; }
+.reading-summary span { color: var(--muted); font-size: 13px; }
+.reading-week { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; max-width: 600px; }
+.reading-week > div { display: grid; gap: 10px; text-align: center; padding: 10px 2px; }
+.reading-week span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.reading-week strong { color: var(--accent); }
+.reading-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.reading-panel { background: var(--surface, #fff); border: 1px solid var(--line); border-radius: 16px; padding: 22px; min-width: 0; overflow-wrap: anywhere; }
+#reading-tab-content { display: grid; gap: 18px; }
+.reading-panel label, .reading-form > label { display: grid; gap: 8px; margin: 12px 0; }
+.reading-panel input, .reading-panel select, .reading-form input, .reading-form select, .reading-form textarea { max-width: 100%; min-width: 0; width: 100%; }
+.reading-form .check { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; }
+.reading-form .check input { width: auto; flex-shrink: 0; margin-top: 4px; }
+.reading-badges, .reading-legend { display: flex; flex-wrap: wrap; gap: 10px; }
+.reading-badges span, .reading-legend span { border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; font-size: 12px; }
+.reading-badges .earned { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.reading-books { display: grid; grid-template-columns: repeat(auto-fill,minmax(145px,1fr)); gap: 10px; margin-top: 20px; }
+.reading-book { display: grid; gap: 9px; text-align: left; align-content: start; padding: 15px; border-radius: 9px; border: 1px solid var(--line); }
+.reading-book strong { font-size: 14px; overflow-wrap: anywhere; }
+.reading-book span { font-size: 12px; }
+.reading-book small { font-size: 11px; }
+.reading-book[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.reading-age-never { background: #fff; color: #59645f; border-style: dashed !important; }
+.reading-age-recent { background: #165f4c; color: #fff; }
+.reading-age-month { background: #bddacf; color: #173e31; }
+.reading-age-old { background: #e2ece6; color: #344f42; }
+.reading-age-distant { background: #f3f1e9; color: #615e50; }
+.reading-chapters { display: grid; grid-template-columns: repeat(auto-fill,minmax(60px,1fr)); gap: 7px; }
+.reading-chapters button { min-height: 44px; border: 1px solid var(--line); }
+.reading-plan, .reading-journal-row { padding: 18px 0; border-top: 1px solid var(--line); margin-top: 15px; }
+.reading-plan header, .reading-journal-row header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.reading-plan header span, .reading-journal-row header span, .reading-journal-row small { color: var(--muted); font-size: 12px; }
+.reading-text { white-space: pre-wrap; line-height: 1.7; overflow-wrap: anywhere; }
+.reading-journal-row > button { display: block; margin-top: 12px; }
+.reading-ranking article { display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 12px; padding: 15px 0; border-bottom: 1px solid var(--line); }
+.reading-ranking article div { min-width: 0; display: grid; gap: 5px; }
+.reading-ranking small { font-size: 12px; color: var(--muted); }
+.reading-form { padding: 24px; min-width: 0; }
+.reading-form .modal-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.reading-form h2 { margin: 0; }
+.reading-form p { font-size: 13px; line-height: 1.6; }
+.reading-range { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.reading-range label { display: grid; gap: 8px; min-width: 0; }
+.reading-form-error { color: var(--red, #ab3434); }
+@media (max-width: 600px) {
+ .reading-columns { grid-template-columns: 1fr; }
+ .reading-panel { padding: 16px; }
+ .reading-heading > button { width: 100%; justify-content: center; }
+ .reading-tabs button { padding: 9px; font-size: 12px; }
+ .reading-summary strong { font-size: 26px; }
+ .reading-books { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+ .reading-book { padding: 12px; }
+ .reading-form { padding: 16px; }
+ .reading-ranking article { grid-template-columns: 30px minmax(0,1fr); }
+ .reading-ranking article > div:last-child { grid-column: 2; }
+}
