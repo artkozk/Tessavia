@@ -3264,9 +3264,6 @@ func (s *Server) handleReorderDefinitions(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
-	if err := s.ensureDeadlineNotifications(r.Context()); err != nil {
-		log.Printf("deadline notifications: %v", err)
-	}
 	page, err := s.notificationPage(r, 200, false)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить уведомления")

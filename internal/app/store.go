@@ -180,6 +180,7 @@ type Proof struct {
 }
 
 type Notification struct {
+	Obsolete    bool    `json:"obsolete,omitempty"`
 	WorkspaceID string  `json:"workspaceId,omitempty"`
 	ID          string  `json:"id"`
 	Type        string  `json:"type"`

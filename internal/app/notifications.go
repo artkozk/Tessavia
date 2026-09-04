@@ -34,7 +34,7 @@ func (s *Server) notificationPage(r *http.Request, limit int, filtered bool) (no
 	page := notificationInbox{Items: []Notification{}}
 	where := notificationAccess
 	args := []any{currentUser(r).ID}
-	if err := s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM notifications n WHERE `+notificationAccess+` AND n.read_at IS NULL`, args...).Scan(&page.UnreadCount); err != nil {
+	if err := s.store.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM notifications n WHERE `+notificationAccess+` AND n.read_at IS NULL AND `+notificationFresh, args...).Scan(&page.UnreadCount); err != nil {
 		return page, err
 	}
 	if filtered {
@@ -42,7 +42,7 @@ func (s *Server) notificationPage(r *http.Request, limit int, filtered bool) (no
 		switch q.Get("status") {
 		case "", "all":
 		case "unread":
-			where += ` AND n.read_at IS NULL`
+			where += ` AND n.read_at IS NULL AND ` + notificationFresh
 		case "read":
 			where += ` AND n.read_at IS NOT NULL`
 		default:
@@ -73,7 +73,7 @@ func (s *Server) notificationPage(r *http.Request, limit int, filtered bool) (no
 		}
 	}
 	args = append(args, limit+1)
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT n.id, n.type, n.title, n.body, n.entity_type, n.entity_id, n.read_at, n.created_at, COALESCE(rec.workspace_id, '') FROM notifications n LEFT JOIN records rec ON rec.id = n.entity_id WHERE `+where+` ORDER BY n.created_at DESC, n.id DESC LIMIT ?`, args...)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT n.id, n.type, n.title, n.body, n.entity_type, n.entity_id, n.read_at, n.created_at, COALESCE(rec.workspace_id, ''), NOT `+notificationFresh+` FROM notifications n LEFT JOIN records rec ON rec.id = n.entity_id WHERE `+where+` ORDER BY n.created_at DESC, n.id DESC LIMIT ?`, args...)
 	if err != nil {
 		return page, err
 	}
@@ -81,7 +81,7 @@ func (s *Server) notificationPage(r *http.Request, limit int, filtered bool) (no
 	for rows.Next() {
 		var n Notification
 		var entityType, entityID, readAt sql.NullString
-		if err = rows.Scan(&n.ID, &n.Type, &n.Title, &n.Body, &entityType, &entityID, &readAt, &n.CreatedAt, &n.WorkspaceID); err != nil {
+		if err = rows.Scan(&n.ID, &n.Type, &n.Title, &n.Body, &entityType, &entityID, &readAt, &n.CreatedAt, &n.WorkspaceID, &n.Obsolete); err != nil {
 			return page, err
 		}
 		if entityType.Valid {

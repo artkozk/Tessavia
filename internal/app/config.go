@@ -11,6 +11,7 @@ type Config struct {
 	Address                      string
 	DatabasePath                 string
 	CookieSecure                 bool
+	ReminderWorkerEnabled        bool
 	SessionLifetime              time.Duration
 	AllowedUsernames             map[string]struct{}
 	GroqAPIKey                   string
@@ -40,6 +41,7 @@ func LoadConfig() Config {
 		Address:                      envOr("BUSINESS_ADDRESS", ":8522"),
 		DatabasePath:                 envOr("BUSINESS_DATABASE_PATH", "./data/business-control.db"),
 		CookieSecure:                 envBool("BUSINESS_COOKIE_SECURE", false),
+		ReminderWorkerEnabled:        envBool("BUSINESS_REMINDERS_ENABLED", true),
 		SessionLifetime:              90 * 24 * time.Hour,
 		AllowedUsernames:             parseAllowedUsernames(os.Getenv("BUSINESS_ALLOWED_USERNAMES")),
 		GroqAPIKey:                   strings.TrimSpace(os.Getenv("GROQ_API_KEY")),

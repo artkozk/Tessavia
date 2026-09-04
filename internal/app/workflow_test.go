@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -124,6 +125,9 @@ func TestCofounderWorkflowComfort(t *testing.T) {
 	requestJSON(t, partnerClient, http.MethodGet, server.URL+"/api/records/"+task.ID+"/workflow", nil, http.StatusOK, &workflow)
 	if len(workflow.Comments) != 1 || len(workflow.Checklist) != 1 || len(workflow.Attachments) != 1 || !workflow.Recurrence.Active || workflow.Recurrence.Cadence != "weekly" {
 		t.Fatalf("workflow aggregate = %#v", workflow)
+	}
+	if err := deliverDeadlineReminders(context.Background(), store, time.Now()); err != nil {
+		t.Fatal(err)
 	}
 	var notifications []Notification
 	requestJSON(t, partnerClient, http.MethodGet, server.URL+"/api/notifications", nil, http.StatusOK, &notifications)
