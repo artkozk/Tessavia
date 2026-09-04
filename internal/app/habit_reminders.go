@@ -36,7 +36,7 @@ func loadReminderHabit(ctx context.Context, q personalQueryer, owner int64, id s
  COALESCE((SELECT json_group_array(json_object('date',effective_date,'rule',json(config))) FROM personal_habit_rules WHERE habit_id=h.id),'[]'),
  COALESCE((SELECT json_group_array(json_object('startDate',start_date,'endDate',end_date)) FROM personal_habit_pauses WHERE habit_id=h.id),'[]'),
  COALESCE((SELECT json_group_array(json_object('sourceDate',source_date,'targetDate',target_date)) FROM personal_habit_moves WHERE habit_id=h.id),'[]'),
- COALESCE((SELECT json_group_array(json_object('date',checkin_date,'value',COALESCE(amount,value),'state',result_state,'updatedAt',updated_at)) FROM personal_habit_checkins WHERE habit_id=h.id AND owner_id=h.owner_id AND checkin_date>=?),'[]')
+ COALESCE((SELECT json_group_array(json_object('date',checkin_date,'value',COALESCE(amount,value),'state',result_state,'updatedAt',updated_at,'snoozedAt',snoozed_at)) FROM personal_habit_checkins WHERE habit_id=h.id AND owner_id=h.owner_id AND checkin_date>=?),'[]')
  FROM personal_habits h LEFT JOIN habit_reminder_preferences pref ON pref.habit_id=h.id AND pref.owner_id=h.owner_id WHERE h.id=? AND h.owner_id=?`, now.UTC().AddDate(0, 0, -35).Format("2006-01-02"), id, owner).Scan(&h.ID, &h.Title, &h.StartDate, &h.Timezone, &h.Revision, &h.ArchivedAt, &out.time, &out.revision, &rules, &pauses, &moves, &checks)
 	if err != nil {
 		return out, err
@@ -111,12 +111,16 @@ func habitReminderOn(snapshot reminderHabit, now time.Time) (day, clock, cycle, 
 		return
 	}
 	cycle = fmt.Sprintf("habit-v1:%s:%s:%s:%d", h.ID, day, clock, snapshot.revision)
-	if d.State == "snoozed" && d.Checkin != nil {
-		at, err := time.Parse(time.RFC3339Nano, d.Checkin.UpdatedAt)
+	if d.Checkin != nil && (d.State == "snoozed" || d.Checkin.SnoozedAt != "") {
+		stamp := d.Checkin.SnoozedAt
+		if stamp == "" {
+			stamp = d.Checkin.UpdatedAt
+		}
+		at, err := time.Parse(time.RFC3339Nano, stamp)
 		if err != nil || now.Before(at.Add(time.Hour)) {
 			return
 		}
-		cycle += ":snoozed:" + d.Checkin.UpdatedAt
+		cycle += ":snoozed:" + stamp
 	}
 	until = time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, loc)
 	eligible = true

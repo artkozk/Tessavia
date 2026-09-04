@@ -4747,3 +4747,7 @@ body:has(.calendar-expanded) { overflow: hidden; }
 
 .personal-reminder-dialog { padding: 24px; display: grid; gap: 16px; }
 @media(max-width:600px) { .personal-reminder-dialog { padding: 16px; } }
+
+.habit-snooze-action{display:grid;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.habit-snooze-action>p{margin:0}
+.habit-snooze-action>button{justify-self:start}

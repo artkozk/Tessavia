@@ -388,7 +388,7 @@ func (s *Server) loadHabits(r *http.Request, ownerID int64, id, notesFrom string
 		`SELECT c.habit_id,c.effective_date,c.config FROM personal_habit_rules c JOIN personal_habits h ON h.id=c.habit_id WHERE h.owner_id=? AND (?='' OR h.id=?) ORDER BY c.effective_date`,
 		`SELECT c.habit_id,c.id,c.start_date,c.end_date,c.reason FROM personal_habit_pauses c JOIN personal_habits h ON h.id=c.habit_id WHERE h.owner_id=? AND (?='' OR h.id=?) ORDER BY c.start_date`,
 		`SELECT c.habit_id,c.source_date,c.target_date FROM personal_habit_moves c JOIN personal_habits h ON h.id=c.habit_id WHERE h.owner_id=? AND (?='' OR h.id=?)`,
-		`SELECT c.habit_id,c.checkin_date,COALESCE(c.amount,c.value),CASE WHEN c.checkin_date>=? THEN c.note ELSE '' END,c.updated_at,c.result_state FROM personal_habit_checkins c JOIN personal_habits h ON h.id=c.habit_id WHERE h.owner_id=? AND c.owner_id=h.owner_id AND (?='' OR h.id=?) ORDER BY c.checkin_date`,
+		`SELECT c.habit_id,c.checkin_date,COALESCE(c.amount,c.value),CASE WHEN c.checkin_date>=? THEN c.note ELSE '' END,c.updated_at,c.result_state,c.snoozed_at FROM personal_habit_checkins c JOIN personal_habits h ON h.id=c.habit_id WHERE h.owner_id=? AND c.owner_id=h.owner_id AND (?='' OR h.id=?) ORDER BY c.checkin_date`,
 	}
 	for n, q := range queries {
 		args := []any{ownerID, id, id}
@@ -427,7 +427,7 @@ func (s *Server) loadHabits(r *http.Request, ownerID int64, id, notesFrom string
 				}
 			case 3:
 				var c HabitCheckin
-				err = rows.Scan(&hid, &c.Date, &c.Value, &c.Note, &c.UpdatedAt, &c.State)
+				err = rows.Scan(&hid, &c.Date, &c.Value, &c.Note, &c.UpdatedAt, &c.State, &c.SnoozedAt)
 				if err == nil {
 					items[indices[hid]].Checkins = append(items[indices[hid]].Checkins, c)
 				}

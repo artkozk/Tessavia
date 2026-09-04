@@ -37,3 +37,9 @@ test('habit UI and modified queue parse and respect the production CSP', () => {
  const embed=fs.readFileSync(__dirname+'/assets.go','utf8');assert.match(embed,/habit-tracker\.js/);
  const sw=fs.readFileSync(__dirname+'/sw.js','utf8');assert.match(sw,/habit-tracker\.js\?v=/);
 });
+test('snooze labels keep elapsed-hour and midnight semantics in the habit timezone', async () => {
+ const {habitSnoozeLabel}=await load();
+ assert.match(habitSnoozeLabel({state:'measured',value:10.5,snoozedAt:'2026-03-08T06:30:00Z'},'2026-03-08','America/New_York'),/03:30/);
+ assert.match(habitSnoozeLabel({state:'snoozed',updatedAt:'2026-09-04T20:30:00Z'},'2026-09-04','Europe/Moscow'),/до конца дня/);
+ assert.match(habitSnoozeLabel(null,'2026-09-04','UTC'),/не меняет результат/);
+});

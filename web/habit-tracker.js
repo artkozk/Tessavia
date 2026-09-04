@@ -32,6 +32,15 @@ export function habitWeekDays(habit) {
   });
 }
 
+export function habitSnoozeLabel(checkin,today,timezone) {
+  const stamp=checkin?.snoozedAt||(checkin?.state==='snoozed'?checkin.updatedAt:'');
+  if(!stamp)return 'Откладывание не меняет результат дня.';
+  const until=new Date(new Date(stamp).getTime()+3600000);
+  if(Number.isNaN(until.getTime()))return 'Откладывание не меняет результат дня.';
+  const date=new Intl.DateTimeFormat('en-CA',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(until);
+  return date>today?'Отложено до конца дня. Вчерашний сигнал не перейдёт на завтра.':`Напоминание не раньше ${new Intl.DateTimeFormat('ru',{timeZone:timezone,hour:'2-digit',minute:'2-digit'}).format(until)}.`;
+}
+
 export function createHabitUI(ctx) {
   const { escapeHTML: e, icon, api, state, toast, loadPersonal, openModal, closeDialog, bindDraft, clearDraft, flushDrafts, findHabit, openLinks } = ctx;
   let filter = 'today', account = null, request = 0;
@@ -154,8 +163,13 @@ export function createHabitUI(ctx) {
     const root = content().querySelector('[data-day-editor]'), r = day.rule, c = day.checkin;
     const moveAllowed = !h.archivedAt && !h.paused && day.date >= h.today && day.planned && !c && !['quit', 'reduce'].includes(r.mode) && !['weekly', 'monthly'].includes(r.cadence);
     if (!day.editable) { root.innerHTML = `<section class="habit-day-editor"><h3>${e(dateLabel(day.date))} · ${e(habitStateLabel(day))}</h3><p>${day.sourceDate ? `Связанная дата: ${e(dateLabel(day.sourceDate))}.` : 'Этот день не требует отметки.'}</p>${moveAllowed ? moveForm(day) : ''}</section>`;if (moveAllowed) bindMove(root, h, day, refresh);return; }
-    root.innerHTML = `<form class="habit-day-editor"><h3>${e(dateLabel(day.date))}</h3><p>${e(goalLabel(r))}${day.sourceDate ? ` · перенесено с ${e(dateLabel(day.sourceDate))}` : ''}. Цель на эту дату сохранена в истории.</p><div class="form-grid two"><label>Результат<select name="state">${option('measured', r.mode === 'quit' ? 'Записать число случаев (0 — без действия)' : 'Записать факт', c?.state || 'measured')}${option('failed', r.mode === 'quit' ? 'Был срыв, количество неизвестно' : 'Не выполнено', c?.state)}${option('skipped', 'Осознанный пропуск', c?.state)}${day.date === h.today ? option('snoozed', 'Позже сегодня', c?.state) : ''}</select></label><label>Факт, ${e(r.unit)}<input type="number" name="value" min="0" max="1000000" step="any" value="${c?.value ?? (r.mode === 'quit' || r.mode === 'reduce' ? 0 : r.target)}" required></label></div><div class="habit-increments">${(r.unit === 'мин' ? [5, 15, 30] : [1, 2, 5]).map(n => `<button type="button" class="text-button" data-increment="${n}">+${n} ${e(r.unit)}</button>`).join('')}<span class="personal-muted">Добавить к показанному факту, затем сохранить</span></div><label>Заметка / причина пропуска<textarea name="note" maxlength="1000" rows="3" placeholder="Что помогло или помешало?">${e(c?.note || '')}</textarea></label><p class="form-error" role="alert" hidden></p><div class="form-actions"><button type="submit" class="primary">Сохранить результат</button>${c ? '<button type="button" class="danger-text" data-clear>Убрать отметку</button>' : ''}</div></form>${moveAllowed ? moveForm(day) : ''}`;
+    root.innerHTML = `<form class="habit-day-editor"><h3>${e(dateLabel(day.date))}</h3><p>${e(goalLabel(r))}${day.sourceDate ? ` · перенесено с ${e(dateLabel(day.sourceDate))}` : ''}. Цель на эту дату сохранена в истории.</p><div class="form-grid two"><label>Результат<select name="state">${option('measured', r.mode === 'quit' ? 'Записать число случаев (0 — без действия)' : 'Записать факт', c?.state === 'snoozed' ? 'measured' : c?.state || 'measured')}${option('failed', r.mode === 'quit' ? 'Был срыв, количество неизвестно' : 'Не выполнено', c?.state)}${option('skipped', 'Осознанный пропуск', c?.state)}</select></label><label>Факт, ${e(r.unit)}<input type="number" name="value" min="0" max="1000000" step="any" value="${c?.value ?? (r.mode === 'quit' || r.mode === 'reduce' ? 0 : r.target)}" required></label></div><div class="habit-increments">${(r.unit === 'мин' ? [5, 15, 30] : [1, 2, 5]).map(n => `<button type="button" class="text-button" data-increment="${n}">+${n} ${e(r.unit)}</button>`).join('')}<span class="personal-muted">Добавить к показанному факту, затем сохранить</span></div><label>Заметка / причина пропуска<textarea name="note" maxlength="1000" rows="3" placeholder="Что помогло или помешало?">${e(c?.note || '')}</textarea></label><p class="form-error" role="alert" hidden></p><div class="form-actions"><button type="submit" class="primary">Сохранить результат</button>${c ? '<button type="button" class="danger-text" data-clear>Убрать отметку</button>' : ''}</div></form>${moveAllowed ? moveForm(day) : ''}`;
+    const canPostpone=day.date===h.today&&!h.paused&&['pending','partial','snoozed'].includes(day.state);
+    if(canPostpone){
+      root.insertAdjacentHTML('beforeend',`<div class="habit-snooze-action"><p class="personal-muted">${e(habitSnoozeLabel(c,h.today,h.timezone))}</p><button type="button" class="text-button" data-postpone>Позже сегодня · 1 час</button><small class="personal-muted">Сохранённый факт и заметка останутся. Напоминание придёт, если оно включено, с учётом времени привычки и тихих часов.</small></div>`);
+    }
     const form = root.querySelector('form');bindDraft(form, `habit-day:${state.me.id}:${h.id}:${day.date}`);
+    if(!form.elements.state.value)form.elements.state.value='measured'; // A draft from the previous editor may still contain "snoozed".
     const sync = () => { form.elements.value.disabled = form.elements.state.value !== 'measured'; form.querySelectorAll('[data-increment]').forEach(b => { b.disabled = form.elements.value.disabled; }); };
     form.elements.state.addEventListener('change', sync);sync();
     form.querySelectorAll('[data-increment]').forEach(b => b.addEventListener('click', () => { form.elements.value.value = Math.min(1000000, Math.round((Number(form.elements.value.value) + Number(b.dataset.increment)) * 1000000) / 1000000);form.elements.value.dispatchEvent(new Event('input', { bubbles: true })); }));
@@ -178,6 +192,19 @@ export function createHabitUI(ctx) {
     };
     form.addEventListener('submit', event => { event.preventDefault();void save(false); });
     form.querySelector('[data-clear]')?.addEventListener('click', () => save(true));
+    root.querySelector('[data-postpone]')?.addEventListener('click',async()=>{
+      if(busy)return;busy=true;form.inert=true;
+      const button=root.querySelector('[data-postpone]'),owner=state.me?.id;button.disabled=true;
+      try{
+        if(!flushDrafts(dialog()))throw new Error('Не удалось сохранить черновик. Поля остаются в форме.');
+        if(!navigator.onLine)throw new Error('Для откладывания нужно соединение. Введённый результат сохранён в черновике.');
+        if((await ctx.outbox().pendingHabits(owner)).some(item=>item.habit===h.id&&item.date===day.date))throw new Error('Сначала дождитесь отправки результата за этот день или проверьте очередь.');
+        await api(`/api/personal/habits/${h.id}/checkins/${day.date}`,{method:'PUT',headers:{'X-Outbox-Owner':String(owner)},body:JSON.stringify({state:'snoozed',value:c?.value||0,note:c?.note||'',expectedUpdatedAt:c?.updatedAt||'',revision:h.revision})});
+        if(owner!==state.me?.id||!form.isConnected)return;
+        await loadPersonal({force:true});await refresh();toast('Отложено. Сохранённый факт и черновик остались на месте.');
+      }catch(error){if(owner===state.me?.id&&form.isConnected){const alert=form.querySelector('[role="alert"]');alert.textContent=error.message;alert.hidden=false;}}
+      finally{busy=false;form.inert=false;button.disabled=false;}
+    });
     if (moveAllowed) bindMove(root, h, day, refresh);
   }
   function moveForm(day) { return `<form class="habit-move-form"><label>Перенести на свободный день<input type="date" name="targetDate" min="${day.date}" required></label><button type="submit" class="secondary">Перенести</button><small>Исходный день освобождается; второй результат не начисляется.</small><p role="alert" hidden></p></form>`; }

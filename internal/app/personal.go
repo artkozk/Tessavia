@@ -110,11 +110,13 @@ type PersonalRecurrenceRule struct {
 }
 
 type HabitCheckin struct {
-	Date      string  `json:"date"`
-	Value     float64 `json:"value"`
-	State     string  `json:"state"`
-	Note      string  `json:"note"`
-	UpdatedAt string  `json:"updatedAt"`
+	SnoozedAt   string  `json:"snoozedAt,omitempty"`
+	SnoozedFrom string  `json:"-"`
+	Date        string  `json:"date"`
+	Value       float64 `json:"value"`
+	State       string  `json:"state"`
+	Note        string  `json:"note"`
+	UpdatedAt   string  `json:"updatedAt"`
 }
 
 type PersonalHabit struct {

@@ -322,6 +322,11 @@ func (s *Server) writeHabitCheckin(w http.ResponseWriter, r *http.Request, delet
 		writeError(w, 400, "Отложить можно только сегодняшний результат")
 		return
 	}
+	postponing := !deleting && in.State == "snoozed"
+	if postponing && in.ExpectedUpdatedAt == nil {
+		writeError(w, 400, "Для откладывания нужна текущая версия результата")
+		return
+	}
 	if in.State != "measured" {
 		in.Value = 0
 	}
@@ -334,13 +339,17 @@ func (s *Server) writeHabitCheckin(w http.ResponseWriter, r *http.Request, delet
 	defer tx.Rollback()
 	var old HabitCheckin
 	old.Date = date
-	err = tx.QueryRowContext(r.Context(), `SELECT COALESCE(amount,value),note,updated_at,result_state FROM personal_habit_checkins WHERE habit_id=? AND owner_id=? AND checkin_date=?`, h.ID, currentUser(r).ID, date).Scan(&old.Value, &old.Note, &old.UpdatedAt, &old.State)
+	err = tx.QueryRowContext(r.Context(), `SELECT COALESCE(amount,value),note,updated_at,result_state,snoozed_at,snoozed_from FROM personal_habit_checkins WHERE habit_id=? AND owner_id=? AND checkin_date=?`, h.ID, currentUser(r).ID, date).Scan(&old.Value, &old.Note, &old.UpdatedAt, &old.State, &old.SnoozedAt, &old.SnoozedFrom)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		writeError(w, 500, "Не удалось прочитать результат")
 		return
 	}
 	// A repeated absolute PUT is safe after a lost reply, including fractional zero.
-	if !deleting && old.UpdatedAt != "" && old.Value == in.Value && old.Note == in.Note && old.State == in.State {
+	if postponing && old.SnoozedAt != "" && old.SnoozedFrom == *in.ExpectedUpdatedAt {
+		writeJSON(w, 200, old)
+		return
+	}
+	if !deleting && !postponing && old.SnoozedAt == "" && old.UpdatedAt != "" && old.Value == in.Value && old.Note == in.Note && old.State == in.State {
 		writeJSON(w, 200, old)
 		return
 	}
@@ -355,6 +364,31 @@ func (s *Server) writeHabitCheckin(w http.ResponseWriter, r *http.Request, delet
 		return
 	}
 	now := nowText()
+	snoozedAt, snoozedFrom := "", ""
+	if postponing {
+		for _, pause := range h.Pauses {
+			if date >= pause.StartDate && (pause.EndDate == "" || date <= pause.EndDate) {
+				writeError(w, 400, "Привычка на паузе; откладывание не требуется")
+				return
+			}
+		}
+		if old.UpdatedAt != "" {
+			checks[date] = old
+		} else {
+			delete(checks, date)
+		}
+		day := habitDay(h, date, habitToday(h), checks)
+		if !oneOf(day.State, "pending", "partial", "snoozed") {
+			writeError(w, 400, "Отложить можно только ещё не завершённый день")
+			return
+		}
+		// Deferral is separate from the measured fact, including fractional values.
+		if old.UpdatedAt != "" {
+			in.State, in.Value = old.State, old.Value
+		}
+		in.Note = old.Note
+		snoozedAt, snoozedFrom = now, *in.ExpectedUpdatedAt
+	}
 	if deleting {
 		_, err = tx.ExecContext(r.Context(), `DELETE FROM personal_habit_checkins WHERE habit_id=? AND owner_id=? AND checkin_date=?`, h.ID, currentUser(r).ID, date)
 	} else {
@@ -368,7 +402,7 @@ func (s *Server) writeHabitCheckin(w http.ResponseWriter, r *http.Request, delet
 		if in.Value > 0 {
 			legacy = 1
 		}
-		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_habit_checkins(id,habit_id,owner_id,checkin_date,value,amount,note,result_state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(habit_id,checkin_date) DO UPDATE SET value=excluded.value,amount=excluded.amount,note=excluded.note,result_state=excluded.result_state,updated_at=excluded.updated_at`, id, h.ID, currentUser(r).ID, date, legacy, in.Value, in.Note, in.State, now, now)
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_habit_checkins(id,habit_id,owner_id,checkin_date,value,amount,note,result_state,created_at,updated_at,snoozed_at,snoozed_from) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(habit_id,checkin_date) DO UPDATE SET value=excluded.value,amount=excluded.amount,note=excluded.note,result_state=excluded.result_state,updated_at=excluded.updated_at,snoozed_at=excluded.snoozed_at,snoozed_from=excluded.snoozed_from`, id, h.ID, currentUser(r).ID, date, legacy, in.Value, in.Note, in.State, now, now, snoozedAt, snoozedFrom)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -380,7 +414,7 @@ func (s *Server) writeHabitCheckin(w http.ResponseWriter, r *http.Request, delet
 	if deleting {
 		w.WriteHeader(204)
 	} else {
-		writeJSON(w, 200, HabitCheckin{Date: date, Value: in.Value, Note: in.Note, State: in.State, UpdatedAt: now})
+		writeJSON(w, 200, HabitCheckin{Date: date, Value: in.Value, Note: in.Note, State: in.State, UpdatedAt: now, SnoozedAt: snoozedAt})
 	}
 }
 
