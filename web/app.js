@@ -1,3 +1,4 @@
+import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
 import { createPersonalTodayUI } from './personal-today.js?v=20260904-personal-day-3';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
@@ -1313,6 +1314,13 @@ async function loadData(silent = false) {
   if(!workspaces.some(workspace=>workspace.id===previous)){
     state.activeWorkspaceId=previous ? workspaces.find(workspace=>workspace.kind==='personal')?.id || workspaces[0]?.id || '' : workspaces.find(workspace=>workspace.id==='bizflow-team')?.id || workspaces.find(workspace=>workspace.kind==='team')?.id || workspaces[0]?.id || '';
     if(previous){clearProjectClientState();state.layoutDraft=null;state.pageLayoutDraft=null;state.view='personal';state.calendarScope='personal';}
+  }
+  if (!state.viewHistoryInitialized && history.state?.businessControlAccount === state.me?.id) {
+    const route = history.state.businessControlView;
+    if (route?.workspaceId === state.activeWorkspaceId) {
+      const resolved = personalRoute(route, workspaces);
+      if (resolved.workspaceId) state.activeWorkspaceId = resolved.workspaceId;
+    }
   }
   const workspace=state.activeWorkspaceId;
   if(!previous && workspaces.find(item=>item.id===workspace)?.kind==='personal'){state.view='personal';state.calendarScope='personal';}
@@ -2892,24 +2900,38 @@ function renderQuality() {
   bindOpenRecords();
 }
 
-function navigateToView(view, options = {}) {
+async function navigateToView(view, options = {}) {
 	const normalized = ({ goals: 'goal', tasks: 'work', ideas: 'idea' })[view] || view;
   if (!leavePageLayoutEditor()) return;
   if (state.layoutDraft && !confirm('Выйти без сохранения раскладки?')) return;
-  state.viewRestoreRequest = (state.viewRestoreRequest || 0) + 1;
+  const request = state.viewRestoreRequest = (state.viewRestoreRequest || 0) + 1;
+  const account = state.me?.id;
   state.layoutDraft = null;
   rememberView();
-  const changedView = normalized !== state.view;
+  const route = personalRoute({ view: normalized, calendarScope: options.calendarScope || state.calendarScope, workspaceId: state.activeWorkspaceId }, state.workspaces);
+  if (!route.workspaceId) { toast('Личное пространство недоступно. Обновите список пространств.', true); return false; }
+  const changedWorkspace = route.workspaceId !== state.activeWorkspaceId;
+  if (changedWorkspace) {
+    try { if (!await switchWorkspace(route.workspaceId, { restoring: true })) return false; }
+    catch (error) { toast(error.message, true); return false; }
+    if (request !== state.viewRestoreRequest || account !== state.me?.id) return false;
+  }
+  const changedView = changedWorkspace || normalized !== state.view;
 	state.view = normalized;
+  if (['personal', 'calendar', 'day'].includes(normalized)) state.calendarScope = route.calendarScope;
+  for (const key of ['calendarDay', 'calendarCollection', 'calendarOwner', 'calendarStatus', 'calendarExpanded']) {
+    if (Object.hasOwn(options, key)) state[key] = options[key];
+  }
   if (changedView) state.pageSearch = '';
   state.statusFilter = options.status || '';
   state.search = options.search || '';
 	state.ownerFilter = options.ownerId ? String(options.ownerId) : '';
-  if (changedView) pushViewHistory();
+  if (changedView) pushViewHistory(); else rememberView();
   if (normalized === 'notifications') { state.notificationInbox = null; state.notificationError = ''; }
 	setSidebarOpen(false);
 	window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   render();
+  return true;
 }
 
 function metric(label, value, note, tone = '', iconName = 'dashboard') {
@@ -7958,9 +7980,9 @@ function initializeViewHistory() {
   if (state.viewHistoryInitialized) return;
   state.viewHistoryInitialized = true;
   if (history.state?.businessControlAccount === state.me?.id && history.state?.businessControlView) {
-    const route = history.state.businessControlView;
+    const route = personalRoute(history.state.businessControlView, state.workspaces);
     if (route.workspaceId === state.activeWorkspaceId) routeFields.forEach((key) => { if (Object.hasOwn(route, key)) state[key] = structuredClone(route[key]); });
-    const entry = { ...history.state }; delete entry.businessControlOverlay;
+    const entry = { ...history.state, businessControlView: route }; delete entry.businessControlOverlay;
     history.replaceState(entry, ''); history.scrollRestoration = 'manual';
     return;
   }
@@ -7983,10 +8005,12 @@ async function restoreViewHistory(entry) {
   const userID = state.me.id;
   const current = () => request === state.viewRestoreRequest && state.me?.id === userID;
   state.layoutDraft = null;
-  const route = entry.businessControlView;
+  const route = personalRoute(entry.businessControlView, state.workspaces);
+  if (!route.workspaceId) { toast('Личное пространство недоступно.', true); return; }
   if (route.workspaceId !== state.activeWorkspaceId && !await switchWorkspace(route.workspaceId, { restoring: true })) { if (current()) rememberView(); return; }
   if (!current() || route.workspaceId !== state.activeWorkspaceId) return;
   routeFields.forEach((key) => { if (Object.hasOwn(route, key)) state[key] = structuredClone(route[key]); });
+  if (route.workspaceId !== entry.businessControlView.workspaceId) rememberView();
   if (state.view === 'notifications') { state.notificationInbox = null; state.notificationError = ''; }
   render();
   requestAnimationFrame(() => { if (current()) window.scrollTo({ top: route.scrollY || 0, behavior: 'instant' }); });
@@ -8275,7 +8299,7 @@ function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
   $$('[data-interface-device]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings('menu', button.dataset.interfaceDevice)));
   const leaveFor = (view, after) => {
     if (!discardComposerChanges(dialog)) return;
-    state.afterOverlayClose = () => { navigateToView(view); after?.(); };
+    state.afterOverlayClose = async () => { if (await navigateToView(view)) after?.(); };
     closeWorkspaceDialog();
   };
   $('[data-composer-layout]', dialog).addEventListener('click', () => leaveFor(state.view, () => startPageLayoutEditor(device)));
@@ -8895,9 +8919,7 @@ async function openTeamsDirectory() {
 }
 
 function openCalendar(scope = 'project', collectionID = '') {
-  if (!leavePageLayoutEditor()) return;
-  state.calendarScope = scope; state.calendarCollection = collectionID; state.calendarOwner = ''; state.calendarStatus = 'active';
-  navigateToView('calendar');
+  return navigateToView('calendar', { calendarScope: scope, calendarCollection: collectionID, calendarOwner: '', calendarStatus: 'active' });
 }
 
 function plannerRange(item, personal) {
@@ -9047,14 +9069,8 @@ function personalWorkspacePage() {
 }
 
 function openDayWorkspace(date, scope) {
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !leavePageLayoutEditor()) return;
-  rememberView();
-  const changed = state.view !== 'day';
-  state.view = 'day'; state.calendarExpanded = '';
-  state.calendarScope = scope === 'personal' ? 'personal' : 'project';
-  state.calendarDay = date; state.calendarCollection = ''; state.calendarOwner = '';
-  if (changed) pushViewHistory(); else rememberView();
-  setSidebarOpen(false); window.scrollTo({top:0,left:0,behavior:'auto'}); render();
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  return navigateToView('day', { calendarScope: scope === 'personal' ? 'personal' : 'project', calendarDay: date, calendarCollection: '', calendarOwner: '', calendarExpanded: '' });
 }
 
 function dayRecordRow(item, personal) {

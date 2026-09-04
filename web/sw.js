@@ -1,6 +1,7 @@
-const CACHE = 'tessavie-shell-20260904-personal-day-3';
+const CACHE = 'tessavie-shell-20260904-personal-scope-1';
 const ASSETS = [
-  '/', '/app.js?v=20260904-personal-day-3', '/styles.css?v=20260904-personal-day-3',
+  '/', '/app.js?v=20260904-personal-scope-1', '/styles.css?v=20260904-personal-scope-1',
+  '/personal-navigation.js?v=20260904-personal-scope-1',
   '/personal-today.js?v=20260904-personal-day-3',
   '/life-map.js?v=20260904-personal-batch-3', '/personal-publish.js?v=20260904-personal-batch-3',
   '/personal-inbox.js?v=20260904-first-use-4', '/first-use.js?v=20260904-first-use-4',

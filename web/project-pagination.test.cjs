@@ -10,7 +10,7 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 function harness(api, overrides = {}) {
   const state = {me:{id:1},activeWorkspaceId:'A',loadDataRequest:0,records:[{id:'old',updatedAt:checkpoint}],activity:[],detailCache:new Map(),
     syncRecordsSince:'1970-01-01T00:00:00Z',syncActivitySince:'1970-01-01T00:00:00Z'};
-  const ctx = vm.createContext({state, api, Map, Set, URLSearchParams, AbortController, Date,
+  const ctx = vm.createContext({state, api, Map, Set, URLSearchParams, AbortController, Date, history:{state:null},
     $:()=>null,localStorage:{setItem(){}},typeMeta:{task:{}},interfaceDevice:()=> 'desktop',initializeViewHistory(){},render(){},
     refreshProjectCompanions:async()=>{},renderNav(){},renderNotificationBadge(){},renderContent(){},rememberView(){},
     ...overrides});

@@ -263,7 +263,7 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 		WHERE wm.user_id = ? AND wm.status = 'active'
 		  AND w.archived_at IS NULL
 		  AND (w.team_id IS NULL OR (t.deleted_at IS NULL AND tm.user_id IS NOT NULL))
-		ORDER BY CASE w.kind WHEN 'personal' THEN 0 ELSE 1 END, COALESCE(t.name, ''), w.name`, user.ID)
+		ORDER BY CASE w.kind WHEN 'personal' THEN 0 ELSE 1 END, CASE WHEN w.kind='personal' THEN w.created_at END, CASE WHEN w.kind='personal' THEN w.id END, COALESCE(t.name, ''), w.name`, user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить пространства")
 		return
@@ -287,7 +287,7 @@ func (s *Server) handlePersonalOverview(w http.ResponseWriter, r *http.Request) 
 	err := s.store.db.QueryRowContext(r.Context(), `
 		SELECT w.id, w.name, w.slug, w.kind, wm.role, w.delete_policy, w.description
 		FROM workspaces w JOIN workspace_members wm ON wm.workspace_id = w.id
-		WHERE w.kind = 'personal' AND w.owner_id = ? AND wm.user_id = ? AND wm.status = 'active'`, user.ID, user.ID).
+		WHERE w.kind = 'personal' AND w.owner_id = ? AND wm.user_id = ? AND wm.status = 'active' AND w.archived_at IS NULL ORDER BY w.created_at, w.id LIMIT 1`, user.ID, user.ID).
 		Scan(&overview.Workspace.ID, &overview.Workspace.Name, &overview.Workspace.Slug, &overview.Workspace.Kind, &overview.Workspace.Role, &overview.Workspace.DeletePolicy, &overview.Workspace.Description)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Личное пространство не настроено")
