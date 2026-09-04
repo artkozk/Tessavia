@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -33,6 +34,105 @@ type waitingEvent struct {
 	OldExpectedDate string `json:"oldExpectedDate"`
 	NewExpectedDate string `json:"newExpectedDate"`
 	HappenedAt      string `json:"happenedAt"`
+}
+
+type waitingPingRecipient struct {
+	UserID      int64  `json:"userId"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+}
+
+type waitingPingTarget struct {
+	WorkspaceID   string                 `json:"workspaceId"`
+	WorkspaceName string                 `json:"workspaceName"`
+	Recipients    []waitingPingRecipient `json:"recipients"`
+}
+
+type waitingPing struct {
+	ID                   string `json:"id"`
+	WorkspaceID          string `json:"workspaceId"`
+	WorkspaceName        string `json:"workspaceName"`
+	RecipientID          int64  `json:"recipientId"`
+	RecipientUsername    string `json:"recipientUsername"`
+	RecipientDisplayName string `json:"recipientDisplayName"`
+	IncludeTitle         bool   `json:"includeTitle"`
+	Message              string `json:"message"`
+	CreatedAt            string `json:"createdAt"`
+}
+
+func scanWaitingPing(scanner interface{ Scan(...any) error }) (waitingPing, error) {
+	var item waitingPing
+	err := scanner.Scan(&item.ID, &item.WorkspaceID, &item.WorkspaceName, &item.RecipientID, &item.RecipientUsername, &item.RecipientDisplayName, &item.IncludeTitle, &item.Message, &item.CreatedAt)
+	return item, err
+}
+
+func waitingPingMessage(username, workspaceName, waitingTitle string, includeTitle bool) string {
+	message := fmt.Sprintf("@%s ждёт вашего ответа в «%s»", username, workspaceName)
+	if includeTitle {
+		message += fmt.Sprintf(": «%s»", waitingTitle)
+	}
+	return message
+}
+
+func (s *Server) waitingPingData(ctx context.Context, owner int64, includeTargets bool) ([]waitingPingTarget, error) {
+	targets := []waitingPingTarget{}
+	if includeTargets {
+		rows, err := s.store.db.QueryContext(ctx, `SELECT workspace.id,workspace.name,recipient.user_id,user.username,user.display_name
+			FROM workspaces workspace
+			JOIN workspace_members sender ON sender.workspace_id=workspace.id AND sender.user_id=? AND sender.status='active' AND sender.role IN ('owner','admin','member')
+			JOIN workspace_members recipient ON recipient.workspace_id=workspace.id AND recipient.user_id<>? AND recipient.status='active' AND recipient.role IN ('owner','admin','member')
+			JOIN users user ON user.id=recipient.user_id
+			WHERE workspace.kind='team' AND workspace.archived_at IS NULL
+			AND (workspace.team_id IS NULL OR (EXISTS(SELECT 1 FROM teams team JOIN team_members member ON member.team_id=team.id WHERE team.id=workspace.team_id AND team.deleted_at IS NULL AND member.user_id=sender.user_id AND member.status='active')
+			AND EXISTS(SELECT 1 FROM team_members member WHERE member.team_id=workspace.team_id AND member.user_id=recipient.user_id AND member.status='active')))
+			ORDER BY lower(workspace.name),workspace.id,lower(COALESCE(NULLIF(user.display_name,''),user.username)),user.id LIMIT 500`, owner, owner)
+		if err != nil {
+			return nil, err
+		}
+		byWorkspace := map[string]int{}
+		for rows.Next() {
+			var workspaceID, workspaceName string
+			var recipient waitingPingRecipient
+			if err = rows.Scan(&workspaceID, &workspaceName, &recipient.UserID, &recipient.Username, &recipient.DisplayName); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			index, exists := byWorkspace[workspaceID]
+			if !exists {
+				index = len(targets)
+				byWorkspace[workspaceID] = index
+				targets = append(targets, waitingPingTarget{WorkspaceID: workspaceID, WorkspaceName: workspaceName, Recipients: []waitingPingRecipient{}})
+			}
+			targets[index].Recipients = append(targets[index].Recipients, recipient)
+		}
+		if err = rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err = rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return targets, nil
+}
+
+func (s *Server) waitingPings(ctx context.Context, owner int64, waitingID string) ([]waitingPing, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT ping.id,ping.workspace_id,workspace.name,ping.recipient_id,user.username,user.display_name,ping.include_title,ping.message,ping.created_at
+		FROM personal_waiting_pings ping JOIN workspaces workspace ON workspace.id=ping.workspace_id JOIN users user ON user.id=ping.recipient_id
+		WHERE ping.waiting_id=? AND ping.owner_id=? ORDER BY ping.created_at DESC,ping.id DESC LIMIT 100`, waitingID, owner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []waitingPing{}
+	for rows.Next() {
+		item, scanErr := scanWaitingPing(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func scanWaiting(scanner interface{ Scan(...any) error }, today string) (personalWaiting, error) {
@@ -297,7 +397,17 @@ func (s *Server) handlePersonalWaitingItem(w http.ResponseWriter, r *http.Reques
 			writeError(w, 500, "Не удалось дочитать историю")
 			return
 		}
-		writeJSON(w, 200, map[string]any{"waiting": item, "events": events})
+		targets, err := s.waitingPingData(r.Context(), owner, item.Status == "waiting")
+		if err != nil {
+			writeError(w, 500, "Не удалось прочитать доступных получателей")
+			return
+		}
+		pings, err := s.waitingPings(r.Context(), owner, id)
+		if err != nil {
+			writeError(w, 500, "Не удалось прочитать отправленные напоминания")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"waiting": item, "events": events, "pingTargets": targets, "pings": pings})
 		return
 	}
 	var in waitingInput
@@ -383,6 +493,119 @@ func (s *Server) handlePersonalWaitingItem(w http.ResponseWriter, r *http.Reques
 	}
 	item, _ := readWaiting(r.Context(), s.store.db, owner, id, today)
 	writeJSON(w, 200, item)
+}
+
+type waitingPingInput struct {
+	WorkspaceID      string `json:"workspaceId"`
+	RecipientID      int64  `json:"recipientId"`
+	IncludeTitle     bool   `json:"includeTitle"`
+	Confirm          bool   `json:"confirm"`
+	ExpectedRevision int    `json:"expectedRevision"`
+	RequestKey       string `json:"requestKey"`
+}
+
+func (s *Server) handlePersonalWaitingPing(w http.ResponseWriter, r *http.Request) {
+	owner, waitingID := currentUser(r).ID, strings.TrimSpace(r.PathValue("id"))
+	var in waitingPingInput
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	in.WorkspaceID = strings.TrimSpace(in.WorkspaceID)
+	in.RequestKey = strings.TrimSpace(in.RequestKey)
+	if waitingID == "" || in.WorkspaceID == "" || in.RecipientID <= 0 || in.RecipientID == owner || !in.Confirm || in.ExpectedRevision < 1 || len(in.RequestKey) < 16 || len(in.RequestKey) > 100 {
+		writeError(w, 400, "Выберите проект и участника, затем подтвердите отправку")
+		return
+	}
+	today, err := s.waitingToday(r)
+	if err != nil {
+		writeError(w, 400, "Не удалось определить сегодняшний день")
+		return
+	}
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, 500, "Не удалось отправить напоминание")
+		return
+	}
+	defer tx.Rollback()
+	var existingWaiting, existingWorkspace string
+	var existingRecipient int64
+	var existingInclude bool
+	err = tx.QueryRowContext(r.Context(), `SELECT waiting_id,workspace_id,recipient_id,include_title FROM personal_waiting_pings WHERE owner_id=? AND request_key=?`, owner, in.RequestKey).Scan(&existingWaiting, &existingWorkspace, &existingRecipient, &existingInclude)
+	if err == nil {
+		if existingWaiting != waitingID || existingWorkspace != in.WorkspaceID || existingRecipient != in.RecipientID || existingInclude != in.IncludeTitle {
+			writeError(w, 409, "Этот ключ уже использован для другого напоминания")
+			return
+		}
+		item, readErr := scanWaitingPing(tx.QueryRowContext(r.Context(), `SELECT ping.id,ping.workspace_id,workspace.name,ping.recipient_id,user.username,user.display_name,ping.include_title,ping.message,ping.created_at FROM personal_waiting_pings ping JOIN workspaces workspace ON workspace.id=ping.workspace_id JOIN users user ON user.id=ping.recipient_id WHERE ping.owner_id=? AND ping.request_key=?`, owner, in.RequestKey))
+		if readErr != nil {
+			writeError(w, 500, "Не удалось прочитать отправленное напоминание")
+			return
+		}
+		writeJSON(w, 200, item)
+		return
+	}
+	if err != sql.ErrNoRows {
+		writeError(w, 500, "Не удалось проверить повтор отправки")
+		return
+	}
+	waiting, err := readWaiting(r.Context(), tx, owner, waitingID, today)
+	if err == sql.ErrNoRows {
+		writeError(w, 404, "Ожидание не найдено")
+		return
+	}
+	if err != nil {
+		writeError(w, 500, "Не удалось прочитать ожидание")
+		return
+	}
+	if waiting.Revision != in.ExpectedRevision {
+		writeError(w, 409, "Ожидание изменено в другом окне. Проверьте текст перед отправкой.")
+		return
+	}
+	if waiting.Status != "waiting" {
+		writeError(w, 409, "Напоминание можно отправить только по активному ожиданию")
+		return
+	}
+	var workspaceName, recipientUsername, recipientDisplayName string
+	err = tx.QueryRowContext(r.Context(), `SELECT workspace.name,user.username,user.display_name
+		FROM workspaces workspace
+		JOIN workspace_members sender ON sender.workspace_id=workspace.id AND sender.user_id=? AND sender.status='active' AND sender.role IN ('owner','admin','member')
+		JOIN workspace_members recipient ON recipient.workspace_id=workspace.id AND recipient.user_id=? AND recipient.status='active' AND recipient.role IN ('owner','admin','member')
+		JOIN users user ON user.id=recipient.user_id
+		WHERE workspace.id=? AND workspace.kind='team' AND workspace.archived_at IS NULL
+		AND (workspace.team_id IS NULL OR (EXISTS(SELECT 1 FROM teams team JOIN team_members member ON member.team_id=team.id WHERE team.id=workspace.team_id AND team.deleted_at IS NULL AND member.user_id=sender.user_id AND member.status='active')
+		AND EXISTS(SELECT 1 FROM team_members member WHERE member.team_id=workspace.team_id AND member.user_id=recipient.user_id AND member.status='active')))`, owner, in.RecipientID, in.WorkspaceID).Scan(&workspaceName, &recipientUsername, &recipientDisplayName)
+	if err == sql.ErrNoRows {
+		writeError(w, 403, "У вас с получателем больше нет доступа к выбранному проекту")
+		return
+	}
+	if err != nil {
+		writeError(w, 500, "Не удалось проверить права получателя")
+		return
+	}
+	pingID, err := newID()
+	if err != nil {
+		writeError(w, 500, "Не удалось создать напоминание")
+		return
+	}
+	notificationID, err := newID()
+	if err != nil {
+		writeError(w, 500, "Не удалось создать уведомление")
+		return
+	}
+	message := waitingPingMessage(currentUser(r).Username, workspaceName, waiting.Title, in.IncludeTitle)
+	createdAt := nowText()
+	_, err = tx.ExecContext(r.Context(), `INSERT INTO notifications(id,user_id,type,title,body,entity_type,entity_id,created_at) VALUES(?,?,'waiting_ping','Напоминание об ожидании',?,'waiting_ping',?,?)`, notificationID, in.RecipientID, message, pingID, createdAt)
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_waiting_pings(id,waiting_id,owner_id,workspace_id,recipient_id,notification_id,include_title,message,request_key,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, pingID, waitingID, owner, in.WorkspaceID, in.RecipientID, notificationID, in.IncludeTitle, message, in.RequestKey, createdAt)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		writeError(w, 500, "Не удалось отправить напоминание")
+		return
+	}
+	writeJSON(w, 201, waitingPing{ID: pingID, WorkspaceID: in.WorkspaceID, WorkspaceName: workspaceName, RecipientID: in.RecipientID, RecipientUsername: recipientUsername, RecipientDisplayName: recipientDisplayName, IncludeTitle: in.IncludeTitle, Message: message, CreatedAt: createdAt})
 }
 func waitingReplay(r *http.Request, q personalQueryer, owner int64, id, key string) (bool, error) {
 	var found string

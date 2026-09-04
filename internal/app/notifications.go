@@ -25,7 +25,14 @@ var errNotificationFilter = errors.New("invalid notification filter")
 const notificationAccess = `n.user_id = ? AND ((n.entity_type='personal_plan' AND EXISTS (
  SELECT 1 FROM personal_plans p WHERE p.id=n.entity_id AND p.owner_id=n.user_id AND p.status<>'archived'))
  OR (n.entity_type='personal_habit' AND EXISTS(SELECT 1 FROM personal_habits h WHERE h.id=n.entity_id AND h.owner_id=n.user_id AND h.archived_at IS NULL))
- OR (COALESCE(n.entity_type,'') NOT IN ('personal_plan','personal_habit') AND (COALESCE(n.entity_id, '') = '' OR EXISTS (
+	OR (n.entity_type='waiting_ping' AND EXISTS (
+	SELECT 1 FROM personal_waiting_pings ping
+	JOIN workspaces workspace ON workspace.id=ping.workspace_id AND workspace.kind='team' AND workspace.archived_at IS NULL
+	JOIN workspace_members member ON member.workspace_id=workspace.id AND member.user_id=n.user_id AND member.status='active'
+	WHERE ping.id=n.entity_id AND ping.recipient_id=n.user_id AND (workspace.team_id IS NULL OR EXISTS (
+	SELECT 1 FROM teams team JOIN team_members team_member ON team_member.team_id=team.id
+	WHERE team.id=workspace.team_id AND team.deleted_at IS NULL AND team_member.user_id=n.user_id AND team_member.status='active'))))
+ OR (COALESCE(n.entity_type,'') NOT IN ('personal_plan','personal_habit','waiting_ping') AND (COALESCE(n.entity_id, '') = '' OR EXISTS (
 	SELECT 1 FROM records rec JOIN workspace_members member ON member.workspace_id = rec.workspace_id
 	JOIN workspaces w ON w.id = rec.workspace_id
 	WHERE rec.id = n.entity_id AND member.user_id = n.user_id AND member.status = 'active'
@@ -76,7 +83,7 @@ func (s *Server) notificationPage(r *http.Request, limit int, filtered bool) (no
 		}
 	}
 	args = append(args, limit+1)
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT n.id, n.type, n.title, n.body, n.entity_type, n.entity_id, n.read_at, n.created_at, COALESCE(rec.workspace_id, ''), NOT `+notificationFresh+` FROM notifications n LEFT JOIN records rec ON rec.id = n.entity_id WHERE `+where+` ORDER BY n.created_at DESC, n.id DESC LIMIT ?`, args...)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT n.id, n.type, n.title, n.body, n.entity_type, n.entity_id, n.read_at, n.created_at, COALESCE(rec.workspace_id, ping.workspace_id, ''), NOT `+notificationFresh+` FROM notifications n LEFT JOIN records rec ON rec.id = n.entity_id LEFT JOIN personal_waiting_pings ping ON ping.id=n.entity_id AND n.entity_type='waiting_ping' WHERE `+where+` ORDER BY n.created_at DESC, n.id DESC LIMIT ?`, args...)
 	if err != nil {
 		return page, err
 	}

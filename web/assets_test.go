@@ -221,7 +221,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260904-personal-review-3")) != 2 {
+	if bytes.Count(index, []byte("20260904-waiting-ping-1")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 	if _, err := Files.ReadFile("personal-review.js"); err != nil {

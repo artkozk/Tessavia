@@ -1,5 +1,5 @@
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260904-personal-waiting-4';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260904-waiting-ping-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
 import { createPersonalRemindersUI } from './personal-reminders.js?v=20260904-habit-reminders-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-habit-reminders-1';
@@ -7976,6 +7976,7 @@ function renderNotifications() {
       await api(`/api/notifications/${item.id}/read`, { method: 'POST' });
       if(item.entityType==='personal_plan'&&item.entityId){await openPersonalReminderSource(item.entityId);}
       else if(item.entityType==='personal_habit'&&item.entityId){await openHabitReminderSource(item.entityId);}
+      else if(item.entityType==='waiting_ping'&&item.workspaceId&&item.workspaceId!==state.activeWorkspaceId){await switchWorkspace(item.workspaceId,{keepView:true});}
       else if (item.entityId) {
         if (item.workspaceId && item.workspaceId !== state.activeWorkspaceId) await switchWorkspace(item.workspaceId, { keepView: true });
         await openRecord(item.entityId);

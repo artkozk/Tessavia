@@ -141,3 +141,110 @@ func TestPersonalWaitingPaginationAndPlanOwnership(t *testing.T) {
 	}
 	requestJSON(t, owner, "GET", server.URL+"/api/personal/waiting?pageSize=51&timezone=UTC", nil, 400, nil)
 }
+
+func TestPersonalWaitingPingRequiresConfirmationAndExactProjectMembership(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "waiting-ping.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	server := httptest.NewServer(NewServer(store, Config{SessionLifetime: 24 * time.Hour}))
+	defer server.Close()
+	ownerClient, recipientClient, outsiderClient := testClient(t), testClient(t), testClient(t)
+	owner := registerVerifiedWithoutFixture(t, ownerClient, server.URL, "waiting-ping-owner@example.test", "waiting_ping_owner")
+	recipient := registerVerifiedWithoutFixture(t, recipientClient, server.URL, "waiting-ping-recipient@example.test", "waiting_ping_recipient")
+	outsider := registerVerifiedWithoutFixture(t, outsiderClient, server.URL, "waiting-ping-outsider@example.test", "waiting_ping_outsider")
+
+	var first, second Workspace
+	requestJSON(t, ownerClient, "POST", server.URL+"/api/workspaces", map[string]any{"name": "Первый стартап"}, 201, &first)
+	requestJSON(t, ownerClient, "POST", server.URL+"/api/workspaces", map[string]any{"name": "Второй стартап"}, 201, &second)
+	requestJSON(t, ownerClient, "POST", server.URL+"/api/teams/"+first.TeamID+"/members", map[string]any{"username": recipient.Username, "role": "member", "projectIds": []string{first.ID}}, 200, nil)
+	requestJSON(t, ownerClient, "POST", server.URL+"/api/teams/"+second.TeamID+"/members", map[string]any{"username": outsider.Username, "role": "member", "projectIds": []string{second.ID}}, 200, nil)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var waiting personalWaiting
+	requestJSON(t, ownerClient, "POST", server.URL+"/api/personal/waiting?timezone=UTC", map[string]any{
+		"title": "Приватный расчёт", "waitingFor": "Партнёр", "sinceDate": today,
+		"requestKey": "waiting-ping-create-000001",
+	}, 201, &waiting)
+	var detail struct {
+		Waiting     personalWaiting     `json:"waiting"`
+		PingTargets []waitingPingTarget `json:"pingTargets"`
+		Pings       []waitingPing       `json:"pings"`
+	}
+	requestJSON(t, ownerClient, "GET", server.URL+"/api/personal/waiting/"+waiting.ID+"?timezone=UTC", nil, 200, &detail)
+	if len(detail.PingTargets) != 2 || len(detail.Pings) != 0 {
+		t.Fatalf("unexpected ping choices: %#v", detail)
+	}
+	for _, target := range detail.PingTargets {
+		if len(target.Recipients) != 1 {
+			t.Fatalf("project recipients mixed: %#v", target)
+		}
+		if target.WorkspaceID == first.ID && target.Recipients[0].UserID != recipient.ID || target.WorkspaceID == second.ID && target.Recipients[0].UserID != outsider.ID {
+			t.Fatalf("recipient crossed project boundary: %#v", target)
+		}
+	}
+
+	base := server.URL + "/api/personal/waiting/" + waiting.ID + "/ping"
+	payload := map[string]any{
+		"workspaceId": first.ID, "recipientId": recipient.ID, "includeTitle": false,
+		"confirm": false, "expectedRevision": waiting.Revision, "requestKey": "waiting-ping-send-000001",
+	}
+	requestJSON(t, ownerClient, "POST", base, payload, 400, nil)
+	payload["confirm"] = true
+	payload["workspaceId"] = second.ID
+	requestJSON(t, ownerClient, "POST", base, payload, 403, nil)
+	payload["workspaceId"] = first.ID
+	payload["recipientId"] = outsider.ID
+	requestJSON(t, ownerClient, "POST", base, payload, 403, nil)
+	payload["recipientId"] = recipient.ID
+	var ping waitingPing
+	requestJSON(t, ownerClient, "POST", base, payload, 201, &ping)
+	if ping.Message != "@"+owner.Username+" ждёт вашего ответа в «"+first.Name+"»" || ping.IncludeTitle || ping.RecipientID != recipient.ID {
+		t.Fatalf("minimal confirmed ping: %#v", ping)
+	}
+	requestJSON(t, ownerClient, "POST", base, payload, 200, &ping)
+	var count int
+	if err = store.db.QueryRow(`SELECT COUNT(*) FROM personal_waiting_pings WHERE waiting_id=?`, waiting.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("ping retry duplicated delivery: %d %v", count, err)
+	}
+
+	payload["includeTitle"] = true
+	payload["requestKey"] = "waiting-ping-send-000002"
+	requestJSON(t, ownerClient, "POST", base, payload, 201, &ping)
+	if ping.Message != "@"+owner.Username+" ждёт вашего ответа в «"+first.Name+"»: «"+waiting.Title+"»" {
+		t.Fatalf("confirmed title not exact: %#v", ping)
+	}
+	var inbox notificationInbox
+	requestJSON(t, recipientClient, "GET", server.URL+"/api/notifications/inbox?status=all", nil, 200, &inbox)
+	if len(inbox.Items) != 2 {
+		t.Fatalf("recipient delivery missing: %#v", inbox.Items)
+	}
+	for _, notification := range inbox.Items {
+		if notification.EntityType == nil || *notification.EntityType != "waiting_ping" || notification.WorkspaceID != first.ID {
+			t.Fatalf("waiting notification context missing: %#v", notification)
+		}
+	}
+	requestJSON(t, outsiderClient, "GET", server.URL+"/api/notifications/inbox?status=all", nil, 200, &inbox)
+	if len(inbox.Items) != 0 {
+		t.Fatal("waiting ping leaked to another startup")
+	}
+	requestJSON(t, outsiderClient, "POST", base, payload, 404, nil)
+
+	var storedRevision int
+	var storedStatus string
+	if err = store.db.QueryRow(`SELECT revision,status FROM personal_waiting WHERE id=?`, waiting.ID).Scan(&storedRevision, &storedStatus); err != nil || storedRevision != waiting.Revision || storedStatus != "waiting" {
+		t.Fatalf("ping changed waiting: revision=%d status=%s err=%v", storedRevision, storedStatus, err)
+	}
+	if _, err = store.db.Exec(`UPDATE workspace_members SET status='suspended' WHERE workspace_id=? AND user_id=?`, first.ID, recipient.ID); err != nil {
+		t.Fatal(err)
+	}
+	requestJSON(t, recipientClient, "GET", server.URL+"/api/notifications/inbox?status=all", nil, 200, &inbox)
+	if len(inbox.Items) != 0 {
+		t.Fatal("revoked project retained waiting ping content")
+	}
+	requestJSON(t, ownerClient, "GET", server.URL+"/api/personal/waiting/"+waiting.ID+"?timezone=UTC", nil, 200, &detail)
+	if len(detail.Pings) != 2 {
+		t.Fatal("owner lost sent reminder history")
+	}
+}
