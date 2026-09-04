@@ -1,3 +1,4 @@
+import { createPersonalTodayUI } from './personal-today.js?v=20260904-personal-day-3';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -2408,6 +2409,7 @@ async function loadPersonal({ force = false } = {}) {
     const result = await state.personalLoadPromise;
     if (expectedOwner !== state.me?.id || request !== state.personalLoadRequest) return;
     state.personal = result;
+    personalTodayUI.invalidate();
   } catch (error) {
     if (expectedOwner !== state.me?.id || request !== state.personalLoadRequest) return;
     state.personalError = error.message;
@@ -2461,9 +2463,8 @@ function renderPersonalTab(data) {
   if (state.personalTab === 'notes') return renderPersonalNotes(data.notes, data.links);
   if (state.personalTab === 'plans') return renderPersonalPlans(data.plans, data.links);
   if (state.personalTab === 'habits') return renderPersonalHabits(data.habits, data.links);
-  const activePlans = data.plans.filter((plan) => plan.status === 'planned').slice(0, 6);
   const notes = [...data.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)).slice(0, 4);
-  return `<section class="personal-today-grid"><div class="personal-column"><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ритм дня</p><h2>Привычки</h2></div>${data.habits.length ? `<span class="panel-note">${data.habits.filter((habit) => habit.currentStreak > 0).length} серий</span>` : ''}</div><div class="habit-list">${data.habits.filter(h => !h.archivedAt && !h.paused).map((habit) => renderHabitRow(habit, data.links, true)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ближайшее</p><h2>Дела</h2></div><button type="button" class="text-button" data-personal-tab-jump="plans">Все дела</button></div><div class="personal-list">${activePlans.map((plan) => renderPlanRow(plan, data.links)).join('') || personalEmpty('Открытых дел нет', 'plan', 'Добавить дело')}</div></section></div><div class="personal-column"><section class="personal-section life-section">${renderLifeMap(data.settings)}</section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Под рукой</p><h2>Заметки</h2></div><button type="button" class="text-button" data-personal-tab-jump="notes">Все заметки</button></div><div class="personal-notes-preview">${notes.map((note) => renderNoteCard(note, data.links, true)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section></div></section>`;
+  return `<section class="personal-today-grid"><div class="personal-column">${personalTodayUI.renderBlocks(data)}<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ритм дня</p><h2>Привычки</h2></div>${data.habits.length ? `<span class="panel-note">${data.habits.filter((habit) => habit.currentStreak > 0).length} серий</span>` : ''}</div><div class="habit-list">${data.habits.filter(h => !h.archivedAt && !h.paused).map((habit) => renderHabitRow(habit, data.links, true)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section>${personalTodayUI.renderPlans(data)}</div><div class="personal-column"><section class="personal-section life-section">${renderLifeMap(data.settings)}</section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Под рукой</p><h2>Заметки</h2></div><button type="button" class="text-button" data-personal-tab-jump="notes">Все заметки</button></div><div class="personal-notes-preview">${notes.map((note) => renderNoteCard(note, data.links, true)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section></div></section>`;
 }
 
 function renderPersonalProjects(data) {
@@ -2550,6 +2551,7 @@ function renderPlanRow(plan, links) {
   return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
+const personalTodayUI=createPersonalTodayUI({state,api,escapeHTML,icon,renderPersonal,renderPlanRow,formatMinutes,openPlan:openPersonalPlanDetails,togglePlan:togglePersonalPlan,openDay:openDayWorkspace,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
 const firstUseUI = createFirstUseUI({state,api,escapeHTML,icon,activeWorkspace,canConfigureWorkspace,openModal,closeDialog:requestDialogClose,toast,
   actions:{capture:openPersonalCapture,inbox:openPersonalInbox,teams:openTeamsDirectory,board:openCollectionCreateDialog,menu:openNavigationSettings,page:openWorkspacePageEditor},
 });
@@ -2602,6 +2604,7 @@ function lastDates(count) {
 
 function bindPersonalInteractions() {
   lifeMapUI.bind();
+  personalTodayUI.bind();
   $('[data-first-use-teams]')?.addEventListener('click',openTeamsDirectory);
   void personalInboxUI.bindList();
   $$('[data-inbox-make-plan]').forEach(button=>button.addEventListener('click',()=>personalInboxUI.openTriage(button.dataset.inboxMakePlan)));
@@ -8613,7 +8616,7 @@ function pageLayoutCatalog() {
     day: [block('heading','Дата и действия','.day-workspace-heading',true), block('records','Планы и карточки','.day-workspace-records',true,6), block('notes','Заметки дня','.day-workspace-notes',false,6)],
     calendar: [heading, block('filters', 'Вид и фильтры', '.planner-controls', true), block('month', 'Календарь и расписание', '.planner-body', true), block('undated', 'Без даты', '.planner-undated')],
     work: [heading, block('filters', 'Поиск и фильтры', ':scope > .work-controls', true), block('summary', 'Сводка и представления', ':scope > .work-view-summary'), block('boards', 'Доска и её настройки', '.work-board-toolbar'), workRecords],
-    personal: [heading, block('first-use','Первый шаг','.first-use-start'), block('summary', 'Личная сводка', '.personal-summary'), block('tabs', 'Разделы', '.personal-tabs', true), block('habits', 'Привычки', '.personal-today-grid .personal-section:has(> .habit-list)', false, 6), block('plans', 'Ближайшие планы', '.personal-today-grid .personal-section:has(> .personal-list)', false, 6), block('life', 'Карта времени', '.personal-today-grid .life-section', false, 6), block('notes', 'Последние заметки', '.personal-today-grid .personal-section:has(> .personal-notes-preview)', false, 6)],
+    personal: [heading, block('first-use','Первый шаг','.first-use-start'), block('summary', 'Личная сводка', '.personal-summary'), block('tabs', 'Разделы', '.personal-tabs', true), block('day-focus','Главное дело','.today-focus',false,6), block('day-time','События и свободное время','.today-schedule',false,6), block('day-attention','Требует внимания','.today-attention',false,6), block('habits', 'Привычки', '.personal-today-grid .personal-section:has(> .habit-list)', false, 6), block('plans', 'Дела на сегодня', '.today-plans', false, 6), block('life', 'Карта времени', '.personal-today-grid .life-section', false, 6), block('notes', 'Последние заметки', '.personal-today-grid .personal-section:has(> .personal-notes-preview)', false, 6)],
     collections: [heading, block('search', 'Доски и поиск', '.collection-toolbar', true), block('filters', 'Фильтры', '.collection-filters', true), block('records', 'Доска', ':scope > .collection-board, :scope > .collection-empty', true)],
     principles: [heading, ...[['preference', 'Критерии'], ['limitation', 'Ограничения'], ['rule', 'Правила']].map(([key, label]) => block(key, label, `.principle-column:has([data-create-principle="${key}"])`, false, 4))],
     validation: [heading, block('summary', 'Сводка проверок', '.validation-summary'), block('filters', 'Фильтры', '.validation-filter', true), block('records', 'Риски и проверки', '.validation-list', true)],
@@ -8899,7 +8902,7 @@ function openCalendar(scope = 'project', collectionID = '') {
 
 function plannerRange(item, personal) {
   if (personal && item.startDate) return [item.startDate, item.endDate || item.startDate];
-  if (personal && item.startsAt) { const key = localDateKey(new Date(item.startsAt)); return [key, key]; }
+  if (personal && item.startsAt) { const start = new Date(item.startsAt), end = new Date(item.endsAt || item.startsAt); return [localDateKey(start), localDateKey(end > start ? new Date(end.getTime() - 1) : start)]; }
   if (personal && item.occurrenceDate) return [item.occurrenceDate, item.occurrenceDate];
   if (!item.dueAt) return ['', ''];
   const key = localDateKey(new Date(item.dueAt));

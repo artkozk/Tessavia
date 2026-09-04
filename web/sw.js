@@ -1,6 +1,7 @@
-const CACHE = 'tessavie-shell-20260904-first-use-4';
+const CACHE = 'tessavie-shell-20260904-personal-day-3';
 const ASSETS = [
-  '/', '/app.js?v=20260904-first-use-4', '/styles.css?v=20260904-first-use-4',
+  '/', '/app.js?v=20260904-personal-day-3', '/styles.css?v=20260904-personal-day-3',
+  '/personal-today.js?v=20260904-personal-day-3',
   '/life-map.js?v=20260904-personal-batch-3', '/personal-publish.js?v=20260904-personal-batch-3',
   '/personal-inbox.js?v=20260904-first-use-4', '/first-use.js?v=20260904-first-use-4',
   '/emoji-picker.js?v=20260904-chat-emoji-3', '/vendor/emoji-17.0-cldr48.2.json',

@@ -30,6 +30,7 @@ var portableInterfaceNavigationKeys = func() map[string]bool {
 var portableInterfaceBlockKeys = map[string]bool{
 	"heading": true, "filters": true, "summary": true, "records": true,
 	"tabs": true, "habits": true, "plans": true, "life": true, "notes": true,
+	"first-use": true, "day-focus": true, "day-time": true, "day-attention": true,
 	"search": true, "preference": true, "limitation": true, "rule": true,
 	"digest": true, "legend": true, "hidden": true,
 	"month": true, "undated": true, "boards": true,
