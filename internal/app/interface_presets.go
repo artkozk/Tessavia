@@ -43,6 +43,9 @@ var portableInterfaceFieldKeys = map[string]bool{
 	"description": true, "owner": true, "status": true, "due": true,
 	"voice": true, "ai": true, "count": true, "zoom": true,
 	"noteDates": true, "notePreview": true,
+	"column:inbox": true, "column:queued": true, "column:in_progress": true,
+	"column:blocked": true, "column:review": true, "column:completed": true,
+	"column:postponed": true, "column:cancelled": true,
 }
 
 type InterfacePresetPayload struct {

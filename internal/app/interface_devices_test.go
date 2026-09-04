@@ -144,3 +144,34 @@ func TestPageLayoutNormalization(t *testing.T) {
 		t.Fatal("explicit empty toolbar must not inherit defaults")
 	}
 }
+
+func TestWorkBoardColumnSelectionSurvivesPreferencesAndPresets(t *testing.T) {
+	for _, hidden := range [][]string{{}, {"owner", "column:inbox", "column:blocked", "column:review", "column:private-board-id"}} {
+		input := InterfacePreferences{Layout: InterfaceLayout{Pages: map[string]PageLayout{
+			"work": {HiddenFields: hidden, WorkBoardColumnsConfigured: true},
+		}}}
+		input.Layout = normalizeInterfaceLayout(input.Layout)
+		encoded, err := json.Marshal(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var restored InterfacePreferences
+		if err = json.Unmarshal(encoded, &restored); err != nil {
+			t.Fatal(err)
+		}
+		if !restored.Layout.Pages["work"].WorkBoardColumnsConfigured || len(restored.Layout.Pages["work"].HiddenFields) != len(hidden) {
+			t.Fatal("explicit column selection lost during round trip")
+		}
+		portable := portableInterfacePreferences(restored, "desktop").Layout.Pages["work"]
+		if !portable.WorkBoardColumnsConfigured {
+			t.Fatal("preset must preserve explicit show-all choice")
+		}
+		want := len(hidden)
+		if want > 0 {
+			want--
+		}
+		if len(portable.HiddenFields) != want {
+			t.Fatalf("preset lost system columns or leaked board-specific IDs: %#v", portable.HiddenFields)
+		}
+	}
+}

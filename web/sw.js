@@ -1,6 +1,6 @@
-const CACHE = 'tessavie-shell-20260904-habit-layout-2';
+const CACHE = 'tessavie-shell-20260904-board-defaults-1';
 const ASSETS = [
-  '/', '/app.js?v=20260904-habit-layout-2', '/styles.css?v=20260904-habit-layout-2',
+  '/', '/app.js?v=20260904-board-defaults-1', '/styles.css?v=20260904-board-defaults-1',
   '/outbox-ui.js?v=20260904-habits-3', '/offline-outbox.js?v=20260903-offline-outbox-2',
   '/habit-tracker.js?v=20260904-habit-layout-2',
   '/graph-layout-state.js?v=20260903-graph-layouts-1', '/manifest.webmanifest',

@@ -20,6 +20,23 @@ test('page settings are keyed by route and by individual CRM board', () => {
   assert.equal(h.run('pageLayoutKey()'), 'collection:two');
   h.state.view = 'page:custom'; assert.equal(h.run('pageLayoutKey()'), 'page:custom');
 });
+
+test('work board defaults hide three optional states without replacing personal settings', () => {
+  const h = harness();
+  assert.deepEqual(Array.from(h.run('currentPageLayout().hiddenFields')), ['column:inbox','column:blocked','column:review']);
+  assert.equal(h.run('currentPageLayout().density'),'compact');
+  assert.equal(h.state.interfacePreferences.layout.pages.work.hiddenFields,undefined);
+  h.state.interfacePreferences.layout.pages.work.hiddenFields=['owner'];
+  assert.deepEqual(Array.from(h.run('currentPageLayout().hiddenFields')), ['owner','column:inbox','column:blocked','column:review']);
+  h.state.interfacePreferences.layout.pages.work.hiddenFields=['column:completed'];
+  assert.deepEqual(Array.from(h.run('currentPageLayout().hiddenFields')), ['column:completed']);
+  h.state.interfacePreferences.layout.pages.work.hiddenFields=['column:custom-stage'];
+  assert.deepEqual(Array.from(h.run('currentPageLayout().hiddenFields')), ['column:custom-stage','column:inbox','column:blocked','column:review']);
+  h.state.interfacePreferences.layout.pages.work={hiddenFields:[],workBoardColumnsConfigured:true};
+  assert.deepEqual(Array.from(h.run('currentPageLayout().hiddenFields')), []);
+  h.state.view='collections';h.state.activeCollectionId='custom';
+  assert.equal(h.run('currentPageLayout().hiddenFields'),undefined);
+});
 test('draft previews only its own page and dashboard preview stays independent', () => {
   const h = harness();
   h.state.pageLayoutDraft = { key: 'work', value: { density: 'comfortable' } };

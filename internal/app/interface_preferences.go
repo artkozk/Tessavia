@@ -42,15 +42,16 @@ type InterfaceLayout struct {
 }
 
 type PageLayout struct {
-	Widgets        []string                     `json:"widgets,omitempty"`
-	BlockSettings  map[string]PageBlockSettings `json:"blockSettings,omitempty"`
-	Order          []string                     `json:"order"`
-	HiddenBlocks   []string                     `json:"hiddenBlocks"`
-	HiddenFields   []string                     `json:"hiddenFields"`
-	BlockSpans     map[string]int               `json:"blockSpans"`
-	ContentWidth   int                          `json:"contentWidth,omitempty"`
-	Density        string                       `json:"density,omitempty"`
-	ToolbarActions *[]string                    `json:"toolbarActions,omitempty"`
+	Widgets                    []string                     `json:"widgets,omitempty"`
+	BlockSettings              map[string]PageBlockSettings `json:"blockSettings,omitempty"`
+	Order                      []string                     `json:"order"`
+	HiddenBlocks               []string                     `json:"hiddenBlocks"`
+	HiddenFields               []string                     `json:"hiddenFields"`
+	WorkBoardColumnsConfigured bool                         `json:"workBoardColumnsConfigured,omitempty"`
+	BlockSpans                 map[string]int               `json:"blockSpans"`
+	ContentWidth               int                          `json:"contentWidth,omitempty"`
+	Density                    string                       `json:"density,omitempty"`
+	ToolbarActions             *[]string                    `json:"toolbarActions,omitempty"`
 }
 
 // Geometry contains no record identifiers or content, so it is safe to share in presets.

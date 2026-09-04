@@ -8564,6 +8564,7 @@ function currentPageLayout() {
 
 function savedPageLayout(profile) {
   const saved = profile?.layout?.pages?.[pageLayoutKey()];
+  if (state.view === 'work') return defaultWorkBoardLayout(saved);
   if (saved) return saved;
   if (state.view === 'calendar') return profile?.layout?.pages?.calendar || {};
   if (state.view === 'dashboard') {
@@ -8572,6 +8573,13 @@ function savedPageLayout(profile) {
     return { order: ['heading', ...visible], hiddenBlocks: keys.filter(key => !visible.includes(key)), blockSpans: profile?.layout?.widgetSpans || {} };
   }
   return {};
+}
+
+function defaultWorkBoardLayout(saved = {}) {
+  // Preserve an explicit column selection, including the choice to show all.
+  const systemColumns = ['inbox', 'queued', 'in_progress', 'blocked', 'review', 'completed', 'postponed', 'cancelled'].map(key => `column:${key}`);
+  if (saved.workBoardColumnsConfigured || saved.hiddenFields?.some(key => systemColumns.includes(key))) return saved;
+  return { ...saved, hiddenFields: [...(saved.hiddenFields || []), 'column:inbox', 'column:blocked', 'column:review'] };
 }
 
 function pageLayoutCatalog() {
@@ -8676,11 +8684,11 @@ function bindPageLayoutEditor(editor, catalog) {
   }
   const refresh = () => { editor.remove(); applyInterfaceLayout(); applyPageLayout(); };
   $('[data-page-layout-cancel]', editor).addEventListener('click', () => { state.pageLayoutDraft = null; editor.remove(); applyInterfaceLayout(); applyPageLayout(); });
-  $('[data-page-layout-reset]', editor).addEventListener('click', () => { draft.value = {}; refresh(); });
+  $('[data-page-layout-reset]', editor).addEventListener('click', () => { draft.value = state.view === 'work' ? defaultWorkBoardLayout() : {}; refresh(); });
   $$('[data-interface-device]', editor).forEach((button) => button.addEventListener('click', () => { if (button.dataset.interfaceDevice !== draft.device) startPageLayoutEditor(button.dataset.interfaceDevice); }));
   $('[name="pageDensity"]', editor).addEventListener('change', (event) => { draft.value.density = event.target.value; applyInterfaceLayout(); });
   $('[name="pageWidth"]', editor)?.addEventListener('change', (event) => { draft.value.contentWidth = Number(event.target.value); applyInterfaceLayout(); });
-  $$('[data-page-field-toggle]', editor).forEach((input) => input.addEventListener('change', () => { draft.value.hiddenFields = $$('[data-page-field-toggle]', editor).filter((item) => !item.checked).map((item) => item.dataset.pageFieldToggle); applyPageLayout(); }));
+  $$('[data-page-field-toggle]', editor).forEach((input) => input.addEventListener('change', () => { draft.value.hiddenFields = $$('[data-page-field-toggle]', editor).filter((item) => !item.checked).map((item) => item.dataset.pageFieldToggle); if (state.view === 'work' && !state.workCollection && input.dataset.pageFieldToggle.startsWith('column:')) draft.value.workBoardColumnsConfigured = true; applyPageLayout(); }));
   const toolbar = $('.page-toolbar-order', editor);
   const updateToolbar = () => { draft.value.toolbarActions = $$('[data-page-toolbar]', toolbar).filter((row) => $('input', row).checked).map((row) => row.dataset.pageToolbar); applyInterfaceLayout(); };
   $('[data-page-toolbar-inherit]', editor).addEventListener('change', (event) => { if (event.target.checked) delete draft.value.toolbarActions; else draft.value.toolbarActions = [...interfaceLayout().toolbarActions]; refresh(); });
@@ -8766,6 +8774,7 @@ function applyPageLayout() {
     }
   });
   catalog.fields.forEach(field=>$$(field.selector,root).forEach(node=>node.classList.toggle('page-field-hidden',value.hiddenFields?.includes(field.key)||false)));
+  $$('.work-kanban[data-work-scroll="board"]', root).forEach(board => board.classList.toggle('work-kanban-five', $$(':scope > .kanban-column:not(.page-field-hidden)', board).length === 5));
   if(state.view==='work'||typeMeta[state.view]) {
     const columns=['minmax(180px, 2.2fr)',...['owner','status','due'].filter(key=>!value.hiddenFields?.includes(key)).map(()=>'minmax(100px, 1fr)')];
     $$('.record-table',root).forEach(row=>row.style.setProperty('--page-table-columns',columns.join(' ')));
