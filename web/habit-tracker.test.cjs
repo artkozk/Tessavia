@@ -19,6 +19,17 @@ test('anti habit labels distinguish missing data, clean days and excess', async 
  assert.equal(habitScheduleLabel({cadence:'weekly',periodTarget:3,periodMeasure:'days'}),'3 успешных дней за неделю');
  assert.equal(habitScheduleLabel({cadence:'monthly',periodTarget:300,periodMeasure:'volume',unit:'мин'}),'300 мин за месяц');
 });
+test('weekly list keeps seven aligned dates without inventing missed days before creation', async () => {
+ const {habitWeekDays}=await load();
+ const today={date:'2026-01-02',state:'success',checkin:{value:0},rule:{mode:'quit'}};
+ const result=habitWeekDays({today:today.date,startDate:'2026-01-01',days:[{date:'2026-01-01',state:'pending'},today]});
+ assert.equal(result.length,7);
+ assert.deepEqual(result.map(d=>d.date),['2025-12-27','2025-12-28','2025-12-29','2025-12-30','2025-12-31','2026-01-01','2026-01-02']);
+ assert.ok(result.slice(0,5).every(d=>d.state==='unavailable' && d.beforeStart));
+ assert.equal(result[5].state,'pending');
+ assert.equal(result[6],today);
+ assert.equal(result[6].checkin.value,0);
+});
 test('habit UI and modified queue parse and respect the production CSP', () => {
  new vm.Script(source.replace(/^export /gm,''));
  new vm.Script(fs.readFileSync(__dirname+'/outbox-ui.js','utf8').replace(/^import .*;$/gm,'').replace(/^export /gm,''));

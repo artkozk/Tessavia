@@ -1,4 +1,4 @@
-import { createHabitUI } from './habit-tracker.js?v=20260904-habits-3';
+import { createHabitUI } from './habit-tracker.js?v=20260904-habit-layout-2';
 import { createOutboxUI } from './outbox-ui.js?v=20260904-habits-3';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
