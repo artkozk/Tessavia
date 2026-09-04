@@ -21,6 +21,27 @@ async function fixture(options={}) {
 }
 const note = () => ({kind:'note',payload:{body:'Local text'},title:'Local text'});
 
+test('atomic batch order sends the parent first even when random keys sort files first',async()=>{
+  const ids=['z-parent','a-file','b-file'],sent=[];
+  const {queue}=await fixture({uuid:()=>ids.shift()||crypto.randomUUID(),send:async item=>{sent.push(item.id);return{id:'confirmed-'+item.id};}});
+  await queue.enqueue([note(),{kind:'note-attachment',payload:{}},{kind:'note-attachment',payload:{}}],1);
+  await queue.pump();assert.deepEqual(sent,['z-parent','a-file','b-file']);
+});
+
+test('a file arriving before its note retries 425 with its original key and Blob',async()=>{
+  let parentExists=false;const fileKeys=[];
+  const {queue,store,advance}=await fixture({send:async item=>{
+    if(item.kind==='note'){parentExists=true;return{id:'saved-note'};}
+    fileKeys.push(item.id);assert.equal(item.noteRequestKey,'parent-key');assert.equal(await item.blob.text(),'photo');
+    if(!parentExists)throw Object.assign(new Error('Parent pending'),{status:425});return{id:'saved-file'};
+  }});
+  await queue.enqueue([{kind:'note-attachment',noteRequestKey:'parent-key',blob:new Blob(['photo']),fileName:'photo.png',payload:{}}, {...note(),noteRequestKey:'parent-key'}],1);
+  await queue.pump();const pending=(await store.list(1)).find(item=>item.kind==='note-attachment');
+  assert.equal(pending.status,'queued');assert.equal(await pending.blob.text(),'photo');
+  advance(10000);await queue.pump();assert.equal(fileKeys.length,2);assert.equal(fileKeys[0],fileKeys[1]);
+  assert.ok((await store.list(1)).every(item=>item.status==='confirmed'));
+});
+
 test('durable enqueue waits for commit and propagates quota failure', async () => {
   const commit=deferred();const {queue}=await fixture({store:{...memoryStore(),addMany:()=>commit.promise}});
   let cleared=false;const write=queue.enqueue([note()],1).then(()=>{cleared=true;});

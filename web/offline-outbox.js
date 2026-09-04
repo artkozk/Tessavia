@@ -50,7 +50,7 @@ export function createOutboxQueue({ store, verifyOwner, send, changed = () => {}
     setOwner(value) { if (owner !== value) { owner = value; epoch++; } notify(); },
     async enqueue(entries, expectedOwner) {
       if (!expectedOwner || owner !== expectedOwner) throw new Error('Аккаунт изменился. Вернитесь в исходный аккаунт; текст остался в форме.');
-      const items = entries.map(entry => ({ ...structuredClone(entry), owner: expectedOwner, id: uuid(), status: 'queued', attempts: 0, nextAt: 0, leaseUntil: 0, createdAt: now(), error: '' }));
+      const items = entries.map((entry,sequence) => ({ ...structuredClone(entry), owner: expectedOwner, id: uuid(), status: 'queued', attempts: 0, nextAt: 0, leaseUntil: 0, createdAt: now(), sequence, error: '' }));
       await store.addMany(items); // Resolve only on transaction commit, including all Blobs.
       notify();
       return items;
@@ -72,7 +72,9 @@ export function createOutboxQueue({ store, verifyOwner, send, changed = () => {}
       running = true;
       const user = owner, version = epoch;
       try {
-        const pending = (await store.list(user)).filter(eligible).sort((a,b) => a.createdAt-b.createdAt || a.id.localeCompare(b.id));
+        // Preserve batch order at equal timestamps: create the note before its
+        // files instead of waiting for a retry after a random UUID sort.
+        const pending = (await store.list(user)).filter(eligible).sort((a,b) => a.createdAt-b.createdAt || (a.sequence||0)-(b.sequence||0) || a.id.localeCompare(b.id));
         if (!pending.length || !active(user,version)) return;
         await verifyOwner(user);
         for (const candidate of pending.slice(0,20)) {

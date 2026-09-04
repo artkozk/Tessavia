@@ -27,13 +27,13 @@ type PersonalNoteTemplate struct {
 }
 
 const personalNoteSelect = `SELECT n.id,n.title,n.body,n.pinned,n.created_at,n.updated_at,n.scheduled_date,n.in_inbox,n.title_generated,
- COALESCE(n.folder_id,''),COALESCE(f.name,''),n.tags_json,n.daily_date FROM personal_notes n
+ COALESCE(n.folder_id,''),COALESCE(f.name,''),n.tags_json,n.daily_date,n.archived_at FROM personal_notes n
  LEFT JOIN personal_note_folders f ON f.id=n.folder_id AND f.owner_id=n.owner_id AND f.archived_at IS NULL`
 
 func scanPersonalNote(row recordScanner) (PersonalNote, error) {
 	var note PersonalNote
 	var tags string
-	err := row.Scan(&note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate, &note.InInbox, &note.TitleGenerated, &note.FolderID, &note.FolderName, &tags, &note.DailyDate)
+	err := row.Scan(&note.ID, &note.Title, &note.Body, &note.Pinned, &note.CreatedAt, &note.UpdatedAt, &note.ScheduledDate, &note.InInbox, &note.TitleGenerated, &note.FolderID, &note.FolderName, &tags, &note.DailyDate, &note.ArchivedAt)
 	if err == nil {
 		err = json.Unmarshal([]byte(tags), &note.Tags)
 	}

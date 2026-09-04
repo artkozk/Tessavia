@@ -1,7 +1,8 @@
-import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-organize-2';
+import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
+import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-habit-layout-2';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260904-habits-3';
+import { createOutboxUI } from './outbox-ui.js?v=20260904-note-media-3';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1168,10 +1169,11 @@ offlineOutbox = createOutboxUI({
   openDialog: openModal, closeDialog: requestDialogClose, newPersonal: openPersonalEditor,
   escapeHTML, toast, onAuthRequired: showAuth,
   onOfflineIdentity: account => { state.me = account; state.offlineMode = true; },
-  onConfirmed: (item) => {
+  onConfirmed: (item,result) => {
     if (item.owner !== state.me?.id || state.offlineMode) return;
     if (item.kind === 'habit-checkin') habitUI.confirmed(item.habit,item.date);
-    if (['note','plan','habit-checkin'].includes(item.kind)) void loadPersonal({ force: true });
+    if (item.kind === 'note-attachment') noteMediaUI.confirmed(item,result);
+    if (['note','plan','habit-checkin','note-attachment'].includes(item.kind)) void loadPersonal({ force: true });
     else if (item.workspace === state.activeWorkspaceId && item.thread === state.activeChatThreadId) void loadChatThread(item.thread,true);
   },
 });
@@ -2586,7 +2588,8 @@ function renderPlanRow(plan, links) {
   return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
-const noteLibraryUI = createNoteLibraryUI({state, api, escapeHTML, icon, renderNoteCard, renderPersonal, loadPersonal, openPersonalEditor, localISODate, openModal, closeDialog: requestDialogClose, enhanceSelects, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, askChoice, toast});
+const noteMediaUI = createNoteMediaUI({state, api, outbox: () => offlineOutbox, escapeHTML, icon, renderMarkdown, openModal, closeDialog: requestDialogClose, flushDrafts: flushDialogDrafts, loadPersonal, openPersonalEditor, toast, askChoice});
+const noteLibraryUI = createNoteLibraryUI({state, api, escapeHTML, icon, renderNoteCard, renderPersonal, loadPersonal, openPersonalEditor, localISODate, openModal, closeDialog: requestDialogClose, enhanceSelects, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, openArchive: () => noteMediaUI.openArchive(), askChoice, toast});
 const habitUI = createHabitUI({ outbox: () => offlineOutbox, escapeHTML, icon, api, state, toast, loadPersonal, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, findHabit: id => findPersonalItem('habit', id), openLinks: openPersonalLinkDialog, renderPersonal });
 function renderHabitRow(habit, links, compact = false) { return habitUI.renderRow(habit, compact); }
 
@@ -2756,11 +2759,16 @@ function openPersonalEditor(kind, id = '', context = {}) {
     $('.personal-note-sheet', editorForm).insertAdjacentHTML('afterend', renderPersonalLinkChips(personalLinksFor(state.personal.links, kind, id)));
     $$('[data-personal-target-type]', editorForm).forEach((button) => button.addEventListener('click', async () => { if (await requestDialogClose(dialog)) openPersonalTarget(button.dataset.personalTargetType, button.dataset.personalTargetId); }));
   }
-  let saving = false;
+  const noteMedia = kind === 'note' ? noteMediaUI.bindEditor(editorForm,item) : null;
+  let saving = false, preparing = false;
   editorForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (saving) return;
-    const form = new FormData(event.currentTarget);
+    if (saving || preparing) return;
+    preparing = true;
+    let mediaCreation = {};
+    try { if (noteMedia && !item) mediaCreation = await noteMedia.creation(); } catch (error) { toast(error.message,true); return; } finally { preparing = false; }
+    if (editorOwner !== state.me?.id || !editorForm.isConnected || !dialog.open) return;
+    const form = new FormData(editorForm);
     let payload;
     if (kind === 'note') payload = { folderId: form.get('folderId') || '', tags: parseNoteTags(form.get('noteTags')), title: form.get('title'), ...(item ? { expectedUpdatedAt: item.updatedAt } : {}), body: form.get('body'), scheduledDate: form.get('scheduledDate') || '', pinned: form.get('pinned') === 'on', ...(!item && context.planId ? { linkPlanId: context.planId } : {}) };
     else if (kind === 'plan') {
@@ -2772,19 +2780,21 @@ function openPersonalEditor(kind, id = '', context = {}) {
     else if (kind === 'project') payload = { title: form.get('title'), notes: form.get('notes'), colorKey: form.get('colorKey'), ...(item ? { status: form.get('status'), expectedUpdatedAt: item.updatedAt } : {}) };
     else if (kind === 'goal') payload = { title: form.get('title'), notes: form.get('notes'), projectId: form.get('projectId'), horizon: form.get('horizon'), startDate: form.get('startDate'), endDate: form.get('endDate'), progress: Number(form.get('progress')), plannedMinutes: Number(form.get('plannedMinutes')), actualMinutes: Number(form.get('actualMinutes')), ...(item ? { status: form.get('status'), expectedUpdatedAt: item.updatedAt } : {}) };
     else payload = { title: form.get('title'), scheduleKind: form.get('scheduleKind'), targetPerWeek: Number(form.get('targetPerWeek')), unit: form.get('unit'), ...(item ? {} : { startDate: form.get('startDate') }) };
+    if (kind === 'note' && !String(payload.title || '').trim() && !String(payload.body || '').trim() && mediaCreation.files?.length) payload.title = mediaCreation.files[0].name;
     if (kind !== 'habit' && !String(payload.title || '').trim() && !String(kind === 'note' ? payload.body : payload.notes || '').trim()) {
       toast('Напишите текст или укажите название', true);
       $('.markdown-rich-editor', editorForm)?.focus();
       return;
     }
-    const submit = $('button[type="submit"]', event.currentTarget);
+    const submit = $('button[type="submit"]', editorForm);
     saving = true;
     submit.disabled = true;
     try {
       if (!item && (kind === 'note' || kind === 'plan')) {
         editorForm.inert = true;
         const snapshot = JSON.stringify(workingDraftValues(editorForm));
-        await offlineOutbox.addPersonal(kind, payload, editorOwner);
+        await offlineOutbox.addPersonal(kind, payload, editorOwner, mediaCreation);
+        await noteMedia?.clear();
         const current = editorOwner === state.me?.id && editorForm.isConnected && dialog.open && snapshot === JSON.stringify(workingDraftValues(editorForm));
         if (current) { clearWorkingDraftFor(editorForm); await requestDialogClose(dialog); }
         if (editorOwner === state.me?.id) toastAction('Сохранено в этом браузере. Ожидает отправки.', 'Очередь', () => offlineOutbox.open());
@@ -2807,8 +2817,8 @@ function openPersonalEditor(kind, id = '', context = {}) {
   });
   $('[data-archive-personal]', dialog)?.addEventListener('click', async () => {
     try {
-      await api(`/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}/${item.id}`, { method: 'DELETE' });
-      clearWorkingDraftFor(editorForm);
+      await api(`/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}/${item.id}`, { method: 'DELETE', ...(kind === 'note' ? {body:JSON.stringify({expectedUpdatedAt:item.updatedAt})} : {}) });
+      if (kind !== 'note') clearWorkingDraftFor(editorForm);
       await requestDialogClose(dialog);
       await loadPersonal({ force: true });
       toast(`${title} ${['plan', 'project'].includes(kind) ? 'перенесён' : 'перенесена'} в архив`);

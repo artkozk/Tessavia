@@ -28,6 +28,7 @@ type PersonalSettings struct {
 }
 
 type PersonalNote struct {
+	ArchivedAt     *string  `json:"archivedAt"`
 	FolderID       string   `json:"folderId"`
 	FolderName     string   `json:"folderName"`
 	Tags           []string `json:"tags"`
@@ -619,7 +620,36 @@ func (s *Server) handleUpdatePersonalNote(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleArchivePersonalNote(w http.ResponseWriter, r *http.Request) {
-	s.archivePersonalEntity(w, r, "note", `UPDATE personal_notes SET archived_at = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND archived_at IS NULL`, "Заметка не найдена")
+	var input struct {
+		ExpectedUpdatedAt string `json:"expectedUpdatedAt"`
+	}
+	if r.ContentLength != 0 && !decodeJSON(w, r, &input) {
+		return
+	}
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, 500, "Не удалось открыть заметку")
+		return
+	}
+	defer tx.Rollback()
+	var version string
+	if tx.QueryRowContext(r.Context(), `SELECT updated_at FROM personal_notes WHERE id=? AND owner_id=? AND archived_at IS NULL`, r.PathValue("id"), currentUser(r).ID).Scan(&version) != nil {
+		writeError(w, 404, "Заметка не найдена")
+		return
+	}
+	if input.ExpectedUpdatedAt != "" && input.ExpectedUpdatedAt != version {
+		writeError(w, 409, "Заметка изменилась. Обновите её перед архивированием")
+		return
+	}
+	now := nowText()
+	if _, err = tx.ExecContext(r.Context(), `UPDATE personal_notes SET archived_at=?,updated_at=? WHERE id=? AND owner_id=?`, now, now, r.PathValue("id"), currentUser(r).ID); err != nil || tx.Commit() != nil {
+		writeError(w, 500, "Не удалось перенести в архив")
+		return
+	}
+	// Links stay active but are hidden by personalTargetTitle while the note is
+	// archived. Restoring the same ID makes them visible without guessing which
+	// previously removed links the user wanted to restore.
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request) {

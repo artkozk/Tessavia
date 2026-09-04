@@ -1,8 +1,9 @@
-const CACHE = 'tessavie-shell-20260904-note-organize-2';
+const CACHE = 'tessavie-shell-20260904-note-media-3';
 const ASSETS = [
-  '/', '/app.js?v=20260904-note-organize-2', '/styles.css?v=20260904-note-organize-2',
-  '/outbox-ui.js?v=20260904-habits-3', '/offline-outbox.js?v=20260903-offline-outbox-2',
-  '/note-library.js?v=20260904-note-organize-2',
+  '/', '/app.js?v=20260904-note-media-3', '/styles.css?v=20260904-note-media-3',
+  '/outbox-ui.js?v=20260904-note-media-3', '/offline-outbox.js?v=20260903-offline-outbox-3',
+  '/note-media.js?v=20260904-note-media-3',
+  '/note-library.js?v=20260904-note-media-3',
   '/bulk-work.js?v=20260904-bulk-actions-3',
   '/habit-tracker.js?v=20260904-habit-layout-2',
   '/graph-layout-state.js?v=20260903-graph-layouts-1', '/manifest.webmanifest',
