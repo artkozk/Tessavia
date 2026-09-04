@@ -68,6 +68,8 @@ func NewServer(store *Store, config Config) http.Handler {
 }
 
 func (s *Server) routes() {
+	s.mux.Handle("GET /api/personal/habits/{id}/reminder", s.requireAuth(http.HandlerFunc(s.handleHabitReminderPreference)))
+	s.mux.Handle("PUT /api/personal/habits/{id}/reminder", s.requireAuth(http.HandlerFunc(s.handleHabitReminderPreference)))
 	s.mux.Handle("GET /api/personal/reminders", s.requireAuth(http.HandlerFunc(s.handlePersonalReminders)))
 	s.mux.Handle("GET /api/personal/plans/{id}/reminder", s.requireAuth(http.HandlerFunc(s.handlePersonalPlanReminder)))
 	s.mux.Handle("PUT /api/personal/plans/{id}/reminder", s.requireAuth(http.HandlerFunc(s.handlePersonalPlanReminder)))

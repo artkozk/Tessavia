@@ -24,7 +24,8 @@ var errNotificationFilter = errors.New("invalid notification filter")
 // Notifications must not retain access to a project's content after access is revoked.
 const notificationAccess = `n.user_id = ? AND ((n.entity_type='personal_plan' AND EXISTS (
  SELECT 1 FROM personal_plans p WHERE p.id=n.entity_id AND p.owner_id=n.user_id AND p.status<>'archived'))
- OR (COALESCE(n.entity_type,'')<>'personal_plan' AND (COALESCE(n.entity_id, '') = '' OR EXISTS (
+ OR (n.entity_type='personal_habit' AND EXISTS(SELECT 1 FROM personal_habits h WHERE h.id=n.entity_id AND h.owner_id=n.user_id AND h.archived_at IS NULL))
+ OR (COALESCE(n.entity_type,'') NOT IN ('personal_plan','personal_habit') AND (COALESCE(n.entity_id, '') = '' OR EXISTS (
 	SELECT 1 FROM records rec JOIN workspace_members member ON member.workspace_id = rec.workspace_id
 	JOIN workspaces w ON w.id = rec.workspace_id
 	WHERE rec.id = n.entity_id AND member.user_id = n.user_id AND member.status = 'active'

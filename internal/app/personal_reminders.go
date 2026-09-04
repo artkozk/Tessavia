@@ -166,7 +166,12 @@ func (s *Server) handlePersonalReminders(w http.ResponseWriter, r *http.Request)
 	if hasMore {
 		items = items[:20]
 	}
-	writeJSON(w, 200, map[string]any{"items": items, "hasMore": hasMore, "enabled": p.PersonalEnabled})
+	habits, moreHabits, err := loadTodayHabitReminders(r.Context(), s.store.db, owner)
+	if err != nil {
+		writeError(w, 500, "Не удалось прочитать напоминания привычек")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"items": items, "hasMore": hasMore, "enabled": p.PersonalEnabled, "habits": habits, "hasMoreHabits": moreHabits, "habitsEnabled": p.HabitsEnabled})
 }
 
 func deliverPersonalPlanReminders(ctx context.Context, store *Store, now time.Time) error {

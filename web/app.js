@@ -1,5 +1,6 @@
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260904-personal-reminders-2';
-import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-personal-reminders-2';
+import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260904-habit-reminders-1';
+import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-habit-reminders-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
 import { createPersonalTodayUI } from './personal-today.js?v=20260904-personal-day-3';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
@@ -9,7 +10,7 @@ import { createLifeMapUI } from './life-map.js?v=20260904-personal-batch-3';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI } from './habit-tracker.js?v=20260904-habit-layout-2';
+import { createHabitUI } from './habit-tracker.js?v=20260904-habit-reminders-1';
 import { createReadingUI } from './reading.js?v=20260904-reading-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
 import { createOutboxUI } from './outbox-ui.js?v=20260904-first-use-4';
@@ -2573,7 +2574,7 @@ function renderPlanRow(plan, links) {
   return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
-const personalRemindersUI=createPersonalRemindersUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,renderPersonal,openSource:openPersonalReminderSource,openPlans:()=>navigateToView('personal',{personalTab:'plans'}),refreshNotifications:loadNotificationInbox});
+const personalRemindersUI=createPersonalRemindersUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,renderPersonal,openSource:openPersonalReminderSource,openHabit:openHabitReminderSource,openPlans:()=>navigateToView('personal',{personalTab:'plans'}),refreshNotifications:loadNotificationInbox});
 async function openPersonalReminderSource(id){const owner=state.me?.id;await navigateToView('personal',{personalTab:'today'});if(owner!==state.me?.id)return;await loadPersonal({force:true});if(owner===state.me?.id)openPersonalPlanDetails(id);}
 const reminderSettingsUI=createReminderSettingsUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
 const personalTodayUI=createPersonalTodayUI({state,api,escapeHTML,icon,renderPersonal,renderPlanRow,formatMinutes,openPlan:openPersonalPlanDetails,togglePlan:togglePersonalPlan,openDay:openDayWorkspace,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
@@ -2585,7 +2586,14 @@ const personalInboxUI=createPersonalInboxUI({state,api,outbox:()=>offlineOutbox,
 const personalPublishUI = createPersonalPublishUI({state,api,escapeHTML,icon,renderMarkdown,openModal,closeDialog:requestDialogClose,flushDrafts:flushDialogDrafts,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,toast,openCopy:async(value,owner)=>{ if(owner!==state.me?.id)return; if(await switchWorkspace(value.workspaceId) && owner===state.me?.id)await openRecord(value.recordId); }});
 const noteMediaUI = createNoteMediaUI({state, api, outbox: () => offlineOutbox, escapeHTML, icon, renderMarkdown, openModal, closeDialog: requestDialogClose, flushDrafts: flushDialogDrafts, loadPersonal, openPersonalEditor, toast, askChoice});
 const noteLibraryUI = createNoteLibraryUI({state, api, escapeHTML, icon, renderNoteCard, renderPersonal, loadPersonal, openPersonalEditor, localISODate, openModal, closeDialog: requestDialogClose, enhanceSelects, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, openArchive: () => noteMediaUI.openArchive(), askChoice, toast});
-const habitUI = createHabitUI({ outbox: () => offlineOutbox, escapeHTML, icon, api, state, toast, loadPersonal, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, findHabit: id => findPersonalItem('habit', id), openLinks: openPersonalLinkDialog, renderPersonal });
+async function openHabitReminderSource(id) {
+  const owner=state.me?.id;if(!owner)return;
+  await navigateToView('personal',{personalTab:'habits'});
+  await loadPersonal({force:true});if(owner!==state.me?.id)return;
+  await habitUI.open(id);
+}
+const habitReminderUI=createHabitReminderUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,loadPersonal});
+const habitUI = createHabitUI({ openReminder:id=>habitReminderUI.open(id), outbox: () => offlineOutbox, escapeHTML, icon, api, state, toast, loadPersonal, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, findHabit: id => findPersonalItem('habit', id), openLinks: openPersonalLinkDialog, renderPersonal });
 const readingUI = createReadingUI({ escapeHTML, icon, api, state, toast, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, loadData });
 function renderHabitRow(habit, links, compact = false) { return habitUI.renderRow(habit, compact); }
 
@@ -7946,6 +7954,7 @@ function renderNotifications() {
     try {
       await api(`/api/notifications/${item.id}/read`, { method: 'POST' });
       if(item.entityType==='personal_plan'&&item.entityId){await openPersonalReminderSource(item.entityId);}
+      else if(item.entityType==='personal_habit'&&item.entityId){await openHabitReminderSource(item.entityId);}
       else if (item.entityId) {
         if (item.workspaceId && item.workspaceId !== state.activeWorkspaceId) await switchWorkspace(item.workspaceId, { keepView: true });
         await openRecord(item.entityId);
