@@ -260,6 +260,8 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/section-definitions/reorder", s.requireAuth(http.HandlerFunc(s.handleReorderDefinitions)))
 	s.mux.Handle("PATCH /api/section-definitions/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdateDefinition)))
 	s.mux.Handle("GET /api/notifications", s.requireAuth(http.HandlerFunc(s.handleNotifications)))
+	s.mux.Handle("GET /api/me/reminders", s.requireAuth(http.HandlerFunc(s.handleReminderPreferences)))
+	s.mux.Handle("PUT /api/me/reminders", s.requireAuth(http.HandlerFunc(s.handleReminderPreferences)))
 	s.mux.Handle("GET /api/notifications/inbox", s.requireAuth(http.HandlerFunc(s.handleNotificationInbox)))
 	s.mux.Handle("POST /api/notifications/{id}/unread", s.requireAuth(http.HandlerFunc(s.handleUnreadNotification)))
 	s.mux.Handle("POST /api/notifications/read-all", s.requireAuth(http.HandlerFunc(s.handleReadAllNotifications)))

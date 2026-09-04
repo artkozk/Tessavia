@@ -4659,3 +4659,11 @@ body:has(.calendar-expanded) { overflow: hidden; }
   .today-settings-dialog .form-actions { flex-wrap: wrap; }
   .today-settings-dialog .form-actions > button { max-width: 100%; white-space: normal; }
 }
+
+.reminder-project-list { display: grid; gap: 10px; max-height: 260px; overflow-y: auto; margin-top: 12px; }
+.reminder-project-list .check { align-items: flex-start; }
+.reminder-project-list .check span { min-width: 0; overflow-wrap: anywhere; }
+.today-settings-dialog form label.check { display: flex; align-items: flex-start; gap: 10px; }
+.today-settings-dialog form label.check input { width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; margin-top: 1px; }
+.reminder-project-list [hidden] { display: none; }
+.notification-heading { flex-wrap: wrap; }

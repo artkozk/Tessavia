@@ -57,26 +57,21 @@ func deadlineWindow(now, due time.Time, loc *time.Location) (kind, title string,
 }
 
 func deliverDeadlineReminders(ctx context.Context, store *Store, now time.Time) error {
-	// Preserve the existing delivery zone until account rules are implemented.
-	loc, err := time.LoadLocation("Europe/Moscow")
-	if err != nil {
-		return err
-	}
-	local := now.In(loc)
-	upper := time.Date(local.Year(), local.Month(), local.Day()+2, 0, 0, 0, 0, loc)
-	rows, err := store.db.QueryContext(ctx, `SELECT r.id,r.type,r.business_kind,r.subtype,r.record_kind,r.title,r.owner_id,r.due_at,r.updated_at
+	// Broad UTC bound covers tomorrow in every supported zone; the exact window is per owner.
+	upper := now.Add(72 * time.Hour)
+	rows, err := store.db.QueryContext(ctx, `SELECT r.id,r.type,r.business_kind,r.subtype,r.record_kind,r.title,r.owner_id,r.due_at,r.updated_at,r.workspace_id
  FROM records r WHERE r.owner_id IS NOT NULL AND julianday(r.due_at)<julianday(?) AND `+reminderActiveRecord+` AND `+reminderRecordAccess+` ORDER BY r.due_at,r.id`, upper.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return err
 	}
 	type source struct {
-		id, typ, business, subtype, recordKind, title, due, version string
-		owner                                                       int64
+		id, typ, business, subtype, recordKind, title, due, version, workspace string
+		owner                                                                  int64
 	}
 	candidates := []source{}
 	for rows.Next() {
 		var item source
-		if err = rows.Scan(&item.id, &item.typ, &item.business, &item.subtype, &item.recordKind, &item.title, &item.owner, &item.due, &item.version); err != nil {
+		if err = rows.Scan(&item.id, &item.typ, &item.business, &item.subtype, &item.recordKind, &item.title, &item.owner, &item.due, &item.version, &item.workspace); err != nil {
 			rows.Close()
 			return err
 		}
@@ -88,7 +83,7 @@ func deliverDeadlineReminders(ctx context.Context, store *Store, now time.Time) 
 		return err
 	}
 	// Skip already delivered candidates without a write transaction per record.
-	dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+	dayStart := now.UTC().Add(-48 * time.Hour).Truncate(24 * time.Hour)
 	seen := map[string]bool{}
 	delivered, err := store.db.QueryContext(ctx, `SELECT delivery_key FROM notification_deliveries WHERE created_at>=?`, dayStart.UTC().Format(time.RFC3339Nano))
 	if err != nil {
@@ -108,6 +103,8 @@ func deliverDeadlineReminders(ctx context.Context, store *Store, now time.Time) 
 		return err
 	}
 	created := 0
+	preferences := map[int64]reminderPreferences{}
+	projects := map[string]bool{}
 	for _, item := range candidates {
 		if err = ctx.Err(); err != nil {
 			return err
@@ -116,12 +113,46 @@ func deliverDeadlineReminders(ctx context.Context, store *Store, now time.Time) 
 		if parseErr != nil {
 			continue
 		}
+		p, loaded := preferences[item.owner]
+		if !loaded {
+			p, err = loadReminderPreferences(ctx, store.db, item.owner)
+			if err != nil {
+				return err
+			}
+			preferences[item.owner] = p
+		}
+		if !p.DeadlineEnabled {
+			continue
+		}
+		loc, err := time.LoadLocation(p.Timezone)
+		if err != nil {
+			return err
+		}
+		if reminderQuiet(p, now, loc) {
+			continue
+		}
+		local := now.In(loc)
 		kind, title, until := deadlineWindow(now, due, loc)
 		if kind == "" {
 			continue
 		}
 		key := fmt.Sprintf("deadline-v2:%s:%d:%s:%s:%s", item.id, item.owner, due.UTC().Format(time.RFC3339Nano), kind, local.Format("2006-01-02"))
+		if p.Timezone != "Europe/Moscow" {
+			key += ":" + p.Timezone
+		}
 		if seen[key] {
+			continue
+		}
+		projectKey := fmt.Sprintf("%d:%s", item.owner, item.workspace)
+		enabled, checked := projects[projectKey]
+		if !checked {
+			enabled, err = reminderProjectEnabled(ctx, store.db, item.owner, item.workspace)
+			if err != nil {
+				return err
+			}
+			projects[projectKey] = enabled
+		}
+		if !enabled {
 			continue
 		}
 		made, err := func() (bool, error) {
@@ -130,6 +161,17 @@ func deliverDeadlineReminders(ctx context.Context, store *Store, now time.Time) 
 				return false, err
 			}
 			defer tx.Rollback()
+			current, err := loadReminderPreferences(ctx, tx, item.owner)
+			if err != nil {
+				return false, err
+			}
+			if current.UpdatedAt != p.UpdatedAt || !current.DeadlineEnabled || reminderQuiet(current, now, loc) {
+				return false, nil
+			}
+			enabled, err := reminderProjectEnabled(ctx, tx, item.owner, item.workspace)
+			if err != nil || !enabled {
+				return false, err
+			}
 			var fresh int
 			err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM records r WHERE r.id=? AND r.owner_id=? AND r.due_at=? AND r.updated_at=? AND `+reminderActiveRecord+` AND `+reminderRecordAccess, item.id, item.owner, item.due, item.version).Scan(&fresh)
 			if err != nil || fresh == 0 {
@@ -156,7 +198,7 @@ func deliverDeadlineReminders(ctx context.Context, store *Store, now time.Time) 
 			if _, err = tx.ExecContext(ctx, `INSERT INTO notifications(id,user_id,type,title,body,entity_type,entity_id,created_at) VALUES(?,?,'deadline',?,?,?,?,?)`, id, item.owner, title, body, typ, item.id, stamp); err != nil {
 				return false, err
 			}
-			if _, err = tx.ExecContext(ctx, `INSERT INTO deadline_delivery_sources(notification_id,due_at,kind,valid_until) VALUES(?,?,?,?)`, id, due.UTC().Format(time.RFC3339Nano), kind, until.UTC().Format(time.RFC3339Nano)); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO deadline_delivery_sources(notification_id,due_at,kind,valid_until,timezone) VALUES(?,?,?,?,?)`, id, due.UTC().Format(time.RFC3339Nano), kind, until.UTC().Format(time.RFC3339Nano), p.Timezone); err != nil {
 				return false, err
 			}
 			if _, err = tx.ExecContext(ctx, `INSERT INTO notification_deliveries(delivery_key,notification_id,created_at) VALUES(?,?,?)`, key, id, stamp); err != nil {
@@ -181,4 +223,5 @@ func deliverDeadlineReminders(ctx context.Context, store *Store, now time.Time) 
 const notificationFresh = `(n.type<>'deadline' OR EXISTS (
  SELECT 1 FROM deadline_delivery_sources ds JOIN records r ON r.id=n.entity_id
  WHERE ds.notification_id=n.id AND r.owner_id=n.user_id AND ` + reminderActiveRecord + `
+ AND ds.timezone=COALESCE((SELECT timezone FROM reminder_preferences WHERE user_id=n.user_id),'Europe/Moscow')
  AND julianday(r.due_at)=julianday(ds.due_at) AND julianday(ds.valid_until)>julianday('now')))`
