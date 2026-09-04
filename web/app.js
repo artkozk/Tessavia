@@ -1,3 +1,5 @@
+import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
+import { createLifeMapUI } from './life-map.js?v=20260904-personal-batch-3';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
@@ -2426,7 +2428,7 @@ function renderPersonal() {
   const openPlans = data.plans.filter((plan) => plan.status === 'planned');
   const doneToday = data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.state === 'success')).length;
   const inboxCount = data.notes.filter(note => note.inInbox).length;
-  const tabs = [['today', 'Сегодня'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['projects', 'Проекты'], ['goals', 'Цели'], ['notes', 'Заметки'], ['plans', 'Дела'], ['habits', 'Привычки']];
+  const tabs = [['today', 'Сегодня'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['projects', 'Проекты'], ['goals', 'Цели'], ['notes', 'Заметки'], ['plans', 'Дела'], ['habits', 'Привычки'], ['life', 'Карта времени']];
   $('#main-content').innerHTML = `
     <div class="page-heading personal-heading">
       <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>Личное пространство</h1><p>${escapeHTML(state.me.displayName || state.me.username)}</p></div>
@@ -2446,6 +2448,7 @@ function renderPersonalCreateMenu() {
 }
 
 function renderPersonalTab(data) {
+  if (state.personalTab === 'life') return lifeMapUI.render(data.settings);
   if (state.personalTab === 'inbox') return renderPersonalInbox(data);
   if (state.personalTab === 'projects') return renderPersonalProjects(data);
   if (state.personalTab === 'goals') return renderPersonalGoals(data);
@@ -2589,21 +2592,14 @@ function renderPlanRow(plan, links) {
   return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
+const personalPublishUI = createPersonalPublishUI({state,api,escapeHTML,icon,renderMarkdown,openModal,closeDialog:requestDialogClose,flushDrafts:flushDialogDrafts,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,toast,openCopy:async(value,owner)=>{ if(owner!==state.me?.id)return; if(await switchWorkspace(value.workspaceId) && owner===state.me?.id)await openRecord(value.recordId); }});
 const noteMediaUI = createNoteMediaUI({state, api, outbox: () => offlineOutbox, escapeHTML, icon, renderMarkdown, openModal, closeDialog: requestDialogClose, flushDrafts: flushDialogDrafts, loadPersonal, openPersonalEditor, toast, askChoice});
 const noteLibraryUI = createNoteLibraryUI({state, api, escapeHTML, icon, renderNoteCard, renderPersonal, loadPersonal, openPersonalEditor, localISODate, openModal, closeDialog: requestDialogClose, enhanceSelects, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, openArchive: () => noteMediaUI.openArchive(), askChoice, toast});
 const habitUI = createHabitUI({ outbox: () => offlineOutbox, escapeHTML, icon, api, state, toast, loadPersonal, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, flushDrafts: flushDialogDrafts, findHabit: id => findPersonalItem('habit', id), openLinks: openPersonalLinkDialog, renderPersonal });
 function renderHabitRow(habit, links, compact = false) { return habitUI.renderRow(habit, compact); }
 
-function renderLifeMap(settings) {
-  if (!settings.birthDate) return `<div class="section-heading"><div><p class="eyebrow">Карта времени</p><h2>Жизнь в месяцах</h2></div></div><div class="life-empty"><span class="life-empty-dots">${Array.from({ length: 48 }, () => '<i></i>').join('')}</span><p>Укажите дату рождения и горизонт жизни в профиле.</p><button type="button" class="secondary" data-open-own-profile>${icon('edit')} Настроить</button></div>`;
-  const born = new Date(`${settings.birthDate}T12:00:00`);
-  const now = new Date();
-  const lived = Math.max(0, (now.getFullYear() - born.getFullYear()) * 12 + now.getMonth() - born.getMonth());
-  const total = Math.max(12, settings.lifeExpectancyYears * 12);
-  const filled = Math.min(total, lived);
-  const percent = Math.min(100, Math.round(filled * 100 / total));
-  return `<div class="section-heading"><div><p class="eyebrow">Карта времени</p><h2>Жизнь в месяцах</h2></div><strong class="life-percent">${percent}%</strong></div><div class="life-meta"><span><b>${filled}</b> прожито</span><span><b>${Math.max(0, total - filled)}</b> впереди</span><button type="button" class="text-button" data-open-own-profile>Настроить</button></div><div class="life-grid" style="--life-total:${total}" role="img" aria-label="${filled} из ${total} месяцев">${Array.from({ length: total }, (_, index) => `<i class="${index < filled ? 'lived' : ''}" aria-hidden="true"></i>`).join('')}</div>`;
-}
+const lifeMapUI = createLifeMapUI({ state, api, escapeHTML, icon, localISODate, renderPersonal, toast, bindWorkingDraft, clearWorkingDraftFor });
+function renderLifeMap(settings) { return lifeMapUI.render(settings, true); }
 
 function personalLinksFor(links, sourceType, sourceID) {
   const result = [], seen = new Set();
@@ -2642,6 +2638,7 @@ function lastDates(count) {
 }
 
 function bindPersonalInteractions() {
+  lifeMapUI.bind();
   noteLibraryUI.bind();
   $$('[data-personal-capture]').forEach(button => button.addEventListener('click', openPersonalCapture));
   $$('[data-inbox-keep-note]').forEach(button => button.addEventListener('click', () => setPersonalInboxState(button.dataset.inboxKeepNote, false, button)));
@@ -2742,7 +2739,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
   const titleField = ['habit', 'project', 'goal'].includes(kind)
     ? `<label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}" placeholder="Например: читать 20 минут"></label>`
     : '';
-  content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind !== 'habit' ? 'personal-note-form' : ''}" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
+  content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind !== 'habit' ? 'personal-note-form' : ''}" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="secondary" data-publish-personal>Опубликовать в проект</button><button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
   $$('[data-close-personal]', dialog).forEach((button) => button.addEventListener('click', async () => { if (await requestDialogClose(dialog) && context.planId) openPersonalPlanDetails(context.planId); }));
   const editorForm = $('#personal-editor-form', dialog);
   const editorOwner = state.me.id;
@@ -2761,6 +2758,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
     $$('[data-personal-target-type]', editorForm).forEach((button) => button.addEventListener('click', async () => { if (await requestDialogClose(dialog)) openPersonalTarget(button.dataset.personalTargetType, button.dataset.personalTargetId); }));
   }
   const noteMedia = kind === 'note' ? noteMediaUI.bindEditor(editorForm,item) : null;
+  $('[data-publish-personal]',editorForm)?.addEventListener('click',()=>{ if(editorOwner===state.me?.id && flushDialogDrafts(dialog))personalPublishUI.open(kind,id); });
   let saving = false, preparing = false;
   editorForm.addEventListener('submit', async (event) => {
     event.preventDefault();

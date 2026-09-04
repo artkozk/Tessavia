@@ -4533,3 +4533,60 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .note-file-row a:hover, .note-media-dialog a.secondary:hover { color: var(--accent); }
 .note-file-row small { color: var(--muted); font-size: 12px; font-weight: 400; }
 .note-file-row > button:first-child { display: flex; align-items: center; gap: 8px; }
+
+/* Time map follows the personal notebook's quiet palette and bounded width. */
+.life-map-panel { min-width: 0; padding: 22px 0; border-top: 1px solid var(--line); }
+.life-map-full { max-width: 900px; }
+.life-map-summary { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.life-map-summary strong { font-size: 30px; font-weight: 600; }
+.life-map-summary span, .life-map-legend { color: var(--muted); font-size: 13px; }
+.life-map-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin: 24px 0 12px; }
+.life-map-legend { display: flex; flex-wrap: wrap; gap: 18px; margin: 16px 0; }
+.life-map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.life-map-legend i, .life-period-grid i { display: block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line); }
+.life-map-legend i.past, .life-period-grid i.past { background: var(--muted); opacity: .55; }
+.life-map-legend i.current, .life-period-grid i.current { background: var(--accent); border-color: var(--accent); outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+.life-map-window { border-block: 1px solid var(--line); padding: 12px 0 18px; }
+.life-map-window > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 510px; }
+.life-map-window header span { text-align: center; font-size: 13px; }
+.life-map-window header small { display: block; color: var(--muted); margin-top: 5px; }
+.life-map-window .icon-button { flex: 0 0 40px; }
+.life-period-grid { display: grid; grid-template-columns: repeat(12,minmax(0,1fr)); gap: 9px; max-width: 510px; margin: 20px 4px; }
+.life-period-grid.weeks { grid-template-columns: repeat(13,minmax(0,1fr)); }
+.life-period-grid i { width: min(18px,100%); height: auto; aspect-ratio: 1; }
+.life-map-settings { margin-top: 22px; }
+.life-map-settings summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+.life-settings-form { display: grid; gap: 14px; max-width: 460px; margin-top: 12px; }
+.life-settings-form label { display: grid; gap: 6px; }
+.life-horizons { display: flex; gap: 8px; flex-wrap: wrap; }
+.life-horizons button { min-width: 48px; min-height: 40px; }
+.life-settings-form [role=alert], .personal-publish-dialog [role=alert] { color: var(--red); overflow-wrap: anywhere; }
+.personal-publish-dialog { max-width: 800px; margin: auto; min-width: 0; }
+.personal-publish-dialog header { gap: 12px; }
+.personal-publish-dialog header .icon-button { flex: 0 0 44px; }
+.personal-publish-dialog h2, .personal-publish-dialog h3, .publication-text, .publication-selected-files { overflow-wrap: anywhere; min-width: 0; }
+.personal-publish-form:not([hidden]) { display: grid; gap: 18px; }
+.personal-publish-form label { display: grid; gap: 6px; min-width: 0; }
+.publication-files { border: 0; border-block: 1px solid var(--line); padding: 12px 0; min-width: 0; }
+.publication-files legend { font-weight: 600; font-size: 13px; padding: 0 8px 0 0; }
+.publication-files label { display: flex; align-items: center; gap: 10px; padding: 8px 0; overflow-wrap: anywhere; }
+.publication-files input { width: 18px; height: 18px; flex: 0 0 18px; accent-color: var(--accent); }
+.publication-files small { display: block; color: var(--muted); margin-top: 4px; }
+.publication-text { padding: 16px 0; border-block: 1px solid var(--line); }
+.personal-publish-dialog .form-actions { flex-wrap: wrap; }
+.personal-publish-dialog [role=alert]:empty { display: none; }
+.personal-publish-dialog p { margin: 12px 0; line-height: 1.6; }
+.personal-publish-dialog h3 { margin: 8px 0 16px; line-height: 1.4; }
+.personal-publish-dialog .eyebrow { margin-bottom: 8px; }
+.publication-selected-files { padding: 18px 0 4px; }
+.publication-selected-files p { display: flex; align-items: start; gap: 8px; }
+.publication-selected-files p svg { flex: 0 0 18px; margin-top: 3px; }
+@media (max-width: 540px) {
+ .life-period-grid { gap: 7px; }
+ .life-map-toolbar { display: grid; }
+ .life-map-toolbar .text-button { justify-self: start; }
+ .life-map-summary strong { font-size: 26px; }
+ .personal-publish-dialog .form-grid.two { grid-template-columns: minmax(0,1fr); }
+ .personal-publish-dialog button, .life-map-panel button { max-width: 100%; white-space: normal; }
+ .personal-publish-dialog h2 { font-size: 20px; }
+}
