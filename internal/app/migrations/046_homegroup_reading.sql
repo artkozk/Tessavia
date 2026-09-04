@@ -1,3 +1,4 @@
+-- Applied after the concurrent personal workspace and reminder releases (041-045).
 CREATE TABLE reading_spaces (
  workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id),
  timezone TEXT NOT NULL DEFAULT 'Europe/Moscow' CHECK(timezone='Europe/Moscow'),

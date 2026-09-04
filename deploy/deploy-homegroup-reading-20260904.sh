@@ -57,7 +57,7 @@ PY
 cp "$backup/business-control.db" "$dry/check.db"
 mkdir "$dry/uploads"
 chown -R business-control:business-control "$dry"
-runuser -u business-control -- env BUSINESS_ADDRESS=127.0.0.1:18641 BUSINESS_DATABASE_PATH="$dry/check.db" BUSINESS_UPLOAD_PATH="$dry/uploads" "$release/business-control" > "$dry/server.log" 2>&1 &
+runuser -u business-control -- env BUSINESS_REMINDERS_ENABLED=false BUSINESS_ADDRESS=127.0.0.1:18641 BUSINESS_DATABASE_PATH="$dry/check.db" BUSINESS_UPLOAD_PATH="$dry/uploads" "$release/business-control" > "$dry/server.log" 2>&1 &
 dry_pid=$!
 for attempt in $(seq 1 30); do
  if curl --max-time 2 -fsS http://127.0.0.1:18641/api/health >/dev/null 2>&1; then break; fi
@@ -71,7 +71,7 @@ assert not new.execute('PRAGMA foreign_key_check').fetchall()
 for (table,) in old.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name<>'schema_migrations'"):
     quoted='"'+table.replace('"','""')+'"'
     assert old.execute('SELECT * FROM '+quoted+' ORDER BY rowid').fetchall()==new.execute('SELECT * FROM '+quoted+' ORDER BY rowid').fetchall(), table
-assert new.execute("SELECT 1 FROM schema_migrations WHERE version='041_homegroup_reading.sql'").fetchone()
+assert new.execute("SELECT 1 FROM schema_migrations WHERE version='046_homegroup_reading.sql'").fetchone()
 PY
 python3 /tmp/seed-homegroup-reading.py --database "$dry/check.db" --base-url http://127.0.0.1:18641 > "$dry/seed.json"
 python3 /tmp/seed-homegroup-reading.py --database "$dry/check.db" --base-url http://127.0.0.1:18641 > "$dry/seed-repeat.json"

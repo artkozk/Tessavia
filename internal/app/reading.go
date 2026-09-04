@@ -110,6 +110,10 @@ func (s *Server) readingAccess(w http.ResponseWriter, r *http.Request, write boo
 }
 
 func (s *Server) handleReadingEnable(w http.ResponseWriter, r *http.Request) {
+	var input struct{}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
 	if currentWorkspace(r).Kind != "team" {
 		writeError(w, 400, "Сначала создайте команду Домашка")
 		return

@@ -11,6 +11,7 @@ import json
 import secrets
 import sqlite3
 import urllib.request
+import urllib.error
 import urllib.parse
 
 parser = argparse.ArgumentParser()
@@ -24,7 +25,7 @@ db = sqlite3.connect(args.database, timeout=20)
 db.execute('PRAGMA foreign_keys=ON')
 user = db.execute('SELECT id, username FROM users WHERE username=?', (args.username,)).fetchone()
 assert user and user[1] == args.username, 'Requested account not found; no fallback to first user'
-assert db.execute("SELECT 1 FROM schema_migrations WHERE version='041_homegroup_reading.sql'").fetchone()
+assert db.execute("SELECT 1 FROM schema_migrations WHERE version='046_homegroup_reading.sql'").fetchone()
 assert db.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
 # Refuse ambiguous/deleted names, instead of silently creating another team.
 candidates = list(db.execute('SELECT id, deleted_at FROM teams WHERE owner_id=? AND name=?', (user[0], 'Домашка')))
@@ -64,7 +65,17 @@ try:
         workspace = api('/workspaces', 'POST', {
             'name': 'Домашка',
             'description': 'Чтение Библии, личные размышления и подготовка к домашним встречам по вторникам.'})
-    api('/reading/enable', 'POST', {}, workspace['id'])
+    # Only this explicitly idempotent operation is retried after a lost reply.
+    # Team creation is never blindly retried: rerunning the script re-discovers it.
+    for attempt in range(2):
+        try:
+            api('/reading/enable', 'POST', {}, workspace['id'])
+            break
+        except urllib.error.HTTPError:
+            raise
+        except (ConnectionError, TimeoutError, urllib.error.URLError):
+            if attempt:
+                raise
     # New team starts with reading and chat. Existing customization is preserved.
     navigation = api('/workspace/navigation', workspace=workspace['id'])
     if not matches or navigation['enabledViews'] == ['dashboard', 'work', 'calendar', 'collections', 'chat']:

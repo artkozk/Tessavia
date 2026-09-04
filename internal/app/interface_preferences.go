@@ -10,7 +10,8 @@ import (
 )
 
 var interfaceNavGroups = map[string]bool{
-	"Личное": true, "Работа": true, "Основа": true, "Бизнес": true, "Контроль": true, "Настройки": true,
+	"Домашка": true,
+	"Личное":  true, "Работа": true, "Основа": true, "Бизнес": true, "Контроль": true, "Настройки": true,
 }
 
 var interfaceDashboardWidgets = map[string]bool{

@@ -2348,6 +2348,7 @@ function renderContent() {
     $('#page-title').textContent = 'Чтение Библии';
     createButton.innerHTML = `${icon('plus')} Чтение`;
     createButton.setAttribute('aria-label', 'Отметить чтение');
+    createButton.title = 'Отметить чтение';
     return readingUI.render();
   }
   if (state.view === 'calendar') return renderCalendarPage();
