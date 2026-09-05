@@ -25,7 +25,7 @@ export function readingBookShortName(id) { return readingBookShortNames[Number(i
 export function readingTestament(id) { return Number(id) <= 39 ? 'old' : 'new'; }
 
 export function createReadingUI(ctx) {
-  const { state, api, escapeHTML: e, icon, toast, openModal, closeDialog, bindDraft, clearDraft, loadData } = ctx;
+  const { state, api, escapeHTML: e, icon, toast, toastAction, openModal, closeDialog, bindDraft, clearDraft, loadData } = ctx;
   let data = null, scope = '', request = 0, tab = 'read', period = 'week', selectedBook = 0;
   const root = () => document.querySelector('#main-content');
   const dialog = () => document.querySelector('#personal-dialog');
@@ -75,7 +75,12 @@ export function createReadingUI(ctx) {
       <div id="reading-tab-content">${tab === 'read' ? readView() : tab === 'today' ? todayView() : tab === 'plans' ? plansView() : tab === 'journal' ? journalView() : tab === 'ranking' ? rankingView() : groupsView()}</div></div>`;
     root().querySelectorAll('[data-reading-tab]').forEach(b => b.onclick = () => { tab = b.dataset.readingTab; paint(); });
     root().querySelectorAll('[data-reading-log]').forEach(b => b.onclick = () => entryForm());
-    root().querySelectorAll('[data-reading-next]').forEach(b => b.onclick = () => fastMark(data.nextBook, data.nextChapter, b));
+    root().querySelectorAll('[data-reading-log-current]').forEach(b => b.onclick = () => {
+      const first = data.nextBook === selectedBook ? data.nextChapter : 1;
+      entryForm({ book: selectedBook, first, last: first });
+    });
+    root().querySelectorAll('[data-reading-next]').forEach(b => b.onclick = openSuggested);
+    root().querySelectorAll('[data-reading-book-picker]').forEach(b => b.onclick = bookPicker);
     root().querySelectorAll('[data-reading-book]').forEach(b => b.onclick = () => { selectedBook = Number(b.dataset.readingBook); saveSelectedBook(); paint(); root().querySelector('.reading-reader')?.scrollIntoView({ block: 'start' }); });
     root().querySelectorAll('[data-reading-chapter]').forEach(b => b.onclick = () => fastMark(selectedBook, Number(b.dataset.readingChapter), b));
     root().querySelectorAll('[data-reading-edit]').forEach(b => b.onclick = () => entryForm({}, [...data.entries,...(data.cancelledEntries||[])].find(item => item.id === b.dataset.readingEdit)));
@@ -107,7 +112,11 @@ export function createReadingUI(ctx) {
     try {
       const saved = await call('/entries', { day: data.today, book, first: chapter, last: chapter, complete: true, stream: 'personal', note: '', shared: false });
       await render();
-      if (saved.added) toast(`${bookName(book)} ${chapter} отмечена. Пометку можно добавить позже.`);
+      if (saved.added) {
+        const marked = data.entries.find(item => item.day === data.today && item.book === book && item.chapter === chapter);
+        if (toastAction && marked) toastAction(`${bookName(book)} ${chapter} — прочитано`, 'Добавить пометку', () => entryForm({}, marked));
+        else toast(`${bookName(book)} ${chapter} отмечена. Пометку можно добавить позже.`);
+      }
       else {
         const current = data.entries.find(item => item.day === data.today && item.book === book && item.chapter === chapter);
         if (current) entryForm({}, current); else toast('Глава уже отмечена. Обновите страницу, чтобы увидеть запись.', true);
@@ -117,8 +126,36 @@ export function createReadingUI(ctx) {
       if (button.isConnected) { button.disabled = false; button.removeAttribute('aria-busy'); }
     }
   }
+  function openSuggested() {
+    if (!data.nextBook) return;
+    selectedBook = data.nextBook; saveSelectedBook(); tab = 'read'; paint();
+    const target = root().querySelector(`[data-reading-chapter="${data.nextChapter}"]`);
+    try { target?.focus({ preventScroll: true }); } catch { target?.focus(); }
+    root().querySelector('.reading-reader')?.scrollIntoView({ block: 'start' });
+  }
+  function bookGrid(testament, attribute) {
+    return `<div class="reading-testament-grid">${data.books.filter(item => readingTestament(item.id) === testament).map(item => {
+      const state = readingBookState(item, data.entries, data.today), selected = item.id === selectedBook;
+      return `<button class="reading-testament-book reading-age-${state.age.key}" ${attribute}="${item.id}" data-book-filter="${e(`${item.name} ${readingBookShortName(item.id)}`.toLocaleLowerCase('ru'))}" aria-pressed="${selected}" title="${e(`${item.name}: ${state.count}/${item.chapters} глав, ${state.age.label}`)}" aria-label="${e(`${item.name}: прочитано ${state.count} из ${item.chapters} глав, ${state.age.label}`)}"><strong>${e(readingBookShortName(item.id))}</strong><small aria-hidden="true">${state.count}/${item.chapters}</small></button>`;
+    }).join('')}</div>`;
+  }
+  function bookPicker() {
+    body().innerHTML = `<section class="reading-book-picker"><header><div><p class="eyebrow">Книги Библии</p><h2>Выберите книгу</h2></div><button type="button" data-close aria-label="Закрыть">×</button></header><label class="reading-book-search"><span>Найти книгу</span><input type="search" inputmode="search" autocomplete="off" placeholder="Например, Иоанна"></label><div class="reading-legend">${[['never','Не читал'],['recent','До 7 дней'],['month','8–30 дней'],['old','31–90 дней'],['distant','Больше 90 дней']].map(([key,label])=>`<span class="reading-age-${key}">${label}</span>`).join('')}</div><h3>Ветхий Завет</h3>${bookGrid('old','data-reading-pick')}<h3>Новый Завет</h3>${bookGrid('new','data-reading-pick')}</section>`;
+    body().querySelector('[data-close]').onclick = () => closeDialog(dialog());
+    body().querySelectorAll('[data-reading-pick]').forEach(button => button.onclick = async () => {
+      selectedBook = Number(button.dataset.readingPick); saveSelectedBook();
+      await closeDialog(dialog()); paint();
+      root().querySelector('.reading-reader')?.scrollIntoView({ block: 'start' });
+    });
+    body().querySelector('.reading-book-search input').addEventListener('input', event => {
+      const query = event.target.value.trim().toLocaleLowerCase('ru');
+      body().querySelectorAll('[data-reading-pick]').forEach(button => { button.hidden = query && !button.dataset.bookFilter.includes(query); });
+    });
+    openModal(dialog());
+  }
   function readView() {
     const book = data.books.find(item => item.id === selectedBook) || data.books[42];
+    const state = readingBookState(book, data.entries, data.today);
     const next = data.nextBook ? `${bookName(data.nextBook)} ${data.nextChapter}` : 'Маршрут завершён';
     const chapterButtons = Array.from({ length: book.chapters }, (_, index) => {
       const chapter = index + 1;
@@ -128,12 +165,9 @@ export function createReadingUI(ctx) {
       const classes = [`reading-age-${age.key}`, today ? 'is-read-today' : '', data.nextBook === book.id && data.nextChapter === chapter ? 'is-next' : ''].filter(Boolean).join(' ');
       return `<button data-reading-fast data-reading-chapter="${chapter}" class="${classes}" title="${e(`${book.name} ${chapter}: ${stateText}`)}" aria-label="${e(`${book.name} ${chapter}: ${stateText}`)}"><span>${chapter}</span>${last ? `<small aria-hidden="true">${today ? '✓' : last.complete ? '•' : '◐'}</small>` : ''}</button>`;
     }).join('');
-    const bookGrid = testament => `<div class="reading-testament-grid">${data.books.filter(item => readingTestament(item.id) === testament).map(item => {
-      const state = readingBookState(item, data.entries, data.today), selected = item.id === book.id;
-      return `<button class="reading-testament-book reading-age-${state.age.key}" data-reading-book="${item.id}" aria-pressed="${selected}" title="${e(`${item.name}: ${state.count}/${item.chapters} глав, ${state.age.label}`)}" aria-label="${e(`${item.name}: прочитано ${state.count} из ${item.chapters} глав, ${state.age.label}`)}"><strong>${e(readingBookShortName(item.id))}</strong><small aria-hidden="true">${state.count}/${item.chapters}</small></button>`;
-    }).join('')}</div>`;
-    return `<section class="reading-panel reading-reader"><div class="reading-reader-heading"><div><p class="eyebrow">Открытая книга</p><h3>${e(book.name)}</h3></div>${data.nextBook ? `<button class="reading-next" data-reading-next title="Отметить предложенную главу">Следующая: ${e(next)}</button>` : `<span class="reading-muted">${e(next)}</span>`}</div><p>Нажмите номер — глава сразу отметится за сегодня. Нажмите отмеченную сегодня ещё раз, чтобы добавить пометку или исправить запись.</p><div class="reading-chapter-circles" aria-label="Главы книги ${e(book.name)}">${chapterButtons}</div></section>
-      <section class="reading-panel reading-catalog"><div><h3>Книги Библии</h3><p>Цвет показывает, как давно вы читали книгу. Точная дата и охват доступны в подсказке и для экранного диктора.</p></div><div class="reading-legend">${[['never','Не читал'],['recent','До 7 дней'],['month','8–30 дней'],['old','31–90 дней'],['distant','Больше 90 дней']].map(([key,label])=>`<span class="reading-age-${key}">${label}</span>`).join('')}</div><h4>Ветхий Завет</h4>${bookGrid('old')}<h4>Новый Завет</h4>${bookGrid('new')}</section>`;
+    const route = !data.nextBook ? `<span class="reading-muted">${e(next)}</span>` : data.nextBook === book.id ? `<span class="reading-route-hint">Дальше по маршруту — глава ${data.nextChapter}</span>` : `<button class="reading-next" data-reading-next>Продолжить: ${e(next)} →</button>`;
+    return `<section class="reading-panel reading-reader"><div class="reading-book-bar"><button class="reading-current-book" data-reading-book-picker aria-label="Выбрать книгу. Сейчас открыта ${e(book.name)}"><span><small>Книга</small><strong>${e(book.name)}</strong></span><span class="reading-current-state"><small>${state.count}/${book.chapters} глав</small><b aria-hidden="true">⌄</b></span></button><button class="reading-reader-more" data-reading-log-current aria-label="Отметить диапазон или частичное чтение" title="Диапазон или частичное чтение">•••</button></div><div class="reading-route">${route}</div><p class="reading-reader-help">Одно нажатие на главу — прочитано сегодня. Повторное откроет пометку.</p><div class="reading-chapter-circles" aria-label="Главы книги ${e(book.name)}">${chapterButtons}</div></section>
+      <section class="reading-panel reading-catalog"><div><h3>Книги Библии</h3><p>На телефоне этот каталог открывается нажатием на текущую книгу. Цвет показывает давность, число — охват полных глав.</p></div><div class="reading-legend">${[['never','Не читал'],['recent','До 7 дней'],['month','8–30 дней'],['old','31–90 дней'],['distant','Больше 90 дней']].map(([key,label])=>`<span class="reading-age-${key}">${label}</span>`).join('')}</div><h4>Ветхий Завет</h4>${bookGrid('old','data-reading-book')}<h4>Новый Завет</h4>${bookGrid('new','data-reading-book')}</section>`;
   }
   function todayView() {
     const todayEntries = data.entries.filter(item => item.day === data.today);
@@ -141,7 +175,7 @@ export function createReadingUI(ctx) {
     return `<section class="reading-summary"><div><strong>${todayEntries.filter(x => x.complete).length}</strong><span>глав сегодня</span></div><div><strong>${data.currentStreak}</strong><span>дней подряд</span></div><div><strong>${data.bestStreak}</strong><span>лучшая серия</span></div></section>
       <div class="reading-week" aria-label="Последние семь дней">${days.map(day => `<div><span>${day.slice(5)}</span><strong aria-label="${day}: ${data.entries.some(item => item.day === day) ? 'есть чтение' : 'нет отметки'}">${data.entries.some(item => item.day === day) ? '✓' : '—'}</strong></div>`).join('')}</div>
       <p class="reading-muted">${todayEntries.length ? 'Сегодня чтение отмечено.' : 'Сегодня ещё можно продолжить серию.'} После 00:00 по Москве вчерашний день закрывается. Заморозок нет.</p>
-      <div class="reading-columns"><section class="reading-panel"><p class="eyebrow">Личный маршрут</p><h3>${data.nextBook ? e(`${bookName(data.nextBook)} ${data.nextChapter}`) : 'Маршрут завершён'}</h3><p>Следующая глава после последнего полного личного чтения. План группы ведётся отдельно.</p>${data.nextBook ? '<button data-reading-next>Прочитал эту главу</button>' : '<button data-reading-log>Выбрать новое чтение</button>'}</section><section class="reading-panel"><p class="eyebrow">Достижения</p><h3>Шаг за шагом</h3><div class="reading-badges">${[7, 30, 90, 365].map(n => `<span class="${data.bestStreak >= n ? 'earned' : ''}">${data.bestStreak >= n ? '✓ ' : ''}${n} дней</span>`).join('')}</div><p>Достигнутый рубеж остаётся в лучшей серии, даже если текущая прервалась.</p></section></div>
+      <div class="reading-columns"><section class="reading-panel"><p class="eyebrow">Личный маршрут</p><h3>${data.nextBook ? e(`${bookName(data.nextBook)} ${data.nextChapter}`) : 'Маршрут завершён'}</h3><p>Следующая глава после последнего полного личного чтения. План группы ведётся отдельно.</p>${data.nextBook ? '<button data-reading-next>Открыть следующую главу</button>' : '<button data-reading-log>Выбрать новое чтение</button>'}</section><section class="reading-panel"><p class="eyebrow">Достижения</p><h3>Шаг за шагом</h3><div class="reading-badges">${[7, 30, 90, 365].map(n => `<span class="${data.bestStreak >= n ? 'earned' : ''}">${data.bestStreak >= n ? '✓ ' : ''}${n} дней</span>`).join('')}</div><p>Достигнутый рубеж остаётся в лучшей серии, даже если текущая прервалась.</p></section></div>
       ${plansView(true)}`;
   }
   function plansView(preview = false) {

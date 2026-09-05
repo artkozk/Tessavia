@@ -38,17 +38,31 @@ test('reading forms have scoped drafts, safe rendering and no offline writes',()
  assert.ok(!source.includes('outbox.enqueue'));
  assert.ok(source.includes('context !== key()'));
  const sw=fs.readFileSync(__dirname+'/sw.js','utf8');
- assert.ok(sw.includes("'/reading.js?v=20260905-reading-grid-1'"));
+ assert.ok(sw.includes("'/reading.js?v=20260905-reading-mobile-2'"));
 });
 test('chapter grid uses a one-tap complete personal mark and keeps editing deliberate',()=>{
  const source=fs.readFileSync(__dirname+'/reading.js','utf8');
  assert.ok(source.includes('data-reading-fast'));
  assert.ok(source.includes("complete: true, stream: 'personal', note: '', shared: false"));
  assert.ok(source.includes('if (existing) { entryForm({}, existing); return; }'));
+ assert.ok(source.includes("toastAction(`${bookName(book)} ${chapter} — прочитано`, 'Добавить пометку'"));
  assert.ok(source.includes("['read', 'Чтение']"));
  assert.ok(source.includes('<h4>Ветхий Завет</h4>'));
  assert.ok(source.includes('<h4>Новый Завет</h4>'));
  assert.ok(!source.includes('outbox.enqueue'));
+});
+test('mobile reader keeps books in a picker and suggestions navigate without recording',()=>{
+ const source=fs.readFileSync(__dirname+'/reading.js','utf8');
+ const styles=fs.readFileSync(__dirname+'/styles.css','utf8');
+ assert.ok(source.includes('data-reading-book-picker'));
+ assert.ok(source.includes('class="reading-book-picker"'));
+ assert.ok(source.includes("bookGrid('old','data-reading-pick')"));
+ assert.ok(source.includes("bookGrid('new','data-reading-pick')"));
+ assert.ok(source.includes("onclick = openSuggested"));
+ assert.ok(source.includes("tab = 'read'; paint()"));
+ assert.ok(styles.includes('.reading-page > .reading-heading { display: none; }'));
+ assert.ok(styles.includes('.reading-catalog { display: none; }'));
+ assert.ok(styles.includes('flex-wrap: nowrap; overflow-x: auto'));
 });
 test('standalone reflections are private by default, editable and separate from reading marks',()=>{
  const source=fs.readFileSync(__dirname+'/reading.js','utf8');

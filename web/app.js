@@ -13,7 +13,7 @@ import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSel
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
-import { createReadingUI } from './reading.js?v=20260905-reading-grid-1';
+import { createReadingUI } from './reading.js?v=20260905-reading-mobile-2';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
 import { createOutboxUI } from './outbox-ui.js?v=20260904-first-use-4';
 let offlineOutbox;
@@ -2350,7 +2350,7 @@ function renderContent() {
   if (state.view.startsWith('page:')) { $('#page-title').textContent = state.workspacePages.find((page) => `page:${page.id}` === state.view)?.name || 'Страница'; return renderWorkspacePage(); }
   if (state.view === 'personal') return renderPersonal();
   if (state.view === 'reading' || (state.view === 'dashboard' && activeWorkspace()?.readingEnabled)) {
-    $('#page-title').textContent = 'Чтение Библии';
+    $('#page-title').textContent = 'Чтение';
     createButton.innerHTML = `${icon('plus')} Чтение`;
     createButton.setAttribute('aria-label', 'Отметить чтение');
     createButton.title = 'Отметить чтение';
@@ -2612,7 +2612,7 @@ async function openPersonalReviewSource(item) {
   }
 }
 const personalReviewUI=createPersonalReviewUI({state,api,escapeHTML,icon,renderPersonal,toast,openSource:openPersonalReviewSource});
-const readingUI = createReadingUI({ escapeHTML, icon, api, state, toast, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, loadData });
+const readingUI = createReadingUI({ escapeHTML, icon, api, state, toast, toastAction, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, loadData });
 function renderHabitRow(habit, links, compact = false) { return habitUI.renderRow(habit, compact); }
 
 const lifeMapUI = createLifeMapUI({ state, api, escapeHTML, icon, localISODate, renderPersonal, toast, bindWorkingDraft, clearWorkingDraftFor });

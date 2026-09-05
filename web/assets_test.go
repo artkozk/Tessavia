@@ -221,7 +221,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260905-reading-grid-1")) != 2 {
+	if bytes.Count(index, []byte("20260905-reading-mobile-2")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 	styles, err := Files.ReadFile("styles.css")
@@ -233,10 +233,16 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 		[]byte("grid-template-columns: repeat(5, minmax(0, 1fr))"),
 		[]byte(".reading-testament-grid"),
 		[]byte("min-width: 44px; min-height: 44px"),
+		[]byte(".reading-page > .reading-heading { display: none; }"),
+		[]byte(".reading-catalog { display: none; }"),
+		[]byte(".reading-testament-book[hidden] { display: none; }"),
 	} {
 		if !bytes.Contains(styles, marker) {
 			t.Fatalf("styles.css does not contain reading grid marker %q", marker)
 		}
+	}
+	if !bytes.Contains(app, []byte("$('#page-title').textContent = 'Чтение';")) {
+		t.Fatal("mobile reading header must use the short title instead of repeating the full module name")
 	}
 	if _, err := Files.ReadFile("personal-review.js"); err != nil {
 		t.Fatalf("embedded personal review module missing: %v", err)
