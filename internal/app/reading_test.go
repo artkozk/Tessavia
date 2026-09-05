@@ -72,6 +72,9 @@ func TestHomegroupReadingWorkflowAndIsolation(t *testing.T) {
 	ownerUser := registerVerifiedWithoutFixture(t, owner, server.URL, "read-owner@example.test", "read_owner")
 	memberUser := registerVerifiedWithoutFixture(t, member, server.URL, "read-member@example.test", "read_member")
 	registerVerifiedWithoutFixture(t, stranger, server.URL, "read-other@example.test", "read_other")
+	if _, err = store.db.Exec(`UPDATE users SET display_name=CASE id WHEN ? THEN 'Артемий Козлов' WHEN ? THEN 'Даниил Леонов' ELSE display_name END WHERE id IN (?,?)`, ownerUser.ID, memberUser.ID, ownerUser.ID, memberUser.ID); err != nil {
+		t.Fatal(err)
+	}
 	var workspace Workspace
 	requestJSON(t, owner, "POST", server.URL+"/api/workspaces", map[string]any{"name": "Домашка"}, 201, &workspace)
 	req := func(client *http.Client, method, path string, payload any, status int, out any) {
@@ -97,7 +100,7 @@ func TestHomegroupReadingWorkflowAndIsolation(t *testing.T) {
 	var reflectionCreated map[string]string
 	req(owner, "POST", "/api/reading/reflections", map[string]any{"title": "PRIVATE reflection", "body": "A thought without a reading mark", "shared": false}, 201, &reflectionCreated)
 	req(owner, "GET", "/api/reading", nil, 200, &overview)
-	if len(overview.Reflections) != 1 || overview.Reflections[0].Body != "A thought without a reading mark" || overview.CurrentStreak != 0 || overview.Ranking[0].Chapters != 0 {
+	if len(overview.Reflections) != 1 || overview.Reflections[0].Body != "A thought without a reading mark" || overview.Reflections[0].DisplayName != "Артемий Козлов" || overview.CurrentStreak != 0 || overview.Ranking[0].Chapters != 0 {
 		t.Fatalf("private reflection changed reading facts: %+v", overview)
 	}
 	reflection := overview.Reflections[0]
@@ -111,7 +114,7 @@ func TestHomegroupReadingWorkflowAndIsolation(t *testing.T) {
 	req(owner, "PATCH", "/api/reading/reflections/"+reflection.ID, map[string]any{"expectedUpdatedAt": reflection.UpdatedAt, "book": book, "chapter": chapter, "title": "Надежда", "body": "Shared deliberately", "shared": true}, 200, &reflectionUpdated)
 	req(owner, "PATCH", "/api/reading/reflections/"+reflection.ID, map[string]any{"expectedUpdatedAt": reflection.UpdatedAt, "title": "stale", "body": "stale"}, 409, nil)
 	req(member, "GET", "/api/reading", nil, 200, &overview)
-	if len(overview.SharedReflections) != 1 || overview.SharedReflections[0].Body != "Shared deliberately" || overview.SharedReflections[0].Book == nil || *overview.SharedReflections[0].Book != 43 {
+	if len(overview.SharedReflections) != 1 || overview.SharedReflections[0].Body != "Shared deliberately" || overview.SharedReflections[0].DisplayName != "Артемий Козлов" || overview.SharedReflections[0].Book == nil || *overview.SharedReflections[0].Book != 43 {
 		t.Fatalf("explicit reflection share missing: %+v", overview.SharedReflections)
 	}
 	// Unlike an immutable reading mark, a historical reflection remains editable.
@@ -131,7 +134,7 @@ func TestHomegroupReadingWorkflowAndIsolation(t *testing.T) {
 	entry["last"] = 22
 	req(owner, "POST", "/api/reading/entries", entry, 400, nil)
 	req(owner, "GET", "/api/reading?period=week", nil, 200, &overview)
-	if len(overview.Entries) != 2 || overview.NextChapter != 7 || overview.CurrentStreak != 1 || overview.Ranking[0].Chapters != 2 {
+	if len(overview.Entries) != 2 || overview.NextChapter != 7 || overview.CurrentStreak != 1 || overview.Ranking[0].Chapters != 2 || overview.Ranking[0].DisplayName != "Артемий Козлов" {
 		t.Fatalf("marks or duplicate: %+v", overview)
 	}
 	first := overview.Entries[0]
@@ -144,7 +147,7 @@ func TestHomegroupReadingWorkflowAndIsolation(t *testing.T) {
 	req(member, "POST", "/api/reading/plans", plan, 403, nil)
 	req(owner, "POST", "/api/reading/plans", plan, 201, nil)
 	req(owner, "GET", "/api/reading", nil, 200, &overview)
-	if overview.Plans[0].Done != 2 || overview.Plans[0].Next != 7 || len(overview.Plans[0].Progress) != 2 {
+	if overview.Plans[0].Done != 2 || overview.Plans[0].Next != 7 || len(overview.Plans[0].Progress) != 2 || overview.Plans[0].Progress[0].DisplayName == "" {
 		t.Fatalf("plan progress %+v", overview.Plans)
 	}
 	planID := overview.Plans[0].ID
@@ -163,7 +166,7 @@ func TestHomegroupReadingWorkflowAndIsolation(t *testing.T) {
 		t.Fatal("partial/group reading corrupted ranking or route")
 	}
 	req(member, "GET", "/api/reading", nil, 200, &overview)
-	if len(overview.SharedNotes) != 1 || overview.SharedNotes[0].Note != "SHARED thought" || len(overview.Plans[0].Progress) != 0 {
+	if len(overview.SharedNotes) != 1 || overview.SharedNotes[0].Note != "SHARED thought" || overview.SharedNotes[0].DisplayName != "Артемий Козлов" || len(overview.Plans[0].Progress) != 0 {
 		t.Fatal("shared note or leader privacy")
 	}
 	var second map[string]string

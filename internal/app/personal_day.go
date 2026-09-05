@@ -26,21 +26,23 @@ type dayWindow struct {
 	Minutes int       `json:"minutes"`
 }
 type personalDaySummary struct {
-	Date                 string              `json:"date"`
-	Settings             personalDaySettings `json:"settings"`
-	Focus                personalDayFocus    `json:"focus"`
-	Today                []string            `json:"today"`
-	Overdue              []string            `json:"overdue"`
-	Upcoming             []string            `json:"upcoming"`
-	Completed            []string            `json:"completed"`
-	Events               []string            `json:"events"`
-	Free                 []dayWindow         `json:"free"`
-	FreeMinutes          int                 `json:"freeMinutes"`
-	RemainingFree        []dayWindow         `json:"remainingFree"`
-	RemainingFreeMinutes int                 `json:"remainingFreeMinutes"`
-	TimeKnown            bool                `json:"timeKnown"`
-	TimeReason           string              `json:"timeReason"`
-	Unscheduled          int                 `json:"unscheduled"`
+	Date                 string                    `json:"date"`
+	Settings             personalDaySettings       `json:"settings"`
+	Focus                personalDayFocus          `json:"focus"`
+	Today                []string                  `json:"today"`
+	Overdue              []string                  `json:"overdue"`
+	Upcoming             []string                  `json:"upcoming"`
+	Completed            []string                  `json:"completed"`
+	Events               []string                  `json:"events"`
+	Free                 []dayWindow               `json:"free"`
+	FreeMinutes          int                       `json:"freeMinutes"`
+	RemainingFree        []dayWindow               `json:"remainingFree"`
+	RemainingFreeMinutes int                       `json:"remainingFreeMinutes"`
+	TimeKnown            bool                      `json:"timeKnown"`
+	TimeReason           string                    `json:"timeReason"`
+	Unscheduled          int                       `json:"unscheduled"`
+	ProjectWork          personalDayProjectSection `json:"projectWork"`
+	ProjectAttention     personalDayProjectSection `json:"projectAttention"`
 }
 
 func loadDaySettings(q personalQueryer, r *http.Request) (personalDaySettings, error) {
@@ -119,6 +121,11 @@ func (s *Server) handlePersonalDay(w http.ResponseWriter, r *http.Request) {
 	} // Never return a foreign or archived source identifier.
 	summary := calculatePersonalDay(day, settings, plans, time.Now())
 	summary.Focus = focus
+	summary.ProjectWork, summary.ProjectAttention, err = s.personalDayProjects(r.Context(), currentUser(r).ID, day, settings.Timezone)
+	if err != nil {
+		writeError(w, 500, "Не удалось прочитать работу доступных проектов")
+		return
+	}
 	writeJSON(w, 200, summary)
 }
 

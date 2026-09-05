@@ -30,5 +30,5 @@ test('team settings expose current team roles and direct exit without project su
   assert.match(settings, /data-team-leave/);
   assert.match(settings, /Рабочее пространство команды/);
   assert.doesNotMatch(settings, /id="team-project-form"|data-team-panel="projects"/);
-  assert.match(source, /Администратор управляет только этой командой/);
+  assert.doesNotMatch(source, /Администратор управляет только этой командой/);
 });

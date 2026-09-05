@@ -15,6 +15,7 @@ type ReadingEntry struct {
 	ID          string  `json:"id"`
 	UserID      int64   `json:"userId"`
 	Username    string  `json:"username"`
+	DisplayName string  `json:"displayName"`
 	GroupID     string  `json:"groupId"`
 	Day         string  `json:"day"`
 	Book        int     `json:"book"`
@@ -26,18 +27,19 @@ type ReadingEntry struct {
 	UpdatedAt   string  `json:"updatedAt"`
 }
 type ReadingReflection struct {
-	ID        string `json:"id"`
-	UserID    int64  `json:"userId"`
-	Username  string `json:"username"`
-	GroupID   string `json:"groupId"`
-	Day       string `json:"day"`
-	Book      *int   `json:"book,omitempty"`
-	Chapter   *int   `json:"chapter,omitempty"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	Shared    bool   `json:"shared"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	ID          string `json:"id"`
+	UserID      int64  `json:"userId"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+	GroupID     string `json:"groupId"`
+	Day         string `json:"day"`
+	Book        *int   `json:"book,omitempty"`
+	Chapter     *int   `json:"chapter,omitempty"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	Shared      bool   `json:"shared"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
 }
 
 type readingScanner interface {
@@ -46,7 +48,7 @@ type readingScanner interface {
 
 func scanReadingReflection(scanner readingScanner, reflection *ReadingReflection) error {
 	var book, chapter sql.NullInt64
-	if err := scanner.Scan(&reflection.ID, &reflection.UserID, &reflection.Username, &reflection.GroupID, &reflection.Day, &book, &chapter, &reflection.Title, &reflection.Body, &reflection.Shared, &reflection.CreatedAt, &reflection.UpdatedAt); err != nil {
+	if err := scanner.Scan(&reflection.ID, &reflection.UserID, &reflection.Username, &reflection.DisplayName, &reflection.GroupID, &reflection.Day, &book, &chapter, &reflection.Title, &reflection.Body, &reflection.Shared, &reflection.CreatedAt, &reflection.UpdatedAt); err != nil {
 		return err
 	}
 	if book.Valid {
@@ -86,13 +88,15 @@ type ReadingPlan struct {
 	Progress     []ReadingPlanProgress `json:"progress"`
 }
 type ReadingPlanProgress struct {
-	UserID   int64  `json:"userId"`
-	Username string `json:"username"`
-	Done     int    `json:"done"`
+	UserID      int64  `json:"userId"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+	Done        int    `json:"done"`
 }
 type ReadingRank struct {
 	UserID        int64  `json:"userId"`
 	Username      string `json:"username"`
+	DisplayName   string `json:"displayName"`
 	GroupID       string `json:"groupId"`
 	Chapters      int    `json:"chapters"`
 	Days          int    `json:"days"`
@@ -581,7 +585,7 @@ func (s *Server) loadReading(r *http.Request) (ReadingOverview, error) {
 		return out, err
 	}
 	out.CancelledEntries = []ReadingEntry{}
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT e.id,e.user_id,u.username,e.group_id,e.day,e.book,e.chapter,e.complete,e.stream,e.note,e.shared,e.updated_at,e.cancelled_at FROM reading_entries e JOIN users u ON u.id=e.user_id WHERE e.workspace_id=? AND e.user_id=? ORDER BY e.created_at,e.book,e.chapter`, ws, user)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT e.id,e.user_id,u.username,COALESCE(NULLIF(TRIM(u.display_name),''),u.username),e.group_id,e.day,e.book,e.chapter,e.complete,e.stream,e.note,e.shared,e.updated_at,e.cancelled_at FROM reading_entries e JOIN users u ON u.id=e.user_id WHERE e.workspace_id=? AND e.user_id=? ORDER BY e.created_at,e.book,e.chapter`, ws, user)
 	if err != nil {
 		return out, err
 	}
@@ -589,7 +593,7 @@ func (s *Server) loadReading(r *http.Request) (ReadingOverview, error) {
 	out.NextBook, out.NextChapter = 43, 1
 	for rows.Next() {
 		var e ReadingEntry
-		if err = rows.Scan(&e.ID, &e.UserID, &e.Username, &e.GroupID, &e.Day, &e.Book, &e.Chapter, &e.Complete, &e.Stream, &e.Note, &e.Shared, &e.UpdatedAt, &e.CancelledAt); err != nil {
+		if err = rows.Scan(&e.ID, &e.UserID, &e.Username, &e.DisplayName, &e.GroupID, &e.Day, &e.Book, &e.Chapter, &e.Complete, &e.Stream, &e.Note, &e.Shared, &e.UpdatedAt, &e.CancelledAt); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -609,7 +613,7 @@ func (s *Server) loadReading(r *http.Request) (ReadingOverview, error) {
 		return out, err
 	}
 	out.CurrentStreak, out.BestStreak = readingStreak(days, today)
-	rows, err = s.store.db.QueryContext(r.Context(), `SELECT reflection.id,reflection.user_id,user.username,reflection.group_id,reflection.day,reflection.book,reflection.chapter,reflection.title,reflection.body,reflection.shared,reflection.created_at,reflection.updated_at FROM reading_reflections reflection JOIN users user ON user.id=reflection.user_id WHERE reflection.workspace_id=? AND reflection.user_id=? ORDER BY reflection.created_at,reflection.id`, ws, user)
+	rows, err = s.store.db.QueryContext(r.Context(), `SELECT reflection.id,reflection.user_id,user.username,COALESCE(NULLIF(TRIM(user.display_name),''),user.username),reflection.group_id,reflection.day,reflection.book,reflection.chapter,reflection.title,reflection.body,reflection.shared,reflection.created_at,reflection.updated_at FROM reading_reflections reflection JOIN users user ON user.id=reflection.user_id WHERE reflection.workspace_id=? AND reflection.user_id=? ORDER BY reflection.created_at,reflection.id`, ws, user)
 	if err != nil {
 		return out, err
 	}
@@ -626,7 +630,7 @@ func (s *Server) loadReading(r *http.Request) (ReadingOverview, error) {
 	if err != nil {
 		return out, err
 	}
-	rows, err = s.store.db.QueryContext(r.Context(), `SELECT reflection.id,reflection.user_id,user.username,reflection.group_id,reflection.day,reflection.book,reflection.chapter,reflection.title,reflection.body,reflection.shared,reflection.created_at,reflection.updated_at FROM reading_reflections reflection JOIN users user ON user.id=reflection.user_id JOIN workspace_members member ON member.workspace_id=reflection.workspace_id AND member.user_id=reflection.user_id AND member.status='active' JOIN reading_members current_group ON current_group.workspace_id=reflection.workspace_id AND current_group.user_id=reflection.user_id AND current_group.group_id=reflection.group_id WHERE reflection.workspace_id=? AND reflection.group_id=? AND reflection.shared=1 ORDER BY reflection.created_at DESC,reflection.id DESC LIMIT 100`, ws, out.GroupID)
+	rows, err = s.store.db.QueryContext(r.Context(), `SELECT reflection.id,reflection.user_id,user.username,COALESCE(NULLIF(TRIM(user.display_name),''),user.username),reflection.group_id,reflection.day,reflection.book,reflection.chapter,reflection.title,reflection.body,reflection.shared,reflection.created_at,reflection.updated_at FROM reading_reflections reflection JOIN users user ON user.id=reflection.user_id JOIN workspace_members member ON member.workspace_id=reflection.workspace_id AND member.user_id=reflection.user_id AND member.status='active' JOIN reading_members current_group ON current_group.workspace_id=reflection.workspace_id AND current_group.user_id=reflection.user_id AND current_group.group_id=reflection.group_id WHERE reflection.workspace_id=? AND reflection.group_id=? AND reflection.shared=1 ORDER BY reflection.created_at DESC,reflection.id DESC LIMIT 100`, ws, out.GroupID)
 	if err != nil {
 		return out, err
 	}
@@ -643,13 +647,13 @@ func (s *Server) loadReading(r *http.Request) (ReadingOverview, error) {
 	if err != nil {
 		return out, err
 	}
-	rows, err = s.store.db.QueryContext(r.Context(), `SELECT e.id,e.user_id,u.username,e.group_id,e.day,e.book,e.chapter,e.complete,e.stream,e.note,e.shared,e.updated_at FROM reading_entries e JOIN users u ON u.id=e.user_id WHERE e.workspace_id=? AND e.group_id=? AND e.shared=1 AND e.note<>'' AND e.cancelled_at IS NULL ORDER BY e.created_at DESC LIMIT 100`, ws, out.GroupID)
+	rows, err = s.store.db.QueryContext(r.Context(), `SELECT e.id,e.user_id,u.username,COALESCE(NULLIF(TRIM(u.display_name),''),u.username),e.group_id,e.day,e.book,e.chapter,e.complete,e.stream,e.note,e.shared,e.updated_at FROM reading_entries e JOIN users u ON u.id=e.user_id WHERE e.workspace_id=? AND e.group_id=? AND e.shared=1 AND e.note<>'' AND e.cancelled_at IS NULL ORDER BY e.created_at DESC LIMIT 100`, ws, out.GroupID)
 	if err != nil {
 		return out, err
 	}
 	for rows.Next() {
 		var e ReadingEntry
-		if err = rows.Scan(&e.ID, &e.UserID, &e.Username, &e.GroupID, &e.Day, &e.Book, &e.Chapter, &e.Complete, &e.Stream, &e.Note, &e.Shared, &e.UpdatedAt); err != nil {
+		if err = rows.Scan(&e.ID, &e.UserID, &e.Username, &e.DisplayName, &e.GroupID, &e.Day, &e.Book, &e.Chapter, &e.Complete, &e.Stream, &e.Note, &e.Shared, &e.UpdatedAt); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -721,13 +725,13 @@ func (s *Server) loadReading(r *http.Request) (ReadingOverview, error) {
 		if !s.readingLeader(r, p.GroupID) {
 			continue
 		}
-		progressRows, err := s.store.db.QueryContext(r.Context(), `SELECT m.user_id,u.username,COUNT(DISTINCT e.chapter) FROM reading_members m JOIN users u ON u.id=m.user_id JOIN workspace_members wm ON wm.workspace_id=m.workspace_id AND wm.user_id=m.user_id AND wm.status='active' LEFT JOIN reading_entries e ON e.workspace_id=m.workspace_id AND e.user_id=m.user_id AND e.cancelled_at IS NULL AND e.complete=1 AND e.book=? AND e.chapter BETWEEN ? AND ? AND e.day BETWEEN ? AND ? WHERE m.workspace_id=? AND m.group_id=? GROUP BY m.user_id,u.username`, p.Book, p.First, p.Last, firstDay, p.MeetingDay, ws, p.GroupID)
+		progressRows, err := s.store.db.QueryContext(r.Context(), `SELECT m.user_id,u.username,COALESCE(NULLIF(TRIM(u.display_name),''),u.username),COUNT(DISTINCT e.chapter) FROM reading_members m JOIN users u ON u.id=m.user_id JOIN workspace_members wm ON wm.workspace_id=m.workspace_id AND wm.user_id=m.user_id AND wm.status='active' LEFT JOIN reading_entries e ON e.workspace_id=m.workspace_id AND e.user_id=m.user_id AND e.cancelled_at IS NULL AND e.complete=1 AND e.book=? AND e.chapter BETWEEN ? AND ? AND e.day BETWEEN ? AND ? WHERE m.workspace_id=? AND m.group_id=? GROUP BY m.user_id,u.username,u.display_name`, p.Book, p.First, p.Last, firstDay, p.MeetingDay, ws, p.GroupID)
 		if err != nil {
 			return out, err
 		}
 		for progressRows.Next() {
 			var pr ReadingPlanProgress
-			if err = progressRows.Scan(&pr.UserID, &pr.Username, &pr.Done); err != nil {
+			if err = progressRows.Scan(&pr.UserID, &pr.Username, &pr.DisplayName, &pr.Done); err != nil {
 				progressRows.Close()
 				return out, err
 			}
@@ -752,7 +756,7 @@ func (s *Server) readingRanks(r *http.Request, out *ReadingOverview, now time.Ti
 	case "month":
 		start = date.AddDate(0, 0, -29).Format("2006-01-02")
 	}
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT wm.user_id,u.username,COALESCE(m.group_id,''),COALESCE(m.joined_at,''),COALESCE(e.day,''),COALESCE(e.complete,0),COALESCE(e.group_id,'') FROM workspace_members wm JOIN users u ON u.id=wm.user_id LEFT JOIN reading_members m ON m.workspace_id=wm.workspace_id AND m.user_id=wm.user_id LEFT JOIN reading_entries e ON e.workspace_id=wm.workspace_id AND e.user_id=wm.user_id AND e.cancelled_at IS NULL WHERE wm.workspace_id=? AND wm.status='active' ORDER BY wm.user_id`, currentWorkspace(r).ID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT wm.user_id,u.username,COALESCE(NULLIF(TRIM(u.display_name),''),u.username),COALESCE(m.group_id,''),COALESCE(m.joined_at,''),COALESCE(e.day,''),COALESCE(e.complete,0),COALESCE(e.group_id,'') FROM workspace_members wm JOIN users u ON u.id=wm.user_id LEFT JOIN reading_members m ON m.workspace_id=wm.workspace_id AND m.user_id=wm.user_id LEFT JOIN reading_entries e ON e.workspace_id=wm.workspace_id AND e.user_id=wm.user_id AND e.cancelled_at IS NULL WHERE wm.workspace_id=? AND wm.status='active' ORDER BY wm.user_id`, currentWorkspace(r).ID)
 	if err != nil {
 		return err
 	}
@@ -767,13 +771,13 @@ func (s *Server) readingRanks(r *http.Request, out *ReadingOverview, now time.Ti
 	}
 	for rows.Next() {
 		var uid int64
-		var username, group, joined, day, entryGroup string
+		var username, displayName, group, joined, day, entryGroup string
 		var complete int
-		if err = rows.Scan(&uid, &username, &group, &joined, &day, &complete, &entryGroup); err != nil {
+		if err = rows.Scan(&uid, &username, &displayName, &group, &joined, &day, &complete, &entryGroup); err != nil {
 			return err
 		}
 		if all[uid] == nil {
-			all[uid] = &ReadingRank{UserID: uid, Username: username, GroupID: group}
+			all[uid] = &ReadingRank{UserID: uid, Username: username, DisplayName: displayName, GroupID: group}
 			days[uid] = map[string]bool{}
 			periodDays[uid] = map[string]bool{}
 			if gi, ok := groupIndex[group]; ok {
@@ -823,6 +827,9 @@ func (s *Server) readingRanks(r *http.Request, out *ReadingOverview, now time.Ti
 		a, b := out.Ranking[i], out.Ranking[j]
 		if a.Chapters != b.Chapters {
 			return a.Chapters > b.Chapters
+		}
+		if a.DisplayName != b.DisplayName {
+			return strings.ToLower(a.DisplayName) < strings.ToLower(b.DisplayName)
 		}
 		return a.Username < b.Username
 	})

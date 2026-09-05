@@ -1,7 +1,9 @@
 package app
 
 import (
+	"net/http"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 )
@@ -35,6 +37,91 @@ func TestPersonalDaySeparatesDatesAndMergesTimeBlocks(t *testing.T) {
 	unknown := calculatePersonalDay("2026-09-04", personalDaySettings{Timezone: "Europe/Moscow"}, plans, now)
 	if unknown.TimeKnown || unknown.FreeMinutes != 0 || unknown.TimeReason == "" {
 		t.Fatal("invented free time without a window")
+	}
+}
+
+func TestPersonalDayIncludesOnlyRelevantAccessibleProjectWork(t *testing.T) {
+	store, server, ownerClient, otherClient := newPersonalPlanningFixture(t)
+	var owner, other User
+	requestJSON(t, ownerClient, http.MethodGet, server.URL+"/api/me", nil, http.StatusOK, &owner)
+	requestJSON(t, otherClient, http.MethodGet, server.URL+"/api/me", nil, http.StatusOK, &other)
+	var project, revoked Workspace
+	requestJSON(t, ownerClient, http.MethodPost, server.URL+"/api/workspaces", map[string]any{"name": "Доступный стартап"}, http.StatusCreated, &project)
+	requestJSON(t, ownerClient, http.MethodPost, server.URL+"/api/workspaces", map[string]any{"name": "Отозванный стартап"}, http.StatusCreated, &revoked)
+	create := func(workspace, kind, title, status, priority, due string) Record {
+		var record Record
+		body := map[string]any{"type": kind, "title": title, "ownerId": owner.ID, "status": status, "priority": priority}
+		if due != "" {
+			body["dueAt"] = due
+		}
+		requestWorkspaceJSON(t, ownerClient, http.MethodPost, server.URL+"/api/records", workspace, body, http.StatusCreated, &record)
+		return record
+	}
+	dueToday := create(project.ID, "task", "Срок сегодня", "planned", "normal", "2026-09-05T12:00:00Z")
+	active := create(project.ID, "task", "Текущая работа", "in_progress", "normal", "")
+	blocked := create(project.ID, "task", "Заблокированная работа", "blocked", "high", "")
+	overdue := create(project.ID, "task", "Прошедший срок", "planned", "high", "2026-09-04T20:00:00Z")
+	review := create(project.ID, "task", "Нужна приёмка", "planned", "normal", "")
+	risk := create(project.ID, "risk", "Критический риск", "in_progress", "critical", "")
+	completed := create(project.ID, "task", "Уже завершено", "planned", "critical", "2026-09-04T12:00:00Z")
+	foreign := create(project.ID, "task", "Назначено другому", "planned", "normal", "2026-09-05T13:00:00Z")
+	revokedRecord := create(revoked.ID, "task", "Больше недоступно", "in_progress", "critical", "2026-09-04T12:00:00Z")
+	if _, err := store.db.Exec(`UPDATE records SET status='review',progress=100,owner_id=? WHERE id=?`, other.ID, review.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE records SET status='completed',progress=100,completed_at=? WHERE id=?`, nowText(), completed.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE records SET owner_id=? WHERE id=?`, other.ID, foreign.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`DELETE FROM workspace_members WHERE workspace_id=? AND user_id=?`, revoked.ID, owner.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var day personalDaySummary
+	requestJSON(t, ownerClient, http.MethodGet, server.URL+"/api/personal/day?date=2026-09-05&timezone=UTC", nil, http.StatusOK, &day)
+	if day.ProjectWork.Total != 3 || day.ProjectWork.HasMore || len(day.ProjectWork.Items) != 3 {
+		t.Fatalf("project work section: %+v", day.ProjectWork)
+	}
+	workIDs := []string{}
+	for _, item := range day.ProjectWork.Items {
+		workIDs = append(workIDs, item.ID)
+		if item.WorkspaceID != project.ID || item.Workspace != project.Name {
+			t.Fatalf("project context missing: %+v", item)
+		}
+	}
+	for _, id := range []string{dueToday.ID, active.ID, blocked.ID} {
+		if !slices.Contains(workIDs, id) {
+			t.Fatal("relevant work missing", id, workIDs)
+		}
+	}
+	if day.ProjectAttention.Total != 3 || len(day.ProjectAttention.Items) != 3 {
+		t.Fatalf("project attention section: %+v", day.ProjectAttention)
+	}
+	reasons := map[string]string{}
+	for _, item := range day.ProjectAttention.Items {
+		reasons[item.ID] = item.Reason
+	}
+	if reasons[overdue.ID] != "Срок проекта прошёл" || reasons[review.ID] != "Нужна ваша приёмка" || reasons[risk.ID] != "Критический риск проекта" {
+		t.Fatalf("unexplained signals: %+v", reasons)
+	}
+	for _, hidden := range []string{completed.ID, foreign.ID, revokedRecord.ID} {
+		if slices.Contains(workIDs, hidden) || reasons[hidden] != "" {
+			t.Fatal("completed, unrelated or revoked record leaked", hidden)
+		}
+	}
+	requestJSON(t, otherClient, http.MethodGet, server.URL+"/api/personal/day?date=2026-09-05&timezone=UTC", nil, http.StatusOK, &day)
+	if day.ProjectWork.Total != 0 || day.ProjectAttention.Total != 0 {
+		t.Fatal("project morning view leaked to another account")
+	}
+
+	for index := 0; index < personalDayProjectLimit+1; index++ {
+		create(project.ID, "task", "Дополнительная работа "+string(rune('A'+index)), "planned", "normal", "2026-09-05T15:00:00Z")
+	}
+	requestJSON(t, ownerClient, http.MethodGet, server.URL+"/api/personal/day?date=2026-09-05&timezone=UTC", nil, http.StatusOK, &day)
+	if day.ProjectWork.Total != 3+personalDayProjectLimit+1 || len(day.ProjectWork.Items) != personalDayProjectLimit || !day.ProjectWork.HasMore {
+		t.Fatalf("unbounded morning project list: %+v", day.ProjectWork)
 	}
 }
 

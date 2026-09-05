@@ -38,7 +38,7 @@ test('reading forms have scoped drafts, safe rendering and no offline writes',()
  assert.ok(!source.includes('outbox.enqueue'));
  assert.ok(source.includes('context !== key()'));
  const sw=fs.readFileSync(__dirname+'/sw.js','utf8');
- assert.ok(sw.includes("'/reading.js?v=20260905-reading-mobile-2'"));
+ assert.ok(sw.includes("'/reading.js?v=20260905-reading-ui-4'"));
 });
 test('chapter grid uses a one-tap complete personal mark and keeps editing deliberate',()=>{
  const source=fs.readFileSync(__dirname+'/reading.js','utf8');
@@ -60,9 +60,9 @@ test('mobile reader keeps books in a picker and suggestions navigate without rec
  assert.ok(source.includes("bookGrid('new','data-reading-pick')"));
  assert.ok(source.includes("onclick = openSuggested"));
  assert.ok(source.includes("tab = 'read'; paint()"));
- assert.ok(styles.includes('.reading-page > .reading-heading { display: none; }'));
+ assert.ok(styles.includes('.reading-page > .reading-hero { display: none; }'));
  assert.ok(styles.includes('.reading-catalog { display: none; }'));
- assert.ok(styles.includes('flex-wrap: nowrap; overflow-x: auto'));
+ assert.ok(styles.includes('.reading-tabs { display: flex; grid-template-columns: none; overflow-x: auto'));
 });
 test('standalone reflections are private by default, editable and separate from reading marks',()=>{
  const source=fs.readFileSync(__dirname+'/reading.js','utf8');
@@ -71,4 +71,29 @@ test('standalone reflections are private by default, editable and separate from 
  assert.ok(source.includes('она не отмечает чтение и не меняет серию'));
  assert.ok(source.includes('e(item.body)'));
  assert.ok(source.includes("`reflection:${item?.id||'new'}`"));
+});
+test('reading renders public names and groups the journal by day',()=>{
+ const source=fs.readFileSync(__dirname+'/reading.js','utf8');
+ assert.ok(source.includes('rank.displayName'));
+ assert.ok(source.includes('pr.displayName'));
+ assert.ok(source.includes('item.displayName'));
+ assert.ok(source.includes('reading-journal-day'));
+ assert.ok(source.includes('data-journal-day'));
+ assert.ok(!source.includes('<b>@${e(rank.username)}</b>'));
+ assert.ok(!source.includes('· @${e(item.username)}'));
+ assert.ok(!source.includes('Местописания не назначаются автоматически'));
+});
+test('reading actions and 320px layout use Tessavie components',()=>{
+ const source=fs.readFileSync(__dirname+'/reading.js','utf8');
+ const styles=fs.readFileSync(__dirname+'/styles.css','utf8');
+ for(const match of source.matchAll(/<button[^>]*data-(?:reading|plan|group)[^>]*>/g))assert.match(match[0],/class=/,match[0]);
+ assert.match(source,/class="reading-tab"/);
+ assert.match(source,/role="tablist"/);
+ assert.match(source,/aria-selected="\$\{tab === id\}"/);
+ assert.ok(source.includes('currentTab.offsetLeft - (tabStrip.clientWidth - currentTab.offsetWidth) / 2'));
+ assert.match(source,/class="reading-person-avatar"/);
+ assert.match(styles,/@media \(max-width: 700px\)/);
+ assert.match(styles,/@media \(max-width: 380px\)[\s\S]*\.topbar > div:nth-child\(2\) \{ display: none; \}/);
+ assert.match(styles,/\.reading-tabs \{ display: flex; grid-template-columns: none; overflow-x: auto/);
+ assert.match(styles,/\.reading-ranking article \{ grid-template-columns: 28px 34px minmax\(0,1fr\)/);
 });
