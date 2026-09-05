@@ -1000,3 +1000,9 @@ Production-проверка без тестовых пользовательск
 [`HOMEGROUP_READING_2026_09_04.md`](docs/architecture/HOMEGROUP_READING_2026_09_04.md#15-единая-оболочка-tessavie-и-обновление-открытой-вкладки--05092026).
 Подготовка выпуска и последующий production-receipt сохраняются в
 [`READING_UI_AND_PERSONAL_TODAY_RELEASE_2026_09_05.md`](docs/operations/READING_UI_AND_PERSONAL_TODAY_RELEASE_2026_09_05.md#дополнение-повторная-визуальная-коррекция-после-снимков-пользователя).
+
+Статус production: единая оболочка опубликована в release
+`20260905-reading-shell-db465e4`; локальный и публичный health check проходят,
+рабочие строки чтения не менялись. Задача результата на аккаунте `artkozk`
+завершена. Хеш бинарника, backup, безопасный откат и граница проверки на
+физическом телефоне записаны в production-receipt по ссылке выше.
