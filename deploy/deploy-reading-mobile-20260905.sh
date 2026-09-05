@@ -99,7 +99,7 @@ check_http() {
   grep -qF '20260905-reading-mobile-2' "$dry/index.html"
   grep -qF '<title>Tessavie</title>' "$dry/index.html"
   curl --max-time 15 -fsS "$base/app.js?v=20260905-reading-mobile-2" > "$dry/app.js"
-  grep -qF "$('#page-title').textContent = 'Чтение';" "$dry/app.js"
+  grep -qF "textContent = 'Чтение';" "$dry/app.js"
   grep -qF 'toastAction, openModal' "$dry/app.js"
   curl --max-time 15 -fsS "$base/reading.js?v=20260905-reading-mobile-2" > "$dry/reading.js"
   grep -qF 'data-reading-book-picker' "$dry/reading.js"
