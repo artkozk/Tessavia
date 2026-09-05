@@ -21,7 +21,15 @@ export function pendingNoteFileEntries(items) {
   return items.filter(item=>item.kind==='note-attachment'&&item.status!=='confirmed').map(item=>({...item,note:item.note||notes.get(`${item.owner}:${item.noteRequestKey}`)}));
 }
 
-export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPersonal, newCapture, onConfirmed, onOfflineIdentity, onAuthRequired, escapeHTML, toast }) {
+export function watchShellUpdates(serviceWorker, toastAction, reload = () => location.reload()) {
+  if (!serviceWorker?.addEventListener || typeof toastAction !== 'function') return;
+  serviceWorker.addEventListener('message', event => {
+    if (event.data?.type !== 'tessavie-shell-updated') return;
+    toastAction('Интерфейс Tessavie обновлён', 'Обновить', reload);
+  });
+}
+
+export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPersonal, newCapture, onConfirmed, onOfflineIdentity, onAuthRequired, escapeHTML, toast, toastAction }) {
   const store = createIndexedOutbox();
   let owner = null, refreshVersion = 0, lastMarkup = '', channel;
   const uploadProgress=new Map();
@@ -162,6 +170,9 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
     },
     pump: () => queue.pump(), open,
   };
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(() => navigator.serviceWorker.ready).then(() => { local.querySelector('[data-offline-ready]').textContent = 'Оболочка доступна для следующего запуска без сети.'; }).catch(() => { local.querySelector('[data-offline-ready]').textContent = 'Оболочка ещё не сохранена для запуска без сети.'; });
+  if ('serviceWorker' in navigator) {
+    watchShellUpdates(navigator.serviceWorker, toastAction);
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(registration => { void registration.update?.(); return navigator.serviceWorker.ready; }).then(() => { local.querySelector('[data-offline-ready]').textContent = 'Оболочка доступна для следующего запуска без сети.'; }).catch(() => { local.querySelector('[data-offline-ready]').textContent = 'Оболочка ещё не сохранена для запуска без сети.'; });
+  }
   return ui;
 }

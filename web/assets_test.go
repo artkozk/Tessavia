@@ -221,7 +221,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260905-reading-ui-4")) != 2 {
+	if bytes.Count(index, []byte("20260905-reading-shell-5")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 	styles, err := Files.ReadFile("styles.css")
@@ -236,6 +236,8 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 		[]byte(".reading-page > .reading-hero { display: none; }"),
 		[]byte(".reading-catalog { display: none; }"),
 		[]byte(".reading-testament-book[hidden] { display: none; }"),
+		[]byte(".reading-page { width: 100%; max-width: none; margin: 0;"),
+		[]byte("border-bottom: 1px solid var(--line); border-radius: 0; background: transparent;"),
 	} {
 		if !bytes.Contains(styles, marker) {
 			t.Fatalf("styles.css does not contain reading grid marker %q", marker)

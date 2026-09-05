@@ -100,3 +100,13 @@ test('service worker caches only allowlisted static files and never intercepts p
     let intercepted=false;handlers.fetch({request:{method:'GET',url:new URL(route,'https://example.test').href,mode:'cors'},respondWith:()=>{intercepted=true;}});assert.equal(intercepted,false,route);
   }
 });
+
+test('shell updates are announced without forcing a reload over an unsaved draft', () => {
+  const ui=fs.readFileSync(path.join(__dirname,'outbox-ui.js'),'utf8');
+  const worker=fs.readFileSync(path.join(__dirname,'sw.js'),'utf8');
+  assert.ok(ui.includes("event.data?.type !== 'tessavie-shell-updated'"));
+  assert.ok(ui.includes("toastAction('Интерфейс Tessavie обновлён', 'Обновить', reload)"));
+  assert.ok(ui.includes('void registration.update?.()'));
+  assert.ok(worker.includes("client.postMessage({ type: 'tessavie-shell-updated', version: CACHE })"));
+  assert.ok(!worker.includes('client.navigate('));
+});

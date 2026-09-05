@@ -13,9 +13,9 @@ import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSel
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
-import { createReadingUI } from './reading.js?v=20260905-reading-ui-4';
+import { createReadingUI } from './reading.js?v=20260905-reading-shell-5';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260904-first-use-4';
+import { createOutboxUI } from './outbox-ui.js?v=20260905-reading-shell-5';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1181,7 +1181,7 @@ function initializeOfflineOutbox() {
 offlineOutbox = createOutboxUI({
   user: () => state.me, workspace: () => state.activeWorkspaceId,
   openDialog: openModal, closeDialog: requestDialogClose, newPersonal: openPersonalEditor, newCapture:openPersonalCapture,
-  escapeHTML, toast, onAuthRequired: showAuth,
+  escapeHTML, toast, toastAction, onAuthRequired: showAuth,
   onOfflineIdentity: account => { state.me = account; state.offlineMode = true; },
   onConfirmed: (item,result) => {
     if (item.owner !== state.me?.id || state.offlineMode) return;

@@ -38,7 +38,7 @@ test('reading forms have scoped drafts, safe rendering and no offline writes',()
  assert.ok(!source.includes('outbox.enqueue'));
  assert.ok(source.includes('context !== key()'));
  const sw=fs.readFileSync(__dirname+'/sw.js','utf8');
- assert.ok(sw.includes("'/reading.js?v=20260905-reading-ui-4'"));
+ assert.ok(sw.includes("'/reading.js?v=20260905-reading-shell-5'"));
 });
 test('chapter grid uses a one-tap complete personal mark and keeps editing deliberate',()=>{
  const source=fs.readFileSync(__dirname+'/reading.js','utf8');
@@ -58,6 +58,9 @@ test('mobile reader keeps books in a picker and suggestions navigate without rec
  assert.ok(source.includes('class="reading-book-picker"'));
  assert.ok(source.includes("bookGrid('old','data-reading-pick')"));
  assert.ok(source.includes("bookGrid('new','data-reading-pick')"));
+ assert.ok(source.includes('data-reading-picker-testament'));
+ assert.ok(source.includes("section.hidden = !section.querySelector('[data-reading-pick]:not([hidden])')"));
+ assert.ok(source.includes('class="icon-button" data-close'));
  assert.ok(source.includes("onclick = openSuggested"));
  assert.ok(source.includes("tab = 'read'; paint()"));
  assert.ok(styles.includes('.reading-page > .reading-hero { display: none; }'));
@@ -87,13 +90,19 @@ test('reading actions and 320px layout use Tessavie components',()=>{
  const source=fs.readFileSync(__dirname+'/reading.js','utf8');
  const styles=fs.readFileSync(__dirname+'/styles.css','utf8');
  for(const match of source.matchAll(/<button[^>]*data-(?:reading|plan|group)[^>]*>/g))assert.match(match[0],/class=/,match[0]);
- assert.match(source,/class="reading-tab"/);
+ assert.match(source,/class="reading-tab segment \$\{tab === id \? 'active' : ''\}"/);
+ assert.match(source,/class="reading-hero page-heading"/);
+ assert.match(source,/class="reading-panel section-panel/);
+ assert.match(source,/class="reading-section-heading section-heading/);
  assert.match(source,/role="tablist"/);
  assert.match(source,/aria-selected="\$\{tab === id\}"/);
- assert.ok(source.includes('currentTab.offsetLeft - (tabStrip.clientWidth - currentTab.offsetWidth) / 2'));
+ assert.ok(source.includes('currentTab.offsetLeft - 12'));
  assert.match(source,/class="reading-person-avatar"/);
  assert.match(styles,/@media \(max-width: 700px\)/);
  assert.match(styles,/@media \(max-width: 380px\)[\s\S]*\.topbar > div:nth-child\(2\) \{ display: none; \}/);
  assert.match(styles,/\.reading-tabs \{ display: flex; grid-template-columns: none; overflow-x: auto/);
  assert.match(styles,/\.reading-ranking article \{ grid-template-columns: 28px 34px minmax\(0,1fr\)/);
+ assert.match(styles,/\.reading-page \{ width: 100%; max-width: none; margin: 0;/);
+ assert.match(styles,/\.reading-panel, \.reading-today-overview \{[^}]*border: 0; border-bottom: 1px solid var\(--line\); border-radius: 0; background: transparent;/);
+ assert.match(styles,/\.reading-summary \{[^}]*border-block: 1px solid var\(--line\);/);
 });
