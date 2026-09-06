@@ -38,7 +38,7 @@ test('reading forms have scoped drafts, safe rendering and no offline writes',()
  assert.ok(!source.includes('outbox.enqueue'));
  assert.ok(source.includes('context !== key()'));
  const sw=fs.readFileSync(__dirname+'/sw.js','utf8');
- assert.ok(sw.includes("'/reading.js?v=20260905-reading-shell-5'"));
+ assert.ok(sw.includes("'/reading.js?v=20260906-reading-groups-1'"));
 });
 test('chapter grid uses a one-tap complete personal mark and keeps editing deliberate',()=>{
  const source=fs.readFileSync(__dirname+'/reading.js','utf8');
@@ -105,4 +105,8 @@ test('reading actions and 320px layout use Tessavie components',()=>{
  assert.match(styles,/\.reading-page \{ width: 100%; max-width: none; margin: 0;/);
  assert.match(styles,/\.reading-panel, \.reading-today-overview \{[^}]*border: 0; border-bottom: 1px solid var\(--line\); border-radius: 0; background: transparent;/);
  assert.match(styles,/\.reading-summary \{[^}]*border-block: 1px solid var\(--line\);/);
+ assert.ok(source.includes('class="text-button" data-group-edit'));
+ assert.match(styles,/\.reading-group-grid \{[^}]*auto-fill[^}]*360px[^}]*justify-content: start;/);
+ assert.match(styles,/\.reading-group-card \{[^}]*align-content: start;[^}]*border-radius: 7px;[^}]*background: transparent;/);
+ assert.match(styles,/\.reading-group-card dl \{[^}]*grid-template-columns: repeat\(2,minmax\(0,1fr\)\);[^}]*border-top: 1px solid var\(--line\);/);
 });

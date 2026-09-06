@@ -4849,19 +4849,19 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .reading-current-group { display: grid; grid-template-columns: minmax(220px,420px) minmax(0,1fr); align-items: end; gap: 14px 20px; margin: 17px 0; padding: 14px; border-radius: 9px; background: #f2f4f0; }
 .reading-current-group label { margin: 0; }
 .reading-current-group p { margin: 0 0 3px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.reading-group-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(250px,1fr)); gap: 10px; }
-.reading-group-card { min-width: 0; display: grid; gap: 14px; padding: 15px; border: 1px solid var(--line); border-radius: 9px; background: #fffefa; }
-.reading-group-card.current { border-color: #9dc7b8; box-shadow: inset 3px 0 var(--accent); }
-.reading-group-card > header { min-width: 0; display: grid; grid-template-columns: 34px minmax(0,1fr); align-items: center; gap: 10px; }
-.reading-group-card > header > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; background: var(--accent-soft); color: var(--accent); }
-.reading-group-card > header .icon { width: 17px; }
+.reading-group-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(280px,360px)); justify-content: start; gap: 12px; }
+.reading-group-card { min-width: 0; display: grid; align-content: start; gap: 12px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: 7px; background: transparent; }
+.reading-group-card.current { border-color: var(--line-strong); box-shadow: none; }
+.reading-group-card > header { min-width: 0; display: grid; grid-template-columns: 32px minmax(0,1fr); align-items: center; gap: 10px; }
+.reading-group-card > header > span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.reading-group-card > header .icon { width: 16px; }
 .reading-group-card > header > div { min-width: 0; display: grid; gap: 3px; }
 .reading-group-card > header small { color: var(--accent); font-size: 10px; font-weight: 650; }
-.reading-group-card dl { display: grid; gap: 8px; margin: 0; }
-.reading-group-card dl > div { display: grid; grid-template-columns: 70px minmax(0,1fr); gap: 10px; }
+.reading-group-card dl { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 0; padding-top: 11px; border-top: 1px solid var(--line); }
+.reading-group-card dl > div { min-width: 0; display: grid; align-content: start; gap: 3px; }
 .reading-group-card dt { color: var(--muted); font-size: 11px; }
 .reading-group-card dd { min-width: 0; margin: 0; font-size: 12px; font-weight: 620; overflow-wrap: anywhere; }
-.reading-group-card > button { justify-self: start; }
+.reading-group-card > button { justify-self: start; min-height: 30px; padding: 3px 0; }
 .reading-footer-hint { margin-bottom: 0 !important; font-size: 12px; }
 .reading-form { min-width: 0; padding: 24px; }
 .reading-form .modal-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

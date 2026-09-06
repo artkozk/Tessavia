@@ -1,15 +1,15 @@
-const CACHE = 'tessavie-shell-20260905-reading-shell-5';
+const CACHE = 'tessavie-shell-20260906-reading-groups-1';
 const ASSETS = [
-  '/', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260904-waiting-ping-1', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260905-reading-shell-5', '/styles.css?v=20260905-reading-shell-5',
+  '/', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260904-waiting-ping-1', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260906-reading-groups-1', '/styles.css?v=20260906-reading-groups-1',
   '/reminder-settings.js?v=20260904-reminder-digests-1',
   '/personal-reminders.js?v=20260904-habit-reminders-1',
   '/personal-navigation.js?v=20260904-personal-scope-1',
   '/personal-today.js?v=20260905-reading-ui-4',
   '/life-map.js?v=20260904-personal-batch-3', '/personal-publish.js?v=20260904-personal-batch-3',
   '/personal-inbox.js?v=20260904-first-use-4', '/first-use.js?v=20260904-first-use-4',
-  '/reading.js?v=20260905-reading-shell-5',
+  '/reading.js?v=20260906-reading-groups-1',
   '/emoji-picker.js?v=20260904-chat-emoji-3', '/vendor/emoji-17.0-cldr48.2.json',
-  '/outbox-ui.js?v=20260905-reading-shell-5', '/offline-outbox.js?v=20260903-offline-outbox-3',
+  '/outbox-ui.js?v=20260906-reading-groups-1', '/offline-outbox.js?v=20260903-offline-outbox-3',
   '/note-media.js?v=20260904-note-media-3',
   '/note-library.js?v=20260904-note-media-3',
   '/bulk-work.js?v=20260904-bulk-actions-3',
