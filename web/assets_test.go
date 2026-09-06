@@ -221,7 +221,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260907-chat-workspace-9")) != 2 {
+	if bytes.Count(index, []byte("20260907-today-3")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 	styles, err := Files.ReadFile("styles.css")

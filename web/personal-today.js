@@ -1,3 +1,22 @@
+export function todayHiddenBlocks(data, day, waitingHasContent, remindersHaveContent) {
+  const groups = todayPlanGroups(data.plans || [], day);
+  const hidden = ['summary'];
+  if (!day || (!groups.events.length && !day.timeKnown)) hidden.push('day-time');
+  if (!groups.overdue.length && !day?.projectAttention?.total) hidden.push('day-attention');
+  if (!groups.today.length && !groups.completed.length && !groups.upcoming.length) hidden.push('plans');
+  if (!day?.projectWork?.total) hidden.push('day-project-work');
+  if (!waitingHasContent) hidden.push('day-waiting');
+  if (!remindersHaveContent) hidden.push('day-reminders');
+  if (!(data.habits || []).some(h => !h.archivedAt && !h.paused)) hidden.push('habits');
+  if (!data.settings?.birthDate) hidden.push('life');
+  if (!(data.notes || []).length) hidden.push('notes');
+  return hidden;
+}
+
+export function useProgressiveToday(layout, editing) {
+  return !editing && !Object.keys(layout || {}).length;
+}
+
 export function todayPlanGroups(plans,summary){
   const map=new Map(plans.map(item=>[item.id,item]));
   const group=key=>(summary?.[key]||[]).map(id=>map.get(id)).filter(Boolean);
@@ -26,9 +45,13 @@ export function createPersonalTodayUI({state,api,escapeHTML:esc,icon,renderPerso
   function status(){return cached?.owner===state.me?.id&&cached.error?`<p class="form-error">${esc(cached.error)}</p><button type="button" class="text-button" data-today-retry>Повторить</button>`:'<p class="muted">Загружаем расписание дня…</p>';}
   function renderBlocks(data){
     const value=current(),groups=todayPlanGroups(data.plans,value),focus=groups.focus;
+    const hasPlans=data.plans.some(plan=>plan.status==='planned');
+    const inboxCount=data.notes.filter(note=>note.inInbox).length;
+    const projectNext=value?.projectWork?.items?.[0]||value?.projectAttention?.items?.[0];
+    const nextStep=hasPlans?'Выберите одно личное дело, которому хотите уделить внимание. Его дата и срок сохранятся.':inboxCount?'Во входящих есть записи. Решите, что оставить заметкой, а что превратить в дело.':projectNext?'Откройте назначенную вам работу. Она остаётся в своём проекте; личные записи видны только вам.':'Можно добавить следующее личное дело без срока и других обязательных параметров.';
     const projectRow=item=>`<button type="button" class="today-project-row" data-today-project="${esc(item.id)}" data-today-project-workspace="${esc(item.workspaceId)}"><span><small>${esc(item.reason)} · ${esc(item.workspace)}</small><strong>${esc(item.title)}</strong></span>${icon('chevronRight')}</button>`;
     const selectedDate=value?new Intl.DateTimeFormat('ru',{day:'numeric',month:'long',weekday:'short',timeZone:'UTC'}).format(new Date(value.date+'T12:00:00Z')):'Сегодня';
-    const focusBlock=`<section class="personal-section today-focus"><div class="section-heading"><div><p class="eyebrow">${esc(selectedDate)}</p><h2>Главное</h2></div><button type="button" class="text-button" data-today-focus ${value?'':'disabled'}>${focus?'Выбрать другое':'Выбрать'}</button></div>${value?(focus?`<button type="button" class="today-focus-source" data-today-open="${esc(focus.id)}"><strong>${esc(focus.title)}</strong><span>${focus.status==='done'?'Выполнено':'Выбрано вами на этот день'}</span></button>${focus.status==='planned'?`<button type="button" class="secondary" data-today-complete="${esc(focus.id)}">${icon('check')} Выполнено</button>`:''}`:'<p class="muted">Выберите одно личное дело, которому хотите уделить внимание. Его дата и срок сохранятся.</p>'):status()}</section>`;
+    const focusBlock=`<section class="personal-section today-focus"><div class="section-heading"><div><p class="eyebrow">${esc(selectedDate)}</p><h2>${focus||hasPlans?'Главное':'Следующий шаг'}</h2></div><button type="button" class="text-button" ${hasPlans||focus?'data-today-focus':inboxCount?'data-personal-tab-jump="inbox"':projectNext?`data-today-project="${esc(projectNext.id)}" data-today-project-workspace="${esc(projectNext.workspaceId)}"`:'data-personal-create="plan"'} ${value?'':'disabled'}>${focus?'Выбрать другое':hasPlans?'Выбрать':inboxCount?'Разобрать':projectNext?'Открыть работу':'Создать дело'}</button></div>${value?(focus?`<button type="button" class="today-focus-source" data-today-open="${esc(focus.id)}"><strong>${esc(focus.title)}</strong><span>${focus.status==='done'?'Выполнено':'Выбрано вами на этот день'}</span></button>${focus.status==='planned'?`<button type="button" class="secondary" data-today-complete="${esc(focus.id)}">${icon('check')} Выполнено</button>`:''}`:`<p class="muted">${esc(nextStep)}</p>`) : status()}${value?`<details class="today-tools"><summary>Планирование дня</summary><div><button type="button" class="text-button" data-today-calendar>Открыть день</button><button type="button" class="text-button" data-today-settings>Границы дня</button></div></details>`:''}</section>`;
     const schedule=`<section class="personal-section today-schedule"><div class="section-heading"><div><p class="eyebrow">Расписание</p><h2>По времени</h2></div><button type="button" class="text-button" data-today-calendar ${value?'':'disabled'}>Открыть день</button></div>${value?`<div class="personal-list">${groups.events.slice(0,6).map(plan=>`<button type="button" class="today-event" data-today-open="${esc(plan.id)}"><time>${plan.startsAt?esc(timeLabel(plan.startsAt,value.settings.timezone)):'Весь день'}</time><strong>${esc(plan.title)}</strong></button>`).join('')||'<p class="muted">Событий на сегодня нет.</p>'}</div>${groups.events.length>6?`<button type="button" class="text-button" data-today-calendar>Все события · ${groups.events.length}</button>`:''}<div class="today-capacity"><div><h3>${value.timeKnown?`Свободно до конца дня · ${formatMinutes(value.remainingFreeMinutes)}`:'Свободное время неизвестно'}</h3><button type="button" class="text-button" data-today-settings>Границы дня</button></div>${value.timeKnown?`<p class="today-windows">${value.remainingFree.map(window=>`<span>${esc(timeLabel(window.start,value.settings.timezone))}–${esc(timeLabel(window.end,value.settings.timezone))}</span>`).join('')||'До конца заданного дня свободных промежутков нет.'}</p><p class="muted">${esc(value.settings.timezone)} · ${esc(value.settings.start)}–${esc(value.settings.end)}. Учтены временные блоки и события на весь день. Дела без времени не вычитаются.</p>`:`<p class="muted">${esc(value.timeReason)}</p>`}</div>`:status()}</section>`;
     const attentionTotal=groups.overdue.length+(value?.projectAttention?.total||0);
     const attention=`<section class="personal-section today-attention"><div class="section-heading"><h2>Требует внимания</h2><span class="panel-note">${attentionTotal}</span></div>${value?`<div class="personal-list">${groups.overdue.slice(0,6).map(plan=>`<div class="today-attention-row"><small>Срок личного дела прошёл · ${esc(new Intl.DateTimeFormat('ru',{timeZone:value.settings.timezone,day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(plan.dueAt)))}</small>${renderPlanRow(plan,data.links)}</div>`).join('')}${(value.projectAttention?.items||[]).map(projectRow).join('')||(!groups.overdue.length?'<p class="muted">Просрочек, ожидающей вас приёмки и критических рисков нет.</p>':'')}</div>${groups.overdue.length>6?'<button type="button" class="text-button" data-personal-tab-jump="plans">Открыть все личные дела</button>':''}${value.projectAttention?.hasMore?`<p class="muted">Показаны первые ${value.projectAttention.items.length} проектных сигналов из ${value.projectAttention.total}.</p>`:''}`:status()}</section>`;
@@ -94,8 +117,8 @@ export function createPersonalTodayUI({state,api,escapeHTML:esc,icon,renderPerso
     document.querySelectorAll('[data-today-project]').forEach(button=>button.onclick=()=>openProject(button.dataset.todayProject,button.dataset.todayProjectWorkspace));
     document.querySelectorAll('[data-today-complete]').forEach(button=>button.onclick=()=>togglePlan(button.dataset.todayComplete));
     document.querySelectorAll('[data-today-calendar]').forEach(button=>button.onclick=()=>current()&&openDay(current().date,'personal'));
-    q('[data-today-focus]')?.addEventListener('click',openFocus);q('[data-today-settings]')?.addEventListener('click',openSettings);
+    q('[data-today-focus]')?.addEventListener('click',openFocus);document.querySelectorAll('[data-today-settings]').forEach(button=>button.addEventListener('click',openSettings));
   }
   setInterval(()=>{if(state.view==='personal'&&state.personalTab==='today'&&!state.pageLayoutDraft&&!state.layoutDraft&&q('.today-focus')){invalidate();void load();}},60000);
-  return {renderBlocks,renderPlans,bind,invalidate,hasNoProjectContext};
+  return {renderBlocks,renderPlans,bind,invalidate,hasNoProjectContext,hiddenBlocks:(data,waiting,reminders)=>todayHiddenBlocks(data,current(),waiting,reminders)};
 }

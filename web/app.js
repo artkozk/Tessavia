@@ -1,11 +1,11 @@
-import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-chat-workspace-9';
+import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-today-3';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260904-waiting-ping-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-today-3';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260904-habit-reminders-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-today-3';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
-import { createPersonalTodayUI } from './personal-today.js?v=20260905-reading-ui-4';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-today-3';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -8904,6 +8904,8 @@ function applyPageLayout() {
   if (state.pageLayoutDraft && state.pageLayoutDraft.key !== pageLayoutKey()) { state.pageLayoutDraft = null; $('.page-layout-editor', root)?.remove(); }
   applyInterfaceLayout();
   const draft = state.pageLayoutDraft, editing = Boolean(draft), value = currentPageLayout(), catalog = pageLayoutCatalog();
+  const progressiveToday = state.view === 'personal' && state.personalTab === 'today' && useProgressiveToday(value, editing);
+  const emptyTodayBlocks = progressiveToday && state.personal ? personalTodayUI.hiddenBlocks(state.personal, personalWaitingUI.hasContent(), personalRemindersUI.hasContent()) : [];
   mountWorkspaceWidgets(root, catalog, value);
   const items = catalog.blocks.map(block => ({ block, node: $(`[data-page-block="${block.key}"]`,root) || $(block.selector,root) })).filter(item => item.node);
   items.forEach(({block,node}) => { node.dataset.pageBlock = block.key; });
@@ -8930,6 +8932,7 @@ function applyPageLayout() {
   items.forEach(item => {
     const {node,block}=item;
     node.classList.toggle('page-block-hidden',!block.required && (value.hiddenBlocks||[]).includes(block.key));
+    node.classList.toggle('today-empty-block', emptyTodayBlocks.includes(block.key));
     if(!groups.has(node.parentElement))groups.set(node.parentElement,[]);
     groups.get(node.parentElement).push(item);
     applyBlockGeometry(node,block,value);

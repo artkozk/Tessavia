@@ -5122,3 +5122,7 @@ body:has(.calendar-expanded) { overflow: hidden; }
   .page-heading:has([data-planner-create]) { flex-direction: column; align-items: stretch; }
   .page-heading:has([data-planner-create]) > button { align-self: flex-start; }
 }
+.today-empty-block { display: none !important; }
+.today-tools { margin-top: 16px; }
+.today-tools > summary { color: var(--muted); cursor: pointer; font-size: 13px; }
+.today-tools > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }

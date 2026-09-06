@@ -81,5 +81,5 @@ export function createPersonalRemindersUI({state,api,escapeHTML:esc,icon,openMod
     }catch(error){if(alive()){const status=q('[role=status]',content);if(status)status.textContent=error.message;toast(error.message,true);}}
   }
   setInterval(()=>{if(state.view==='personal'&&state.personalTab==='today'&&!state.pageLayoutDraft&&!state.layoutDraft&&q('.today-reminders')){invalidate();void load();}},60000);
-  return {render,bind,invalidate,open};
+  return {render,bind,invalidate,open,hasContent:()=>cache?.owner===state.me?.id&&Boolean(cache.error||cache.value?.items?.length||cache.value?.habits?.length)};
 }
