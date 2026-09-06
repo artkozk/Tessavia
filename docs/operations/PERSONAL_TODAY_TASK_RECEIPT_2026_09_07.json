@@ -1,0 +1,28 @@
+{
+  "commit": "508795a1ab3b39608101a1cf751c47ae7a430f0c",
+  "release": "/opt/business-control/releases/20260907-today-508795a",
+  "sha256": "12d2b7628897afe060d5a1cfb7f2e8d7dca589e0db43e2118913f5ee9bfdf3ed",
+  "backup": "/var/lib/business-control/backups/pre-today-20260906T215357Z",
+  "tasks": [
+    {
+      "id": "c67bd9589e451927036639e517ffd28d",
+      "title": "Убрать пустые блоки после первой записи в Сегодня",
+      "status": "completed",
+      "proofVerified": true
+    },
+    {
+      "id": "54f7cd0225c5ef0f5eba56e3ffb71e51",
+      "title": "Сделать понятный первый запуск и контекстные подсказки",
+      "status": "in_progress",
+      "proofVerified": true
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "title": "Проверить визуал всех заполненных экранов и существующих команд",
+      "status": "planned",
+      "proofVerified": true
+    }
+  ],
+  "personalDayVerified": true,
+  "authenticatedThreadsChecked": 1
+}
