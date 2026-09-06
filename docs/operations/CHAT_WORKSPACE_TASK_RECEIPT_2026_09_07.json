@@ -1,0 +1,39 @@
+{
+  "commit": "04b185624e3cca9fc0e0ca4f35775dca2f604891",
+  "release": "/opt/business-control/releases/20260907-chat-workspace-04b1856",
+  "sha256": "bfae0291b253bdef2524db8573d8dfb9d9ea08b1ad97fa86a20ea87044bac06f",
+  "backup": "/var/lib/business-control/backups/pre-chat-workspace-20260906T213950Z",
+  "tasks": [
+    {
+      "id": "823789206b40a638abde3ef53b930fbb",
+      "title": "Выпустить личные диалоги, группы, историю и черновики чата",
+      "status": "completed",
+      "proofVerified": true
+    },
+    {
+      "id": "f91b7582a85c3938b6eb0d4c57ff5515",
+      "title": "Упростить входящие, календарь и заполненное управление командой",
+      "status": "completed",
+      "proofVerified": true
+    },
+    {
+      "id": "e402d353a684b074f852fa1fd277d895",
+      "title": "Пересобрать чат для повседневного использования",
+      "status": "in_progress",
+      "proofVerified": true
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "title": "найти проблемы в использовании платформы",
+      "status": "in_progress",
+      "proofVerified": true
+    },
+    {
+      "id": "1168ce733dc42915ee54c9dd8d6b773f",
+      "title": "Расширить профили и управление участниками",
+      "status": "in_progress",
+      "proofVerified": true
+    }
+  ],
+  "authenticatedThreadsChecked": 1
+}
