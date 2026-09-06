@@ -1,6 +1,6 @@
-const CACHE = 'tessavie-shell-20260906-reading-groups-1';
+const CACHE = 'tessavie-shell-20260907-chat-workspace-9';
 const ASSETS = [
-  '/', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260904-waiting-ping-1', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260906-reading-groups-1', '/styles.css?v=20260906-reading-groups-1',
+  '/', '/chat-workspace.js?v=20260907-chat-workspace-9', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260904-waiting-ping-1', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260907-chat-workspace-9', '/styles.css?v=20260907-chat-workspace-9',
   '/reminder-settings.js?v=20260904-reminder-digests-1',
   '/personal-reminders.js?v=20260904-habit-reminders-1',
   '/personal-navigation.js?v=20260904-personal-scope-1',

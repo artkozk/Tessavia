@@ -1,3 +1,4 @@
+import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-chat-workspace-9';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
 import { createPersonalWaitingUI } from './personal-waiting.js?v=20260904-waiting-ping-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
@@ -2102,7 +2103,7 @@ async function reloadTeamSettings(teamID, tab, shell) {
 function teamMemberMarkup(team, member) {
   const canEdit = team.role === 'owner' && member.role !== 'owner' || team.role === 'admin' && member.role === 'member';
   if (!canEdit) return '<article class="team-person-row">' + avatarMarkup(member) + '<span><strong>' + escapeHTML(member.displayName || member.username) + '</strong><small>@' + escapeHTML(member.username) + '</small></span><em>' + teamRoleLabel(member.role) + '</em></article>';
-  return '<form data-team-member-form="' + member.id + '" class="team-member-row"><header>' + avatarMarkup(member) + '<span><strong>' + escapeHTML(member.displayName || member.username) + '</strong><small>@' + escapeHTML(member.username) + '</small></span><label>Роль в этой команде<select name="role"><option value="member" ' + (member.role === 'member' ? 'selected' : '') + '>Участник</option><option value="admin" ' + (member.role === 'admin' ? 'selected' : '') + '>Администратор</option></select></label></header><div class="team-row-actions"><button type="submit" class="secondary">' + icon('check') + ' Сохранить роль</button><button type="button" class="icon-button danger-icon" data-remove-member="' + member.id + '" title="Исключить участника" aria-label="Исключить ' + escapeHTML(member.username) + '">' + icon('trash') + '</button></div></form>';
+  return '<form data-team-member-form="' + member.id + '" class="team-member-row"><header>' + avatarMarkup(member) + '<span><strong>' + escapeHTML(member.displayName || member.username) + '</strong><small>@' + escapeHTML(member.username) + '</small></span><label>Роль в этой команде<select name="role"><option value="member" ' + (member.role === 'member' ? 'selected' : '') + '>Участник</option><option value="admin" ' + (member.role === 'admin' ? 'selected' : '') + '>Администратор</option></select></label></header><div class="team-row-actions"><button type="submit" class="secondary" hidden>' + icon('check') + ' Сохранить роль</button><button type="button" class="icon-button danger-icon" data-remove-member="' + member.id + '" title="Исключить участника" aria-label="Исключить ' + escapeHTML(member.username) + '">' + icon('trash') + '</button></div></form>';
 }
 
 function teamInviteHistory(invites) {
@@ -2128,15 +2129,15 @@ async function openTeamSettings(teamID, tab = 'members') {
     if (!tabs.some(([key])=>key===tab)) tab='members';
     const workspace = team.projects[0];
     const projectIDs = team.projects.map(project=>project.id);
-    content.innerHTML = '<div class="workspace-editor-shell team-settings-shell"><header><div><p class="eyebrow">' + teamRoleLabel(team.role) + '</p><h2>' + escapeHTML(team.name) + '</h2>' + (team.description ? '<p>' + escapeHTML(team.description) + '</p>' : '') + '</div><div class="team-header-actions">' + (!owner ? '<button type="button" class="secondary danger-text" data-team-leave>' + icon('arrowLeft') + ' Выйти из команды</button>' : '<button type="button" class="secondary" data-team-transfer>' + icon('users') + ' Передать владение</button>') + '<button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">' + icon('x') + '</button></div></header>' +
+    content.innerHTML = '<div class="workspace-editor-shell team-settings-shell"><header><div><p class="eyebrow">' + teamRoleLabel(team.role) + '</p><h2>' + escapeHTML(team.name) + '</h2>' + (team.description ? '<p>' + escapeHTML(team.description) + '</p>' : '') + '</div><div class="team-header-actions">' + (!owner ? '<button type="button" class="secondary danger-text" data-team-leave>' + icon('arrowLeft') + ' Выйти из команды</button>' : '') + '<button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">' + icon('x') + '</button></div></header>' +
       (workspace ? '<button type="button" class="team-workspace-summary" data-team-project="' + workspace.id + '"><span>' + icon('network') + '</span><span><small>Рабочее пространство команды</small><strong>' + escapeHTML(workspace.name) + '</strong></span>' + icon('chevronRight') + '</button>' : '') +
-      (owner ? '<p class="team-role-hint">Чтобы выйти из команды, сначала передайте владение другому участнику. Если команда больше не нужна, её можно удалить в настройках.</p>' : '') +
       '<nav class="team-settings-tabs" aria-label="Настройки команды">' + tabs.map(([key,label])=>'<button type="button" class="text-button ' + (tab===key?'active':'') + '" aria-pressed="' + (tab===key) + '" data-team-tab="' + key + '">' + label + '</button>').join('') + '</nav>' +
       '<section class="team-settings-section" data-team-panel="members" ' + (tab==='members'?'':'hidden') + '>' +
       (manager ? '<details class="team-inline-editor"><summary>' + icon('users') + ' Добавить по юзернейму</summary><form id="team-member-add-form" class="team-member-add"><label>Юзернейм<input name="username" required placeholder="@username" autocomplete="off"></label><label>Роль в этой команде<select name="role"><option value="member">Участник</option><option value="admin">Администратор</option></select></label><p class="team-role-hint">Доступ относится только к ' + escapeHTML(team.name) + '.</p><button type="submit" class="primary">' + icon('plus') + ' Добавить</button></form></details>' : '') +
       '<div class="team-member-list">' + team.members.map(member=>teamMemberMarkup(team,member)).join('') + '</div></section>' +
       (manager ? '<section class="team-settings-section" data-team-panel="invites" ' + (tab==='invites'?'':'hidden') + '><form id="team-invite-form"><div class="form-grid two"><label>Роль в этой команде<select name="role"><option value="member">Участник</option><option value="admin">Администратор</option></select></label><label>Действует, дней<input name="expiresDays" type="number" min="1" max="90" value="7"></label></div><p class="team-role-hint">Приглашение открывает только рабочее пространство этой команды.</p><button type="submit" class="primary">' + icon('link') + ' Создать приглашение</button></form><div id="team-invite-secret"></div><div class="team-invite-history">' + teamInviteHistory(team.invitations) + '</div></section>' : '') +
       '<section class="team-settings-section" data-team-panel="settings" ' + (tab==='settings'?'':'hidden') + '>' +
+      (owner ? '<p class="team-role-hint">Чтобы выйти из команды, сначала передайте владение другому участнику. Если команда больше не нужна, её можно удалить в настройках.</p>' : '') +
       (manager ? '<form id="team-settings-form" class="card-form"><label>Название команды<input name="name" required maxlength="100" value="' + escapeHTML(team.name) + '"></label><label>Описание<textarea name="description" rows="3" maxlength="800">' + escapeHTML(team.description) + '</textarea></label><button type="submit" class="primary">' + icon('check') + ' Сохранить</button></form>' : '') +
       '<div class="team-lifecycle-actions">' + (owner ? '<button type="button" class="secondary" data-team-transfer>' + icon('users') + ' Передать владение</button><button type="button" class="secondary danger-text" data-team-delete>' + icon('trash') + ' Удалить команду</button>' : '<button type="button" class="secondary danger-text" data-team-leave>' + icon('arrowLeft') + ' Выйти из команды</button>') + '</div></section><footer><button type="button" class="text-button" data-team-directory>' + icon('arrowLeft') + ' Все команды</button></footer></div>';
     const shell = content.firstElementChild;
@@ -2162,6 +2163,10 @@ async function openTeamSettings(teamID, tab = 'members') {
     bindTeamSubmit($('#team-settings-form',shell),async form=>{
       await api('/api/teams/'+teamID,{method:'PATCH',body:JSON.stringify({name:form.get('name'),description:form.get('description')})});
       await reloadTeamSettings(teamID,'settings',shell); toast('Команда сохранена');
+    });
+    $$('[data-team-member-form]',shell).forEach(formNode=>{
+      const original=formNode.elements.role.value;
+      formNode.elements.role.addEventListener('change',()=>{formNode.querySelector('[type=submit]').hidden=formNode.elements.role.value===original;});
     });
     $$('[data-team-member-form]',shell).forEach(formNode=>bindTeamSubmit(formNode,async form=>{
       await api('/api/teams/'+teamID+'/members/'+formNode.dataset.teamMemberForm,{method:'PATCH',body:JSON.stringify({role:form.get('role'),projectIds:projectIDs})});
@@ -2469,7 +2474,7 @@ function renderPersonal() {
       ${renderPersonalCreateMenu()}
     </div>
     ${emptyPersonal ? '' : `<section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.planned)).length}</strong><small>отмечено</small></article><article><span>Незавершённые дела</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate || plan.startsAt || plan.occurrenceDate).length} запланировано</small></article><article><span>Проекты и цели</span><strong>${data.projects.length}/${data.goals.length}</strong><small>открыто</small></article></section>`}
-    <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}</div>
+    <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.filter(([key])=>['today','inbox','plans','notes'].includes(key)||key===state.personalTab).map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}<details class="personal-more-tabs"><summary class="segment">Ещё</summary><div>${tabs.filter(([key])=>!['today','inbox','plans','notes'].includes(key)&&key!==state.personalTab).map(([key,label])=>`<button type="button" data-personal-tab="${key}">${label}</button>`).join('')}</div></details></div>
     <div class="personal-content">${renderPersonalTab(data)}</div>`;
   $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; if(state.personalTab==='review')personalReviewUI.invalidate(); renderPersonal(); }));
   bindPersonalInteractions();
@@ -2532,7 +2537,7 @@ function captureDraftMatches(draft, requestKey, body) {
 
 function renderPersonalInbox(data) {
   const notes = personalInboxNotes(data.notes);
-  return `<section class="personal-section personal-inbox"><div class="section-heading"><h2>Входящие <span class="panel-note">${notes.length}</span></h2><button type="button" class="primary" data-personal-capture>${icon('plus')} Записать</button></div><section class="inbox-local-pending" data-inbox-local hidden></section><div class="personal-note-grid">${notes.map(note => renderNoteCard(note, data.links)).join('') || `<div class="personal-empty"><span>${icon('inbox')}</span><strong>Входящих нет</strong></div>`}</div></section>`;
+  return `<section class="personal-section personal-inbox"><div class="section-heading"><h2>Входящие <span class="panel-note">${notes.length}</span></h2><button type="button" class="primary" data-personal-capture>${icon('plus')} Записать</button></div><p class="inbox-explanation">Записи, которые ещё нужно разобрать. Если требуется действие — сделайте из записи дело. Справочный материал оставьте в заметках: он сохранится без срока и напоминаний.</p><section class="inbox-local-pending" data-inbox-local hidden></section><div class="personal-note-grid">${notes.map(note => renderNoteCard(note, data.links)).join('') || `<div class="personal-empty"><span>${icon('inbox')}</span><strong>Всё разобрано</strong><p>Здесь появляются быстрые записи. Нажмите «Записать», когда нужно сохранить мысль и решить, что с ней делать, позже.</p></div>`}</div></section>`;
 }
 
 function openPersonalInbox() {
@@ -2754,7 +2759,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
   const labels = { note: 'Заметка', plan: 'Дело', habit: 'Привычка', project: 'Личный проект', goal: 'Цель' };
   const title = labels[kind] || labels.note;
   const body = kind === 'note'
-    ? `${personalNoteSheet(item)}${noteLibraryUI.fields(item)}<label class="note-schedule-field">${icon('calendar')}<span>В календаре</span><input type="date" name="scheduledDate" aria-label="Дата заметки в календаре" value="${escapeHTML(item ? noteCalendarDate(item) : context.date || localISODate())}"></label>${item?.createdAt ? `<small class="muted">Создана ${escapeHTML(formatDate(item.createdAt))}</small>` : ''}`
+    ? `${personalNoteSheet(item)}${noteLibraryUI.fields(item)}<label class="note-schedule-field">${icon('calendar')}<span>В календаре</span><input type="date" name="scheduledDate" aria-label="Дата заметки в календаре" value="${escapeHTML(item ? item.scheduledDate || '' : context.date || '')}"></label>${item?.createdAt ? `<small class="muted">Создана ${escapeHTML(formatDate(item.createdAt))}</small>` : ''}`
     : kind === 'plan'
       ? `${personalNoteSheet(item ? { ...item, body: item.notes } : null, { bodyName: 'notes', pin: false })}${item ? '' : '<details class="first-plan-options"><summary>Даты, повторение и другие параметры</summary>'}${personalPlanContextFields(item || {})}${personalPlanDateFields(item || { startDate: context.date || '', endDate: context.date || '' })}${item ? '' : '</details>'}`
       : kind === 'project' ? personalProjectFields(item)
@@ -3349,7 +3354,7 @@ function calendarPresentationKey(surface) {
 function calendarPresentation(surface) {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(calendarPresentationKey(surface)) || '{}') || {}; } catch (_) {}
-  return { format: saved.format === 'circles' ? 'circles' : 'grid', zoom: Math.max(40, Math.min(100, Number(saved.zoom) || 100)) };
+  return { journal: saved.journal === true, format: saved.format === 'circles' ? 'circles' : 'grid', zoom: Math.max(40, Math.min(100, Number(saved.zoom) || 100)) };
 }
 
 function saveCalendarPresentation(surface, patch) {
@@ -4242,7 +4247,51 @@ function renderWorkRow(record) {
   </button>`;
 }
 
+
+function persistChatDraft() {
+  if (!state.chatDraftScope) return true;
+  try {
+    writeConversationDraft(localStorage,state.chatDraftScope,{body:state.chatDraftText||'',reply:state.chatReplyToId||'',linked:state.chatLinkedRecordId||'',nonce:state.chatDraftNonce||'',edit:state.chatEditingMessageId?{id:state.chatEditingMessageId,body:state.chatEditDraft?.body??state.chatMessages.find(item=>item.id===state.chatEditingMessageId)?.body??''}:null});
+    return true;
+  } catch (_) { toast('Не удалось сохранить черновик на устройстве. Оставьте диалог открытым.',true); return false; }
+}
+function restoreChatDraft() {
+  const key=chatDraftKey(state.me?.id,state.activeWorkspaceId,state.activeChatThreadId);
+  if (state.chatDraftScope===key) return;
+  const draft=readConversationDraft(localStorage,key);
+  state.chatDraftScope=key;state.chatDraftText=draft.body;state.chatReplyToId=draft.reply;state.chatLinkedRecordId=draft.linked;state.chatDraftNonce=draft.nonce;
+  state.chatEditingMessageId=draft.edit?.id||'';state.chatEditDraft=draft.edit?{messageID:draft.edit.id,threadID:state.activeChatThreadId,context:captureProjectContext(),body:draft.edit.body}:null;state.chatHistoryQuery=null;state.chatHistoryAround='';state.chatSearch='';state.chatSearchOpen=false;state.chatFavoritesOnly=false;state.chatPins=[];
+}
+function activateChatConversation(id) {
+  if(!persistChatDraft())return;
+  state.activeChatThreadId=id;state.chatLoadedThreadId='';state.chatMessages=[];state.chatEmojiTarget='';
+  restoreChatDraft();renderChat();
+}
+function updateChatComposerAction() {
+  const form=$('#chat-composer');if(!form||state.chatRecording)return;
+  const input=form.elements.body,hasContent=!!(input.value.trim()||state.chatLinkedRecordId||state.chatEditingMessageId);
+  $('[data-chat-voice]',form).hidden=hasContent||state.chatSending;
+  $('[type=submit]',form).hidden=!hasContent&&!state.chatSending;
+  input.style.height='auto';const height=Math.max(44,input.scrollHeight);input.style.height=`${Math.min(160,height)}px`;input.style.overflowY=height>160?'auto':'hidden';
+  syncChatViewport();
+}
+function syncChatViewport() {
+  const main=$('#main-content');if(!main?.querySelector('.chat-shell'))return;
+  const viewport=window.visualViewport;
+  const bottom=viewport?viewport.height+viewport.offsetTop:innerHeight;
+  main.style.setProperty('--chat-viewport-height',`${Math.max(200,bottom-main.getBoundingClientRect().top)}px`);
+}
+window.visualViewport?.addEventListener('resize',syncChatViewport);
+window.addEventListener('resize',syncChatViewport);
+async function jumpToChatMessage(id) {
+  const message=$(`#chat-message-${CSS.escape(id)}`);
+  if(message&&!state.chatSearch){message.scrollIntoView({behavior:'smooth',block:'center'});message.classList.add('highlight');return;}
+  state.chatSearch='';state.chatSearchOpen=false;state.chatFavoritesOnly=false;state.chatHistoryAround=id;state.chatScrollTarget=id;state.chatHistoryQuery=null;
+  await loadChatThread(state.activeChatThreadId);
+}
+
 function chatPresenceLabel(thread) {
+	if (thread.kind !== 'direct') return `${thread.memberCount || 0} участников · ${thread.kind === 'group' ? 'Группа' : 'Общий чат проекта'}`;
 	if (thread.partnerOnline) return 'в сети';
 	if (!thread.partnerLastSeen) return 'ещё не заходил';
 	const delta = Date.now() - new Date(thread.partnerLastSeen).getTime();
@@ -4252,7 +4301,7 @@ function chatPresenceLabel(thread) {
 
 function chatThreadTitle(thread) {
 	if (!thread) return 'Диалог';
-	return thread.kind === 'team' ? (thread.partnerUsername || 'Чат проекта') : thread.title;
+	return thread.kind === 'direct' ? (thread.partnerUsername || 'Личный диалог') : thread.kind === 'team' ? 'Общий чат проекта' : thread.title;
 }
 
 function chatClientNonce() {
@@ -4302,7 +4351,7 @@ function renderChatMessage(message) {
 	const ownActions = mine ? `${message.messageType === 'text' ? `<button type="button" data-chat-edit="${message.id}">${icon('edit')} Редактировать</button>` : ''}<button type="button" data-chat-archive="${message.id}">${icon('archive')} Убрать из чата</button>` : '';
 	const projectActions = message.body ? `<button type="button" data-chat-create="decision" data-message-id="${message.id}">${icon('scale')} Зафиксировать решение</button><button type="button" data-chat-create="task" data-message-id="${message.id}">${icon('checkSquare')} Создать задачу</button>` : '';
 	const quick = chatRecentEmojiList().slice(0, 5);
-	return `<article class="chat-message ${mine ? 'mine' : ''} type-${message.messageType}" id="chat-message-${message.id}" data-chat-message="${message.id}"><div class="chat-message-actions"><button type="button" data-chat-reply="${message.id}" title="Ответить" aria-label="Ответить">${icon('reply')}</button><button type="button" data-chat-emoji-more="${message.id}" title="Реакция" aria-label="Добавить реакцию">${icon('smile')}</button><details class="chat-message-menu"><summary aria-label="Другие действия">•••</summary><div><button type="button" data-chat-reply="${message.id}">${icon('reply')} Ответить</button><button type="button" data-chat-copy="${message.id}">${icon('copy')} Копировать</button><button type="button" data-chat-favorite="${message.id}">${icon('bookmark')} ${message.favorite ? 'Убрать из сохранённых' : 'Сохранить сообщение'}</button>${projectActions}${ownActions}<span>${quick.map((emoji) => `<button type="button" data-chat-reaction="${message.id}" data-emoji="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}<button type="button" data-chat-emoji-more="${message.id}" aria-label="Все эмодзи">${icon('smile')}</button></span></div></details></div><div class="chat-bubble">${!mine ? `<header><strong>${escapeHTML(message.authorUsername)}</strong></header>` : ''}${reply}${message.body ? `<div class="markdown-body chat-message-body">${renderMarkdown(message.body)}</div>` : ''}${linked}${media}<footer>${message.favorite ? `<span class="chat-saved" title="Сохранено">${icon('bookmark')}</span>` : ''}<time>${formatDate(message.createdAt, true)}</time>${message.editedAt ? `<span title="Изменено ${escapeHTML(formatDate(message.editedAt, true))}">изменено</span>` : ''}${read}</footer></div>${reactions ? `<div class="chat-reactions">${reactions}<button type="button" class="chat-add-reaction" data-chat-emoji-more="${message.id}" aria-label="Добавить реакцию">${icon('smile')}</button></div>` : ''}</article>`;
+	return `<article class="chat-message ${mine ? 'mine' : ''} type-${message.messageType}" id="chat-message-${message.id}" data-chat-message="${message.id}"><div class="chat-bubble"><div class="chat-message-actions"><button type="button" data-chat-reply="${message.id}" title="Ответить" aria-label="Ответить">${icon('reply')}</button><button type="button" data-chat-emoji-more="${message.id}" title="Реакция" aria-label="Добавить реакцию">${icon('smile')}</button><details class="chat-message-menu"><summary aria-label="Другие действия">•••</summary><div><button type="button" data-chat-reply="${message.id}">${icon('reply')} Ответить</button><button type="button" data-chat-copy="${message.id}">${icon('copy')} Копировать</button><button type="button" data-chat-favorite="${message.id}">${icon('bookmark')} ${message.favorite ? 'Убрать из сохранённых' : 'Сохранить сообщение'}</button><button type="button" data-chat-pin="${message.id}">${icon('bookmark')} ${state.chatPins?.some(pin=>pin.id===message.id) ? 'Открепить для всех' : 'Закрепить в диалоге'}</button>${state.chatSearch ? `<button type="button" data-scroll-message="${message.id}">${icon('messages')} Открыть в переписке</button>` : ''}${projectActions}${ownActions}<span>${quick.map((emoji) => `<button type="button" data-chat-reaction="${message.id}" data-emoji="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}<button type="button" data-chat-emoji-more="${message.id}" aria-label="Все эмодзи">${icon('smile')}</button></span></div></details></div>${!mine ? `<header><strong>${escapeHTML(message.authorUsername)}</strong></header>` : ''}${reply}${message.body ? `<div class="markdown-body chat-message-body">${renderMarkdown(message.body)}</div>` : ''}${linked}${media}<footer>${message.favorite ? `<span class="chat-saved" title="Сохранено">${icon('bookmark')}</span>` : ''}<time>${formatDate(message.createdAt, true)}</time>${message.editedAt ? `<span title="Изменено ${escapeHTML(formatDate(message.editedAt, true))}">изменено</span>` : ''}${read}</footer></div>${reactions ? `<div class="chat-reactions">${reactions}<button type="button" class="chat-add-reaction" data-chat-emoji-more="${message.id}" aria-label="Добавить реакцию">${icon('smile')}</button></div>` : ''}</article>`;
 }
 
 function renderChatTimeline(messages) {
@@ -4366,9 +4415,14 @@ function chatFilteredMessages() {
 }
 
 function renderChat() {
+  const oldList=$('.chat-messages');
+  const scroll=oldList?{thread:oldList.dataset.thread,top:oldList.scrollTop,height:oldList.scrollHeight,bottom:oldList.scrollHeight-oldList.scrollTop-oldList.clientHeight<64}:null;
+  const focused=document.activeElement;
+  const focusInfo=focused?.matches?.('#chat-composer textarea,.chat-search input')?{selector:focused.matches('textarea')?'#chat-composer textarea':'.chat-search input',start:focused.selectionStart,end:focused.selectionEnd}:null;
   chatEmojiPicker.close(false);
 	clearTimeout(state.chatPollTimer);
 	if (!state.activeChatThreadId && state.chatThreads.length) state.activeChatThreadId = state.chatThreads[0].id;
+	restoreChatDraft();persistChatDraft();
 	const thread = state.chatThreads.find((item) => item.id === state.activeChatThreadId);
 	if (thread && state.chatLoadedThreadId !== thread.id) {
 		$('#main-content').innerHTML = `<div class="chat-loading"><span class="spinner"></span><strong>Открываем диалог</strong></div>`;
@@ -4376,39 +4430,62 @@ function renderChat() {
 		return;
 	}
 	const messages = chatFilteredMessages();
-	const editingMessage = state.chatMessages.find((message) => message.id === state.chatEditingMessageId);
+	const editingMessage = state.chatMessages.find((message) => message.id === state.chatEditingMessageId) || (state.chatEditingMessageId && state.chatEditDraft ? {id:state.chatEditingMessageId,body:state.chatEditDraft.body} : null);
 	const editDraft = state.chatEditDraft;
 	const editingBody = editingMessage && editDraft?.messageID === editingMessage.id && editDraft.threadID === state.activeChatThreadId && isProjectContextCurrent(editDraft.context) ? editDraft.body : editingMessage?.body;
 	const threadTitle = chatThreadTitle(thread);
 	$('#main-content').innerHTML = `<section class="chat-shell">
 		<button type="button" class="chat-thread-backdrop" data-close-chat-threads aria-label="Закрыть список диалогов"></button>
-		<aside class="chat-thread-list"><header><div><h1>Сообщения</h1><p>Личный диалог и обсуждения карточек</p></div><button type="button" class="icon-button" data-new-chat-thread title="Новая ветка">${icon('plus')}</button></header><div>${state.chatThreads.map((item) => `<button type="button" class="chat-thread ${item.id === state.activeChatThreadId ? 'active' : ''}" data-chat-thread="${item.id}">${avatarMarkup(state.users.find((user) => user.username === item.partnerUsername) || { username: item.kind === 'team' ? item.partnerUsername || 'П' : item.title })}<span><strong>${escapeHTML(chatThreadTitle(item))}</strong><small>${escapeHTML(item.lastMessage || (item.kind === 'record' ? 'Обсуждение карточки' : chatPresenceLabel(item)))}</small></span><time>${item.lastMessageAt ? formatDate(item.lastMessageAt) : ''}</time>${item.unreadCount ? `<b>${item.unreadCount}</b>` : ''}</button>`).join('') || '<div class="guided-empty compact">Диалоги ещё не созданы</div>'}</div></aside>
-		<main class="chat-main">${thread ? `<header class="chat-header"><button type="button" class="chat-mobile-threads icon-button" data-toggle-chat-threads title="Диалоги" aria-label="Диалоги">${icon('menu')}</button>${avatarMarkup(state.users.find((user) => user.username === thread.partnerUsername) || { username: thread.partnerUsername || thread.title })}<div><h2>${escapeHTML(threadTitle)}</h2><p class="${thread.partnerOnline ? 'online' : ''}">${thread.kind === 'record' ? `Ветка карточки · ${escapeHTML(thread.recordTitle)}` : escapeHTML(chatPresenceLabel(thread))}</p></div><div class="chat-header-actions">${thread.recordId ? `<button type="button" class="icon-button" data-open-record="${thread.recordId}" title="Открыть карточку">${icon('link')}</button>` : ''}<button type="button" class="icon-button ${state.chatSearchOpen ? 'active' : ''}" data-toggle-chat-search title="Поиск в диалоге">${icon('search')}</button><details class="chat-header-more"><summary class="icon-button" aria-label="Действия диалога" title="Действия диалога">${icon('more')}</summary><div><button type="button" data-chat-ai-digest>${icon('sparkles')}<span>Собрать AI-выжимку</span></button><button type="button" class="${state.chatFavoritesOnly ? 'active' : ''}" data-chat-favorites>${icon('bookmark')}<span>${state.chatFavoritesOnly ? 'Все сообщения' : 'Сохранённые сообщения'}</span></button><button type="button" data-start-call>${icon('phone')}<span>Аудиозвонок</span></button></div></details></div>${state.chatSearchOpen ? `<label class="chat-search">${icon('search')}<input type="search" value="${escapeHTML(state.chatSearch)}" placeholder="Найти сообщение" aria-label="Поиск в диалоге"><button type="button" data-close-chat-search aria-label="Закрыть поиск">${icon('x')}</button></label>` : ''}</header><div class="chat-context-stack">${renderChatCallBanner(thread)}${renderChatDigest(thread)}</div><div class="chat-messages" data-drag-scroll="true">${renderChatTimeline(messages) || `<div class="chat-empty"><span>${icon(state.chatSearch ? 'search' : 'messages')}</span><strong>${state.chatSearch ? 'Совпадений нет' : 'Начните разговор'}</strong><p>${state.chatSearch ? 'Измените запрос или очистите поиск.' : `Напишите ${escapeHTML(threadTitle)} или прикрепите карточку проекта.`}</p></div>`}</div><div class="chat-composer-context">${editingMessage ? `<div><span>${icon('edit')}</span><span><strong>Редактирование сообщения</strong><small>Предыдущая версия останется в журнале.</small></span><button type="button" data-clear-chat-edit>${icon('x')}</button></div>` : ''}${state.chatReplyToId ? (() => { const reply = state.chatMessages.find((item) => item.id === state.chatReplyToId); return `<div><span>${icon('reply')}</span><span><strong>Ответ ${escapeHTML(reply?.authorUsername || '')}</strong><small>${escapeHTML(chatMessagePreview(reply || {}).slice(0, 120))}</small></span><button type="button" data-clear-chat-reply aria-label="Отменить ответ">${icon('x')}</button></div>`; })() : ''}${state.chatLinkedRecordId ? (() => { const linked = state.records.find((item) => item.id === state.chatLinkedRecordId); return `<div><span>${icon('link')}</span><span><strong>Прикреплена карточка</strong><small>${escapeHTML(linked?.title || '')}</small></span><button type="button" data-clear-chat-record>${icon('x')}</button></div>`; })() : ''}</div><form class="chat-composer" id="chat-composer"><label class="chat-drop" data-chat-drop><textarea name="body" rows="1" placeholder="${editingMessage ? 'Исправьте сообщение' : 'Сообщение'}" aria-label="Сообщение" ${state.chatSending ? 'disabled' : ''}>${escapeHTML(editingBody ?? state.chatDraftText)}</textarea><input type="file" name="file" multiple hidden></label><div class="chat-composer-actions"><details class="chat-composer-more"><summary class="icon-button" title="Вложения и дополнительные действия" aria-label="Вложения и дополнительные действия">${icon('plus')}</summary><div><button type="button" class="${state.chatEmojiTarget === 'composer' ? 'active' : ''}" data-chat-composer-emoji ${state.chatSending ? 'disabled' : ''}>${icon('smile')}<span>Эмодзи</span></button><button type="button" data-chat-attach ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('fileText')}<span>Отправить файл</span></button><button type="button" data-chat-link-record ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('link')}<span>Прикрепить карточку</span></button><button type="button" data-chat-video ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('video')}<span>Видеосообщение</span></button></div></details><button type="button" class="icon-button" data-chat-voice title="Записать голосовое" aria-label="Записать голосовое" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('mic')}</button><button type="submit" class="primary icon-button" title="${editingMessage ? 'Сохранить' : 'Отправить'}" aria-label="${editingMessage ? 'Сохранить сообщение' : 'Отправить сообщение'}" ${state.chatSending ? 'disabled' : ''}>${state.chatSending ? '<span class="spinner"></span>' : icon(editingMessage ? 'check' : 'send')}</button></div><div class="chat-upload-progress" hidden><span></span><progress max="100" value="0"></progress></div></form>` : `<div class="chat-empty"><strong>Выберите диалог</strong></div>`}</main>
+		<aside class="chat-thread-list"><header><div><h1>Сообщения</h1><p>Диалоги, группы и работа проекта</p></div><button type="button" class="icon-button" data-new-chat-thread title="Новый разговор" aria-label="Новый разговор">${icon('plus')}</button></header><div>${state.chatThreads.map((item) => `<button type="button" class="chat-thread ${item.id === state.activeChatThreadId ? 'active' : ''}" data-chat-thread="${item.id}">${avatarMarkup(state.users.find((user) => user.username === item.partnerUsername) || { username: item.kind === 'team' ? item.partnerUsername || 'П' : item.title })}<span><strong>${escapeHTML(chatThreadTitle(item))}</strong><small>${escapeHTML(item.lastMessage || (item.kind === 'record' ? 'Обсуждение карточки' : chatPresenceLabel(item)))}</small></span><time>${item.lastMessageAt ? formatDate(item.lastMessageAt) : ''}</time>${item.unreadCount ? `<b>${item.unreadCount}</b>` : ''}</button>`).join('') || '<div class="guided-empty compact">Диалоги ещё не созданы</div>'}</div></aside>
+		<main class="chat-main">${thread ? `<header class="chat-header"><button type="button" class="chat-mobile-threads icon-button" data-toggle-chat-threads title="Диалоги" aria-label="Диалоги">${icon('menu')}</button>${avatarMarkup(state.users.find((user) => user.username === thread.partnerUsername) || { username: thread.partnerUsername || thread.title })}<div><h2>${escapeHTML(threadTitle)}</h2><p class="${thread.partnerOnline ? 'online' : ''}">${thread.kind === 'record' ? `Ветка карточки · ${escapeHTML(thread.recordTitle)}` : escapeHTML(chatPresenceLabel(thread))}</p></div><div class="chat-header-actions">${thread.recordId ? `<button type="button" class="icon-button" data-open-record="${thread.recordId}" title="Открыть карточку">${icon('link')}</button>` : ''}<button type="button" class="icon-button ${state.chatSearchOpen ? 'active' : ''}" data-toggle-chat-search title="Поиск в диалоге">${icon('search')}</button><details class="chat-header-more"><summary class="icon-button" aria-label="Действия диалога" title="Действия диалога">${icon('more')}</summary><div><button type="button" data-chat-ai-digest>${icon('sparkles')}<span>Собрать AI-выжимку</span></button><button type="button" class="${state.chatFavoritesOnly ? 'active' : ''}" data-chat-favorites>${icon('bookmark')}<span>${state.chatFavoritesOnly ? 'Все сообщения' : 'Сохранённые сообщения'}</span></button><button type="button" data-start-call>${icon('phone')}<span>Аудиозвонок</span></button></div></details></div>${state.chatSearchOpen ? `<label class="chat-search">${icon('search')}<input type="search" value="${escapeHTML(state.chatSearch)}" placeholder="Найти сообщение" aria-label="Поиск в диалоге"><button type="button" data-close-chat-search aria-label="Закрыть поиск">${icon('x')}</button></label>` : ''}</header><div class="chat-context-stack">${renderChatCallBanner(thread)}${renderChatDigest(thread)}${state.chatPins?.length ? `<details class="chat-pinned-list"><summary>Закреплённые · ${state.chatPins.length}</summary>${state.chatPins.map(pin=>`<button type="button" data-scroll-message="${pin.id}"><strong>${escapeHTML(pin.author)}</strong><span>${escapeHTML(markdownPlain(pin.body).slice(0,180)||'Вложение')}</span></button>`).join('')}</details>` : ''}</div><div class="chat-messages" data-drag-scroll="true">${state.chatHistoryAround ? `<button type="button" class="text-button chat-history-latest" data-chat-latest>К последним сообщениям</button>` : ''}${state.chatHistoryMore ? `<button type="button" class="text-button chat-history-older" data-chat-history-older>Ранние сообщения</button>` : ''}${renderChatTimeline(messages) || `<div class="chat-empty"><span>${icon(state.chatSearch ? 'search' : 'messages')}</span><strong>${state.chatSearch ? 'Совпадений нет' : 'Начните разговор'}</strong><p>${state.chatSearch ? 'Измените запрос или очистите поиск.' : `Напишите ${escapeHTML(threadTitle)} или прикрепите карточку проекта.`}</p></div>`}</div><div class="chat-composer-context">${editingMessage ? `<div><span>${icon('edit')}</span><span><strong>Редактирование сообщения</strong><small>Предыдущая версия останется в журнале.</small></span><button type="button" data-clear-chat-edit>${icon('x')}</button></div>` : ''}${state.chatReplyToId ? (() => { const reply = state.chatMessages.find((item) => item.id === state.chatReplyToId); return `<div><span>${icon('reply')}</span><span><strong>Ответ ${escapeHTML(reply?.authorUsername || '')}</strong><small>${escapeHTML(chatMessagePreview(reply || {}).slice(0, 120))}</small></span><button type="button" data-clear-chat-reply aria-label="Отменить ответ">${icon('x')}</button></div>`; })() : ''}${state.chatLinkedRecordId ? (() => { const linked = state.records.find((item) => item.id === state.chatLinkedRecordId); return `<div><span>${icon('link')}</span><span><strong>Прикреплена карточка</strong><small>${escapeHTML(linked?.title || '')}</small></span><button type="button" data-clear-chat-record>${icon('x')}</button></div>`; })() : ''}</div><form class="chat-composer" id="chat-composer"><label class="chat-drop" data-chat-drop><textarea name="body" rows="1" placeholder="${editingMessage ? 'Исправьте сообщение' : 'Сообщение'}" aria-label="Сообщение" ${state.chatSending ? 'disabled' : ''}>${escapeHTML(editingBody ?? state.chatDraftText)}</textarea><input type="file" name="file" multiple hidden></label><div class="chat-composer-actions"><details class="chat-composer-more"><summary class="icon-button" title="Вложения и дополнительные действия" aria-label="Вложения и дополнительные действия">${icon('plus')}</summary><div><button type="button" class="${state.chatEmojiTarget === 'composer' ? 'active' : ''}" data-chat-composer-emoji ${state.chatSending ? 'disabled' : ''}>${icon('smile')}<span>Эмодзи</span></button><button type="button" data-chat-attach ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('fileText')}<span>Отправить файл</span></button><button type="button" data-chat-link-record ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('link')}<span>Прикрепить карточку</span></button><button type="button" data-chat-video ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('video')}<span>Видеосообщение</span></button></div></details><button type="button" class="icon-button" data-chat-voice title="Записать голосовое" aria-label="Записать голосовое" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('mic')}</button><button type="submit" class="primary icon-button" title="${editingMessage ? 'Сохранить' : 'Отправить'}" aria-label="${editingMessage ? 'Сохранить сообщение' : 'Отправить сообщение'}" ${state.chatSending ? 'disabled' : ''}>${state.chatSending ? '<span class="spinner"></span>' : icon(editingMessage ? 'check' : 'send')}</button></div><div class="chat-upload-progress" hidden><span></span><progress max="100" value="0"></progress></div></form>` : `<div class="chat-empty"><strong>Выберите диалог</strong></div>`}</main>
 	</section>`;
 	decorateChatUI();
 	const mobileThreadsButton = $('[data-toggle-chat-threads]');
 	if (mobileThreadsButton) mobileThreadsButton.innerHTML = icon('messages');
 	bindChatEvents();
 	bindOpenRecords();
-	requestAnimationFrame(() => { const list = $('.chat-messages'); if (list) list.scrollTop = list.scrollHeight; });
+	updateChatComposerAction();
+	requestAnimationFrame(() => {
+    const list=$('.chat-messages');if(!list)return;list.dataset.thread=thread?.id||'';
+    if(state.chatScrollTarget){const target=$(`#chat-message-${CSS.escape(state.chatScrollTarget)}`);target?.scrollIntoView({block:'center'});target?.classList.add('highlight');state.chatScrollTarget='';}
+    else if(scroll?.thread===thread?.id&&!scroll.bottom)list.scrollTop=scroll.top+(state.chatPrepending?list.scrollHeight-scroll.height:0);
+    else list.scrollTop=list.scrollHeight;
+    state.chatPrepending=false;
+    if(focusInfo&&scroll?.thread===thread?.id){const input=$(focusInfo.selector);input?.focus({preventScroll:true});input?.setSelectionRange(focusInfo.start,focusInfo.end);}
+  });
 	scheduleChatPoll();
 }
 
-async function loadChatThread(threadID, silent = false) {
-  const context = captureProjectContext();
-  const request = state.chatLoadRequest = (state.chatLoadRequest || 0) + 1;
-	try {
-		const [messages, threads] = await Promise.all([api(`/api/chat/threads/${threadID}/messages${state.chatFavoritesOnly ? '?favorites=true' : ''}`), api('/api/chat/threads')]);
-		if (!isProjectContextCurrent(context) || request !== state.chatLoadRequest) return;
-		state.chatMessages = messages; state.chatThreads = threads; state.chatLoadedThreadId = threadID; state.activeChatThreadId = threadID;
-		await api(`/api/chat/threads/${threadID}/read`, { method: 'POST' });
-		if (!isProjectContextCurrent(context) || request !== state.chatLoadRequest) return;
-		const activeThread = state.chatThreads.find((item) => item.id === threadID);
-		if (activeThread) activeThread.unreadCount = 0;
-		renderNav();
-		if (!silent && state.view === 'chat') renderChat();
-		else if (silent && state.view === 'chat' && !workspaceHasActiveInput()) renderChat();
-	} catch (error) { if (!silent && isProjectContextCurrent(context) && request === state.chatLoadRequest) toast(error.message, true); }
+async function loadChatThread(threadID, silent = false, older = false) {
+  const context=captureProjectContext(),query=state.chatSearch||'',around=state.chatHistoryAround||'',favorites=!!state.chatFavoritesOnly;
+  const signature=`${threadID}:${query}:${favorites}:${around}`;
+  if(silent&&(state.chatHistoryLoading||state.chatInputComposing||state.chatRecording||document.querySelector('.chat-message-menu[open],.chat-header-more[open],.chat-composer-more[open]')||[...document.querySelectorAll('.chat-messages audio,.chat-messages video')].some(media=>!media.paused)))return;
+  const request=state.chatLoadRequest=(state.chatLoadRequest||0)+1;
+  const params=new URLSearchParams();if(query)params.set('q',query);if(favorites)params.set('favorites','true');if(around)params.set('around',around);if(older&&state.chatHistoryBefore)params.set('before',state.chatHistoryBefore);
+  const list=$('.chat-messages'),atBottom=!list||list.scrollHeight-list.scrollTop-list.clientHeight<64;
+  state.chatHistoryLoading=true;
+  try {
+    const [page,threads,pins]=await Promise.all([api(`/api/chat/threads/${threadID}/history?${params}`),api('/api/chat/threads'),api(`/api/chat/threads/${threadID}/pins`)]);
+    if(!isProjectContextCurrent(context)||request!==state.chatLoadRequest||threadID!==state.activeChatThreadId)return;
+    const previous=JSON.stringify([state.chatMessages,state.chatPins,state.chatThreads]);
+    if(state.chatHistoryQuery!==signature){state.chatMessages=page.messages;state.chatHistoryMore=page.hasMore;state.chatHistoryBefore=page.nextBefore;}
+    else if(older){state.chatMessages=mergeChatHistory(page.messages,state.chatMessages);state.chatHistoryMore=page.hasMore;state.chatHistoryBefore=page.nextBefore;state.chatPrepending=true;}
+    else {
+      const oldest=page.messages[0];
+      const prefix=oldest?state.chatMessages.filter(item=>item.createdAt<oldest.createdAt||item.createdAt===oldest.createdAt&&item.id<oldest.id):[];
+      state.chatMessages=mergeChatHistory(prefix,page.messages);
+      if(!prefix.length){state.chatHistoryMore=page.hasMore;state.chatHistoryBefore=page.nextBefore;}
+    }
+    state.chatThreads=threads;state.chatPins=pins;state.chatHistoryQuery=signature;state.chatLoadedThreadId=threadID;
+    if(!query&&!around&&atBottom&&document.visibilityState==='visible'&&threads.find(item=>item.id===threadID)?.unreadCount>0) {
+      await api(`/api/chat/threads/${threadID}/read`,{method:'POST'});
+      if(!isProjectContextCurrent(context)||request!==state.chatLoadRequest)return;
+      const thread=state.chatThreads.find(item=>item.id===threadID);if(thread)thread.unreadCount=0;
+    }
+    renderNav();
+    if(state.view==='chat'&&(!silent||previous!==JSON.stringify([state.chatMessages,state.chatPins,state.chatThreads])))renderChat();
+  }catch(error){if(isProjectContextCurrent(context)&&request===state.chatLoadRequest){state.chatHistoryError=error.message;if(!silent)toast(error.message,true);}}
+  finally{if(request===state.chatLoadRequest)state.chatHistoryLoading=false;}
 }
 
 function scheduleChatPoll() {
@@ -4604,7 +4681,7 @@ function bindChatDropSurface() {
 }
 
 function bindChatEvents() {
-	$$('[data-chat-thread]').forEach((button) => button.addEventListener('click', () => { state.activeChatThreadId = button.dataset.chatThread; state.chatLoadedThreadId = ''; state.chatMessages = []; state.chatSearch = ''; state.chatSearchOpen = false; state.chatEditingMessageId = ''; state.chatReplyToId = ''; state.chatLinkedRecordId = ''; state.chatDraftNonce = ''; state.chatDraftText = ''; state.chatEmojiTarget = ''; $('.chat-shell')?.classList.remove('show-threads'); renderChat(); }));
+	$$('[data-chat-thread]').forEach(button=>button.addEventListener('click',()=>activateChatConversation(button.dataset.chatThread)));
 	$('[data-toggle-chat-threads]')?.addEventListener('click', () => $('.chat-shell').classList.toggle('show-threads'));
 	const chatThreadBackdrop = $('[data-close-chat-threads]');
 	const closeChatThreads = (event) => {
@@ -4617,14 +4694,17 @@ function bindChatEvents() {
 	const shell = $('.chat-shell');
 	shell?.addEventListener('click', (event) => { if (event.target === shell && shell.classList.contains('show-threads')) shell.classList.remove('show-threads'); });
 	bindChatDrawerSwipe();
-	$('[data-new-chat-thread]')?.addEventListener('click', async () => { const active = state.records.filter(isActiveRecord); const recordID = await askChoice({ title: 'Новая ветка обсуждения', label: 'Выберите карточку', choices: active.slice(0, 80).map((record) => ({ value: record.id, label: `${typeMeta[record.type].singular}: ${record.title}` })) }); if (!recordID) return; try { const thread = await api('/api/chat/threads', { method: 'POST', body: JSON.stringify({ recordId: recordID }) }); state.chatThreads = await api('/api/chat/threads'); state.activeChatThreadId = thread.id; state.chatLoadedThreadId = ''; renderChat(); } catch (error) { toast(error.message, true); } });
+	$('[data-new-chat-thread]')?.addEventListener('click',()=>createChatWorkspaceUI({state,api,esc:escapeHTML,icon,openModal,closeDialog:requestDialogClose,toast,activate:activateChatConversation}).openNew());
+	$('[data-chat-history-older]')?.addEventListener('click',()=>loadChatThread(state.activeChatThreadId,false,true));
+	$('[data-chat-latest]')?.addEventListener('click',()=>{state.chatHistoryAround='';state.chatHistoryQuery=null;loadChatThread(state.activeChatThreadId);});
+	$$('[data-chat-pin]').forEach(button=>button.addEventListener('click',async()=>{const id=button.dataset.chatPin,context=captureProjectContext(),thread=state.activeChatThreadId;try{await api(`/api/chat/threads/${thread}/pins`,{method:'PUT',body:JSON.stringify({messageId:id,pinned:!state.chatPins?.some(pin=>pin.id===id)})});if(isProjectContextCurrent(context)&&state.activeChatThreadId===thread)await loadChatThread(thread);}catch(error){toast(error.message,true);}}));
 	$('[data-chat-favorites]')?.addEventListener('click', () => { state.chatFavoritesOnly = !state.chatFavoritesOnly; state.chatLoadedThreadId = ''; renderChat(); });
-	$('[data-toggle-chat-search]')?.addEventListener('click', () => { state.chatSearchOpen = !state.chatSearchOpen; if (!state.chatSearchOpen) state.chatSearch = ''; renderChat(); requestAnimationFrame(() => $('.chat-search input')?.focus()); });
-	$('[data-close-chat-search]')?.addEventListener('click', () => { state.chatSearchOpen = false; state.chatSearch = ''; renderChat(); });
+	$('[data-toggle-chat-search]')?.addEventListener('click', () => { state.chatSearchOpen = !state.chatSearchOpen; if (!state.chatSearchOpen) { state.chatSearch = ''; state.chatLoadedThreadId=''; } renderChat(); requestAnimationFrame(() => $('.chat-search input')?.focus()); });
+	$('[data-close-chat-search]')?.addEventListener('click', () => { state.chatSearchOpen = false; state.chatSearch = ''; state.chatHistoryQuery=null; loadChatThread(state.activeChatThreadId); });
 	$('.chat-search input')?.addEventListener('input', (event) => {
 		state.chatSearch = event.target.value;
 		clearTimeout(state.chatSearchTimer);
-		state.chatSearchTimer = setTimeout(() => { renderChat(); const input = $('.chat-search input'); input?.focus(); input?.setSelectionRange(input.value.length, input.value.length); }, 130);
+		state.chatSearchTimer=setTimeout(()=>loadChatThread(state.activeChatThreadId),250);
 	});
 	$('[data-chat-ai-digest]')?.addEventListener('click', async () => {
 		state.chatDigestLoading = state.activeChatThreadId; renderChat();
@@ -4654,7 +4734,7 @@ function bindChatEvents() {
 	$$('[data-chat-archive]').forEach((button) => button.addEventListener('click', async () => {
 		const reason = await askText({ title: 'Убрать сообщение из чата', label: 'Почему сообщение больше не должно отображаться?', required: true });
 		if (!reason) return;
-		try { await api(`/api/chat/messages/${button.dataset.chatArchive}`, { method: 'DELETE', body: JSON.stringify({ reason }) }); await loadChatThread(state.activeChatThreadId); }
+		try { await api(`/api/chat/messages/${button.dataset.chatArchive}`, { method: 'DELETE', body: JSON.stringify({ reason }) }); state.chatMessages=state.chatMessages.filter(item=>item.id!==button.dataset.chatArchive); await loadChatThread(state.activeChatThreadId); }
 		catch (error) { toast(error.message, true); }
 	}));
 	$$('[data-chat-favorite]').forEach((button) => button.addEventListener('click', async () => { await api(`/api/chat/messages/${button.dataset.chatFavorite}/favorite`, { method: 'POST' }); await loadChatThread(state.activeChatThreadId); }));
@@ -4683,10 +4763,13 @@ function bindChatEvents() {
 			const openUp = availableAbove > availableBelow;
 			menu.classList.toggle('open-up', openUp);
 			popup.style.maxHeight = `${Math.floor(openUp ? availableAbove : availableBelow)}px`;
+      popup.style.setProperty('--chat-menu-left',`${Math.max(8,Math.min(innerWidth-246,trigger.left))}px`);
+      const height=Math.min(popup.scrollHeight,openUp?availableAbove:availableBelow);
+      popup.style.setProperty('--chat-menu-top',`${Math.max(8,Math.min(innerHeight-height-8,openUp?trigger.top-height-6:trigger.bottom+6))}px`);
 		});
 	}));
-	$$('[data-scroll-message]').forEach((button) => button.addEventListener('click', () => { const message = $(`#chat-message-${CSS.escape(button.dataset.scrollMessage)}`); message?.scrollIntoView({ behavior: 'smooth', block: 'center' }); message?.classList.add('highlight'); setTimeout(() => message?.classList.remove('highlight'), 1400); }));
-	$('[data-chat-link-record]')?.addEventListener('click', async () => { const records = state.records.filter(isActiveRecord); const id = await askChoice({ title: 'Прикрепить карточку', label: 'Карточка откроется прямо из сообщения', choices: records.slice(0, 80).map((record) => ({ value: record.id, label: `${typeMeta[record.type].singular}: ${record.title}` })) }); if (id) { state.chatLinkedRecordId = id; renderChat(); $('#chat-composer textarea')?.focus(); } });
+	$$('[data-scroll-message]').forEach(button=>button.addEventListener('click',()=>jumpToChatMessage(button.dataset.scrollMessage)));
+	$('[data-chat-link-record]')?.addEventListener('click', async () => { const records = state.records.filter(isActiveRecord); const id = await askChoice({ title: 'Прикрепить карточку', label: 'Карточка откроется прямо из сообщения', choices: records.map((record) => ({ value: record.id, label: `${typeMeta[record.type].singular}: ${record.title}` })) }); if (id) { state.chatLinkedRecordId = id; renderChat(); $('#chat-composer textarea')?.focus(); } });
 	bindChatMediaPlayers(); bindChatMessageGestures(); bindChatDropSurface();
 	const form = $('#chat-composer'); if (!form) return;
 	if (state.chatRecording) {
@@ -4695,15 +4778,16 @@ function bindChatEvents() {
 		return;
 	}
 	const textarea = form.elements.body; const input = form.elements.file; const drop = $('[data-chat-drop]', form);
+	textarea.addEventListener('compositionstart',()=>{state.chatInputComposing=true;});textarea.addEventListener('compositionend',()=>{state.chatInputComposing=false;});
 	textarea.addEventListener('input', () => {
 		if (state.chatEditingMessageId) {
 			state.chatEditDraft = { messageID: state.chatEditingMessageId, threadID: state.activeChatThreadId, context: captureProjectContext(), body: textarea.value };
-			return;
+			persistChatDraft();updateChatComposerAction();return;
 		}
 		state.chatDraftText = textarea.value;
-		state.chatDraftNonce = '';
+		state.chatDraftNonce = '';persistChatDraft();updateChatComposerAction();
 	});
-	textarea.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); } });
+	textarea.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !window.matchMedia('(pointer: coarse)').matches) { event.preventDefault(); form.requestSubmit(); } });
 	textarea.addEventListener('paste', async (event) => { const files = [...(event.clipboardData?.files || [])]; if (!files.length) return; event.preventDefault(); await uploadChatFiles(files); });
 	form.addEventListener('submit', async (event) => {
 		event.preventDefault();
@@ -4712,7 +4796,10 @@ function bindChatEvents() {
 		if (state.chatEditingMessageId) {
 			if (!body) return toast('Сообщение не может быть пустым', true);
 			state.chatSending = true; renderChat();
-			try { await api(`/api/chat/messages/${state.chatEditingMessageId}`, { method: 'PATCH', body: JSON.stringify({ body }) }); state.chatEditingMessageId = ''; await loadChatThread(state.activeChatThreadId); }
+			const editContext=captureProjectContext(),editThread=state.activeChatThreadId,editID=state.chatEditingMessageId;
+            try { await api(`/api/chat/messages/${editID}`, { method: 'PATCH', body: JSON.stringify({ body }) });
+              if(isProjectContextCurrent(editContext)&&state.activeChatThreadId===editThread){const message=state.chatMessages.find(item=>item.id===editID);if(message){message.body=body;message.editedAt=new Date().toISOString();}state.chatEditingMessageId='';state.chatEditDraft=null;persistChatDraft();await loadChatThread(editThread);}
+            }
 			catch (error) { toast(error.message, true); }
 			finally { state.chatSending = false; if (state.view === 'chat') renderChat(); }
 			return;
@@ -4725,7 +4812,7 @@ function bindChatEvents() {
 		try {
       await offlineOutbox.addMessage(payload,context);
       if (context.owner === state.me?.id && context.workspace === state.activeWorkspaceId && context.thread === state.activeChatThreadId && state.chatDraftNonce === clientNonce) {
-        state.chatReplyToId = ''; state.chatLinkedRecordId = ''; state.chatDraftNonce = ''; state.chatDraftText = '';
+        state.chatReplyToId = ''; state.chatLinkedRecordId = ''; state.chatDraftNonce = ''; state.chatDraftText = ''; persistChatDraft();
       }
       if (context.owner === state.me?.id) toastAction('Сообщение в очереди отправки.', 'Очередь', () => offlineOutbox.open());
       void offlineOutbox.pump();
@@ -4752,8 +4839,8 @@ function bindChatDrawerSwipe() {
 	});
 	let pointerID = null; let startX = 0; let startY = 0; let deltaX = 0;
 	const finish = () => { if (pointerID === null) return; const close = deltaX < -56; pointerID = null; drawer.style.removeProperty('transform'); drawer.classList.remove('dragging'); if (close) shell.classList.remove('show-threads'); };
-	drawer.addEventListener('pointerdown', (event) => { if (!event.isPrimary) return; pointerID = event.pointerId; startX = event.clientX; startY = event.clientY; deltaX = 0; drawer.setPointerCapture?.(pointerID); });
-	drawer.addEventListener('pointermove', (event) => { if (event.pointerId !== pointerID) return; const moveX = event.clientX - startX; const moveY = event.clientY - startY; if (Math.abs(moveX) < 10 || Math.abs(moveX) <= Math.abs(moveY)) return; event.preventDefault(); deltaX = Math.min(0, moveX); drawer.classList.add('dragging'); drawer.style.transform = `translateX(${deltaX}px)`; });
+	drawer.addEventListener('pointerdown', (event) => { if (!event.isPrimary) return; pointerID = event.pointerId; startX = event.clientX; startY = event.clientY; deltaX = 0; });
+	drawer.addEventListener('pointermove', (event) => { if (event.pointerId !== pointerID) return; const moveX = event.clientX - startX; const moveY = event.clientY - startY; if (Math.abs(moveX) < 10 || Math.abs(moveX) <= Math.abs(moveY)) return; event.preventDefault(); drawer.setPointerCapture?.(pointerID); deltaX = Math.min(0, moveX); drawer.classList.add('dragging'); drawer.style.transform = `translateX(${deltaX}px)`; });
 	drawer.addEventListener('pointerup', finish); drawer.addEventListener('pointercancel', finish);
 }
 
@@ -8998,7 +9085,7 @@ function plannerMatchesDay(item, day, personal) {
 
 function plannerItems() {
   const personal = state.calendarScope === 'personal';
-  const personalItems = [...(state.personal?.plans || []), ...(state.personal?.notes || []).map(note => ({...note, calendarKind:'note', startDate:noteCalendarDate(note), endDate:noteCalendarDate(note), status:'planned'}))];
+  const personalItems = [...(state.personal?.plans || []), ...(state.personal?.notes || []).filter(note=>note.scheduledDate || calendarPresentation('personal').journal).map(note => ({...note, calendarKind:'note', startDate:note.scheduledDate || localDateKey(new Date(note.createdAt)), endDate:note.scheduledDate || localDateKey(new Date(note.createdAt)), status:'planned'}))];
   return (personal ? personalItems : state.records).filter((item) => {
     if (item.status === 'archived' || item.status === 'cancelled') return false;
     const done = personal ? item.status === 'done' : !isActiveRecord(item);
@@ -9023,6 +9110,7 @@ function plannerEntry(item) {
 }
 
 function renderCalendarPage() {
+  const optionsOpen = Boolean($('.planner-view-options')?.open);
   const personal = state.calendarScope === 'personal';
   if (personal && !state.personal && state.personalError) return renderPersonalLoadError();
   if (personal && !state.personal) { $('#main-content').innerHTML = '<p>Загружаем личный календарь...</p>'; loadPersonal(); return; }
@@ -9036,12 +9124,15 @@ function renderCalendarPage() {
   const option = (key, label, value) => `<option value="${escapeHTML(key)}" ${String(value) === String(key) ? 'selected' : ''}>${escapeHTML(label)}</option>`;
   const monthDays = days.filter((key) => key.startsWith(state.calendarMonth));
   const agenda = monthDays.filter((key) => forDay(key).length).map((key) => `<section><h3>${escapeHTML(dateFromKey(key).toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }))}</h3>${forDay(key).map(plannerEntry).join('')}</section>`).join('');
-  $('#main-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Только для вас' : activeWorkspace()?.name || 'Проект')}</p><h1>Календарь</h1></div><button type="button" class="primary" data-planner-create>${icon('plus')} ${personal ? 'План' : 'Карточка'}</button></div><section class="planner-controls"><div class="planner-switches"><div class="segmented" aria-label="Пространство календаря">${[['personal', 'Личное'], ['project', 'Проект']].map(([key, label]) => `<button type="button" class="segment ${state.calendarScope === key ? 'active' : ''}" aria-pressed="${state.calendarScope === key}" data-planner-scope="${key}">${label}</button>`).join('')}</div><div class="segmented" aria-label="Вид календаря">${[['month', 'Месяц'], ['agenda', 'Расписание']].map(([key, label]) => `<button type="button" class="segment ${state.calendarDisplay === key ? 'active' : ''}" data-planner-display="${key}">${label}</button>`).join('')}</div>${!personal ? `<button type="button" class="text-button" data-planner-cycle>12 недель и год ${icon('chevronRight')}</button>` : ''}</div><div class="planner-filters">${!personal ? `<label>Доска<select data-planner-filter="calendarCollection">${option('', 'Все доски', state.calendarCollection)}${state.collections.map((board) => option(board.id, board.name, state.calendarCollection)).join('')}</select></label><label>Ответственный<select data-planner-filter="calendarOwner">${option('', 'Все', state.calendarOwner)}${state.users.map((user) => option(user.id, user.username, state.calendarOwner)).join('')}</select></label>` : ''}<label>Состояние<select data-planner-filter="calendarStatus">${[['active', 'Открытые'], ['done', 'Завершённые'], ['all', 'Все']].map(([key, label]) => option(key, label, state.calendarStatus)).join('')}</select></label>${!personal ? `<label>Цвет<select data-planner-filter="calendarColorBy">${option('stage', 'По этапу доски', state.calendarColorBy)}${option('priority', 'По приоритету', state.calendarColorBy)}</select></label>` : ''}<button type="button" class="text-button" data-planner-reset>Сбросить</button></div></section><section class="planner-body"><header class="planner-period"><button type="button" class="icon-button" data-planner-shift="-1" aria-label="Предыдущий месяц">${icon('arrowLeft')}</button><label><span class="sr-only">Месяц</span><input type="month" data-planner-month value="${state.calendarMonth}" min="1900-01" max="9998-12"></label><button type="button" class="icon-button" data-planner-shift="1" aria-label="Следующий месяц">${icon('chevronRight')}</button><button type="button" class="text-button" data-planner-today>Сегодня</button></header>${state.calendarDisplay === 'agenda' ? `<div class="planner-agenda">${agenda || '<p class="muted">В этом месяце записей по выбранным фильтрам нет.</p>'}</div>` : `<div class="planner-month"><div class="planner-weekdays">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => `<span>${day}</span>`).join('')}</div><div class="planner-grid">${days.map((key) => { const entries = forDay(key); return `<button type="button" data-planner-day="${key}" class="planner-day ${!key.startsWith(state.calendarMonth) ? 'outside' : ''} ${key === today ? 'today' : ''} ${key === state.calendarDay ? 'selected' : ''}" aria-pressed="${key === state.calendarDay}" aria-label="${key}: ${entries.length} записей"><b>${Number(key.slice(-2))}</b><span class="planner-day-preview">${entries.slice(0, 2).map((item) => `<span class="planner-mini planner-tone-${plannerTone(item)}">${escapeHTML(item.title)}</span>`).join('')}${entries.length > 2 ? `<small>+${entries.length - 2}</small>` : ''}</span><span class="planner-day-dots" aria-hidden="true">${entries.slice(0, 3).map((item) => `<i class="planner-tone-${plannerTone(item)}"></i>`).join('')}${entries.length > 3 ? `<small>+${entries.length - 3}</small>` : ''}</span></button>`; }).join('')}</div></div><section class="planner-selected"><header><h2>${escapeHTML(dateFromKey(state.calendarDay).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' }))}</h2><div><button type="button" class="text-button" data-planner-create>${icon('plus')} ${personal ? 'План' : 'Карточка'}</button>${!personal ? `<button type="button" class="text-button" data-planner-assign>${icon('link')} Назначить карточку</button>` : ''}</div></header>${selected.map(plannerEntry).join('') || '<p class="muted">На этот день записей по выбранным фильтрам нет.</p>'}</section>`}</section><details class="planner-undated"><summary>Без даты <b>${undated.length}</b></summary>${undated.map(plannerEntry).join('') || '<p class="muted">Записей без даты нет.</p>'}</details>`;
+  $('#main-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Только для вас' : activeWorkspace()?.name || 'Проект')}</p><h1>Календарь</h1></div><button type="button" class="primary" data-planner-create>${icon('plus')} ${personal ? 'Дело или событие' : 'Карточка'}</button></div><section class="planner-controls"><div class="planner-switches"><div class="segmented" aria-label="Пространство календаря">${[['personal', 'Личное'], ['project', 'Проект']].map(([key, label]) => `<button type="button" class="segment ${state.calendarScope === key ? 'active' : ''}" aria-pressed="${state.calendarScope === key}" data-planner-scope="${key}">${label}</button>`).join('')}</div><div class="segmented" aria-label="Вид календаря">${[['month', 'Месяц'], ['agenda', 'Расписание']].map(([key, label]) => `<button type="button" class="segment ${state.calendarDisplay === key ? 'active' : ''}" data-planner-display="${key}">${label}</button>`).join('')}</div>${!personal ? `<button type="button" class="text-button" data-planner-cycle>12 недель и год ${icon('chevronRight')}</button>` : ''}</div><div class="planner-filters">${!personal ? `<label>Доска<select data-planner-filter="calendarCollection">${option('', 'Все доски', state.calendarCollection)}${state.collections.map((board) => option(board.id, board.name, state.calendarCollection)).join('')}</select></label><label>Ответственный<select data-planner-filter="calendarOwner">${option('', 'Все', state.calendarOwner)}${state.users.map((user) => option(user.id, user.username, state.calendarOwner)).join('')}</select></label>` : ''}<label>Состояние<select data-planner-filter="calendarStatus">${[['active', 'Открытые'], ['done', 'Завершённые'], ['all', 'Все']].map(([key, label]) => option(key, label, state.calendarStatus)).join('')}</select></label>${!personal ? `<label>Цвет<select data-planner-filter="calendarColorBy">${option('stage', 'По этапу доски', state.calendarColorBy)}${option('priority', 'По приоритету', state.calendarColorBy)}</select></label>` : ''}<button type="button" class="text-button" data-planner-reset>Сбросить</button></div></section><section class="planner-body"><header class="planner-period"><button type="button" class="icon-button" data-planner-shift="-1" aria-label="Предыдущий месяц">${icon('arrowLeft')}</button><label><span class="sr-only">Месяц</span><input type="month" data-planner-month value="${state.calendarMonth}" min="1900-01" max="9998-12"></label><button type="button" class="icon-button" data-planner-shift="1" aria-label="Следующий месяц">${icon('chevronRight')}</button><button type="button" class="text-button" data-planner-today>Сегодня</button></header>${state.calendarDisplay === 'agenda' ? `<div class="planner-agenda">${agenda || '<p class="muted">В этом месяце записей по выбранным фильтрам нет.</p>'}</div>` : `<div class="planner-month"><div class="planner-weekdays">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => `<span>${day}</span>`).join('')}</div><div class="planner-grid">${days.map((key) => { const entries = forDay(key); return `<button type="button" data-planner-day="${key}" class="planner-day ${!key.startsWith(state.calendarMonth) ? 'outside' : ''} ${key === today ? 'today' : ''} ${key === state.calendarDay ? 'selected' : ''}" aria-pressed="${key === state.calendarDay}" aria-label="${key}: ${entries.length} записей"><b>${Number(key.slice(-2))}</b><span class="planner-day-preview">${entries.slice(0, 2).map((item) => `<span class="planner-mini planner-tone-${plannerTone(item)}">${escapeHTML(item.title)}</span>`).join('')}${entries.length > 2 ? `<small>+${entries.length - 2}</small>` : ''}</span><span class="planner-day-dots" aria-hidden="true">${entries.slice(0, 3).map((item) => `<i class="planner-tone-${plannerTone(item)}"></i>`).join('')}${entries.length > 3 ? `<small>+${entries.length - 3}</small>` : ''}</span></button>`; }).join('')}</div></div><section class="planner-selected"><header><h2>${escapeHTML(dateFromKey(state.calendarDay).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' }))}</h2><div><button type="button" class="text-button" data-planner-create>${icon('plus')} ${personal ? 'Дело или событие' : 'Карточка'}</button>${!personal ? `<button type="button" class="text-button" data-planner-assign>${icon('link')} Назначить карточку</button>` : ''}</div></header>${selected.map(plannerEntry).join('') || '<p class="muted">На этот день записей по выбранным фильтрам нет.</p>'}</section>`}</section><details class="planner-undated"><summary>Без даты <b>${undated.length}</b></summary>${undated.map(plannerEntry).join('') || '<p class="muted">Записей без даты нет.</p>'}</details>`;
   const root = $('#main-content');
   const calendarSurface = personal ? 'personal' : 'project';
   const calendarBody = $('.planner-body', root);
   calendarBody.classList.toggle('calendar-expanded', state.calendarExpanded === calendarSurface);
-  calendarBody.insertAdjacentHTML('afterbegin', calendarPresentationToolbar(calendarSurface));
+  calendarBody.insertAdjacentHTML('afterbegin', `<details class="planner-view-options"><summary>Вид и фильтры${state.calendarStatus!=='all'||state.calendarOwner||state.calendarCollection?' · включены':''}</summary><div>${calendarPresentationToolbar(calendarSurface)}${personal?`<label class="check"><input type="checkbox" data-planner-journal ${calendarPresentation('personal').journal?'checked':''}><span>Показывать также заметки по дате создания</span></label>`:''}</div></details>`);
+  $('.planner-view-options > div',root).append($('.planner-filters',root));
+  $('.planner-view-options',root).open = optionsOpen;
+  $('[data-planner-journal]',root)?.addEventListener('change',event=>{saveCalendarPresentation('personal',{journal:event.target.checked});renderCalendarPage();});
   if (state.calendarDisplay !== 'agenda' && calendarPresentation(calendarSurface).format === 'circles') {
     $('.planner-month', root).innerHTML = `${calendarTimeLegend()}<div class="planner-circle-grid">${monthDays.map((key) => calendarCircle(key, forDay(key), 'data-planner-day', state.calendarDay)).join('')}</div>`;
   }
@@ -9153,7 +9244,7 @@ function renderDayWorkspace() {
     $('#main-content').innerHTML = '<p class="muted">Загружаем записи дня...</p>'; loadPersonal(); return;
   }
   const data = dayWorkspaceItems(personal ? 'personal' : 'project', date), root = $('#main-content');
-  root.innerHTML = `<header class="day-workspace-heading"><div class="day-workspace-nav"><button type="button" class="secondary" data-day-back>${icon('arrowLeft')} Назад</button><div><button type="button" class="icon-button" data-day-shift="-1" aria-label="Предыдущий день">${icon('arrowLeft')}</button><input type="date" aria-label="Открытый день" value="${date}" data-day-date><button type="button" class="icon-button" data-day-shift="1" aria-label="Следующий день">${icon('chevronRight')}</button></div></div><div class="section-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Личное' : activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(dateFromKey(date).toLocaleDateString('ru-RU', {weekday:'long',day:'numeric',month:'long'}))}</h1></div><button type="button" class="icon-button" data-day-layout title="Настроить день" aria-label="Настроить день">${icon('sliders')}</button></div></header><section class="day-workspace-records"><header class="section-heading"><h2>${personal ? 'Планы' : 'Карточки'} <small>${data.records.length}</small></h2><div><button type="button" class="text-button" data-day-new>${icon('plus')} ${personal ? 'План' : 'Карточка'}</button>${!personal ? `<button type="button" class="icon-button" data-day-assign aria-label="Назначить существующую карточку" title="Назначить существующую карточку">${icon('link')}</button>` : ''}</div></header>${data.records.map(item => dayRecordRow(item, personal)).join('') || '<p class="muted">На этот день ничего не запланировано.</p>'}</section><section class="day-workspace-notes"><header class="section-heading"><h2>Заметки <small>${data.notes.length}</small></h2><button type="button" class="text-button" data-day-note>${icon('plus')} Заметка</button></header>${data.notes.map(note => `<article class="day-note"><button type="button" class="day-note-title" data-day-kind="${personal ? 'note' : 'record'}" data-day-item="${note.id}">${icon('edit')}<strong>${escapeHTML(note.title)}</strong></button><div class="markdown-body">${renderMarkdown(personal ? note.body : note.description || '')}</div>${personal ? `<small class="muted">${noteCalendarDate(note) === date ? 'На этот день' : 'Связана с планом'}${note.createdAt ? ` · Создана ${escapeHTML(formatDate(note.createdAt))}` : ''}</small>` : ''}</article>`).join('') || '<p class="muted">Заметок на этот день пока нет.</p>'}</section>`;
+  root.innerHTML = `<header class="day-workspace-heading"><div class="day-workspace-nav"><button type="button" class="secondary" data-day-back>${icon('arrowLeft')} Назад</button><div><button type="button" class="icon-button" data-day-shift="-1" aria-label="Предыдущий день">${icon('arrowLeft')}</button><input type="date" aria-label="Открытый день" value="${date}" data-day-date><button type="button" class="icon-button" data-day-shift="1" aria-label="Следующий день">${icon('chevronRight')}</button></div></div><div class="section-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Личное' : activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(dateFromKey(date).toLocaleDateString('ru-RU', {weekday:'long',day:'numeric',month:'long'}))}</h1></div><button type="button" class="icon-button" data-day-layout title="Настроить день" aria-label="Настроить день">${icon('sliders')}</button></div></header><section class="day-workspace-records"><header class="section-heading"><h2>${personal ? 'Планы' : 'Карточки'} <small>${data.records.length}</small></h2><div><button type="button" class="text-button" data-day-new>${icon('plus')} ${personal ? 'Дело или событие' : 'Карточка'}</button>${!personal ? `<button type="button" class="icon-button" data-day-assign aria-label="Назначить существующую карточку" title="Назначить существующую карточку">${icon('link')}</button>` : ''}</div></header>${data.records.map(item => dayRecordRow(item, personal)).join('') || '<p class="muted">На этот день ничего не запланировано.</p>'}</section><section class="day-workspace-notes"><header class="section-heading"><h2>Заметки <small>${data.notes.length}</small></h2><button type="button" class="text-button" data-day-note>${icon('plus')} Заметка</button></header>${data.notes.map(note => `<article class="day-note"><button type="button" class="day-note-title" data-day-kind="${personal ? 'note' : 'record'}" data-day-item="${note.id}">${icon('edit')}<strong>${escapeHTML(note.title)}</strong></button><div class="markdown-body">${renderMarkdown(personal ? note.body : note.description || '')}</div>${personal ? `<small class="muted">${noteCalendarDate(note) === date ? 'На этот день' : 'Связана с планом'}${note.createdAt ? ` · Создана ${escapeHTML(formatDate(note.createdAt))}` : ''}</small>` : ''}</article>`).join('') || '<p class="muted">Заметок на этот день пока нет.</p>'}</section>`;
   $('[data-day-back]',root).addEventListener('click', () => { if (!leavePageLayoutEditor()) return; if ((history.state?.businessControlDepth || 0) > 0) history.back(); else openCalendar(state.calendarScope); });
   const changeDay = next => { if (!next || !leavePageLayoutEditor()) return; state.calendarDay = next; rememberView(); renderDayWorkspace(); };
   $$('[data-day-shift]',root).forEach(button => button.addEventListener('click', () => changeDay(localDateKey(addCalendarDays(date, Number(button.dataset.dayShift))))));

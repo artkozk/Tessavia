@@ -5023,3 +5023,102 @@ body:has(.calendar-expanded) { overflow: hidden; }
   .personal-review-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .personal-review-choice { padding-left: 37px; }
 }
+
+/* Everyday conversations and progressive calendar controls, 06 September 2026. */
+.chat-create-dialog { max-width: 600px; margin: auto; }
+.chat-create-dialog > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.chat-create-dialog form { display: grid; gap: 16px; }
+.chat-create-kinds { flex-wrap: wrap; }
+.chat-create-kinds label { display: flex; align-items: center; gap: 7px; }
+.chat-create-kinds input { width: auto; }
+.chat-create-choices { max-height: 42dvh; overflow: auto; display: grid; gap: 6px; }
+.chat-create-choice { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.chat-create-choice:has(:checked) { background: var(--accent-soft); border-color: var(--accent); }
+.chat-create-choice input { width: auto; flex: 0 0 auto; }
+.chat-create-choice span { display: grid; min-width: 0; gap: 3px; overflow-wrap: anywhere; }
+.chat-create-choice small { color: var(--muted); }
+.chat-pinned-list { margin: 4px 16px; border-bottom: 1px solid var(--line); }
+.chat-pinned-list summary { padding: 9px 0; color: var(--accent); cursor: pointer; font-size: 13px; }
+.chat-pinned-list[open] { max-height: 24dvh; overflow: auto; }
+.chat-pinned-list button { display: flex; width: 100%; align-items: baseline; gap: 10px; text-align: left; border: 0; background: transparent; padding: 8px 0; }
+.chat-pinned-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chat-history-older,.chat-history-latest { display: block; margin: 8px auto; flex-shrink: 0; }
+.chat-message.highlight .chat-bubble { outline: 2px solid var(--accent); outline-offset: 3px; }
+.chat-composer textarea { max-height: 160px; overflow-y: auto; }
+.inbox-explanation { max-width: 760px; color: var(--muted); line-height: 1.6; margin: 0 0 20px; }
+.planner-view-options { margin: 0 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.planner-view-options > summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 6px 0; }
+.planner-view-options > div { display: grid; gap: 12px; padding-top: 10px; }
+.planner-view-options .calendar-presentation { margin: 0; justify-content: start; }
+.planner-view-options .planner-filters { margin: 0; }
+.personal-tabs { overflow: visible; position: relative; z-index: 4; flex-wrap: wrap; }
+.personal-more-tabs { position: relative; }
+.personal-more-tabs > summary { list-style: none; cursor: pointer; }
+.personal-more-tabs > div { position: absolute; z-index: 30; right: 0; top: calc(100% + 6px); width: 210px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-soft); }
+.personal-more-tabs button { display: block; width: 100%; padding: 12px; text-align: left; border: 0; background: transparent; border-radius: 8px; }
+.personal-more-tabs button:hover { background: var(--accent-soft); }
+@media (max-width: 600px) {
+ .chat-create-kinds { display: grid; gap: 4px; }
+ .chat-create-dialog { min-width: 0; }
+ .chat-create-dialog .form-actions { flex-wrap: wrap; }
+ .personal-more-tabs > div { right: auto; left: 0; }
+ .personal-tabs .segment { padding-inline: 10px; }
+}
+
+/* Keep message actions inside the bubble: the old hover gap hid the menu on the way to it. */
+.chat-message,.chat-message.mine { animation: none; }
+.chat-message .chat-message-actions,.chat-message:not(.mine) .chat-message-actions { top: auto; bottom: 6px; left: 8px; right: auto; opacity: 1; transform: none; pointer-events: auto; }
+.chat-message-actions > button { opacity: 0; pointer-events: none; }
+.chat-message:hover .chat-message-actions > button,.chat-message:focus-within .chat-message-actions > button { opacity: 1; pointer-events: auto; }
+.chat-message-actions > button,.chat-message-actions > details > summary { width: 24px; height: 24px; box-shadow: none; background: transparent; }
+.chat-bubble > footer { min-height: 24px; padding-left: 90px; }
+.chat-message .chat-message-menu > div,.chat-message:not(.mine) .chat-message-menu > div { position: fixed; left: var(--chat-menu-left,8px); top: var(--chat-menu-top,80px); bottom: auto; right: auto; width: 238px; min-width: 0; z-index: 125; }
+.chat-message:has(.chat-message-menu[open]) { z-index: 125; }
+@media (pointer: coarse) { .chat-message-actions > button { opacity: 1; pointer-events: auto; } }
+.chat-bubble { position: relative; }
+.main-content:has(.chat-shell) { height: calc(100dvh - 70px); }
+@media (max-width: 600px) {
+ .chat-message-actions > button { display: none; }
+ .chat-message-actions > details > summary { width: 44px; height: 44px; }
+ .chat-message .chat-message-actions { bottom: 0; }
+ .chat-bubble > footer { min-height: 38px; padding-left: 42px; }
+ .chat-composer { padding-bottom: max(10px,env(safe-area-inset-bottom)); }
+}
+.main-content:has(.chat-shell) { height: var(--chat-viewport-height,calc(100dvh - 70px)); }
+
+/* Existing teams use compact member rows; maintenance actions live in settings. */
+.team-settings-shell > header { align-items: start; gap: 20px; }
+.team-settings-shell > header > div:first-child { min-width: 0; }
+.team-settings-shell h2 { overflow-wrap: anywhere; }
+.team-workspace-summary { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 14px 0; }
+.team-workspace-summary:hover { color: var(--accent); }
+.team-settings-shell .team-member-list { gap: 0; }
+.team-settings-shell .team-member-row { grid-template-columns: minmax(0,1fr) auto; align-items: center; padding: 14px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.team-settings-shell .team-member-row > header { grid-template-columns: auto minmax(0,1fr) 150px; }
+.team-settings-shell .team-member-row > header label { font-size: 11px; }
+.team-settings-shell .team-member-row > header small { font-size: 12px; }
+.team-settings-shell .team-settings-section { padding-block: 20px; }
+.team-settings-shell .team-inline-editor { border-top: 0; padding-top: 0; margin-bottom: 12px; }
+@media (max-width: 600px) {
+ .team-settings-shell .team-member-row > header { grid-template-columns: auto minmax(0,1fr); }
+ .team-settings-shell .team-member-row > header label { grid-column: 2; margin-top: 4px; }
+ .team-settings-shell .team-row-actions { flex-direction: column; align-self: end; gap: 6px; }
+ .team-settings-shell .team-row-actions > .secondary { max-width: 100px; white-space: normal; }
+}
+@media (max-width: 600px) {
+ .team-settings-shell > header { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; }
+ .team-settings-shell > header > .team-header-actions { grid-column: 2; grid-row: 1; }
+ .team-settings-shell .team-settings-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 2px; }
+ .team-settings-shell .team-settings-tabs > button { min-width: 0; padding-inline: 2px; font-size: 12px; }
+ .team-settings-shell .team-person-row { grid-template-columns: auto minmax(0,1fr) auto; }
+ .team-settings-shell .team-person-row em { grid-column: auto; }
+}
+/* A grid's automatic minimum must not stretch the whole page to the transcript's height. */
+.main-content:has(.chat-shell) { display: block; min-height: 0; }
+.chat-shell { min-height: 0; grid-template-rows: minmax(0,1fr); }
+.chat-main,.chat-thread-list,.chat-messages { min-height: 0; }
+.chat-messages { scroll-behavior: auto; }
+@media (max-width: 600px) {
+  .page-heading:has([data-planner-create]) { flex-direction: column; align-items: stretch; }
+  .page-heading:has([data-planner-create]) > button { align-self: flex-start; }
+}
