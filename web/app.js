@@ -1,11 +1,12 @@
-import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-record-chat-1';
+import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-calendar-work-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-calendar-work-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-record-chat-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-calendar-work-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-record-chat-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-calendar-work-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-record-chat-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-calendar-work-1';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -2445,6 +2446,7 @@ async function loadPersonal({ force = false } = {}) {
     const result = await state.personalLoadPromise;
     if (expectedOwner !== state.me?.id || request !== state.personalLoadRequest) return;
     state.personal = result;
+    personalCalendarUI.invalidate();
     personalTodayUI.invalidate();
     personalWaitingUI.invalidate();
     personalReviewUI.invalidate();
@@ -2624,6 +2626,7 @@ async function openPersonalReviewSource(item) {
   }
 }
 const personalReviewUI=createPersonalReviewUI({state,api,escapeHTML,icon,renderPersonal,toast,openSource:openPersonalReviewSource});
+const personalCalendarUI=createPersonalCalendarUI({state,api,esc:escapeHTML,icon,rerender:()=>{if(state.calendarScope==='personal'){if(state.view==='calendar')renderCalendarPage();if(state.view==='day')renderDayWorkspace();}},openModal,closeDialog:requestDialogClose,toast,openSource:openPersonalReviewSource,openPlan:openPersonalPlanDetails,formatDate,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor});
 const readingUI = createReadingUI({ escapeHTML, icon, api, state, toast, toastAction, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, loadData });
 function renderHabitRow(habit, links, compact = false) { return habitUI.renderRow(habit, compact); }
 
@@ -2999,6 +3002,7 @@ async function navigateToView(view, options = {}) {
   const changedView = changedWorkspace || normalized !== state.view;
 	state.view = normalized;
   if (['personal', 'calendar', 'day'].includes(normalized)) state.calendarScope = route.calendarScope;
+  if (['calendar','day'].includes(normalized) && state.calendarScope === 'personal') personalCalendarUI.invalidate();
   if (normalized === 'personal' && Object.hasOwn(options, 'personalTab')) {
 	state.personalTab = options.personalTab;
 	if (state.personalTab === 'review') personalReviewUI.invalidate();
@@ -3381,7 +3385,7 @@ function calendarPresentationKey(surface) {
 function calendarPresentation(surface) {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(calendarPresentationKey(surface)) || '{}') || {}; } catch (_) {}
-  return { journal: saved.journal === true, format: saved.format === 'circles' ? 'circles' : 'grid', zoom: Math.max(40, Math.min(100, Number(saved.zoom) || 100)) };
+  return { includeWork: saved.includeWork === true, journal: saved.journal === true, format: saved.format === 'circles' ? 'circles' : 'grid', zoom: Math.max(40, Math.min(100, Number(saved.zoom) || 100)) };
 }
 
 function saveCalendarPresentation(surface, patch) {
@@ -9192,6 +9196,7 @@ function plannerMatchesDay(item, day, personal) {
 function plannerItems() {
   const personal = state.calendarScope === 'personal';
   const personalItems = [...(state.personal?.plans || []), ...(state.personal?.notes || []).filter(note=>note.scheduledDate || calendarPresentation('personal').journal).map(note => ({...note, calendarKind:'note', startDate:note.scheduledDate || localDateKey(new Date(note.createdAt)), endDate:note.scheduledDate || localDateKey(new Date(note.createdAt)), status:'planned'}))];
+  if (personal && calendarPresentation('personal').includeWork) personalItems.push(...personalCalendarUI.entries());
   return (personal ? personalItems : state.records).filter((item) => {
     if (item.status === 'archived' || item.status === 'cancelled') return false;
     const done = personal ? item.status === 'done' : !isActiveRecord(item);
@@ -9201,6 +9206,7 @@ function plannerItems() {
 }
 
 function plannerTone(item) {
+  if (item.calendarKind === 'work') return 'blue';
   let color = item.colorKey || 'green';
   if (state.calendarScope !== 'personal') {
     const stage = state.collections.find((board) => board.id === item.collectionId)?.stages.find((value) => value.id === item.stageId);
@@ -9211,8 +9217,14 @@ function plannerTone(item) {
 
 function plannerEntry(item) {
   const personal = state.calendarScope === 'personal';
-  const subtitle = personal ? item.calendarKind === 'note' ? 'Заметка' : personalPlanDateLabel(item) : `${item.ownerUsername || ''}${item.dueAt ? ` · ${formatDate(item.dueAt, true)}` : ' · Без срока'}`;
+  const subtitle = item.calendarKind === 'work' ? `${item.workspace} · ${item.startsAt ? personalPlanDateLabel(item) : item.dueAt ? 'Срок: '+formatDate(item.dueAt,true) : 'Без времени'}` : personal ? item.calendarKind === 'note' ? 'Заметка' : personalPlanDateLabel(item) : `${item.ownerUsername || ''}${item.dueAt ? ` · ${formatDate(item.dueAt, true)}` : ' · Без срока'}`;
   return `<button type="button" class="planner-entry planner-tone-${plannerTone(item)}" data-planner-entry="${item.id}" data-planner-kind="${item.calendarKind || ''}"><i></i><span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(subtitle)}</small></span>${icon('chevronRight')}</button>`;
+}
+
+function bindPersonalCalendarControls(root) {
+  root.insertAdjacentHTML('beforeend', `<div class="personal-calendar-options"><label class="check"><input type="checkbox" data-calendar-include-work ${calendarPresentation('personal').includeWork?'checked':''}><span>Показывать мои рабочие задачи</span></label><button type="button" class="text-button" data-calendar-work-plan>${icon('plus')} Запланировать рабочую задачу</button></div>${personalCalendarUI.banner()}`);
+  $('[data-calendar-include-work]',root).addEventListener('change',event=>{saveCalendarPresentation('personal',{includeWork:event.target.checked});if(state.view==='day')renderDayWorkspace();else renderCalendarPage();});
+  personalCalendarUI.bind(root);
 }
 
 function renderCalendarPage() {
@@ -9225,6 +9237,7 @@ function renderCalendarPage() {
   const month = dateFromKey(`${state.calendarMonth}-01`), today = localISODate();
   const start = addCalendarDays(month, -(month.getDay() + 6) % 7);
   const days = Array.from({ length: 42 }, (_, index) => localDateKey(addCalendarDays(start, index)));
+  if (personal) personalCalendarUI.ensure(days[0],localDateKey(addCalendarDays(start,42)));
   const items = plannerItems(), forDay = (key) => items.filter((item) => plannerMatchesDay(item, key, personal));
   const selected = forDay(state.calendarDay), undated = items.filter((item) => !plannerRange(item, personal)[0]);
   const option = (key, label, value) => `<option value="${escapeHTML(key)}" ${String(value) === String(key) ? 'selected' : ''}>${escapeHTML(label)}</option>`;
@@ -9233,6 +9246,7 @@ function renderCalendarPage() {
   $('#main-content').innerHTML = `<div class="page-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Только для вас' : activeWorkspace()?.name || 'Проект')}</p><h1>Календарь</h1></div><button type="button" class="primary" data-planner-create>${icon('plus')} ${personal ? 'Дело или событие' : 'Карточка'}</button></div><section class="planner-controls"><div class="planner-switches"><div class="segmented" aria-label="Пространство календаря">${[['personal', 'Личное'], ['project', 'Проект']].map(([key, label]) => `<button type="button" class="segment ${state.calendarScope === key ? 'active' : ''}" aria-pressed="${state.calendarScope === key}" data-planner-scope="${key}">${label}</button>`).join('')}</div><div class="segmented" aria-label="Вид календаря">${[['month', 'Месяц'], ['agenda', 'Расписание']].map(([key, label]) => `<button type="button" class="segment ${state.calendarDisplay === key ? 'active' : ''}" data-planner-display="${key}">${label}</button>`).join('')}</div>${!personal ? `<button type="button" class="text-button" data-planner-cycle>12 недель и год ${icon('chevronRight')}</button>` : ''}</div><div class="planner-filters">${!personal ? `<label>Доска<select data-planner-filter="calendarCollection">${option('', 'Все доски', state.calendarCollection)}${state.collections.map((board) => option(board.id, board.name, state.calendarCollection)).join('')}</select></label><label>Ответственный<select data-planner-filter="calendarOwner">${option('', 'Все', state.calendarOwner)}${state.users.map((user) => option(user.id, user.username, state.calendarOwner)).join('')}</select></label>` : ''}<label>Состояние<select data-planner-filter="calendarStatus">${[['active', 'Открытые'], ['done', 'Завершённые'], ['all', 'Все']].map(([key, label]) => option(key, label, state.calendarStatus)).join('')}</select></label>${!personal ? `<label>Цвет<select data-planner-filter="calendarColorBy">${option('stage', 'По этапу доски', state.calendarColorBy)}${option('priority', 'По приоритету', state.calendarColorBy)}</select></label>` : ''}<button type="button" class="text-button" data-planner-reset>Сбросить</button></div></section><section class="planner-body"><header class="planner-period"><button type="button" class="icon-button" data-planner-shift="-1" aria-label="Предыдущий месяц">${icon('arrowLeft')}</button><label><span class="sr-only">Месяц</span><input type="month" data-planner-month value="${state.calendarMonth}" min="1900-01" max="9998-12"></label><button type="button" class="icon-button" data-planner-shift="1" aria-label="Следующий месяц">${icon('chevronRight')}</button><button type="button" class="text-button" data-planner-today>Сегодня</button></header>${state.calendarDisplay === 'agenda' ? `<div class="planner-agenda">${agenda || '<p class="muted">В этом месяце записей по выбранным фильтрам нет.</p>'}</div>` : `<div class="planner-month"><div class="planner-weekdays">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => `<span>${day}</span>`).join('')}</div><div class="planner-grid">${days.map((key) => { const entries = forDay(key); return `<button type="button" data-planner-day="${key}" class="planner-day ${!key.startsWith(state.calendarMonth) ? 'outside' : ''} ${key === today ? 'today' : ''} ${key === state.calendarDay ? 'selected' : ''}" aria-pressed="${key === state.calendarDay}" aria-label="${key}: ${entries.length} записей"><b>${Number(key.slice(-2))}</b><span class="planner-day-preview">${entries.slice(0, 2).map((item) => `<span class="planner-mini planner-tone-${plannerTone(item)}">${escapeHTML(item.title)}</span>`).join('')}${entries.length > 2 ? `<small>+${entries.length - 2}</small>` : ''}</span><span class="planner-day-dots" aria-hidden="true">${entries.slice(0, 3).map((item) => `<i class="planner-tone-${plannerTone(item)}"></i>`).join('')}${entries.length > 3 ? `<small>+${entries.length - 3}</small>` : ''}</span></button>`; }).join('')}</div></div><section class="planner-selected"><header><h2>${escapeHTML(dateFromKey(state.calendarDay).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' }))}</h2><div><button type="button" class="text-button" data-planner-create>${icon('plus')} ${personal ? 'Дело или событие' : 'Карточка'}</button>${!personal ? `<button type="button" class="text-button" data-planner-assign>${icon('link')} Назначить карточку</button>` : ''}</div></header>${selected.map(plannerEntry).join('') || '<p class="muted">На этот день записей по выбранным фильтрам нет.</p>'}</section>`}</section><details class="planner-undated"><summary>Без даты <b>${undated.length}</b></summary>${undated.map(plannerEntry).join('') || '<p class="muted">Записей без даты нет.</p>'}</details>`;
   const root = $('#main-content');
   const calendarSurface = personal ? 'personal' : 'project';
+  if (personal) bindPersonalCalendarControls($('.planner-controls',root));
   const calendarBody = $('.planner-body', root);
   calendarBody.classList.toggle('calendar-expanded', state.calendarExpanded === calendarSurface);
   calendarBody.insertAdjacentHTML('afterbegin', `<details class="planner-view-options"><summary>Вид и фильтры${state.calendarStatus!=='all'||state.calendarOwner||state.calendarCollection?' · включены':''}</summary><div>${calendarPresentationToolbar(calendarSurface)}${personal?`<label class="check"><input type="checkbox" data-planner-journal ${calendarPresentation('personal').journal?'checked':''}><span>Показывать также заметки по дате создания</span></label>`:''}</div></details>`);
@@ -9246,7 +9260,7 @@ function renderCalendarPage() {
   $$('[data-planner-scope]', root).forEach((button) => button.addEventListener('click', () => { state.calendarScope = button.dataset.plannerScope; renderCalendarPage(); }));
   $$('[data-planner-display]', root).forEach((button) => button.addEventListener('click', () => { state.calendarDisplay = button.dataset.plannerDisplay; renderCalendarPage(); }));
   $$('[data-planner-filter]', root).forEach((select) => select.addEventListener('change', () => { state[select.dataset.plannerFilter] = select.value; renderCalendarPage(); }));
-  $$('[data-planner-entry]', root).forEach((button) => button.addEventListener('click', () => personal ? button.dataset.plannerKind === 'note' ? openPersonalEditor('note', button.dataset.plannerEntry) : openPersonalPlanDetails(button.dataset.plannerEntry) : openRecord(button.dataset.plannerEntry)));
+  $$('[data-planner-entry]', root).forEach((button) => button.addEventListener('click', () => button.dataset.plannerKind === 'work' ? personalCalendarUI.openWork(button.dataset.plannerEntry.slice(5)) : personal ? button.dataset.plannerKind === 'note' ? openPersonalEditor('note', button.dataset.plannerEntry) : openPersonalPlanDetails(button.dataset.plannerEntry) : openRecord(button.dataset.plannerEntry)));
   $$('[data-planner-create]', root).forEach((button) => button.addEventListener('click', createCalendarEntry));
   $$('[data-planner-day]', root).forEach((button) => button.addEventListener('click', () => openDayWorkspace(button.dataset.plannerDay, state.calendarScope)));
   $$('[data-planner-shift]', root).forEach((button) => button.addEventListener('click', () => { const next = new Date(month); next.setMonth(next.getMonth() + Number(button.dataset.plannerShift)); state.calendarMonth = localDateKey(next).slice(0, 7); state.calendarDay = `${state.calendarMonth}-01`; renderCalendarPage(); }));
@@ -9331,6 +9345,7 @@ function openDayWorkspace(date, scope) {
 }
 
 function dayRecordRow(item, personal) {
+  if (item.calendarKind === 'work') return `<button type="button" class="day-record-row" data-day-item="${item.recordId}" data-day-kind="work">${icon('checkSquare')}<span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.workspace)} · ${escapeHTML(item.startsAt?personalPlanDateLabel(item):'Срок: '+formatDate(item.dueAt,true))}</small></span>${icon('chevronRight')}</button>`;
   const status = personal ? item.status === 'done' ? 'Завершён' : 'Запланирован' : statusLabel(item);
   const when = personal ? personalPlanDateLabel(item) : item.dueAt ? formatDate(item.dueAt, true) : '';
   return `<button type="button" class="day-record-row" data-day-item="${item.id}" data-day-kind="${personal ? 'plan' : 'record'}">${icon(personal ? 'calendar' : typeMeta[item.type]?.icon || 'fileText')}<span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(status)}${when ? ` · ${escapeHTML(when)}` : ''}${!personal && item.ownerUsername ? ` · ${escapeHTML(item.ownerUsername)}` : ''}</small></span>${icon('chevronRight')}</button>`;
@@ -9338,7 +9353,8 @@ function dayRecordRow(item, personal) {
 
 function bindDayItems(root) {
   $$('[data-day-item]', root).forEach(button => button.addEventListener('click', () => {
-    if (button.dataset.dayKind === 'plan') openPersonalPlanDetails(button.dataset.dayItem);
+    if (button.dataset.dayKind === 'work') personalCalendarUI.openWork(button.dataset.dayItem);
+    else if (button.dataset.dayKind === 'plan') openPersonalPlanDetails(button.dataset.dayItem);
     else if (button.dataset.dayKind === 'note') openPersonalEditor('note', button.dataset.dayItem);
     else openRecord(button.dataset.dayItem);
   }));
@@ -9351,7 +9367,12 @@ function renderDayWorkspace() {
     $('#main-content').innerHTML = '<p class="muted">Загружаем записи дня...</p>'; loadPersonal(); return;
   }
   const data = dayWorkspaceItems(personal ? 'personal' : 'project', date), root = $('#main-content');
+  if (personal) {
+    personalCalendarUI.ensure(date,localDateKey(addCalendarDays(date,1)));
+    if (calendarPresentation('personal').includeWork) data.records.push(...personalCalendarUI.entries().filter(item=>plannerMatchesDay(item,date,true)));
+  }
   root.innerHTML = `<header class="day-workspace-heading"><div class="day-workspace-nav"><button type="button" class="secondary" data-day-back>${icon('arrowLeft')} Назад</button><div><button type="button" class="icon-button" data-day-shift="-1" aria-label="Предыдущий день">${icon('arrowLeft')}</button><input type="date" aria-label="Открытый день" value="${date}" data-day-date><button type="button" class="icon-button" data-day-shift="1" aria-label="Следующий день">${icon('chevronRight')}</button></div></div><div class="section-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Личное' : activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(dateFromKey(date).toLocaleDateString('ru-RU', {weekday:'long',day:'numeric',month:'long'}))}</h1></div><button type="button" class="icon-button" data-day-layout title="Настроить день" aria-label="Настроить день">${icon('sliders')}</button></div></header><section class="day-workspace-records"><header class="section-heading"><h2>${personal ? 'Планы' : 'Карточки'} <small>${data.records.length}</small></h2><div><button type="button" class="text-button" data-day-new>${icon('plus')} ${personal ? 'Дело или событие' : 'Карточка'}</button>${!personal ? `<button type="button" class="icon-button" data-day-assign aria-label="Назначить существующую карточку" title="Назначить существующую карточку">${icon('link')}</button>` : ''}</div></header>${data.records.map(item => dayRecordRow(item, personal)).join('') || '<p class="muted">На этот день ничего не запланировано.</p>'}</section><section class="day-workspace-notes"><header class="section-heading"><h2>Заметки <small>${data.notes.length}</small></h2><button type="button" class="text-button" data-day-note>${icon('plus')} Заметка</button></header>${data.notes.map(note => `<article class="day-note"><button type="button" class="day-note-title" data-day-kind="${personal ? 'note' : 'record'}" data-day-item="${note.id}">${icon('edit')}<strong>${escapeHTML(note.title)}</strong></button><div class="markdown-body">${renderMarkdown(personal ? note.body : note.description || '')}</div>${personal ? `<small class="muted">${noteCalendarDate(note) === date ? 'На этот день' : 'Связана с планом'}${note.createdAt ? ` · Создана ${escapeHTML(formatDate(note.createdAt))}` : ''}</small>` : ''}</article>`).join('') || '<p class="muted">Заметок на этот день пока нет.</p>'}</section>`;
+  if (personal) bindPersonalCalendarControls($('.day-workspace-heading',root));
   $('[data-day-back]',root).addEventListener('click', () => { if (!leavePageLayoutEditor()) return; if ((history.state?.businessControlDepth || 0) > 0) history.back(); else openCalendar(state.calendarScope); });
   const changeDay = next => { if (!next || !leavePageLayoutEditor()) return; state.calendarDay = next; rememberView(); renderDayWorkspace(); };
   $$('[data-day-shift]',root).forEach(button => button.addEventListener('click', () => changeDay(localDateKey(addCalendarDays(date, Number(button.dataset.dayShift))))));

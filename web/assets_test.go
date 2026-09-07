@@ -2,8 +2,36 @@ package web
 
 import (
 	"bytes"
+	"io/fs"
+	"regexp"
+	"strings"
 	"testing"
 )
+
+func TestEveryLocalModuleImportIsEmbedded(t *testing.T) {
+	imports := regexp.MustCompile(`(?:from\s*|import\s*)['"]\./([^'"?]+)(?:\?[^'"]*)?['"]`)
+	err := fs.WalkDir(Files, ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".js") || strings.Contains(path, "/") {
+			return nil
+		}
+		body, err := Files.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, match := range imports.FindAllSubmatch(body, -1) {
+			if _, err := Files.ReadFile(string(match[1])); err != nil {
+				t.Errorf("%s imports missing embedded module %s: %v", path, match[1], err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestSidebarStylesTargetTheActualScrollableList(t *testing.T) {
 	styles, err := Files.ReadFile("styles.css")
@@ -221,7 +249,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260907-record-chat-1")) != 2 {
+	if bytes.Count(index, []byte("20260907-calendar-work-1")) != 2 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 	styles, err := Files.ReadFile("styles.css")

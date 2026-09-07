@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, 'app.js'), 'utf8');
 function harness() {
   const state = {calendarScope:'personal', calendarStatus:'active', collections:[], records:[], personal:{plans:[]}};
-  const context = vm.createContext({ state, localDateKey: date => date.toISOString().slice(0,10), isActiveRecord: item => item.status !== 'completed', isWorkRecord: () => true });
+  const context = vm.createContext({ state, calendarPresentation:()=>({includeWork:!!state.includeWork}),personalCalendarUI:{entries:()=>state.workEntries||[]},localDateKey: date => date.toISOString().slice(0,10), isActiveRecord: item => item.status !== 'completed', isWorkRecord: () => true });
   vm.runInContext(source.slice(source.indexOf('function plannerRange('), source.indexOf('function plannerTone(')), context);
   vm.runInContext(source.slice(source.indexOf('function personalLinksFor('), source.indexOf('function renderPersonalLinkChips(')), context);
   return {state, run: code => vm.runInContext(code, context)};
@@ -28,6 +28,14 @@ test('personal and project filters do not mix data or mutate source records', ()
   assert.equal(h.run('plannerItems()[0].id'), 'team');
   h.state.calendarStatus='done'; assert.equal(h.run('plannerItems().length'), 0);
   assert.equal(h.state.records.length, 2);
+});
+
+test('personal calendar only adds assigned work after an explicit display choice',()=>{
+ const h=harness();h.state.personal.plans=[{id:'private',status:'planned'}];
+ h.state.workEntries=[{id:'work:a',calendarKind:'work',status:'planned',startsAt:'2026-09-09T10:00:00Z',endsAt:'2026-09-09T11:00:00Z'}];
+ assert.equal(h.run('plannerItems().length'),1);h.state.includeWork=true;assert.equal(h.run('plannerItems().length'),2);
+ assert.equal(h.run("plannerMatchesDay(plannerItems()[1],'2026-09-09',true)"),true);
+ h.state.includeWork=false;assert.equal(h.run('plannerItems().length'),1);assert.equal(h.state.workEntries.length,1);
 });
 test('a note created first appears in its linked plan, reverse duplicates are collapsed', () => {
   const h = harness();

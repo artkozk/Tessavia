@@ -983,6 +983,19 @@ dialog.dismiss-attention { animation: dialog-dismiss-attention .3s ease; }
 .record-chat-entry h3 { margin: 0 0 6px; }
 .record-chat-entry p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .record-chat-entry button { min-height: 44px; }
+.personal-calendar-options { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding-top: 12px; }
+.calendar-conflict-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; padding: 14px; margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.calendar-conflict-banner.needs-attention { border-color: #c49343; background: #fff9ed; }
+.calendar-conflict-banner > div { min-width: 0; flex: 1 1 200px; }
+.calendar-conflict-banner small { display: block; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+.calendar-conflict-banner button, .calendar-conflict-dialog button { min-height: 44px; }
+.calendar-conflict-list article { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.calendar-conflict-source { display: grid; gap: 5px; width: 100%; text-align: left; padding: 12px; margin: 8px 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.calendar-conflict-source strong { overflow-wrap: anywhere; }
+.calendar-conflict-source span, .calendar-conflict-source small { color: var(--muted); font-size: 12px; }
+.calendar-work-dialog form { display: grid; gap: 14px; }
+.calendar-work-dialog label { display: grid; gap: 7px; min-width: 0; }
+.calendar-work-dialog input, .calendar-work-dialog select { width: 100%; min-width: 0; }
 .section-heading p { max-width: 680px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .checklist-list { display: grid; margin-top: 14px; }
 .checklist-item { min-width: 0; display: grid; grid-template-columns: 30px minmax(0, 1fr) 40px; align-items: start; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
