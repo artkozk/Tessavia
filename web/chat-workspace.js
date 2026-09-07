@@ -1,3 +1,10 @@
+export function conversationTimeLabel(value, now=new Date()) {
+  if(!value)return '';
+  const date=new Date(value);
+  if(Number.isNaN(date.getTime()))return '';
+  if(date.toDateString()===now.toDateString())return date.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+  return date.toLocaleDateString('ru-RU',date.getFullYear()===now.getFullYear()?{day:'numeric',month:'short'}:{day:'2-digit',month:'2-digit',year:'2-digit'});
+}
 export function chatDraftKey(owner,workspace,thread) {
   return `tessavie:chat-draft:${owner}:${workspace}:${thread}`;
 }

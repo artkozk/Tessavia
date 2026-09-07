@@ -21,6 +21,7 @@ import (
 const chatMessageSelect = `SELECT m.id, m.thread_id, m.author_id, u.username, COALESCE(m.reply_to_id, ''), COALESCE(ru.username, ''), COALESCE(rm.body, ''), COALESCE(m.linked_record_id, ''), COALESCE(CASE WHEN lr.business_kind <> '' THEN lr.business_kind WHEN lr.subtype = 'question_set' THEN 'question_set' WHEN lr.record_kind = 'meeting' THEN 'meeting' ELSE lr.type END, ''), COALESCE(lr.title, ''), COALESCE(m.attachment_id, ''), COALESCE(a.original_name, ''), COALESCE(a.content_type, ''), COALESCE(a.size_bytes, 0), m.message_type, m.body, EXISTS(SELECT 1 FROM chat_favorites f WHERE f.message_id = m.id AND f.user_id = ?), m.created_at, m.edited_at, COALESCE(m.client_nonce, '') FROM chat_messages m JOIN users u ON u.id = m.author_id LEFT JOIN chat_messages rm ON rm.id = m.reply_to_id AND rm.thread_id=m.thread_id AND rm.archived_at IS NULL LEFT JOIN users ru ON ru.id = rm.author_id LEFT JOIN records lr ON lr.id = m.linked_record_id LEFT JOIN chat_attachments a ON a.id = m.attachment_id`
 
 type ChatThread struct {
+	Pinned          bool    `json:"pinned"`
 	ID              string  `json:"id"`
 	Kind            string  `json:"kind"`
 	Title           string  `json:"title"`
@@ -149,12 +150,13 @@ func (s *Server) handleListChatThreads(w http.ResponseWriter, r *http.Request) {
 			(SELECT COUNT(*) FROM chat_messages m WHERE m.thread_id = t.id AND m.author_id <> ? AND m.archived_at IS NULL AND m.created_at > cm.last_read_at),
 			CASE WHEN t.conversation_kind='direct' THEN COALESCE((SELECT u.username FROM chat_members peer JOIN users u ON u.id=peer.user_id WHERE peer.thread_id=t.id AND peer.user_id<>? ORDER BY u.id LIMIT 1),'') ELSE '' END,
 			CASE WHEN t.conversation_kind='direct' THEN COALESCE((SELECT MAX(last_seen_at) FROM user_activity_daily WHERE user_id=(SELECT peer.user_id FROM chat_members peer WHERE peer.thread_id=t.id AND peer.user_id<>? ORDER BY peer.user_id LIMIT 1)),'') ELSE '' END,
-			t.updated_at, (SELECT COUNT(*) FROM chat_members peers JOIN workspace_members wm ON wm.user_id=peers.user_id AND wm.workspace_id=t.workspace_id AND wm.status='active' WHERE peers.thread_id=t.id)
+			t.updated_at, (SELECT COUNT(*) FROM chat_members peers JOIN workspace_members wm ON wm.user_id=peers.user_id AND wm.workspace_id=t.workspace_id AND wm.status='active' WHERE peers.thread_id=t.id), personal.thread_id IS NOT NULL
 		FROM chat_threads t
 		JOIN chat_members cm ON cm.thread_id = t.id AND cm.user_id = ?
 		LEFT JOIN records rec ON rec.id = t.record_id
+ LEFT JOIN chat_personal_pins personal ON personal.thread_id=t.id AND personal.user_id=cm.user_id
 		WHERE t.workspace_id = ?
-		ORDER BY COALESCE((SELECT MAX(created_at) FROM chat_messages WHERE thread_id = t.id), t.updated_at) DESC`, user.ID, user.ID, user.ID, user.ID, currentWorkspace(r).ID)
+		ORDER BY personal.pinned_at DESC, COALESCE((SELECT MAX(created_at) FROM chat_messages WHERE thread_id = t.id), t.updated_at) DESC, t.id`, user.ID, user.ID, user.ID, user.ID, currentWorkspace(r).ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить диалоги")
 		return
@@ -164,7 +166,7 @@ func (s *Server) handleListChatThreads(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item ChatThread
 		var recordID sql.NullString
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &recordID, &item.RecordTitle, &item.LastMessage, &item.LastMessageAt, &item.UnreadCount, &item.PartnerUsername, &item.PartnerLastSeen, &item.UpdatedAt, &item.MemberCount); err != nil {
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &recordID, &item.RecordTitle, &item.LastMessage, &item.LastMessageAt, &item.UnreadCount, &item.PartnerUsername, &item.PartnerLastSeen, &item.UpdatedAt, &item.MemberCount, &item.Pinned); err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось прочитать диалоги")
 			return
 		}
