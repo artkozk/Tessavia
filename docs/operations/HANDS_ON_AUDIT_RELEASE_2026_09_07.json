@@ -1,0 +1,26 @@
+{
+  "commit": "6d4dc42f1a33cd26ce02913f4efeb94b7650abbd",
+  "release": "/opt/business-control/releases/20260907-scenarios-6d4dc42",
+  "sha256": "12ef7261bde86249d8dff5d8c7ab1bcf25b03ea40df4b4cab1b8731292abe71f",
+  "backup": "/var/lib/business-control/backups/pre-scenarios-20260907T060938Z",
+  "tasks": [
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    },
+    {
+      "id": "0311dbcf668203acd4ffb32461307d9b",
+      "title": "Исправить независимость экземпляров повторяющихся личных дел",
+      "status": "planned"
+    },
+    {
+      "id": "4420e0be29f8c092c19243aa9d102d38",
+      "title": "Открывать действия и результат личного проекта и цели",
+      "status": "planned"
+    }
+  ]
+}
