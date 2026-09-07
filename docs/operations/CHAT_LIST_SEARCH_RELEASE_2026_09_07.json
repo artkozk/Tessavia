@@ -1,0 +1,26 @@
+{
+  "commit": "cd7097231115659fe7349f656d20a511e022ebd0",
+  "release": "/opt/business-control/releases/20260907-chat-list-search-cd70972",
+  "sha256": "c9ab1a50089c67aaf69fc932fde36a68d75af9b7b6362a50528b31d050807910",
+  "backup": "/var/lib/business-control/backups/pre-chat-list-search-20260907T170433Z",
+  "checkedAt": "2026-09-07T17:05:36.429359Z",
+  "preservedTables": 112,
+  "schema": "061_chat_personal_pins.sql",
+  "tables": 112,
+  "nodeTests": 229,
+  "assets": "20260907-chat-list-search-2",
+  "tasks": [
+    {
+      "id": "e402d353a684b074f852fa1fd277d895",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    }
+  ]
+}
