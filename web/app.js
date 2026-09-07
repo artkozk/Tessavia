@@ -1,11 +1,11 @@
-import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-urgent-ui-1';
+import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-scenarios-2';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-urgent-ui-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-scenarios-2';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-urgent-ui-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-scenarios-2';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-urgent-ui-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-scenarios-2';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -2239,10 +2239,17 @@ function openJoinTeamDialog({ token = '', code = '' } = {}) {
 	$('#join-team-form', dialog).addEventListener('submit', async (event) => {
 		event.preventDefault(); const form = new FormData(event.currentTarget); const submit = $('button[type="submit"]', event.currentTarget); submit.disabled = true;
 		try {
-			await api('/api/invitations/accept', { method: 'POST', body: JSON.stringify({ token, code: form.get('code') || '' }) });
+			const accepted = await api('/api/invitations/accept', { method: 'POST', body: JSON.stringify({ token, code: form.get('code') || '' }) });
 			state.pendingInviteToken = '';
 			const url = new URL(location.href); url.searchParams.delete('invite'); history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
-			closeWorkspaceDialog(); await loadData(); toast('Команда добавлена'); maybeOpenPendingInterfacePreset();
+			closeWorkspaceDialog(); await loadData();
+			toast('Вы присоединились к команде');
+			if (accepted.teamId) {
+				const team = await api(`/api/teams/${encodeURIComponent(accepted.teamId)}`);
+				if (team.projects?.length === 1) await switchWorkspace(team.projects[0].id);
+				else await openTeamSettings(accepted.teamId);
+			}
+			maybeOpenPendingInterfacePreset();
 		} catch (error) { submit.disabled = false; toast(error.message, true); }
 	});
 	openModal(dialog);
@@ -2751,6 +2758,23 @@ function personalPlanContextFields(plan) {
   return `<section class="personal-plan-context"><div class="form-grid two"><label>Тип<select name="itemKind"><option value="task" ${(plan.itemKind || 'task') === 'task' ? 'selected' : ''}>Дело</option><option value="event" ${plan.itemKind === 'event' ? 'selected' : ''}>Событие</option></select></label><label>Личный проект<select name="projectId"><option value="">Без проекта</option>${projects.map((project) => `<option value="${project.id}" ${plan.projectId === project.id ? 'selected' : ''}>${escapeHTML(project.title)}</option>`).join('')}</select></label></div><div class="form-grid two"><label>Цель<select name="goalId"><option value="">Без цели</option>${goals.map((goal) => `<option value="${goal.id}" ${plan.goalId === goal.id ? 'selected' : ''}>${escapeHTML(goal.title)}</option>`).join('')}</select></label><label>Родительское дело<select name="parentId"><option value="">Нет</option>${parents.map((parent) => `<option value="${parent.id}" ${plan.parentId === parent.id ? 'selected' : ''}>${escapeHTML(parent.title)}</option>`).join('')}</select></label></div><div class="form-grid two"><label>План, минут<input type="number" name="plannedMinutes" min="0" max="525600" value="${plan.plannedMinutes || 0}"></label><label>Факт, минут<input type="number" name="actualMinutes" min="0" max="525600" value="${plan.actualMinutes || 0}"></label></div><details class="personal-recurrence" ${plan.seriesId ? 'open' : ''}><summary>${icon('rotate')} Повторение <small>${plan.seriesId ? 'настроено' : 'необязательно'}</small></summary><div><div class="form-grid two"><label>Ритм<select name="recurrenceCadence"><option value="none">Не повторять</option><option value="daily" ${recurrence.cadence === 'daily' ? 'selected' : ''}>Каждый день</option><option value="weekly" ${recurrence.cadence === 'weekly' ? 'selected' : ''}>Каждую неделю</option><option value="monthly" ${recurrence.cadence === 'monthly' ? 'selected' : ''}>Каждый месяц</option></select></label><label>Интервал<input type="number" name="recurrenceInterval" min="1" max="365" value="${recurrence.interval || 1}"></label></div><div class="form-grid two"><label>Первый день<input type="date" name="recurrenceStartDate" value="${escapeHTML(recurrence.startDate || plan.occurrenceDate || '')}"></label><label>Повторять до<input type="date" name="recurrenceUntilDate" value="${escapeHTML(recurrence.untilDate || '')}"></label></div>${plan.seriesId ? `<label>Дата этого экземпляра<input type="date" name="occurrenceDate" value="${escapeHTML(plan.occurrenceDate || '')}"></label><label class="check"><input type="checkbox" name="applyToSeries"><span>Изменить всю серию</span></label><label class="check"><input type="checkbox" name="recurrenceActive" ${recurrence.active ? 'checked' : ''}><span>Создавать следующие экземпляры</span></label>` : ''}</div></details></section>`;
 }
 
+function personalPlanDateError(form) {
+  const mode = form.get('dateMode');
+  if (mode === 'block') {
+    const start = Date.parse(form.get('startsAt')), end = Date.parse(form.get('endsAt'));
+    if (!Number.isFinite(start)) return {field:'startsAt', message:'Укажите начало события'};
+    if (!Number.isFinite(end)) return {field:'endsAt', message:'Укажите окончание события'};
+    if (end <= start) return {field:'endsAt', message:'Окончание события должно быть позже начала'};
+  }
+  if (mode === 'days' && form.get('startDate') && form.get('endDate') && form.get('endDate') < form.get('startDate')) {
+    return {field:'endDate', message:'Окончание периода не может быть раньше начала'};
+  }
+  if (form.get('recurrenceCadence') !== 'none' && form.get('recurrenceStartDate') && form.get('recurrenceUntilDate') && form.get('recurrenceUntilDate') < form.get('recurrenceStartDate')) {
+    return {field:'recurrenceUntilDate', message:'Повторение не может закончиться раньше первого дня'};
+  }
+  return null;
+}
+
 function openPersonalEditor(kind, id = '', context = {}) {
   if (kind === 'habit') return id ? habitUI.open(id) : habitUI.settings();
   const item = id ? findPersonalItem(kind, id) : null;
@@ -2767,7 +2791,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
           : `<div class="form-grid two"><label>Режим<select name="scheduleKind"><option value="daily" ${(item?.scheduleKind || 'daily') === 'daily' ? 'selected' : ''}>Каждый день</option><option value="weekdays" ${item?.scheduleKind === 'weekdays' ? 'selected' : ''}>По будням</option><option value="weekly_target" ${item?.scheduleKind === 'weekly_target' ? 'selected' : ''}>Цель на неделю</option></select></label><label>Дней в неделю<input type="number" name="targetPerWeek" min="1" max="7" value="${item?.targetPerWeek || 7}"></label></div><div class="form-grid two"><label>Единица<input name="unit" maxlength="32" value="${escapeHTML(item?.unit || 'раз')}"></label><label>Начало<input type="date" name="startDate" value="${escapeHTML(item?.startDate || localISODate())}" ${item ? 'disabled' : ''}></label></div>`;
   const newHeading = kind === 'habit' ? 'Новая привычка' : kind === 'plan' ? 'Новое дело' : kind === 'project' ? 'Новый личный проект' : kind === 'goal' ? 'Новая цель' : 'Новая заметка';
   const titleField = ['habit', 'project', 'goal'].includes(kind)
-    ? `<label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}" placeholder="Например: читать 20 минут"></label>`
+    ? `<label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}" placeholder="${kind === 'project' ? 'Например: ремонт квартиры' : kind === 'goal' ? 'Например: закончить курс к декабрю' : 'Например: читать 20 минут'}"></label>`
     : '';
   content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind !== 'habit' ? 'personal-note-form' : ''}" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="secondary" data-publish-personal>Опубликовать в проект</button><button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
   $$('[data-close-personal]', dialog).forEach((button) => button.addEventListener('click', async () => { if (await requestDialogClose(dialog) && context.planId) openPersonalPlanDetails(context.planId); }));
@@ -2802,6 +2826,8 @@ function openPersonalEditor(kind, id = '', context = {}) {
     let payload;
     if (kind === 'note') payload = { folderId: form.get('folderId') || '', tags: parseNoteTags(form.get('noteTags')), title: form.get('title'), ...(item ? { expectedUpdatedAt: item.updatedAt } : {}), body: form.get('body'), scheduledDate: form.get('scheduledDate') || '', pinned: form.get('pinned') === 'on', ...(!item && context.planId ? { linkPlanId: context.planId } : {}) };
     else if (kind === 'plan') {
+      const dateError = personalPlanDateError(form);
+      if (dateError) { toast(dateError.message, true); editorForm.elements[dateError.field]?.focus(); return; }
       const mode = form.get('dateMode');
       if (mode === 'days' && !form.get('startDate') || mode === 'time' && !form.get('dueAt') || mode === 'block' && (!form.get('startsAt') || !form.get('endsAt'))) { toast('Заполните выбранные даты или выберите «Без даты»', true); return; }
       const cadence = form.get('recurrenceCadence');
@@ -2827,7 +2853,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
         await noteMedia?.clear();
         const current = editorOwner === state.me?.id && editorForm.isConnected && dialog.open && snapshot === JSON.stringify(workingDraftValues(editorForm));
         if (current) { clearWorkingDraftFor(editorForm); await requestDialogClose(dialog); }
-        if (editorOwner === state.me?.id) toastAction('Сохранено в этом браузере. Ожидает отправки.', 'Очередь', () => offlineOutbox.open());
+        if (editorOwner === state.me?.id) toastAction('Сохранено в этом браузере. Статус отправки доступен в очереди.', 'Проверить', () => offlineOutbox.open());
         void offlineOutbox.pump();
         return;
       }
@@ -4381,6 +4407,13 @@ function decorateChatUI() {
 		if (favoriteLabel) favoriteLabel.textContent = favoriteButton.title;
 	}
 	if (!main) return;
+	if (state.chatFavoritesOnly) {
+		const context = $('.chat-context-stack', main);
+		context?.insertAdjacentHTML('afterbegin', `<div class="chat-filter-notice"><span>${icon('bookmark')} Сохранённые сообщения</span><button type="button" class="text-button" data-chat-clear-favorites>Показать все</button></div>`);
+		$('[data-chat-clear-favorites]', main)?.addEventListener('click', () => { state.chatFavoritesOnly = false; state.chatLoadedThreadId = ''; renderChat(); });
+		const empty = $('.chat-empty', main);
+		if (empty) { $('strong', empty).textContent = 'Сохранённых сообщений нет'; $('p', empty).textContent = 'Сохраните нужное сообщение через его меню или вернитесь ко всей переписке.'; }
+	}
 	main.insertAdjacentHTML('beforeend', `<div class="chat-drop-overlay" aria-hidden="true"><span>${icon('fileText')}</span><strong>Отправить файлы</strong><small>Отпустите их в любом месте диалога</small></div>`);
 	const form = $('#chat-composer');
 	if (!form) return;
@@ -4815,7 +4848,7 @@ function bindChatEvents() {
       if (context.owner === state.me?.id && context.workspace === state.activeWorkspaceId && context.thread === state.activeChatThreadId && state.chatDraftNonce === clientNonce) {
         state.chatReplyToId = ''; state.chatLinkedRecordId = ''; state.chatDraftNonce = ''; state.chatDraftText = ''; persistChatDraft();
       }
-      if (context.owner === state.me?.id) toastAction('Сообщение в очереди отправки.', 'Очередь', () => offlineOutbox.open());
+      if (context.owner === state.me?.id) toastAction('Сообщение сохранено в очередь отправки.', 'Проверить', () => offlineOutbox.open());
       void offlineOutbox.pump();
 		} catch (error) { toast(error.message, true); }
 		finally { state.chatSending = false; if (state.view === 'chat') renderChat(); }
@@ -7442,7 +7475,7 @@ function openCreateDialog(initialType = 'idea', preset = {}) {
   const parentOptions = state.records.filter((record) => record.status !== 'archived').map((record) => `<option value="${record.id}" ${defaultParentID === record.id ? 'selected' : ''}>${escapeHTML(typeMeta[record.type]?.singular || 'Карточка')}: ${escapeHTML(record.title)}</option>`).join('');
   const planned = ['task', 'goal', 'research', 'question_set', 'meeting', 'disagreement', 'risk', 'hypothesis', 'experiment'].includes(initialType);
   const writingFields = initialType === 'inbox' ? personalNoteSheet({ title: preset.title, body: preset.description }, { bodyName: 'description', pin: false }) : `<label>${titleLabel}<input name="title" required maxlength="240" autofocus value="${escapeHTML(preset.title || '')}" placeholder="${preset.comparisonMode ? 'Например: Выбор сервера' : initialType === 'question_set' ? 'Например: Договорённости основателей' : initialType === 'inbox' ? 'Короткая мысль или наблюдение' : ''}"></label>${markdownEditor('description', descriptionLabel, preset.description || '', initialType === 'inbox' ? 4 : 7, 'Факты, контекст и ожидаемый результат', 'create-record')}`;
-  $('#create-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon(initialMeta.icon)} Новая запись</span><h2>${escapeHTML(displayName)}</h2></div><button type="button" class="close-button icon-button" data-close-create aria-label="Закрыть">${icon('x')}</button></div><form id="create-record-form" class="card-form dialog-form ${initialType === 'inbox' ? 'personal-note-form inbox-record-form' : ''}">${writingFields}<input type="hidden" name="type" value="${initialType}"><input type="hidden" name="kind" value="${escapeHTML(preset.kind || '')}">${renderBusinessDetailsFields(initialType)}${planned ? `<div class="form-grid two"><label>${initialType === 'question_set' ? 'Координатор' : initialType === 'meeting' ? 'Организатор' : 'Ответственный'}<select name="ownerId">${userOptions(state.me.id)}</select></label><label>${initialType === 'meeting' ? 'Дата и время' : 'Срок'}<input name="dueAt" type="datetime-local" value="${escapeHTML(preset.dueAt || '')}"></label></div><div class="form-grid two"><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === (preset.priority || 'normal') ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Оценка времени, минут<input name="estimateMinutes" type="number" min="0" value="${Number(preset.estimateMinutes || 0)}"></label></div>` : `<input type="hidden" name="ownerId" value="${state.me.id}"><input type="hidden" name="priority" value="${escapeHTML(preset.priority || 'normal')}"><input type="hidden" name="estimateMinutes" value="${Number(preset.estimateMinutes || 0)}">`}<details class="form-more create-organization" ${sourceRecord ? 'open' : ''}><summary>Место в проекте и доступ</summary><div class="form-more-body"><div class="form-grid three"><label>Направление<select name="workstream">${Object.entries(workstreamLabels).map(([value, label]) => `<option value="${value}" ${defaultWorkstream === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Доступ к изменениям<select name="editPolicy">${Object.entries(editPolicyLabels).map(([value, label]) => `<option value="${value}" ${defaultEditPolicy === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Родитель<select name="parentId"><option value="">Без родителя</option>${parentOptions}</select></label></div><label class="root-toggle"><input name="isRoot" type="checkbox" ${preset.isRoot ? 'checked' : ''}> <span><strong>Новый корень</strong><small>Начать самостоятельную крупную ветку вместо продолжения текущей цепочки.</small></span></label></div></details><div class="ai-suggestion"><span class="ai-suggestion-icon">${icon('sparkles')}</span><span><strong>AI-структура</strong><small id="ai-suggestion-status">После названия система предложит приоритет, оценку времени, направление и место в иерархии.</small></span><button type="button" class="secondary" data-ai-suggest>Предложить</button></div><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать</button><button type="button" class="secondary" data-close-create>Отмена</button></div></form>`;
+  $('#create-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${icon(initialMeta.icon)} Новая запись</span><h2>${escapeHTML(displayName)}</h2></div><button type="button" class="close-button icon-button" data-close-create aria-label="Закрыть">${icon('x')}</button></div><form id="create-record-form" class="card-form dialog-form ${initialType === 'inbox' ? 'personal-note-form inbox-record-form' : ''}">${writingFields}<input type="hidden" name="type" value="${initialType}"><input type="hidden" name="kind" value="${escapeHTML(preset.kind || '')}">${renderBusinessDetailsFields(initialType)}${planned ? `<div class="form-grid two"><label>${initialType === 'question_set' ? 'Координатор' : initialType === 'meeting' ? 'Организатор' : 'Ответственный'}<select name="ownerId">${userOptions(state.me.id)}</select></label><label>${initialType === 'meeting' ? 'Дата и время' : 'Срок'}<input name="dueAt" type="datetime-local" value="${escapeHTML(preset.dueAt || '')}"></label></div><div class="form-grid two"><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === (preset.priority || 'normal') ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Оценка времени, минут<input name="estimateMinutes" type="number" min="0" value="${Number(preset.estimateMinutes || 0)}"></label></div>` : `<input type="hidden" name="ownerId" value="${state.me.id}"><input type="hidden" name="priority" value="${escapeHTML(preset.priority || 'normal')}"><input type="hidden" name="estimateMinutes" value="${Number(preset.estimateMinutes || 0)}">`}<details class="form-more create-organization" ${sourceRecord ? 'open' : ''}><summary>Место в проекте и доступ</summary><div class="form-more-body"><div class="form-grid three"><label>Направление<select name="workstream">${Object.entries(workstreamLabels).map(([value, label]) => `<option value="${value}" ${defaultWorkstream === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Доступ к изменениям<select name="editPolicy">${Object.entries(editPolicyLabels).map(([value, label]) => `<option value="${value}" ${defaultEditPolicy === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Родитель<select name="parentId"><option value="">Без родителя</option>${parentOptions}</select></label></div><label class="root-toggle"><input name="isRoot" type="checkbox" ${preset.isRoot ? 'checked' : ''}> <span><strong>Новый корень</strong><small>Начать самостоятельную крупную ветку вместо продолжения текущей цепочки.</small></span></label></div></details><div class="ai-suggestion"><span class="ai-suggestion-icon">${icon('sparkles')}</span><span><strong>AI-структура</strong><small id="ai-suggestion-status">По запросу предложим приоритет, оценку времени и место в проекте. Применение — отдельным действием.</small></span><button type="button" class="secondary" data-ai-suggest>Предложить</button></div><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать</button><button type="button" class="secondary" data-close-create>Отмена</button></div></form>`;
   $$('[data-close-create]').forEach((button) => button.addEventListener('click', () => requestDialogClose($('#create-dialog'))));
   const createForm = $('#create-record-form');
 	if (initialType === 'inbox') createForm.querySelector('.ai-suggestion')?.remove();
@@ -7472,7 +7505,7 @@ function openCreateDialog(initialType = 'idea', preset = {}) {
         }
       }
       clearWorkingDraft(draftScope);
-      closeDialogImmediately($('#create-dialog')); await syncProjectChanges(); toast(linkError || 'Карточка создана', Boolean(linkError)); await openRecord(record.id, { workspace: Boolean(preset.sourceRecordId), edit: true, tab: preset.comparisonMode ? 'content' : undefined });
+      closeDialogImmediately($('#create-dialog')); await syncProjectChanges(); toast(linkError || 'Карточка создана', Boolean(linkError)); await openRecord(record.id, { workspace: Boolean(preset.sourceRecordId), tab: preset.comparisonMode ? 'content' : undefined });
     } catch (error) { toast(error.message, true); }
     finally { submit.disabled = false; }
   });
@@ -7490,37 +7523,61 @@ function bindCreateSuggestion(form, recordType) {
   const parent = form.elements.parentId;
   root?.addEventListener('change', () => { if (root.checked && parent) { parent.value = ''; syncCustomSelect(parent); } });
   parent?.addEventListener('change', () => { if (parent.value && root) root.checked = false; });
-  let requestNumber = 0;
-  const suggest = async (force = false) => {
+  let requestNumber = 0, pending = null;
+  const button = $('[data-ai-suggest]', form);
+  const status = $('#ai-suggestion-status');
+  const fingerprint = () => JSON.stringify(['title', 'description', ...tracked, 'isRoot'].map(name => {
+    const field = form.elements[name];
+    return field?.type === 'checkbox' ? field.checked : field?.value || '';
+  }));
+  const invalidate = () => {
+    requestNumber++;
+    pending = null;
+    button.disabled = false;
+    button.textContent = 'Предложить';
+    status.textContent = 'Предложение применяется только после вашего подтверждения.';
+  };
+  const suggest = async () => {
     const title = form.elements.title.value.trim();
-    if (title.length < 4) return;
+    if (title.length < 4) { status.textContent = 'Сначала напишите название — хотя бы 4 символа.'; return; }
     const currentRequest = ++requestNumber;
-    const status = $('#ai-suggestion-status');
+    const before = fingerprint();
+    button.disabled = true;
     status.textContent = 'Анализируем карточку…';
     try {
       const suggestion = await api('/api/ai/suggest-record', { method: 'POST', body: JSON.stringify({ type: recordType, title, description: form.elements.description.value }) });
-      if (currentRequest !== requestNumber || !form.isConnected) return;
-      tracked.forEach((name) => {
-        const field = form.elements[name];
-        if (field && (force || field.dataset.userChanged !== 'true') && suggestion[name] !== undefined) {
-          field.value = suggestion[name];
-          if (field.tagName === 'SELECT') syncCustomSelect(field);
-        }
-      });
-      if (suggestion.parentId && root) root.checked = false;
+      if (currentRequest !== requestNumber || !form.isConnected || before !== fingerprint()) return;
+      pending = { suggestion, before };
       const parentTitle = suggestion.parentId ? state.records.find((record) => record.id === suggestion.parentId)?.title : '';
       const source = suggestion.source === 'gemini' ? 'Gemini' : suggestion.source === 'groq' ? 'Groq' : 'локальная модель';
       status.textContent = `${source}: ${priorityLabels[suggestion.priority]}, ${minutesLabel(suggestion.estimateMinutes)}, ${workstreamLabels[suggestion.workstream]}${parentTitle ? `, ветка «${parentTitle}»` : ', без родителя'}. ${suggestion.reason}`;
+      button.textContent = 'Применить предложение';
     } catch (error) {
       if (currentRequest === requestNumber) status.textContent = `Не удалось получить предложение: ${error.message}`;
+    } finally {
+      if (currentRequest === requestNumber) button.disabled = false;
     }
   };
-  $('[data-ai-suggest]', form).addEventListener('click', () => suggest(true));
-  ['title', 'description'].forEach((name) => form.elements[name].addEventListener('input', () => {
-    clearTimeout(state.aiSuggestionTimer);
-    state.aiSuggestionTimer = setTimeout(() => suggest(false), 1200);
-  }));
-  if (form.elements.title.value.trim().length >= 4) suggest(false);
+  button.addEventListener('click', () => {
+    if (!pending) return suggest();
+    if (pending.before !== fingerprint()) { invalidate(); return; }
+    const { suggestion } = pending;
+    tracked.forEach(name => {
+      const field = form.elements[name];
+      if (field && suggestion[name] !== undefined) {
+        field.value = suggestion[name];
+        if (field.tagName === 'SELECT') syncCustomSelect(field);
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    if (suggestion.parentId && root) root.checked = false;
+    invalidate();
+    status.textContent = 'Предложение применено. Проверьте поля перед созданием.';
+  });
+  ['title', 'description', ...tracked, 'isRoot'].forEach(name => {
+    form.elements[name]?.addEventListener('input', invalidate);
+    form.elements[name]?.addEventListener('change', invalidate);
+  });
 }
 
 function actionLabel(action) {
@@ -8907,6 +8964,7 @@ function applyPageLayout() {
   const draft = state.pageLayoutDraft, editing = Boolean(draft), value = currentPageLayout(), catalog = pageLayoutCatalog();
   const progressiveToday = state.view === 'personal' && state.personalTab === 'today' && useProgressiveToday(value, editing);
   const emptyTodayBlocks = progressiveToday && state.personal ? personalTodayUI.hiddenBlocks(state.personal, personalWaitingUI.hasContent(), personalRemindersUI.hasContent()) : [];
+  if (state.view === 'personal' && state.personalTab !== 'today' && useProgressiveToday(value, editing)) emptyTodayBlocks.push('summary');
   mountWorkspaceWidgets(root, catalog, value);
   const items = catalog.blocks.map(block => ({ block, node: $(`[data-page-block="${block.key}"]`,root) || $(block.selector,root) })).filter(item => item.node);
   items.forEach(({block,node}) => { node.dataset.pageBlock = block.key; });
@@ -9230,7 +9288,8 @@ function openDayWorkspace(date, scope) {
 
 function dayRecordRow(item, personal) {
   const status = personal ? item.status === 'done' ? 'Завершён' : 'Запланирован' : statusLabel(item);
-  return `<button type="button" class="day-record-row" data-day-item="${item.id}" data-day-kind="${personal ? 'plan' : 'record'}">${icon(personal ? 'calendar' : typeMeta[item.type]?.icon || 'fileText')}<span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(status)}${!personal && item.ownerUsername ? ` · ${escapeHTML(item.ownerUsername)}` : ''}</small></span>${icon('chevronRight')}</button>`;
+  const when = personal ? personalPlanDateLabel(item) : item.dueAt ? formatDate(item.dueAt, true) : '';
+  return `<button type="button" class="day-record-row" data-day-item="${item.id}" data-day-kind="${personal ? 'plan' : 'record'}">${icon(personal ? 'calendar' : typeMeta[item.type]?.icon || 'fileText')}<span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(status)}${when ? ` · ${escapeHTML(when)}` : ''}${!personal && item.ownerUsername ? ` · ${escapeHTML(item.ownerUsername)}` : ''}</small></span>${icon('chevronRight')}</button>`;
 }
 
 function bindDayItems(root) {

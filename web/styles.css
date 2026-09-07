@@ -5134,3 +5134,6 @@ body:has(.calendar-expanded) { overflow: hidden; }
 @media (max-width: 600px) {
   .work-filter-popover { left: 8px; right: 8px; }
 }
+
+.chat-filter-notice { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.chat-filter-notice > span { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
