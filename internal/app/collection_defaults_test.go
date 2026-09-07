@@ -68,7 +68,7 @@ func TestCollectionDefaultsApplyOnlyToMissingNewValues(t *testing.T) {
 	}
 	updated = configure(updated, 5, "owner", 200)
 	// Editing an old record does not backfill missing fields.
-	call("owner", "PUT", "/records/"+explicit.ID+"/custom-fields", map[string]any{"values": map[string]any{num.ID: nil, check.ID: false, multi.ID: []string{}}}, 200, &explicit)
+	call("owner", "PUT", "/records/"+explicit.ID+"/custom-fields", map[string]any{"expectedUpdatedAt": explicit.UpdatedAt, "values": map[string]any{num.ID: nil, check.ID: false, multi.ID: []string{}}}, 200, &explicit)
 	if _, ok := explicit.CustomFields[num.ID]; ok {
 		t.Fatal("editing backfilled a default")
 	}

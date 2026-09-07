@@ -1,25 +1,26 @@
-import { createPageAppUI } from './page-apps.js?v=20260908-page-apps-4';
-import { createChatGroupUI } from './chat-groups.js?v=20260908-page-apps-4';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260908-page-apps-4';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260908-page-apps-4';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260908-field-conflicts-2';
+import { createPageAppUI } from './page-apps.js?v=20260908-field-conflicts-2';
+import { createChatGroupUI } from './chat-groups.js?v=20260908-field-conflicts-2';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260908-field-conflicts-2';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260908-field-conflicts-2';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260908-page-apps-4';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260908-field-conflicts-2';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260908-page-apps-4';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260908-field-conflicts-2';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute } from './personal-navigation.js?v=20260908-page-apps-4';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260908-page-apps-4';
+import { personalRoute } from './personal-navigation.js?v=20260908-field-conflicts-2';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260908-field-conflicts-2';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260908-page-apps-4';
+import { createLifeMapUI } from './life-map.js?v=20260908-field-conflicts-2';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260908-page-apps-4';
+import { createOutboxUI } from './outbox-ui.js?v=20260908-field-conflicts-2';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -4143,7 +4144,13 @@ function openCollectionCardDialog(collection, record = null, stageID = '', defau
 	if (!record) $('.collection-custom-fields', content).insertAdjacentHTML('beforebegin', `<label>Срок <small>необязательно</small><input type="datetime-local" name="dueAt" value="${escapeHTML(defaults.dueAt || '')}"></label>`);
 	enhanceSelects(dialog);
   const cardForm=$('#collection-card-form',dialog);
-  bindWorkingDraft(cardForm,`collection-card:${workspace}:${collection.id}:${record?.id||'new'}`);
+  const fieldDraftScope=`collection-card:${workspace}:${collection.id}:${record?.id||'new'}`;
+  if(record){
+    const previous=loadWorkingDraft(fieldDraftScope);
+    const versioned=previous?.values?.expectedUpdatedAt;
+    cardForm.insertAdjacentHTML('afterbegin',`<input type="hidden" name="expectedUpdatedAt" value="${escapeHTML(previous?.values&&!versioned?'':record.updatedAt)}"><input type="hidden" name="fieldEditBaseline" value="${escapeHTML(JSON.stringify(previous?.values&&!versioned?null:customFieldsFromForm(cardForm,fields)))}">`);
+  }
+  bindWorkingDraft(cardForm,fieldDraftScope);
   bindCollectionMultiFields(cardForm);
 	$('#collection-card-form', dialog).addEventListener('submit', async (event) => {
 		event.preventDefault();
@@ -4155,7 +4162,7 @@ function openCollectionCardDialog(collection, record = null, stageID = '', defau
 		try {
 			let updated;
 			if (record) {
-				updated = await api(`/api/records/${record.id}/custom-fields`, { method: 'PUT', body: JSON.stringify({ values: customFields }) });
+				updated = await api(`/api/records/${record.id}/custom-fields`, { method: 'PUT', body: JSON.stringify({ values: customFields, expectedUpdatedAt: form.elements.expectedUpdatedAt.value }) });
 			} else {
 				const values = new FormData(form);
 				updated = await api('/api/records', { method: 'POST', body: JSON.stringify({ type: defaults.recordType || collection.defaultRecordType, title: values.get('title'), description: values.get('description'), ownerId: Number(values.get('ownerId')), priority: values.get('priority'), dueAt: values.get('dueAt') ? new Date(values.get('dueAt')).toISOString() : '', workstream: 'business', editPolicy: 'shared', collectionId: collection.id, stageId: values.get('stageId'), customFields }) });
@@ -4167,7 +4174,12 @@ function openCollectionCardDialog(collection, record = null, stageID = '', defau
 			if ($('#record-dialog').open && state.activeDetail?.record.id === updated.id) await openRecord(updated.id, { force: true });
 			else renderContent();
 			toast(record ? 'Поля сохранены' : 'Карточка создана');
-		} catch (error) { toast(error.message, true); }
+		} catch (error) {
+      if(record&&error.status===409&&form.isConnected&&workspace===state.activeWorkspaceId){
+        try { await reviewFieldConflict({form,fields,collectionId:collection.id,recordId:record.id,workspace,state,api,readValues:customFieldsFromForm,fieldInput:collectionFieldInput,display:collectionFieldDisplay,escapeHTML,enhance:enhanceSelects,bindMulti:bindCollectionMultiFields,toast}); }
+        catch(reviewError){toast(reviewError.message,true);}
+      }else toast(error.message, true);
+    }
 		finally { submit.disabled = false; }
 	});
 	openModal(dialog);

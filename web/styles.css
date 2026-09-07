@@ -5412,3 +5412,7 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .app-template-preview .app-items button:disabled,.app-builder-preview .app-items button:disabled{opacity:1;cursor:default;}
 
 .app-builder-layout aside h3{margin:16px 0 10px;}.app-builder-layout aside h3:first-child{margin-top:0;}
+
+.field-conflict-review{padding:16px;border:1px solid var(--line);border-radius:12px;margin-bottom:20px;overflow-wrap:anywhere;}.field-conflict-review article{padding:12px 0;border-top:1px solid var(--line);}.field-conflict-review p{margin:6px 0;}.field-conflict-review button{margin-top:12px;}
+
+.field-conflict-review .checkbox-field{display:flex;align-items:flex-start;gap:10px;line-height:1.5;}.field-conflict-review .checkbox-field input{flex:0 0 18px;width:18px;height:18px;margin:2px 0 0;accent-color:var(--accent);}

@@ -119,10 +119,12 @@ func TestWorkspaceCRMConstructorIsIsolatedAndConfigurable(t *testing.T) {
 		"name": "Дата контакта", "fieldType": "date", "showOnCard": false,
 	}, http.StatusCreated, &dateField)
 	requestWorkspaceJSON(t, ownerClient, http.MethodPut, server.URL+"/api/records/"+crmRecord.ID+"/custom-fields", crmWorkspace.ID, map[string]any{
-		"values": map[string]any{field.ID: field.Options[1].ID, dateField.ID: "02.09.2026"},
+		"expectedUpdatedAt": crmRecord.UpdatedAt,
+		"values":            map[string]any{field.ID: field.Options[1].ID, dateField.ID: "02.09.2026"},
 	}, http.StatusBadRequest, nil)
 	requestWorkspaceJSON(t, ownerClient, http.MethodPut, server.URL+"/api/records/"+crmRecord.ID+"/custom-fields", crmWorkspace.ID, map[string]any{
-		"values": map[string]any{field.ID: field.Options[1].ID, dateField.ID: "2026-09-02"},
+		"expectedUpdatedAt": crmRecord.UpdatedAt,
+		"values":            map[string]any{field.ID: field.Options[1].ID, dateField.ID: "2026-09-02"},
 	}, http.StatusOK, &crmRecord)
 	if crmRecord.CustomFields[dateField.ID] != "2026-09-02" {
 		t.Fatalf("date field = %#v", crmRecord.CustomFields[dateField.ID])
@@ -132,7 +134,8 @@ func TestWorkspaceCRMConstructorIsIsolatedAndConfigurable(t *testing.T) {
 		"name": "Метки", "fieldType": "multi_select", "options": []string{"Срочно", "Клиент"},
 	}, http.StatusCreated, &tagsField)
 	requestWorkspaceJSON(t, ownerClient, http.MethodPut, server.URL+"/api/records/"+crmRecord.ID+"/custom-fields", crmWorkspace.ID, map[string]any{
-		"values": map[string]any{tagsField.ID: []string{tagsField.Options[0].ID, tagsField.Options[0].ID}},
+		"expectedUpdatedAt": crmRecord.UpdatedAt,
+		"values":            map[string]any{tagsField.ID: []string{tagsField.Options[0].ID, tagsField.Options[0].ID}},
 	}, http.StatusOK, &crmRecord)
 	tags, ok := crmRecord.CustomFields[tagsField.ID].([]any)
 	if !ok || len(tags) != 1 || tags[0] != tagsField.Options[0].ID {

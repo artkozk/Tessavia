@@ -873,9 +873,14 @@ func (s *Server) handleUpdateRecordFields(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var input struct {
-		Values map[string]json.RawMessage `json:"values"`
+		Values            map[string]json.RawMessage `json:"values"`
+		ExpectedUpdatedAt string                     `json:"expectedUpdatedAt"`
 	}
 	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if input.ExpectedUpdatedAt == "" || input.ExpectedUpdatedAt != record.UpdatedAt {
+		writeError(w, http.StatusConflict, "Карточка изменилась. Сравните ваши значения с актуальными перед сохранением")
 		return
 	}
 	fields, err := s.listCollectionFields(r.Context(), record.CollectionID)
@@ -931,8 +936,13 @@ func (s *Server) handleUpdateRecordFields(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	if _, err = tx.ExecContext(r.Context(), `UPDATE records SET updated_at = ? WHERE id = ?`, now, record.ID); err != nil {
+	updatedRows, err := tx.ExecContext(r.Context(), `UPDATE records SET updated_at = ? WHERE id = ? AND updated_at = ?`, now, record.ID, input.ExpectedUpdatedAt)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось обновить карточку")
+		return
+	}
+	if count, _ := updatedRows.RowsAffected(); count != 1 {
+		writeError(w, http.StatusConflict, "Карточка изменилась во время сохранения. Сравните изменения ещё раз")
 		return
 	}
 	if err = writeActivity(r.Context(), tx, currentUser(r).ID, record.Type, record.ID, "custom_fields_updated", "", map[string]any{"fieldCount": len(input.Values)}); err != nil {

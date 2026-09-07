@@ -28,7 +28,7 @@ func TestCollectionSchemaArchiveRestorePreservesValuesAndLifecycle(t *testing.T)
 	call("member", "DELETE", path, map[string]any{"expectedUpdatedAt": version}, 403, nil)
 	call("owner", "DELETE", path, map[string]any{"expectedUpdatedAt": "stale"}, 409, nil)
 	call("owner", "DELETE", path, map[string]any{"expectedUpdatedAt": version}, 204, nil)
-	call("owner", "PUT", "/records/"+record.ID+"/custom-fields", map[string]any{"values": map[string]any{}}, 200, nil)
+	call("owner", "PUT", "/records/"+record.ID+"/custom-fields", map[string]any{"expectedUpdatedAt": record.UpdatedAt, "values": map[string]any{}}, 200, nil)
 	var saved string
 	if err := f.store.db.QueryRow(`SELECT value_json FROM record_field_values WHERE record_id=? AND field_id=?`, record.ID, field.ID).Scan(&saved); err != nil || saved != `"Original value"` {
 		t.Fatalf("value lost: %q %v", saved, err)
