@@ -31,16 +31,17 @@ type CollectionFieldOption struct {
 }
 
 type CollectionField struct {
-	ArchivedAt string                  `json:"archivedAt,omitempty"`
-	UpdatedAt  string                  `json:"updatedAt"`
-	ID         string                  `json:"id"`
-	Key        string                  `json:"key"`
-	Name       string                  `json:"name"`
-	FieldType  string                  `json:"fieldType"`
-	Required   bool                    `json:"required"`
-	ShowOnCard bool                    `json:"showOnCard"`
-	SortOrder  int                     `json:"sortOrder"`
-	Options    []CollectionFieldOption `json:"options"`
+	DefaultValue json.RawMessage         `json:"defaultValue"`
+	ArchivedAt   string                  `json:"archivedAt,omitempty"`
+	UpdatedAt    string                  `json:"updatedAt"`
+	ID           string                  `json:"id"`
+	Key          string                  `json:"key"`
+	Name         string                  `json:"name"`
+	FieldType    string                  `json:"fieldType"`
+	Required     bool                    `json:"required"`
+	ShowOnCard   bool                    `json:"showOnCard"`
+	SortOrder    int                     `json:"sortOrder"`
+	Options      []CollectionFieldOption `json:"options"`
 }
 
 type CollectionStage struct {
@@ -258,18 +259,20 @@ func (s *Server) listCollectionFields(ctx context.Context, collectionID string) 
 }
 
 func (s *Server) listCollectionSchemaFields(ctx context.Context, collectionID string, includeArchived bool) ([]CollectionField, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT id, field_key, name, field_type, required, show_on_card, sort_order, COALESCE(archived_at,''), updated_at FROM collection_fields WHERE collection_id = ? AND (? OR archived_at IS NULL) ORDER BY sort_order, name`, collectionID, includeArchived)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT id, field_key, name, field_type, required, show_on_card, sort_order, COALESCE(archived_at,''), updated_at, COALESCE((SELECT value_json FROM collection_field_defaults d WHERE d.field_id=collection_fields.id),'null') FROM collection_fields WHERE collection_id = ? AND (? OR archived_at IS NULL) ORDER BY sort_order, name`, collectionID, includeArchived)
 	if err != nil {
 		return nil, err
 	}
 	items := make([]CollectionField, 0)
 	for rows.Next() {
 		var item CollectionField
+		var defaultJSON string
 		var required, showOnCard int
-		if err := rows.Scan(&item.ID, &item.Key, &item.Name, &item.FieldType, &required, &showOnCard, &item.SortOrder, &item.ArchivedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Key, &item.Name, &item.FieldType, &required, &showOnCard, &item.SortOrder, &item.ArchivedAt, &item.UpdatedAt, &defaultJSON); err != nil {
 			rows.Close()
 			return nil, err
 		}
+		item.DefaultValue = json.RawMessage(defaultJSON)
 		item.Required = required == 1
 		item.ShowOnCard = showOnCard == 1
 		item.Options = make([]CollectionFieldOption, 0)
@@ -653,11 +656,12 @@ func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var input struct {
-		ExpectedAt string                   `json:"expectedUpdatedAt"`
-		Name       string                   `json:"name"`
-		Required   bool                     `json:"required"`
-		ShowOnCard bool                     `json:"showOnCard"`
-		Options    *[]CollectionFieldOption `json:"options"`
+		DefaultValue json.RawMessage          `json:"defaultValue"`
+		ExpectedAt   string                   `json:"expectedUpdatedAt"`
+		Name         string                   `json:"name"`
+		Required     bool                     `json:"required"`
+		ShowOnCard   bool                     `json:"showOnCard"`
+		Options      *[]CollectionFieldOption `json:"options"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -666,6 +670,42 @@ func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Requ
 	if input.Name == "" || len([]rune(input.Name)) > 80 {
 		writeError(w, http.StatusBadRequest, "Некорректное название поля")
 		return
+	}
+	var defaultValue string
+	if len(input.DefaultValue) > 0 {
+		if input.ExpectedAt == "" {
+			writeError(w, 409, "Обновите конструктор перед изменением начального значения")
+			return
+		}
+		fields, err := s.listCollectionFields(r.Context(), collectionID)
+		if err != nil {
+			writeError(w, 500, "Не удалось прочитать поле")
+			return
+		}
+		var field *CollectionField
+		for i := range fields {
+			if fields[i].ID == fieldID {
+				field = &fields[i]
+				break
+			}
+		}
+		if field == nil {
+			writeError(w, 404, "Поле не найдено")
+			return
+		}
+		if (field.FieldType == "user" || field.FieldType == "relation") && string(input.DefaultValue) != "null" {
+			writeError(w, 400, "Участника и связанную карточку выбирают при заполнении")
+			return
+		}
+		value, empty, err := s.normalizeCollectionFieldValue(r.Context(), Record{WorkspaceID: currentWorkspace(r).ID}, *field, input.DefaultValue)
+		if err != nil {
+			writeError(w, 400, "Начальное значение: "+err.Error())
+			return
+		}
+		defaultValue = value
+		if empty {
+			defaultValue = "null"
+		}
 	}
 	now := nowText()
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
@@ -697,7 +737,13 @@ func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	if err := writeActivity(r.Context(), tx, currentUser(r).ID, "collection", collectionID, "field_updated", "", map[string]any{"fieldId": fieldID, "name": input.Name, "optionsChanged": input.Options != nil}); err != nil {
+	if len(input.DefaultValue) > 0 {
+		if _, err := tx.ExecContext(r.Context(), `INSERT INTO collection_field_defaults(field_id,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(field_id) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at`, fieldID, defaultValue, now); err != nil {
+			writeError(w, 500, "Не удалось сохранить начальное значение")
+			return
+		}
+	}
+	if err := writeActivity(r.Context(), tx, currentUser(r).ID, "collection", collectionID, "field_updated", "", map[string]any{"fieldId": fieldID, "name": input.Name, "optionsChanged": input.Options != nil, "defaultChanged": len(input.DefaultValue) > 0}); err != nil {
 		writeError(w, 500, "Не удалось записать историю поля")
 		return
 	}

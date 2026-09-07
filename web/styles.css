@@ -5284,3 +5284,24 @@ body:has(.calendar-expanded) { overflow: hidden; }
  .personal-plan-header h2 { grid-column: 1 / -1; grid-row: 2; font-size: 22px; }
  .personal-plan-header p { grid-column: 1 / -1; grid-row: 3; margin: 0; }
 }
+
+.collection-default-config { border-top: 1px solid var(--line); padding-top: 14px; }
+.collection-default-config summary { min-height: 44px; color: var(--accent); font-weight: 600; cursor: pointer; }
+.collection-default-config > fieldset { margin: 12px 0 0; padding: 0; border: 0; min-width: 0; }
+.collection-default-config > fieldset:disabled { opacity: .55; }
+.collection-default-config .muted { font-size: 12px; line-height: 1.6; }
+.collection-default-config label { min-width: 0; overflow-wrap: anywhere; }
+
+.collection-checkbox > span { display: grid; gap: 3px; min-width: 0; }
+.collection-checkbox small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.constructor-form-header { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: start; gap: 12px; }
+.constructor-form-header > div { min-width: 0; }
+.constructor-form-header h2, .constructor-form-header p { overflow-wrap: anywhere; }
+.constructor-form-header > button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; }
+@media (max-width: 600px) {
+ .constructor-form-header > div { display: contents; }
+ .constructor-form-header .record-kind { grid-column: 1; grid-row: 1; align-self: center; }
+ .constructor-form-header > button { grid-column: 2; grid-row: 1; }
+ .constructor-form-header h2 { grid-column: 1 / -1; grid-row: 2; font-size: 22px; }
+ .constructor-form-header p { grid-column: 1 / -1; grid-row: 3; margin: 0; }
+}

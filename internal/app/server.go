@@ -1149,6 +1149,10 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, field := range collectionFields {
 			raw, supplied := input.CustomFields[field.ID]
+			if !supplied && len(field.DefaultValue) > 0 && string(field.DefaultValue) != "null" {
+				raw = field.DefaultValue
+				supplied = true
+			}
 			if !supplied {
 				if field.Required {
 					writeError(w, http.StatusBadRequest, fmt.Sprintf("Заполните обязательное поле «%s»", field.Name))
