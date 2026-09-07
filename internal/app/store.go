@@ -38,6 +38,7 @@ type User struct {
 }
 
 type Record struct {
+	ReviewPending     bool                   `json:"reviewPending"`
 	CriterionWeight   float64                `json:"criterionWeight"`
 	TitleGenerated    bool                   `json:"titleGenerated"`
 	ID                string                 `json:"id"`

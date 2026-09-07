@@ -817,6 +817,10 @@ func (s *Server) handleMoveRecordStage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if record.Type == "task" && stage.Category == "done" {
+		s.finishTask(w, r, record, record.Result, false, stage.ID)
+		return
+	}
 	now := nowText()
 	completedAt := any(nil)
 	progress := record.Progress
@@ -832,7 +836,7 @@ func (s *Server) handleMoveRecordStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(r.Context(), `UPDATE records SET stage_id = ?, status = ?, progress = ?, completed_at = ?, updated_at = ? WHERE id = ?`, stage.ID, status, progress, completedAt, now, record.ID); err != nil {
+	if _, err = tx.ExecContext(r.Context(), `UPDATE records SET stage_id = ?, status = ?, review_pending=0, progress = ?, completed_at = ?, updated_at = ? WHERE id = ?`, stage.ID, status, progress, completedAt, now, record.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось переместить карточку")
 		return
 	}

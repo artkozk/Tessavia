@@ -535,45 +535,7 @@ func (s *Server) handleSubmitTaskReview(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusConflict, "Сначала приложите доказательство выполнения")
 		return
 	}
-	if record.AuthorID == record.OwnerID && record.DecisionMakerID == nil {
-		s.completeTaskDirect(w, r, record, input.Result, input.NotifyPartners)
-		return
-	}
-	reviewerID := record.AuthorID
-	if record.DecisionMakerID != nil {
-		reviewerID = *record.DecisionMakerID
-	}
-	tx, err := s.store.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось начать приёмку")
-		return
-	}
-	defer tx.Rollback()
-	now := nowText()
-	eventID, _ := newID()
-	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET stage_id = COALESCE((SELECT id FROM collection_stages WHERE collection_id = records.collection_id AND category = 'review' AND archived_at IS NULL ORDER BY sort_order LIMIT 1), stage_id), status = 'review', result = ?, progress = 100, completed_at = NULL, updated_at = ? WHERE id = ?`, input.Result, now, record.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось отправить на проверку")
-		return
-	}
-	if _, err := tx.ExecContext(r.Context(), `INSERT INTO task_review_events(id, record_id, actor_id, action, created_at) VALUES(?, ?, ?, 'submitted', ?)`, eventID, record.ID, user.ID, now); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось записать отправку на проверку")
-		return
-	}
-	if err := writeActivity(r.Context(), tx, user.ID, "task", record.ID, "review_submitted", "", map[string]any{"proofCount": proofs, "reviewerId": reviewerID}); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось записать историю приёмки")
-		return
-	}
-	if reviewerID != user.ID {
-		if err := insertNotification(r.Context(), tx, reviewerID, "task_review", "Результат ждёт проверки", fmt.Sprintf("%s отправил задачу «%s» на приёмку", user.Username, record.Title), "task", record.ID); err != nil {
-			writeError(w, http.StatusInternalServerError, "Не удалось уведомить проверяющего")
-			return
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось завершить приёмку")
-		return
-	}
-	writeJSON(w, http.StatusOK, mustRecord(s, r.Context(), record.ID))
+	s.finishTask(w, r, record, input.Result, input.NotifyPartners, "")
 }
 
 func (s *Server) handleReviewTask(w http.ResponseWriter, r *http.Request) {
@@ -582,7 +544,7 @@ func (s *Server) handleReviewTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Задача не найдена")
 		return
 	}
-	if record.Status != "review" {
+	if record.Status != "review" && record.Status != "completed" {
 		writeError(w, http.StatusConflict, "Задача сейчас не ожидает приёмки")
 		return
 	}
@@ -591,8 +553,8 @@ func (s *Server) handleReviewTask(w http.ResponseWriter, r *http.Request) {
 	if record.DecisionMakerID != nil {
 		reviewerID = *record.DecisionMakerID
 	}
-	if user.ID != reviewerID {
-		writeError(w, http.StatusForbidden, "Принять результат может постановщик или указанный принимающий")
+	if user.ID != reviewerID && currentWorkspace(r).Role != "owner" && currentWorkspace(r).Role != "admin" {
+		writeError(w, http.StatusForbidden, "Проверить результат может принимающий или администратор проекта")
 		return
 	}
 	var input struct {
@@ -604,6 +566,10 @@ func (s *Server) handleReviewTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.Decision != "accept" && input.Decision != "rework" {
 		writeError(w, http.StatusBadRequest, "Выберите результат проверки")
+		return
+	}
+	if input.Decision == "accept" && record.Status == "completed" && !record.ReviewPending {
+		writeJSON(w, http.StatusOK, record)
 		return
 	}
 	input.Reason = strings.TrimSpace(input.Reason)
@@ -624,10 +590,16 @@ func (s *Server) handleReviewTask(w http.ResponseWriter, r *http.Request) {
 	if input.Decision == "rework" {
 		status, action, completedAt = "in_progress", "rework", nil
 	}
-	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET stage_id = COALESCE((SELECT id FROM collection_stages WHERE collection_id = records.collection_id AND category = ? AND archived_at IS NULL ORDER BY sort_order LIMIT 1), stage_id), status = ?, progress = CASE WHEN ? = 'completed' THEN 100 ELSE MIN(progress, 95) END, completed_at = ?, updated_at = ? WHERE id = ?`, collectionCategoryForStatus(status), status, status, completedAt, now, record.ID); err != nil {
+	updated, err := tx.ExecContext(r.Context(), `UPDATE records SET stage_id = CASE WHEN ? = 'completed' AND status='completed' THEN stage_id ELSE COALESCE((SELECT id FROM collection_stages WHERE collection_id = records.collection_id AND category = ? AND archived_at IS NULL ORDER BY sort_order,id LIMIT 1), stage_id) END, status = ?, review_pending=0, progress = CASE WHEN ? = 'completed' THEN 100 ELSE MIN(progress, 95) END, completed_at = CASE WHEN ?='completed' THEN COALESCE(completed_at,?) ELSE NULL END, updated_at = ? WHERE id = ? AND updated_at=?`, status, collectionCategoryForStatus(status), status, status, status, completedAt, now, record.ID, record.UpdatedAt)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось сохранить решение по задаче")
 		return
 	}
+	if n, _ := updated.RowsAffected(); n != 1 {
+		writeError(w, 409, "Задача изменилась. Обновите карточку")
+		return
+	}
+
 	if _, err := tx.ExecContext(r.Context(), `INSERT INTO task_review_events(id, record_id, actor_id, action, reason, created_at) VALUES(?, ?, ?, ?, ?, ?)`, eventID, record.ID, user.ID, action, input.Reason, now); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось записать решение по задаче")
 		return
@@ -644,7 +616,7 @@ func (s *Server) handleReviewTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось уведомить исполнителя")
 		return
 	}
-	if action == "accepted" {
+	if action == "accepted" && record.Status != "completed" {
 		if _, err := s.spawnRecurringTask(r.Context(), tx, record, user.ID, now); err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось создать следующее повторение")
 			return
@@ -652,40 +624,6 @@ func (s *Server) handleReviewTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить приёмку")
-		return
-	}
-	writeJSON(w, http.StatusOK, mustRecord(s, r.Context(), record.ID))
-}
-
-func (s *Server) completeTaskDirect(w http.ResponseWriter, r *http.Request, record Record, result string, notify bool) {
-	user := currentUser(r)
-	tx, err := s.store.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось начать завершение")
-		return
-	}
-	defer tx.Rollback()
-	now := nowText()
-	if _, err := tx.ExecContext(r.Context(), `UPDATE records SET stage_id = COALESCE((SELECT id FROM collection_stages WHERE collection_id = records.collection_id AND category = 'done' AND archived_at IS NULL ORDER BY sort_order LIMIT 1), stage_id), status = 'completed', progress = 100, result = ?, completed_at = ?, updated_at = ? WHERE id = ?`, result, now, now, record.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось завершить задачу")
-		return
-	}
-	if err := writeActivity(r.Context(), tx, user.ID, "task", record.ID, "completed", "", map[string]any{"result": result}); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось записать завершение задачи")
-		return
-	}
-	if notify {
-		if err := s.insertPartnerNotifications(r.Context(), tx, user, record, "Задача выполнена", fmt.Sprintf("%s завершил задачу «%s»", user.Username, record.Title)); err != nil {
-			writeError(w, http.StatusInternalServerError, "Не удалось уведомить партнёра")
-			return
-		}
-	}
-	if _, err := s.spawnRecurringTask(r.Context(), tx, record, user.ID, now); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось создать следующее повторение")
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось завершить задачу")
 		return
 	}
 	writeJSON(w, http.StatusOK, mustRecord(s, r.Context(), record.ID))

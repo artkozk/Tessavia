@@ -165,7 +165,7 @@ func TestBusinessWorkflow(t *testing.T) {
 	requestJSON(t, sweetybboy, http.MethodPost, server.URL+"/api/records/"+task.ID+"/complete", map[string]any{
 		"result": "Подготовлены вопросы для установочной встречи", "notifyPartners": true,
 	}, http.StatusOK, &submitted)
-	if submitted.Status != "review" || submitted.Progress != 100 || submitted.ProofCount != 1 || submitted.CompletedAt != nil {
+	if submitted.Status != "completed" || !submitted.ReviewPending || submitted.Progress != 100 || submitted.ProofCount != 1 || submitted.CompletedAt == nil {
 		t.Fatalf("submitted task = %#v", submitted)
 	}
 	var completed Record

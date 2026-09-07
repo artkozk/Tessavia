@@ -5331,3 +5331,36 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .chat-archive-folder:hover { color: var(--accent); background: var(--surface); }
 .chat-archive-folder svg { width: 18px; height: 18px; flex-shrink: 0; }
 .chat-archive-folder span { margin-left: auto; font-size: 12px; }
+
+/* Full horizon is the primary meaning of the life map; individual periods are optional detail. */
+.life-map-full { min-width: 0; }
+.life-map-full p { white-space: normal; overflow-wrap: anywhere; }
+.life-horizon-progress { height: 7px; border-radius: 5px; overflow: hidden; background: var(--line); margin: 18px 0; }
+.life-horizon-progress > span { display: block; height: 100%; background: var(--accent); }
+.life-map-overview { width: 100%; max-width: 1050px; }
+.life-map-overview svg { display: block; width: 100%; max-height: 480px; }
+.life-map-overview circle { fill: transparent; stroke: var(--line); stroke-width: 1; }
+.life-map-overview circle.past { fill: var(--muted); stroke: var(--muted); opacity: .7; }
+.life-map-overview circle.current { fill: var(--accent); stroke: var(--accent); stroke-width: 2.5; }
+.life-horizon-labels { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 12px; margin: 12px 0 20px; }
+.life-map-detail { border-top: 1px solid var(--line); padding: 14px 0; }
+.life-map-detail > summary { cursor: pointer; color: var(--accent); padding: 10px 0; }
+.workspace-page-grid .personal-tabs, .personal-tabs, .reading-tabs { width: fit-content; max-width: 100%; justify-self: start; }
+.personal-tabs .segment, .reading-tabs .segment { flex: 0 0 auto; min-height: 44px; }
+.reading-tabs { display: flex; flex-wrap: wrap; }
+.task-review-hint { display: block; color: var(--muted); font-size: 11px; margin-top: 6px; }
+@media (max-width: 600px) {
+ .personal-tabs, .reading-tabs { gap: 3px; }
+ .personal-tabs .segment, .reading-tabs .segment { padding-inline: 10px; font-size: 12px; }
+ .life-horizon-labels { font-size: 10px; }
+}
+
+.page-title-editable { cursor: text; outline: 1px dashed var(--accent); outline-offset: 5px; border-radius: 3px; }
+.page-title-editable:focus-visible { outline: 2px solid var(--accent); }
+.page-layout-editing .reading-hero { display: flex; }
+.page-layout-editing .reading-page [data-page-block] { position: relative; }
+
+.life-horizon-progress > svg { display: block; width: 100%; height: 100%; }
+.life-horizon-progress rect { fill: var(--accent); }
+
+.workspace-page-grid .personal-tabs { container-type: normal; }

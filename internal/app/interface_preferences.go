@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strings"
 )
 
 var interfaceNavGroups = map[string]bool{
@@ -43,6 +44,7 @@ type InterfaceLayout struct {
 }
 
 type PageLayout struct {
+	Texts                      map[string]string            `json:"texts,omitempty"`
 	Widgets                    []string                     `json:"widgets,omitempty"`
 	BlockSettings              map[string]PageBlockSettings `json:"blockSettings,omitempty"`
 	Order                      []string                     `json:"order"`
@@ -88,6 +90,20 @@ func normalizePageLayouts(pages map[string]PageLayout) map[string]PageLayout {
 		if !pageLayoutKey.MatchString(key) {
 			continue
 		}
+		texts := map[string]string{}
+		for name, text := range page.Texts {
+			if len(texts) >= 100 || !pageLayoutKey.MatchString(name) {
+				continue
+			}
+			value := []rune(strings.TrimSpace(text))
+			if len(value) > 160 {
+				value = value[:160]
+			}
+			if len(value) > 0 {
+				texts[name] = string(value)
+			}
+		}
+		page.Texts = texts
 		page.Order = clean(page.Order)
 		page.HiddenBlocks = clean(page.HiddenBlocks)
 		page.HiddenFields = clean(page.HiddenFields)

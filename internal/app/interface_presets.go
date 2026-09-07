@@ -154,6 +154,7 @@ func portableInterfacePreferences(input InterfacePreferences, device string) Int
 		if !portableInterfacePageKeys[key] {
 			continue
 		}
+		page.Texts = nil // Personal wording is not part of a published layout.
 		page.Order = uniqueAllowedStrings(page.Order, portableInterfaceBlockKeys)
 		page.HiddenBlocks = uniqueAllowedStrings(page.HiddenBlocks, portableInterfaceBlockKeys)
 		page.HiddenFields = uniqueAllowedStrings(page.HiddenFields, portableInterfaceFieldKeys)
@@ -192,6 +193,10 @@ func mergePortableInterfacePreferences(current, portable InterfacePreferences, d
 	for key, page := range current.Layout.Pages {
 		if !portableInterfacePageKeys[key] {
 			result.Layout.Pages[key] = page
+		} else if len(page.Texts) > 0 {
+			preserved := result.Layout.Pages[key]
+			preserved.Texts = page.Texts
+			result.Layout.Pages[key] = preserved
 		}
 	}
 	return result

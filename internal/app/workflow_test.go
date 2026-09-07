@@ -164,7 +164,7 @@ func TestCofounderWorkflowComfort(t *testing.T) {
 	requestJSON(t, partnerClient, http.MethodPost, server.URL+"/api/records/"+task.ID+"/complete", map[string]any{
 		"result": "Работа готова к проверке", "notifyPartners": true,
 	}, http.StatusOK, &submitted)
-	if submitted.Status != "review" {
+	if submitted.Status != "completed" || !submitted.ReviewPending {
 		t.Fatalf("submitted status = %q", submitted.Status)
 	}
 	var accepted Record
