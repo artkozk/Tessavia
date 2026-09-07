@@ -1,0 +1,25 @@
+{
+  "commit": "c7d76bdf4283b5467422ea0c3b906890571ac128",
+  "release": "/opt/business-control/releases/20260907-recurrence-horizon-c7d76bd",
+  "sha256": "5a29a9e343e9ad5eca5243e8c887997a006f5d2695830fbf56e5b005efd47675",
+  "backup": "/var/lib/business-control/backups/pre-recurrence-horizon-20260907T125001Z",
+  "checkedAt": "2026-09-07T12:51:12.986627Z",
+  "preservedTables": 110,
+  "schema": "059_personal_recurrence_templates.sql",
+  "nodeTests": 226,
+  "goTests": "go test ./... passed; internal/app 51.399s",
+  "tasks": [
+    {
+      "id": "0311dbcf668203acd4ffb32461307d9b",
+      "status": "completed"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    }
+  ]
+}

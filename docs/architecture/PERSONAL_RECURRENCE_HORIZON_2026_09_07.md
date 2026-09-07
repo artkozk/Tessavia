@@ -69,3 +69,15 @@ Backend/API: чтение без вставок, приватность друг
 он просто не показывает прогноз. Результат production будет добавлен отдельным
 операционным отчётом и доказательствами в существующей задаче, без закрытия
 общей календарной цели и общего аудита.
+
+## Production, 07.09.2026 15:50 МСК
+
+Выпущен c7d76bdf4283b5467422ea0c3b906890571ac128,
+/opt/business-control/releases/20260907-recurrence-horizon-c7d76bd.
+SHA256 5a29a9e343e9ad5eca5243e8c887997a006f5d2695830fbf56e5b005efd47675.
+Backup /var/lib/business-control/backups/pre-recurrence-horizon-20260907T125001Z.
+Dry run: все 110 таблиц без изменений, схема 059. Служба, nginx, HTTPS,
+health, новые assets, integrity/FK проверены. Receipt
+../operations/RECURRENCE_HORIZON_RELEASE_2026_09_07.json.
+Задача 0311... закрыта с доказательством через API, notifyPartners=false.
+Аудит/визуал и общая календарная цель дополнены, остались открытыми.
