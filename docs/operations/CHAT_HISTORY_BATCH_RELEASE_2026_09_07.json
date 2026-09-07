@@ -1,0 +1,33 @@
+{
+  "commit": "afb77d194b0d287dee1ecd3d5ba51c45ec932fb7",
+  "release": "/opt/business-control/releases/20260907-chat-history-batch-afb77d1",
+  "sha256": "c64a3be7f5806f723263055640c9185b0ed83d120ac7a66a0e10f048eb102ab0",
+  "backup": "/var/lib/business-control/backups/pre-chat-history-batch-20260907T130213Z",
+  "checkedAt": "2026-09-07T13:03:27.293092Z",
+  "preservedTables": 110,
+  "schema": "059_personal_recurrence_templates.sql",
+  "goTests": "go test ./... passed; internal/app51.750s",
+  "benchmark": {
+    "messages": 5000,
+    "reactions": 10000,
+    "page": 200,
+    "runs": 7,
+    "beforeMedianMs": 8.3221,
+    "afterMedianMs": 3.2332,
+    "scope": "local server function; not network SLA"
+  },
+  "tasks": [
+    {
+      "id": "f7f78ad1042255630386fa5b11d51f47",
+      "status": "in_progress"
+    },
+    {
+      "id": "e402d353a684b074f852fa1fd277d895",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    }
+  ]
+}

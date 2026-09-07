@@ -45,3 +45,16 @@
 Frontend/CSS не изменены, применяется прежний проверенный assets-маркер.
 Полный go test ./... прошёл, internal/app51.750s. Большая синтетическая БД
 создаётся в t.TempDir и не затрагивает локальную audit.db или production.
+
+## Production и сохранность
+
+Выпуск 07.09.2026 16:02 МСК, commit afb77d194b0d287dee1ecd3d5ba51c45ec932fb7,
+/opt/business-control/releases/20260907-chat-history-batch-afb77d1,
+SHA256 c64a3be7f5806f723263055640c9185b0ed83d120ac7a66a0e10f048eb102ab0.
+Backup /var/lib/business-control/backups/pre-chat-history-batch-20260907T130213Z.
+Dry run сохранил110 таблиц без изменений, схема059; служба/nginx/HTTPS/health/
+assets/integrity/FK проверены. Frontend остался recurrence-horizon-3.
+Факты: ../operations/CHAT_HISTORY_BATCH_RELEASE_2026_09_07.json.
+Задача производительности теперь in_progress, дополнена без удаления истории;
+общий чат и аудит также открыты. Откат на предыдущий бинарник не требует миграций.
+Черновик SC65 восстановился после перезагрузки и остался неотправленным.
