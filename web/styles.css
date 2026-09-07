@@ -5254,3 +5254,13 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .recurrence-template-caption span {font-size:12px;color:var(--muted);}
 .personal-recurrence > div > .check {min-height:44px;}
 .personal-recurrence [data-series-impact] {font-size:13px;line-height:1.5;}
+
+.calendar-recurrence-preview { min-width:0; }
+.calendar-recurrence-preview h2,.recurrence-preview-notes { overflow-wrap:anywhere; }
+.recurrence-preview-notes { white-space:pre-wrap; }
+
+.calendar-recurrence-preview > header { display:grid; grid-template-columns:minmax(0,1fr) 44px; gap:12px; align-items:start; }
+.calendar-recurrence-preview > header .icon-button { width:44px; min-width:44px; height:44px; }
+.calendar-recurrence-preview .form-actions button { min-height:44px; }
+
+@media (min-width:601px) { #workspace-dialog:has(.calendar-recurrence-preview) {width:min(680px,calc(100vw - 32px));} }

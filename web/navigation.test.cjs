@@ -90,3 +90,12 @@ test('Back repairs a legacy private route without changing its tab or scroll', a
   assert.equal(h.state.activeWorkspaceId,'private');assert.equal(h.state.personalTab,'habits');
   assert.equal(h.window.scrollY,110);assert.equal(h.history.state.businessControlView.workspaceId,'private');
 });
+
+test('personal startup and legacy dashboard history open personal home while calendar dates survive',()=>{
+ for(const entry of [null,{view:'dashboard',workspaceId:'private'},{view:'day',workspaceId:'private',calendarScope:'personal',calendarDay:'2026-09-21'}]){
+  const h=harness();h.state.activeWorkspaceId='private';h.state.view='dashboard';
+  if(entry)h.history.state={businessControlAccount:1,businessControlView:entry};
+  h.run('initializeViewHistory()');assert.equal(h.state.view,entry?.view==='day'?'day':'personal');
+  if(entry?.view==='day')assert.equal(h.state.calendarDay,'2026-09-21');else assert.equal(h.state.calendarScope,'personal');
+ }
+});

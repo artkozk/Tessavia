@@ -41,8 +41,9 @@ type calendarConflict struct {
 	Confirmed bool               `json:"confirmed"`
 }
 type calendarOverview struct {
-	Work      []calendarWorkItem `json:"work"`
-	Conflicts []calendarConflict `json:"conflicts"`
+	Recurrences []calendarRecurrence `json:"recurrences"`
+	Work        []calendarWorkItem   `json:"work"`
+	Conflicts   []calendarConflict   `json:"conflicts"`
 }
 type calendarQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
@@ -150,6 +151,19 @@ func (s *Server) readCalendarOverview(ctx context.Context, q calendarQueryer, ow
 	if err != nil {
 		return out, err
 	}
+	out.Recurrences, err = readCalendarRecurrences(ctx, q, owner, start, end, loc)
+	if err != nil {
+		return out, err
+	}
+	for _, item := range out.Recurrences {
+		if item.StartsAt == nil && item.ItemKind != "event" {
+			continue
+		}
+		left, right := recurrenceBounds(item.PersonalPlan, loc)
+		if !left.IsZero() && right.After(left) {
+			busy = append(busy, calendarBusyItem{ID: item.ID, Kind: "personal", Title: item.Title, Start: left, End: right})
+		}
+	}
 	out.Conflicts = calendarConflictPairs(busy, start, end)
 	rows, err = q.QueryContext(ctx, `SELECT fingerprint FROM personal_calendar_confirmations WHERE owner_id=?`, owner)
 	if err != nil {
@@ -183,6 +197,10 @@ func (s *Server) handlePersonalCalendar(w http.ResponseWriter, r *http.Request) 
 	}
 	out, err := s.readCalendarOverview(r.Context(), s.store.db, currentUser(r).ID, start, end, loc)
 	if err != nil {
+		if errors.Is(err, errRecurrenceHorizonLimit) {
+			writeError(w, 422, err.Error())
+			return
+		}
 		writeError(w, 500, "Не удалось проверить занятость календаря")
 		return
 	}

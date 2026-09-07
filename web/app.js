@@ -1,13 +1,13 @@
-import { createChatGroupUI } from './chat-groups.js?v=20260907-recurrence-template-3';
-import { pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-recurrence-template-3';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-recurrence-template-3';
+import { createChatGroupUI } from './chat-groups.js?v=20260907-recurrence-horizon-3';
+import { pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-recurrence-horizon-3';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-recurrence-horizon-3';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-recurrence-template-3';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-recurrence-horizon-3';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-recurrence-template-3';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-recurrence-horizon-3';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-recurrence-template-3';
+import { personalRoute } from './personal-navigation.js?v=20260907-recurrence-horizon-3';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-recurrence-horizon-3';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -18,7 +18,7 @@ import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260907-recurrence-template-3';
+import { createOutboxUI } from './outbox-ui.js?v=20260907-recurrence-horizon-3';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -2634,7 +2634,7 @@ async function openPersonalReviewSource(item) {
   }
 }
 const personalReviewUI=createPersonalReviewUI({state,api,escapeHTML,icon,renderPersonal,toast,openSource:openPersonalReviewSource});
-const personalCalendarUI=createPersonalCalendarUI({state,api,esc:escapeHTML,icon,rerender:()=>{if(state.calendarScope==='personal'){if(state.view==='calendar')renderCalendarPage();if(state.view==='day')renderDayWorkspace();}},openModal,closeDialog:requestDialogClose,toast,openSource:openPersonalReviewSource,openPlan:openPersonalPlanDetails,formatDate,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor});
+const personalCalendarUI=createPersonalCalendarUI({state,api,esc:escapeHTML,icon,rerender:()=>{if(state.calendarScope==='personal'){if(state.view==='calendar')renderCalendarPage();if(state.view==='day')renderDayWorkspace();}},openModal,closeDialog:requestDialogClose,toast,openSource:openPersonalReviewSource,openPlan:openPersonalPlanDetails,refreshPersonal:()=>loadPersonal({force:true}),formatDate,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor});
 const readingUI = createReadingUI({ escapeHTML, icon, api, state, toast, toastAction, openModal, closeDialog: requestDialogClose, bindDraft: bindWorkingDraft, clearDraft: clearWorkingDraftFor, loadData });
 function renderHabitRow(habit, links, compact = false) { return habitUI.renderRow(habit, compact); }
 
@@ -8400,6 +8400,8 @@ function viewSnapshot() {
 function initializeViewHistory() {
   if (state.viewHistoryInitialized) return;
   state.viewHistoryInitialized = true;
+  const initialRoute=personalRoute(viewSnapshot(),state.workspaces);
+  state.view=initialRoute.view;state.calendarScope=initialRoute.calendarScope;
   if (history.state?.businessControlAccount === state.me?.id && history.state?.businessControlView) {
     const route = personalRoute(history.state.businessControlView, state.workspaces);
     if (route.workspaceId === state.activeWorkspaceId) routeFields.forEach((key) => { if (Object.hasOwn(route, key)) state[key] = structuredClone(route[key]); });
@@ -9366,6 +9368,7 @@ function plannerMatchesDay(item, day, personal) {
 function plannerItems() {
   const personal = state.calendarScope === 'personal';
   const personalItems = [...(state.personal?.plans || []), ...(state.personal?.notes || []).filter(note=>note.scheduledDate || calendarPresentation('personal').journal).map(note => ({...note, calendarKind:'note', startDate:note.scheduledDate || localDateKey(new Date(note.createdAt)), endDate:note.scheduledDate || localDateKey(new Date(note.createdAt)), status:'planned'}))];
+  if (personal) personalItems.push(...personalCalendarUI.recurrences());
   if (personal && calendarPresentation('personal').includeWork) personalItems.push(...personalCalendarUI.entries());
   return (personal ? personalItems : state.records).filter((item) => {
     if (item.status === 'archived' || item.status === 'cancelled') return false;
@@ -9387,7 +9390,7 @@ function plannerTone(item) {
 
 function plannerEntry(item) {
   const personal = state.calendarScope === 'personal';
-  const subtitle = item.calendarKind === 'work' ? `${item.workspace} · ${item.startsAt ? personalPlanDateLabel(item) : item.dueAt ? 'Срок: '+formatDate(item.dueAt,true) : 'Без времени'}` : personal ? item.calendarKind === 'note' ? 'Заметка' : personalPlanDateLabel(item) : `${item.ownerUsername || ''}${item.dueAt ? ` · ${formatDate(item.dueAt, true)}` : ' · Без срока'}`;
+  const subtitle = item.calendarKind === 'recurrence' ? 'Будущее повторение · '+personalPlanDateLabel(item) : item.calendarKind === 'work' ? `${item.workspace} · ${item.startsAt ? personalPlanDateLabel(item) : item.dueAt ? 'Срок: '+formatDate(item.dueAt,true) : 'Без времени'}` : personal ? item.calendarKind === 'note' ? 'Заметка' : personalPlanDateLabel(item) : `${item.ownerUsername || ''}${item.dueAt ? ` · ${formatDate(item.dueAt, true)}` : ' · Без срока'}`;
   return `<button type="button" class="planner-entry planner-tone-${plannerTone(item)}" data-planner-entry="${item.id}" data-planner-kind="${item.calendarKind || ''}"><i></i><span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(subtitle)}</small></span>${icon('chevronRight')}</button>`;
 }
 
@@ -9430,7 +9433,7 @@ function renderCalendarPage() {
   $$('[data-planner-scope]', root).forEach((button) => button.addEventListener('click', () => { state.calendarScope = button.dataset.plannerScope; renderCalendarPage(); }));
   $$('[data-planner-display]', root).forEach((button) => button.addEventListener('click', () => { state.calendarDisplay = button.dataset.plannerDisplay; renderCalendarPage(); }));
   $$('[data-planner-filter]', root).forEach((select) => select.addEventListener('change', () => { state[select.dataset.plannerFilter] = select.value; renderCalendarPage(); }));
-  $$('[data-planner-entry]', root).forEach((button) => button.addEventListener('click', () => button.dataset.plannerKind === 'work' ? personalCalendarUI.openWork(button.dataset.plannerEntry.slice(5)) : personal ? button.dataset.plannerKind === 'note' ? openPersonalEditor('note', button.dataset.plannerEntry) : openPersonalPlanDetails(button.dataset.plannerEntry) : openRecord(button.dataset.plannerEntry)));
+  $$('[data-planner-entry]', root).forEach((button) => button.addEventListener('click', () => button.dataset.plannerKind === 'recurrence' ? personalCalendarUI.openRecurrence(button.dataset.plannerEntry) : button.dataset.plannerKind === 'work' ? personalCalendarUI.openWork(button.dataset.plannerEntry.slice(5)) : personal ? button.dataset.plannerKind === 'note' ? openPersonalEditor('note', button.dataset.plannerEntry) : openPersonalPlanDetails(button.dataset.plannerEntry) : openRecord(button.dataset.plannerEntry)));
   $$('[data-planner-create]', root).forEach((button) => button.addEventListener('click', createCalendarEntry));
   $$('[data-planner-day]', root).forEach((button) => button.addEventListener('click', () => openDayWorkspace(button.dataset.plannerDay, state.calendarScope)));
   $$('[data-planner-shift]', root).forEach((button) => button.addEventListener('click', () => { const next = new Date(month); next.setMonth(next.getMonth() + Number(button.dataset.plannerShift)); state.calendarMonth = localDateKey(next).slice(0, 7); state.calendarDay = `${state.calendarMonth}-01`; renderCalendarPage(); }));
@@ -9516,14 +9519,15 @@ function openDayWorkspace(date, scope) {
 
 function dayRecordRow(item, personal) {
   if (item.calendarKind === 'work') return `<button type="button" class="day-record-row" data-day-item="${item.recordId}" data-day-kind="work">${icon('checkSquare')}<span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.workspace)} · ${escapeHTML(item.startsAt?personalPlanDateLabel(item):'Срок: '+formatDate(item.dueAt,true))}</small></span>${icon('chevronRight')}</button>`;
-  const status = personal ? item.status === 'done' ? 'Завершён' : 'Запланирован' : statusLabel(item);
+  const status = item.calendarKind === 'recurrence' ? 'Будущее повторение' : personal && item.occurrenceState === 'skipped' ? 'Пропущено' : personal ? item.status === 'done' ? 'Завершён' : 'Запланирован' : statusLabel(item);
   const when = personal ? personalPlanDateLabel(item) : item.dueAt ? formatDate(item.dueAt, true) : '';
-  return `<button type="button" class="day-record-row" data-day-item="${item.id}" data-day-kind="${personal ? 'plan' : 'record'}">${icon(personal ? 'calendar' : typeMeta[item.type]?.icon || 'fileText')}<span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(status)}${when ? ` · ${escapeHTML(when)}` : ''}${!personal && item.ownerUsername ? ` · ${escapeHTML(item.ownerUsername)}` : ''}</small></span>${icon('chevronRight')}</button>`;
+  return `<button type="button" class="day-record-row" data-day-item="${item.id}" data-day-kind="${item.calendarKind === 'recurrence' ? 'recurrence' : personal ? 'plan' : 'record'}">${icon(personal ? 'calendar' : typeMeta[item.type]?.icon || 'fileText')}<span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(status)}${when ? ` · ${escapeHTML(when)}` : ''}${!personal && item.ownerUsername ? ` · ${escapeHTML(item.ownerUsername)}` : ''}</small></span>${icon('chevronRight')}</button>`;
 }
 
 function bindDayItems(root) {
   $$('[data-day-item]', root).forEach(button => button.addEventListener('click', () => {
-    if (button.dataset.dayKind === 'work') personalCalendarUI.openWork(button.dataset.dayItem);
+    if (button.dataset.dayKind === 'recurrence') personalCalendarUI.openRecurrence(button.dataset.dayItem);
+    else if (button.dataset.dayKind === 'work') personalCalendarUI.openWork(button.dataset.dayItem);
     else if (button.dataset.dayKind === 'plan') openPersonalPlanDetails(button.dataset.dayItem);
     else if (button.dataset.dayKind === 'note') openPersonalEditor('note', button.dataset.dayItem);
     else openRecord(button.dataset.dayItem);
@@ -9539,6 +9543,7 @@ function renderDayWorkspace() {
   const data = dayWorkspaceItems(personal ? 'personal' : 'project', date), root = $('#main-content');
   if (personal) {
     personalCalendarUI.ensure(date,localDateKey(addCalendarDays(date,1)));
+    data.records.push(...personalCalendarUI.recurrences().filter(item=>plannerMatchesDay(item,date,true)));
     if (calendarPresentation('personal').includeWork) data.records.push(...personalCalendarUI.entries().filter(item=>plannerMatchesDay(item,date,true)));
   }
   root.innerHTML = `<header class="day-workspace-heading"><div class="day-workspace-nav"><button type="button" class="secondary" data-day-back>${icon('arrowLeft')} Назад</button><div><button type="button" class="icon-button" data-day-shift="-1" aria-label="Предыдущий день">${icon('arrowLeft')}</button><input type="date" aria-label="Открытый день" value="${date}" data-day-date><button type="button" class="icon-button" data-day-shift="1" aria-label="Следующий день">${icon('chevronRight')}</button></div></div><div class="section-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Личное' : activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(dateFromKey(date).toLocaleDateString('ru-RU', {weekday:'long',day:'numeric',month:'long'}))}</h1></div><button type="button" class="icon-button" data-day-layout title="Настроить день" aria-label="Настроить день">${icon('sliders')}</button></div></header><section class="day-workspace-records"><header class="section-heading"><h2>${personal ? 'Планы' : 'Карточки'} <small>${data.records.length}</small></h2><div><button type="button" class="text-button" data-day-new>${icon('plus')} ${personal ? 'Дело или событие' : 'Карточка'}</button>${!personal ? `<button type="button" class="icon-button" data-day-assign aria-label="Назначить существующую карточку" title="Назначить существующую карточку">${icon('link')}</button>` : ''}</div></header>${data.records.map(item => dayRecordRow(item, personal)).join('') || '<p class="muted">На этот день ничего не запланировано.</p>'}</section><section class="day-workspace-notes"><header class="section-heading"><h2>Заметки <small>${data.notes.length}</small></h2><button type="button" class="text-button" data-day-note>${icon('plus')} Заметка</button></header>${data.notes.map(note => `<article class="day-note"><button type="button" class="day-note-title" data-day-kind="${personal ? 'note' : 'record'}" data-day-item="${note.id}">${icon('edit')}<strong>${escapeHTML(note.title)}</strong></button><div class="markdown-body">${renderMarkdown(personal ? note.body : note.description || '')}</div>${personal ? `<small class="muted">${noteCalendarDate(note) === date ? 'На этот день' : 'Связана с планом'}${note.createdAt ? ` · Создана ${escapeHTML(formatDate(note.createdAt))}` : ''}</small>` : ''}</article>`).join('') || '<p class="muted">Заметок на этот день пока нет.</p>'}</section>`;

@@ -2,7 +2,7 @@ export function workCalendarEntries(work) {
  return work.map(item=>({...item,recordId:item.id,id:`work:${item.id}`,calendarKind:'work',status:item.status==='completed'?'done':'planned'}));
 }
 
-export function createPersonalCalendarUI({state,api,esc,icon,rerender,openModal,closeDialog,toast,openSource,openPlan,formatDate,bindDraft,clearDraft}) {
+export function createPersonalCalendarUI({state,api,esc,icon,rerender,openModal,closeDialog,toast,openSource,openPlan,refreshPersonal,formatDate,bindDraft,clearDraft}) {
  let key='',data=null,error='',pending=false,request=0,timer,range;
  const zone=()=>Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';
  const params=()=>new URLSearchParams({...range,timezone:zone()}).toString();
@@ -22,12 +22,28 @@ export function createPersonalCalendarUI({state,api,esc,icon,rerender,openModal,
   catch(failure){if(expected!==key||owner!==state.me?.id||sequence!==request)return;error=failure.message;data=null;}
   finally{if(expected===key&&owner===state.me?.id&&sequence===request){pending=false;if(previous!==JSON.stringify(data)||previousError!==error)rerender();timer=setTimeout(()=>{if(visible())void load();},15000);}}
  }
+ async function openRecurrence(id){
+  const item=data?.recurrences?.find(value=>value.id===id),owner=state.me?.id;
+  if(!item){toast('Повторение изменилось. Обновите календарь');return;}
+  const dialog=document.querySelector('#workspace-dialog'),root=document.querySelector('#workspace-dialog-content');if(dialog.open)return;
+  root.innerHTML=`<div class="workspace-editor-shell calendar-recurrence-preview"><header><div><h2>${esc(item.title)}</h2><p>Будущее повторение · ${esc(new Date(item.occurrenceDate+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'}))}</p></div><button type="button" class="icon-button" data-close aria-label="Закрыть">${icon('x')}</button></header><p>Рассчитано по серии. Открытие дела создаст отдельный экземпляр: его можно перенести, изменить или пропустить. Остальные повторения сохранятся.</p>${item.recurrence.needsReview?'<p class="muted">Старая серия: проверьте её шаблон после открытия дела.</p>':''}${item.startsAt?`<p>${esc(formatDate(item.startsAt,true))} — ${esc(formatDate(item.endsAt,true))}</p>`:''}${item.notes?`<p class="recurrence-preview-notes">${esc(item.notes)}</p>`:''}<p class="form-error" role="alert" hidden></p><div class="form-actions"><button type="button" class="primary" data-materialize>Открыть дело</button></div></div>`;
+  root.querySelector('[data-close]').onclick=()=>closeDialog(dialog);
+  root.querySelector('[data-materialize]').onclick=async(event)=>{
+   const button=event.currentTarget,alive=()=>owner===state.me?.id&&dialog.open&&root.contains(button);if(button.disabled||!alive())return;button.disabled=true;
+   try{const plan=await api('/api/personal/series/'+encodeURIComponent(item.seriesId)+'/occurrences',{method:'POST',body:JSON.stringify({date:item.occurrenceDate,expectedSeriesUpdatedAt:item.recurrence.updatedAt})});
+    if(!alive())return;
+    await refreshPersonal();if(!alive())return;
+    if(await closeDialog(dialog))openPlan(plan.id);
+   }catch(failure){if(alive()){const error=root.querySelector('[role="alert"]');error.hidden=false;error.textContent=failure.message;}}
+   finally{button.disabled=false;}
+  };openModal(dialog);
+ }
  function entryLabel(item){return `${item.title}${item.workspace?' · '+item.workspace:''}`;}
  function banner(){
   if(error)return `<div class="calendar-conflict-banner is-error" role="status"><span>Не удалось проверить пересечения: ${esc(error)}</span><button type="button" class="secondary" data-calendar-retry>Повторить</button></div>`;
   if(!data)return `<p class="muted" role="status">Проверяем личные планы и вашу работу во всех проектах…</p>`;
   const unresolved=data.conflicts.filter(item=>!item.confirmed).length,confirmed=data.conflicts.length-unresolved;
-  if(!data.conflicts.length)return '';
+  if(!data.conflicts.length)return '<p class="muted">Повторения рассчитаны на открытый период календаря. Будущие экземпляры помечены.</p>';
   return `<div class="calendar-conflict-banner ${unresolved?'needs-attention':''}" role="status"><div><strong>${unresolved?`Пересечения по времени: ${unresolved}`:`Подтверждённые пересечения: ${confirmed}`}</strong><small>Учитывается и скрытая рабочая занятость.${unresolved&&confirmed?` Подтверждено: ${confirmed}.`:''}</small></div><button type="button" class="secondary" data-calendar-conflicts>Проверить пересечения</button></div>`;
  }
  function bind(root){
@@ -45,7 +61,7 @@ export function createPersonalCalendarUI({state,api,esc,icon,rerender,openModal,
   root.querySelectorAll('[data-source]').forEach(button=>button.onclick=async()=>{
    const conflict=snapshot.conflicts.find(item=>item.id===button.dataset.source),item=conflict.items[Number(button.dataset.sourceIndex)];
    if(!await closeDialog(dialog)||owner!==state.me?.id)return;
-   if(item.kind==='work')await openWork(item.id);else openPlan(item.id);
+   if(item.kind==='work')await openWork(item.id);else if(item.id.startsWith('recurrence:'))openRecurrence(item.id);else openPlan(item.id);
   });
   root.querySelectorAll('[data-confirm]').forEach(button=>button.onclick=async()=>{
    if(button.disabled||owner!==state.me?.id||expected!==key||!dialog.open)return;button.disabled=true;
@@ -92,5 +108,5 @@ export function createPersonalCalendarUI({state,api,esc,icon,rerender,openModal,
   form.onsubmit=event=>{event.preventDefault();void save();};root.querySelector('[data-remove]').onclick=()=>save(true);
   refresh();bindDraft(form,`personal-calendar-work:${owner}:${id||'new'}`);current=items.find(item=>item.id===form.elements.record.value)||current;refresh(true);openModal(dialog);
  }
- return {ensure,invalidate,entries:()=>workCalendarEntries(data?.work||[]),banner,bind,openWork};
+ return {ensure,invalidate,openRecurrence,recurrences:()=>data?.recurrences||[],entries:()=>workCalendarEntries(data?.work||[]),banner,bind,openWork};
 }
