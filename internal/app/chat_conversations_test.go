@@ -99,6 +99,54 @@ func TestChatConversationsPrivateGroupsHistorySearchAndPins(t *testing.T) {
 	if len(search.Messages) != 1 || search.Messages[0].ID != message.ID || search.HasMore {
 		t.Fatal("jump to oldest message lost its position")
 	}
+	if !search.HasNewer || search.NextAfter != message.ID {
+		t.Fatal("old search hit has no forward continuation")
+	}
+	forward := map[string]bool{message.ID: true}
+	after := search.NextAfter
+	for {
+		var page chatHistoryPage
+		requestJSON(t, alice, "GET", server.URL+"/api/chat/threads/"+group["id"]+"/history?after="+url.QueryEscape(after), nil, 200, &page)
+		if len(page.Messages) > 50 || len(page.Messages) == 0 {
+			t.Fatal("invalid forward page")
+		}
+		for _, item := range page.Messages {
+			if forward[item.ID] {
+				t.Fatal("duplicate forward message")
+			}
+			forward[item.ID] = true
+		}
+		if !page.HasNewer {
+			after = page.NextAfter
+			break
+		}
+		if page.NextAfter == after {
+			t.Fatal("forward cursor stuck")
+		}
+		after = page.NextAfter
+	}
+	if len(forward) != len(seen) {
+		t.Fatalf("forward history skipped messages: %d/%d", len(forward), len(seen))
+	}
+	requestJSON(t, alice, "GET", server.URL+"/api/chat/threads/"+group["id"]+"/history?after="+url.QueryEscape(after), nil, 200, &search)
+	if len(search.Messages) != 0 || search.HasNewer {
+		t.Fatal("forward end not empty")
+	}
+	requestJSON(t, bob, "GET", server.URL+"/api/chat/threads/"+group["id"]+"/history?after="+message.ID, nil, 403, nil)
+	requestJSON(t, alice, "GET", server.URL+"/api/chat/threads/"+direct["id"]+"/history?after="+message.ID, nil, 400, nil)
+	requestJSON(t, alice, "GET", server.URL+"/api/chat/threads/"+group["id"]+"/history?after="+message.ID+"&around="+message.ID, nil, 400, nil)
+	if _, err := store.db.Exec(`UPDATE chat_messages SET created_at=? WHERE thread_id=? AND id LIKE 'history-%'`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano), group["id"]); err != nil {
+		t.Fatal(err)
+	}
+	requestJSON(t, alice, "GET", server.URL+"/api/chat/threads/"+group["id"]+"/history?after=history-0049", nil, 200, &search)
+	if len(search.Messages) != 50 || !search.HasNewer {
+		t.Fatal("timestamp ties damaged forward pagination")
+	}
+	for i, item := range search.Messages {
+		if item.ID != fmt.Sprintf("history-%04d", i+50) {
+			t.Fatal("timestamp ties skipped or reordered messages")
+		}
+	}
 	requestJSON(t, alice, "GET", server.URL+"/api/chat/threads/"+direct["id"]+"/history?before="+message.ID, nil, 400, nil)
 	requestJSON(t, alice, "PUT", server.URL+"/api/chat/threads/"+group["id"]+"/pins", map[string]any{"messageId": message.ID, "pinned": true}, 200, nil)
 	requestJSON(t, bob, "GET", server.URL+"/api/chat/threads/"+group["id"]+"/pins", nil, 403, nil)

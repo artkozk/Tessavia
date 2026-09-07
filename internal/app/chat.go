@@ -239,9 +239,14 @@ func (s *Server) listChatMessages(ctx context.Context, threadID string, userID i
 		where += " AND EXISTS(SELECT 1 FROM chat_favorites f WHERE f.message_id = m.id AND f.user_id = ?)"
 		args = append(args, userID)
 	}
-	limit, query := 200, ""
+	limit, query, ascending := 200, "", false
 	if len(options) > 0 {
 		limit, query = options[0].Limit, strings.ToLower(options[0].Query)
+		if options[0].After != "" {
+			ascending = true
+			where += " AND (m.created_at,m.id) > (SELECT created_at,id FROM chat_messages WHERE id=? AND thread_id=?)"
+			args = append(args, options[0].After, threadID)
+		}
 		if options[0].Through != "" {
 			where += " AND (m.created_at,m.id) <= (SELECT created_at,id FROM chat_messages WHERE id=? AND thread_id=?)"
 			args = append(args, options[0].Through, threadID)
@@ -252,6 +257,9 @@ func (s *Server) listChatMessages(ctx context.Context, threadID string, userID i
 		}
 	}
 	suffix := " ORDER BY m.created_at DESC,m.id DESC"
+	if ascending {
+		suffix = " ORDER BY m.created_at ASC,m.id ASC"
+	}
 	if query == "" {
 		suffix += " LIMIT " + strconv.Itoa(limit)
 	}
@@ -320,7 +328,7 @@ func (s *Server) listChatMessages(ctx context.Context, threadID string, userID i
 			readRows.Close()
 		}
 	}
-	for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
+	for left, right := 0, len(messages)-1; !ascending && left < right; left, right = left+1, right-1 {
 		messages[left], messages[right] = messages[right], messages[left]
 	}
 	return messages, nil

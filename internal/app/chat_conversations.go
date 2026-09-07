@@ -101,13 +101,15 @@ func (s *Server) createChatConversation(w http.ResponseWriter, r *http.Request, 
 }
 
 type chatHistoryOptions struct {
-	Before, Query, Through string
-	Limit                  int
+	Before, Query, Through, After string
+	Limit                         int
 }
 type chatHistoryPage struct {
 	Messages   []ChatMessage `json:"messages"`
 	HasMore    bool          `json:"hasMore"`
 	NextBefore string        `json:"nextBefore"`
+	HasNewer   bool          `json:"hasNewer"`
+	NextAfter  string        `json:"nextAfter"`
 }
 
 func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
@@ -118,11 +120,16 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	before := r.URL.Query().Get("before")
 	through := r.URL.Query().Get("around")
-	if len([]rune(query)) > 200 || len(before) > 64 || len(through) > 64 {
+	after := r.URL.Query().Get("after")
+	if len([]rune(query)) > 200 || len(before) > 64 || len(through) > 64 || len(after) > 64 {
 		writeError(w, 400, "Слишком длинный поисковый запрос")
 		return
 	}
-	for _, cursor := range []string{before, through} {
+	if after != "" && (before != "" || through != "" || query != "" || r.URL.Query().Get("favorites") == "true") {
+		writeError(w, 400, "Продолжение вперёд нельзя совмещать с поиском и другими границами")
+		return
+	}
+	for _, cursor := range []string{before, through, after} {
 		if cursor == "" {
 			continue
 		}
@@ -132,17 +139,32 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	messages, err := s.listChatMessages(r.Context(), thread, currentUser(r).ID, r.URL.Query().Get("favorites") == "true", chatHistoryOptions{Before: before, Query: query, Through: through, Limit: 51})
+	messages, err := s.listChatMessages(r.Context(), thread, currentUser(r).ID, r.URL.Query().Get("favorites") == "true", chatHistoryOptions{Before: before, Query: query, Through: through, After: after, Limit: 51})
 	if err != nil {
 		writeError(w, 500, "Не удалось загрузить историю")
 		return
 	}
 	page := chatHistoryPage{Messages: messages, HasMore: len(messages) > 50}
 	if page.HasMore {
-		page.Messages = messages[1:]
+		if after != "" {
+			page.Messages = messages[:50]
+		} else {
+			page.Messages = messages[1:]
+		}
+	}
+	if after != "" {
+		page.HasNewer, page.HasMore = page.HasMore, false
 	}
 	if len(page.Messages) > 0 {
 		page.NextBefore = page.Messages[0].ID
+		page.NextAfter = page.Messages[len(page.Messages)-1].ID
+		if after == "" && query == "" && r.URL.Query().Get("favorites") != "true" {
+			err = s.store.db.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM chat_messages WHERE thread_id=? AND archived_at IS NULL AND (created_at,id) > (SELECT created_at,id FROM chat_messages WHERE id=? AND thread_id=?))`, thread, page.NextAfter, thread).Scan(&page.HasNewer)
+			if err != nil {
+				writeError(w, 500, "Не удалось проверить продолжение истории")
+				return
+			}
+		}
 	}
 	writeJSON(w, 200, page)
 }

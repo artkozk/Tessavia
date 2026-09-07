@@ -1,0 +1,25 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const source=fs.readFileSync(__dirname+'/app.js','utf8');
+const loader=source.slice(source.indexOf('async function loadChatThread('),source.indexOf('\nfunction scheduleChatPoll()',source.indexOf('async function loadChatThread(')));
+const message=id=>({id,createdAt:id,body:id});
+test('forward reading keeps loaded history, draft and new edge through periodic refresh',async()=>{
+ const state={activeChatThreadId:'thread',chatSearch:'',chatHistoryAround:'a',chatMessages:[],view:'chat',chatDraftText:'keep this draft'},requests=[],renders=[];
+ let page;
+ const ctx=vm.createContext({state,URLSearchParams,JSON,document:{visibilityState:'visible',querySelector:()=>null,querySelectorAll:()=>[]},$:()=>null,captureProjectContext:()=>1,isProjectContextCurrent:()=>true,renderNav(){},renderChat(){renders.push(state.chatMessages.map(m=>m.id));},toast(){},mergeChatHistory:(old,incoming)=>[...new Map([...old,...incoming].map(m=>[m.id,m])).values()].sort((a,b)=>a.id.localeCompare(b.id)),api:async path=>{requests.push(path);return path.includes('/history?')?page:[];}});
+ vm.runInContext(loader,ctx);
+ page={messages:[message('a')],hasMore:false,nextBefore:'a',hasNewer:true,nextAfter:'a'};
+ await ctx.loadChatThread('thread');assert.equal(state.chatHistoryAfter,'a');
+ page={messages:[message('b'),message('c')],hasMore:false,hasNewer:true,nextAfter:'c',nextBefore:'b'};
+ await ctx.loadChatThread('thread',false,false,true);
+ assert.ok(requests.some(path=>path.endsWith('/history?after=a')));
+ assert.deepEqual(state.chatMessages.map(m=>m.id),['a','b','c']);assert.equal(state.chatAppending,true);
+ page={messages:[message('b'),{...message('c'),body:'edited'}],hasMore:true,nextBefore:'b',hasNewer:true,nextAfter:'c'};
+ await ctx.loadChatThread('thread',true);
+ assert.ok(requests.some(path=>path.endsWith('/history?around=c')));
+ assert.deepEqual(state.chatMessages.map(m=>m.id),['a','b','c']);assert.equal(state.chatMessages[2].body,'edited');
+ assert.equal(state.chatDraftText,'keep this draft');assert.equal(state.chatHistoryBefore,'a');
+ page={messages:[],hasMore:false,hasNewer:false,nextBefore:'',nextAfter:''};
+ await ctx.loadChatThread('thread',false,false,true);
+ assert.equal(state.chatHistoryAfter,'c');assert.equal(state.chatHistoryNewer,false);
+ assert.deepEqual(state.chatMessages.map(m=>m.id),['a','b','c']);
+});
