@@ -5061,6 +5061,13 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .chat-pinned-list button { display: flex; width: 100%; align-items: baseline; gap: 10px; text-align: left; border: 0; background: transparent; padding: 8px 0; }
 .chat-pinned-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .chat-history-older,.chat-history-latest,.chat-history-newer { display: block; margin: 8px auto; flex-shrink: 0; min-height: 44px; }
+.collection-multi-field { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 0; }
+.collection-multi-field legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
+.collection-multi-options { display: grid; max-height: 240px; overflow-y: auto; gap: 2px; }
+.collection-multi-options .check { min-height: 44px; margin: 0; padding: 6px; align-items: center; }
+.collection-multi-options .check span { overflow-wrap: anywhere; min-width: 0; }
+.collection-option-editor { display: grid; gap: 12px; }
+.collection-settings-header-actions { flex-wrap: wrap; }
 .chat-message.highlight .chat-bubble { outline: 2px solid var(--accent); outline-offset: 3px; }
 .chat-composer textarea { max-height: 160px; overflow-y: auto; }
 .inbox-explanation { max-width: 760px; color: var(--muted); line-height: 1.6; margin: 0 0 20px; }

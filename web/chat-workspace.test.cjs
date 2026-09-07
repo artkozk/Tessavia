@@ -3,6 +3,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const modulePromise = import('data:text/javascript;base64,' + fs.readFileSync(__dirname+'/chat-workspace.js').toString('base64'));
+
+test('selected conversation survives reload but only within the fresh permitted account and project list',async()=>{
+ const {chooseConversation}=await modulePromise,values=new Map(),storage={getItem:key=>values.get(key),setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)},threads=[{id:'general'},{id:'direct'}];
+ assert.equal(chooseConversation(storage,1,'project',threads,'direct'),'direct');
+ assert.equal(chooseConversation(storage,1,'project',threads),'direct');
+ assert.equal(chooseConversation(storage,2,'project',threads),'general');
+ assert.equal(chooseConversation(storage,1,'other',threads),'general');
+ assert.equal(chooseConversation(storage,1,'project',[{id:'general'}],'direct'),'general');
+ assert.equal(chooseConversation(storage,1,'project',[]),'');
+ assert.equal(chooseConversation({getItem(){throw Error('denied')},setItem(){throw Error('denied')}},1,'project',threads),'general');
+});
 test('conversation drafts survive reopening and remain isolated by account, workspace and thread',async()=>{
   const {chatDraftKey,readConversationDraft,writeConversationDraft}=await modulePromise;
   const values=new Map(),storage={getItem:key=>values.get(key),setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};

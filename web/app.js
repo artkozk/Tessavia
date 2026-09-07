@@ -1,12 +1,12 @@
-import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-chat-forward-2';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-chat-forward-2';
+import { chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-constructor-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-constructor-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-chat-forward-2';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-constructor-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-chat-forward-2';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-constructor-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-chat-forward-2';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-constructor-1';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -3878,7 +3878,7 @@ function openAssignRecordBoard(record, collectionID = '') {
     const stages = selected().stages;
     const preferred = stages.find(stage => stage.category === category) || stages.find(stage => stage.category !== 'done') || stages[0];
     form.elements.stageId.innerHTML = stages.map(stage => `<option value="${stage.id}" ${stage.id === preferred?.id ? 'selected' : ''}>${escapeHTML(stage.name)}</option>`).join('');
-    $('[data-assign-fields]', form).innerHTML = selected().fields.map((field) => collectionFieldInput(field, null)).join(''); enhanceSelects(form);
+    $('[data-assign-fields]', form).innerHTML = selected().fields.map((field) => collectionFieldInput(field, null)).join(''); enhanceSelects(form);bindCollectionMultiFields(form);
   };
   form.elements.collectionId.addEventListener('change', renderFields);
   $('[data-assign-close]', content).addEventListener('click', () => requestDialogClose(dialog));
@@ -4027,7 +4027,7 @@ function collectionFieldInput(field, value) {
 	const label = `${escapeHTML(field.name)}${field.required ? ' *' : ''}`;
 	if (field.fieldType === 'long_text') return `<label>${label}<textarea name="${name}" rows="4" ${required}>${escapeHTML(value || '')}</textarea></label>`;
 	if (field.fieldType === 'select') return `<label>${label}<select name="${name}" ${required}><option value="">Не выбрано</option>${field.options.map((option) => `<option value="${option.id}" ${value === option.id ? 'selected' : ''}>${escapeHTML(option.name)}</option>`).join('')}</select></label>`;
-	if (field.fieldType === 'multi_select') return `<label>${label}<select name="${name}" multiple data-native-select ${required}>${field.options.map((option) => `<option value="${option.id}" ${Array.isArray(value) && value.includes(option.id) ? 'selected' : ''}>${escapeHTML(option.name)}</option>`).join('')}</select><small>Ctrl или Cmd для выбора нескольких вариантов</small></label>`;
+	if (field.fieldType === 'multi_select') return `<fieldset class="collection-multi-field" data-multi-field data-required="${field.required}"><legend>${label}</legend><div class="collection-multi-options">${field.options.map(option=>`<label class="check"><input type="checkbox" name="${name}" value="${option.id}" ${Array.isArray(value)&&value.includes(option.id)?'checked':''}><span>${escapeHTML(option.name)}</span></label>`).join('')}</div><small data-multi-count></small></fieldset>`;
 	if (field.fieldType === 'user') return `<label>${label}<select name="${name}" ${required}><option value="">Не выбрано</option>${state.users.map((user) => `<option value="${user.id}" ${Number(value) === user.id ? 'selected' : ''}>${escapeHTML(user.username)}</option>`).join('')}</select></label>`;
 	if (field.fieldType === 'checkbox') return `<label class="check collection-checkbox"><input type="checkbox" name="${name}" ${value ? 'checked' : ''}><span><strong>${label}</strong><small>Да или нет</small></span></label>`;
 	if (field.fieldType === 'relation') return `<label>${label}<select name="${name}" ${required}><option value="">Не выбрано</option>${state.records.filter((record) => record.status !== 'archived').map((record) => `<option value="${record.id}" ${value === record.id ? 'selected' : ''}>${escapeHTML(record.title)}</option>`).join('')}</select></label>`;
@@ -4036,13 +4036,29 @@ function collectionFieldInput(field, value) {
 	return `<label>${label}<input name="${name}" type="${type}" ${field.fieldType === 'money' ? 'step="0.01"' : field.fieldType === 'number' ? 'step="any"' : ''} value="${escapeHTML(displayValue)}" ${required}></label>`;
 }
 
+function bindCollectionMultiFields(root) {
+  root.querySelectorAll('[data-multi-field]').forEach(group=>{
+    const checks=[...group.querySelectorAll('input[type=checkbox]')];
+    const sync=()=>{const count=checks.filter(item=>item.checked).length;checks[0]?.setCustomValidity(group.dataset.required==='true'&&!count?'Выберите хотя бы один вариант':'');group.querySelector('[data-multi-count]').textContent=count?`Выбрано: ${count}`:'Можно выбрать несколько вариантов';};
+    group.addEventListener('change',sync);sync();
+  });
+}
+
+function openCollectionFormPreview(collection) {
+  const dialog=$('#reason-dialog'),root=$('#reason-dialog-content');
+  root.innerHTML=`<div class="dialog-header"><div><span class="record-kind">Предпросмотр формы</span><h2>${escapeHTML(collection.cardLabel||'Карточка')} · ${escapeHTML(collection.name)}</h2><p>Попробуйте заполнить поля. Пример не создаёт карточку и не меняет данные команды.</p></div><button type="button" class="icon-button" data-preview-close aria-label="Закрыть">${icon('x')}</button></div><form class="card-form dialog-form"><label>Название<input name="title" required maxlength="240" placeholder="Название будущей карточки"></label><label>Этап<select>${collection.stages.map(stage=>`<option>${escapeHTML(stage.name)}</option>`).join('')}</select></label><div class="form-grid two">${collection.fields.map(field=>collectionFieldInput(field,null)).join('')}</div><p role="status" data-preview-result></p><div class="form-actions"><button type="submit" class="secondary">Проверить заполнение</button><button type="button" class="primary" data-preview-close>Вернуться в конструктор</button></div></form>`;
+  root.querySelectorAll('[data-preview-close]').forEach(button=>button.onclick=()=>dialog.close());
+  root.querySelector('form').onsubmit=event=>{event.preventDefault();root.querySelector('[data-preview-result]').textContent='Поля заполнены корректно. Пример не сохранён.';};
+  bindCollectionMultiFields(root);openModal(dialog);enhanceSelects(root);
+}
+
 function customFieldsFromForm(form, fields) {
 	const values = {};
 	fields.forEach((field) => {
 		const control = form.elements.namedItem(`custom:${field.id}`);
 		if (!control) return;
 		if (field.fieldType === 'checkbox') values[field.id] = control.checked;
-		else if (field.fieldType === 'multi_select') values[field.id] = [...control.selectedOptions].map((option) => option.value);
+		else if (field.fieldType === 'multi_select') values[field.id] = [...form.querySelectorAll(`input[name="${CSS.escape('custom:'+field.id)}"]:checked`)].map(option=>option.value);
 		else if (field.fieldType === 'number' || field.fieldType === 'money') values[field.id] = control.value === '' ? null : Number(control.value);
 		else if (field.fieldType === 'user') values[field.id] = control.value === '' ? null : Number(control.value);
 		else if (field.fieldType === 'datetime') values[field.id] = control.value ? new Date(control.value).toISOString() : '';
@@ -4061,6 +4077,9 @@ function openCollectionCardDialog(collection, record = null, stageID = '', defau
 	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
 	if (!record) $('.collection-custom-fields', content).insertAdjacentHTML('beforebegin', `<label>Срок <small>необязательно</small><input type="datetime-local" name="dueAt" value="${escapeHTML(defaults.dueAt || '')}"></label>`);
 	enhanceSelects(dialog);
+  const cardForm=$('#collection-card-form',dialog);
+  bindWorkingDraft(cardForm,`collection-card:${workspace}:${collection.id}:${record?.id||'new'}`);
+  bindCollectionMultiFields(cardForm);
 	$('#collection-card-form', dialog).addEventListener('submit', async (event) => {
 		event.preventDefault();
 		const form = event.currentTarget;
@@ -4079,7 +4098,7 @@ function openCollectionCardDialog(collection, record = null, stageID = '', defau
 			if (workspace !== state.activeWorkspaceId) return;
 			state.records = record ? state.records.map((item) => item.id === updated.id ? updated : item) : [updated, ...state.records];
 			state.detailCache.delete(updated.id);
-			if (form.isConnected) closeWorkspaceDialog();
+			if (form.isConnected) {clearWorkingDraftFor(form);closeWorkspaceDialog();}
 			if ($('#record-dialog').open && state.activeDetail?.record.id === updated.id) await openRecord(updated.id, { force: true });
 			else renderContent();
 			toast(record ? 'Поля сохранены' : 'Карточка создана');
@@ -4153,11 +4172,14 @@ function askCollectionStageConfiguration(stage) {
 function askCollectionFieldConfiguration(field) {
 	const dialog = $('#reason-dialog');
 	$('#reason-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Пользовательское поле</span><h2>Настроить поле</h2></div><button type="button" class="close-button" data-cancel-field-config aria-label="Закрыть">×</button></div><form id="field-config-form" class="card-form dialog-form"><label>Название<input name="name" required maxlength="80" value="${escapeHTML(field.name)}"></label><p class="muted">Тип поля не меняется после создания, чтобы уже заполненные данные оставались корректными.</p><label class="check"><input type="checkbox" name="required" ${field.required ? 'checked' : ''}> Обязательное поле</label><label class="check"><input type="checkbox" name="showOnCard" ${field.showOnCard ? 'checked' : ''}> Показывать значение на карточке</label><div class="form-actions"><button type="submit" class="primary">Сохранить</button><button type="button" class="secondary" data-cancel-field-config>Отмена</button></div></form>`;
+  const configForm=$('#field-config-form',dialog),choice=['select','multi_select'].includes(field.fieldType);
+  if(choice)$('.form-actions',configForm).insertAdjacentHTML('beforebegin',`<section class="collection-option-editor"><h3>Варианты ответа</h3><p class="muted">Переименование обновит подпись в существующих карточках. Выбранные значения сохранятся.</p>${field.options.map(option=>`<label>Вариант<input name="option:${option.id}" data-option-id="${option.id}" value="${escapeHTML(option.name)}" required maxlength="80"></label>`).join('')}<label>Новые варианты<textarea name="newOptions" rows="3" placeholder="Каждый вариант с новой строки"></textarea></label></section>`);
+  bindWorkingDraft(configForm,`collection-field-config:${state.activeWorkspaceId}:${field.id}`);
 	return new Promise((resolve) => {
 		let closing = false; let result = null;
-		const finish = (value) => { if (closing) return; closing = true; result = value; dialog.close(); };
+		const finish = (value) => { if (closing||!flushDialogDrafts(dialog)) return; closing = true; result = value; dialog.close(); };
 		$$('[data-cancel-field-config]', dialog).forEach((button) => button.addEventListener('click', () => finish(null)));
-		$('#field-config-form', dialog).addEventListener('submit', (event) => { event.preventDefault(); const form = event.currentTarget; finish({ name: String(new FormData(form).get('name')).trim(), required: form.elements.required.checked, showOnCard: form.elements.showOnCard.checked }); });
+		$('#field-config-form', dialog).addEventListener('submit', (event) => { event.preventDefault(); const form = event.currentTarget;const value={ name: String(new FormData(form).get('name')).trim(), required: form.elements.required.checked, showOnCard: form.elements.showOnCard.checked };if(choice)value.options=[...form.querySelectorAll('[data-option-id]')].map(input=>({id:input.dataset.optionId,name:input.value.trim()})).concat(form.elements.newOptions.value.split(/\r?\n/).map(name=>name.trim()).filter(Boolean).map(name=>({name})));finish(value); });
 		dialog.addEventListener('close', () => resolve(result), { once: true });
 		openModal(dialog);
 	});
@@ -4197,6 +4219,8 @@ async function openCollectionSettingsDialog(collection, tab = 'fields') {
     </section><section data-schema-panel="archive" ${tab !== 'archive' ? 'hidden' : ''}><p>Восстановление поля возвращает прежние значения. Восстановление колонки не перемещает карточки обратно.</p>${removed || '<p class="muted">Удалённых элементов нет.</p>'}</section></div>`;
   const shell = content.firstElementChild;
   $('[data-close-workspace-dialog]',shell).addEventListener('click',closeWorkspaceDialog);
+  $('.collection-settings-header-actions',shell).insertAdjacentHTML('afterbegin',`<button type="button" class="secondary" data-schema-preview>${icon('eye')} Предпросмотр формы</button>`);
+  $('[data-schema-preview]',shell).onclick=()=>openCollectionFormPreview({...collection,fields:active('fields'),stages:active('stages')});
   $$('[data-schema-tab]',shell).forEach(button => button.addEventListener('click', () => {
     tab = button.dataset.schemaTab; closeCustomSelects();
     $$('[data-schema-tab]',shell).forEach(item => {item.classList.toggle('active',item === button);item.setAttribute('aria-pressed',String(item === button));});
@@ -4212,6 +4236,7 @@ async function openCollectionSettingsDialog(collection, tab = 'fields') {
       if (!isProjectContextCurrent(context)) return;
       if (method === 'POST' && path === base+'/fields') clearWorkingDraftFor($('#collection-field-form',shell));
       if (method === 'POST' && path === base+'/stages') clearWorkingDraftFor($('#collection-stage-form',shell));
+      if (method === 'PATCH' && path.startsWith(base+'/fields/')) clearWorkingDraft(`collection-field-config:${context.workspace}:${path.split('/').at(-1)}`);
       state.detailCache.clear(); await reloadCollections({render:false}); await syncProjectChanges();
       if (isProjectContextCurrent(context) && $('#record-dialog').open && state.activeDetail && !state.recordEditMode && !dialogHasUnsavedChanges($('#record-dialog'))) renderRecordDialog();
       if (!isProjectContextCurrent(context) || !shell.isConnected || !dialog.open) return;
@@ -4459,7 +4484,8 @@ function renderChat() {
   const focusInfo=focused?.matches?.('#chat-composer textarea,.chat-search input')?{selector:focused.matches('textarea')?'#chat-composer textarea':'.chat-search input',start:focused.selectionStart,end:focused.selectionEnd}:null;
   chatEmojiPicker.close(false);
 	clearTimeout(state.chatPollTimer);
-	if (!state.activeChatThreadId && state.chatThreads.length) state.activeChatThreadId = state.chatThreads[0].id;
+	const selected=chooseConversation(localStorage,state.me?.id,state.activeWorkspaceId,state.chatThreads,state.activeChatThreadId);
+  if(selected!==state.activeChatThreadId){state.activeChatThreadId=selected;state.chatLoadedThreadId='';state.chatMessages=[];}
 	restoreChatDraft();persistChatDraft();
 	const thread = state.chatThreads.find((item) => item.id === state.activeChatThreadId);
 	if (thread && state.chatLoadedThreadId !== thread.id) {

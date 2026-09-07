@@ -644,10 +644,11 @@ func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var input struct {
-		ExpectedAt string `json:"expectedUpdatedAt"`
-		Name       string `json:"name"`
-		Required   bool   `json:"required"`
-		ShowOnCard bool   `json:"showOnCard"`
+		ExpectedAt string                   `json:"expectedUpdatedAt"`
+		Name       string                   `json:"name"`
+		Required   bool                     `json:"required"`
+		ShowOnCard bool                     `json:"showOnCard"`
+		Options    *[]CollectionFieldOption `json:"options"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -658,7 +659,17 @@ func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	now := nowText()
-	result, err := s.store.db.ExecContext(r.Context(), `UPDATE collection_fields SET name = ?, required = ?, show_on_card = ?, updated_at = ? WHERE id = ? AND collection_id = ? AND archived_at IS NULL AND (? = '' OR updated_at = ?)`, input.Name, input.Required, input.ShowOnCard, now, fieldID, collectionID, input.ExpectedAt, input.ExpectedAt)
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, 500, "Не удалось начать сохранение поля")
+		return
+	}
+	defer tx.Rollback()
+	if input.Options != nil && input.ExpectedAt == "" {
+		writeError(w, 409, "Обновите конструктор перед изменением вариантов")
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `UPDATE collection_fields SET name = ?, required = ?, show_on_card = ?, updated_at = ? WHERE id = ? AND collection_id = ? AND archived_at IS NULL AND (? = '' OR updated_at = ?)`, input.Name, input.Required, input.ShowOnCard, now, fieldID, collectionID, input.ExpectedAt, input.ExpectedAt)
 	if err != nil {
 		writeError(w, http.StatusConflict, "Поле с таким названием уже существует")
 		return
@@ -669,6 +680,20 @@ func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		writeError(w, http.StatusNotFound, "Поле не найдено")
+		return
+	}
+	if input.Options != nil {
+		if err := updateCollectionOptions(r.Context(), tx, fieldID, *input.Options, now); err != nil {
+			writeError(w, 400, err.Error())
+			return
+		}
+	}
+	if err := writeActivity(r.Context(), tx, currentUser(r).ID, "collection", collectionID, "field_updated", "", map[string]any{"fieldId": fieldID, "name": input.Name, "optionsChanged": input.Options != nil}); err != nil {
+		writeError(w, 500, "Не удалось записать историю поля")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, 500, "Не удалось сохранить поле")
 		return
 	}
 	fields, err := s.listCollectionFields(r.Context(), collectionID)

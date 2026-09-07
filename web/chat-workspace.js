@@ -1,6 +1,15 @@
 export function chatDraftKey(owner,workspace,thread) {
   return `tessavie:chat-draft:${owner}:${workspace}:${thread}`;
 }
+export function chooseConversation(storage,owner,workspace,threads,current='') {
+  const key=`tessavie:chat-selection:${owner}:${workspace}`;
+  let saved='';
+  try { saved=storage.getItem(key)||''; } catch (_) {}
+  const allowed=id=>threads.some(thread=>thread.id===id);
+  const selected=allowed(current)?current:allowed(saved)?saved:threads[0]?.id||'';
+  try { if(selected)storage.setItem(key,selected);else storage.removeItem(key); } catch (_) {}
+  return selected;
+}
 export function readConversationDraft(storage,key) {
   try {const value=JSON.parse(storage.getItem(key)||'{}');return {body:String(value.body||''),reply:String(value.reply||''),linked:String(value.linked||''),nonce:String(value.nonce||''),edit:typeof value.edit?.id==='string'?{id:value.edit.id,body:String(value.edit.body||'')}:null};}
   catch (_) {return {body:'',reply:'',linked:'',nonce:''};}
