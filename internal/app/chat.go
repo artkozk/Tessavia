@@ -268,6 +268,7 @@ func (s *Server) listChatMessages(ctx context.Context, threadID string, userID i
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	messages := make([]ChatMessage, 0)
 	for rows.Next() {
 		var item ChatMessage
@@ -303,34 +304,8 @@ func (s *Server) listChatMessages(ctx context.Context, threadID string, userID i
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	for index := range messages {
-		item := &messages[index]
-		reactionRows, _ := s.store.db.QueryContext(ctx, `SELECT emoji, COUNT(*), MAX(CASE WHEN user_id = ? THEN 1 ELSE 0 END), GROUP_CONCAT(u.username, ', ') FROM chat_reactions cr JOIN users u ON u.id = cr.user_id WHERE message_id = ? GROUP BY emoji ORDER BY MIN(cr.created_at)`, userID, item.ID)
-		if reactionRows != nil {
-			for reactionRows.Next() {
-				var reaction ChatReaction
-				var mine int
-				var names string
-				if reactionRows.Scan(&reaction.Emoji, &reaction.Count, &mine, &names) == nil {
-					reaction.Mine = mine == 1
-					if names != "" {
-						reaction.Usernames = strings.Split(names, ", ")
-					}
-					item.Reactions = append(item.Reactions, reaction)
-				}
-			}
-			reactionRows.Close()
-		}
-		readRows, _ := s.store.db.QueryContext(ctx, `SELECT u.username, cm.last_read_at FROM chat_members cm JOIN users u ON u.id = cm.user_id WHERE cm.thread_id = ? AND cm.user_id <> ? AND cm.last_read_at >= ?`, threadID, item.AuthorID, item.CreatedAt)
-		if readRows != nil {
-			for readRows.Next() {
-				var receipt ChatReadReceipt
-				if readRows.Scan(&receipt.Username, &receipt.ReadAt) == nil {
-					item.ReadBy = append(item.ReadBy, receipt)
-				}
-			}
-			readRows.Close()
-		}
+	if err := s.loadChatPageMetadata(ctx, threadID, userID, messages); err != nil {
+		return nil, err
 	}
 	for left, right := 0, len(messages)-1; !ascending && left < right; left, right = left+1, right-1 {
 		messages[left], messages[right] = messages[right], messages[left]
