@@ -1,0 +1,25 @@
+{
+  "commit": "a001bbcf7b41046507f88a3ee8f466c769ee0e88",
+  "release": "/opt/business-control/releases/20260908-record-sources-a001bbc",
+  "sha256": "10b49b6312b16a15e115a05788693fc16d562f664a4d114ce4b4684d32391d3d",
+  "backup": "/var/lib/business-control/backups/pre-record-sources-20260907T230338Z",
+  "checkedAt": "2026-09-07T23:04:02.812854Z",
+  "tablesUnchanged": 116,
+  "schema": "064_page_app_composition.sql",
+  "nodeTests": 240,
+  "assets": "20260908-record-sources-3",
+  "tasks": [
+    {
+      "id": "5bf22f7a33f2cee34ab73fd3a6d62329",
+      "status": "completed"
+    },
+    {
+      "id": "26c54f79aa1c9110536670ae8371a868",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
