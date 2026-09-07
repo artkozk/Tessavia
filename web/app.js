@@ -1,12 +1,12 @@
-import { chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-constructor-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-constructor-1';
+import { chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-templates-5';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-templates-5';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-constructor-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-templates-5';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-constructor-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-templates-5';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-constructor-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-templates-5';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -100,6 +100,7 @@ const iconPaths = {
 	redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9h-9a7 7 0 0 0-7 7v4"/>',
 	arrowUp: '<path d="m6 10 6-6 6 6M12 4v16"/>',
 	arrowDown: '<path d="m6 14 6 6 6-6M12 20V4"/>',
+	eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
 };
 
 function icon(name, className = '') {
@@ -3970,6 +3971,16 @@ function renderCollections() {
 	$('#main-content').innerHTML = `<div class="page-heading collection-page-heading"><div><p class="eyebrow">${escapeHTML(workspace?.name || 'Команда')} · Конструктор процессов</p><h1>${escapeHTML(collection.name)}</h1><p>${escapeHTML(collection.description || `${collection.cardLabel}: настраиваемые этапы и поля`)}</p></div><div class="collection-page-actions"><button type="button" class="primary" data-create-collection-card>${icon('plus')} ${escapeHTML(collection.cardLabel)}</button>${canConfigureWorkspace() ? `<button type="button" class="secondary" data-configure-collection>${icon('settings')} Настроить</button>` : ''}</div></div><section class="collection-toolbar"><nav class="collection-tabs" aria-label="Доски">${state.collections.map((item) => `<button type="button" class="${item.id === collection.id ? 'active' : ''}" data-collection-tab="${item.id}"><span>${icon('network')}</span><strong>${escapeHTML(item.name)}</strong><small>${state.records.filter((record) => record.collectionId === item.id && record.status !== 'archived').length}</small></button>`).join('')}${canConfigureWorkspace() ? `<button type="button" class="collection-tab-add" data-create-collection title="Новая доска" aria-label="Новая доска">${icon('plus')}</button>` : ''}</nav><label class="collection-search">${icon('search')}<input type="search" value="${escapeHTML(state.collectionSearch)}" placeholder="Найти на доске" aria-label="Найти карточку на доске"></label></section>${renderCollectionFilters(collection)}${renderWorkCollectionBoard(records, collection)}`;
   const addBoard = $('[data-create-collection]');
   if (addBoard) addBoard.innerHTML = `${icon('plus')}<strong>Новая доска</strong>`;
+  $('.collection-toolbar').insertAdjacentHTML('afterbegin', `<div class="collection-picker-mobile"><label>Доска<select data-collection-picker aria-label="Выбрать доску">${state.collections.map(item => `<option value="${item.id}" ${item.id === collection.id ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select></label>${canConfigureWorkspace() ? `<button type="button" class="icon-button" data-create-collection aria-label="Новая доска">${icon('plus')}</button>` : ''}</div>`);
+  $('[data-collection-picker]').addEventListener('change', event => {state.activeCollectionId = event.currentTarget.value;state.collectionSearch = '';state.collectionOwnerFilter = '';state.collectionFieldFilters = {};renderCollections();});
+  $$('[data-collection-tab]').forEach(button => {button.title = $('strong',button).textContent;});
+  requestAnimationFrame(() => {
+    const nav = $('.collection-tabs'), active = $('.collection-tabs > .active');
+    if (!nav || !active || !nav.clientWidth) return;
+    const bounds = nav.getBoundingClientRect(), item = active.getBoundingClientRect();
+    if (item.right > bounds.right) nav.scrollLeft += item.right - bounds.right;
+    else if (item.left < bounds.left) nav.scrollLeft += item.left - bounds.left;
+  });
   $('.collection-toolbar').insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-board-calendar>${icon('calendar')} Календарь</button>`);
   $('[data-board-calendar]').addEventListener('click', () => openCalendar('project', collection.id));
 	$$('[data-collection-tab]').forEach((button) => button.addEventListener('click', () => { state.activeCollectionId = button.dataset.collectionTab; state.collectionSearch = ''; state.collectionOwnerFilter = ''; state.collectionFieldFilters = {}; renderCollections(); }));
@@ -4073,7 +4084,7 @@ function openCollectionCardDialog(collection, record = null, stageID = '', defau
 	const fields = collection.fields || [];
 	const content = $('#workspace-dialog-content');
 	const editingFields = Boolean(record);
-	content.innerHTML = `<div class="workspace-editor-shell collection-card-editor"><header><div><p class="eyebrow">${escapeHTML(collection.name)}</p><h2>${editingFields ? 'Поля карточки' : `Новая ${collection.cardLabel.toLowerCase()}`}</h2><p>${editingFields ? escapeHTML(record.title) : 'Заполните только нужное сейчас. Остальные поля можно дополнить позже.'}</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="collection-card-form" class="card-form">${editingFields ? '' : `<label>Название<input name="title" required maxlength="240" placeholder="Что нужно сделать"></label><label>Описание<textarea name="description" rows="4" placeholder="Контекст, ожидаемый результат или детали"></textarea></label><div class="form-grid three"><label>Этап<select name="stageId">${collection.stages.map((stage) => `<option value="${stage.id}" ${(stageID || collection.stages[0]?.id) === stage.id ? 'selected' : ''}>${escapeHTML(stage.name)}</option>`).join('')}</select></label><label>Ответственный<select name="ownerId">${userOptions(state.me.id)}</select></label><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === 'normal' ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>`}<section class="collection-custom-fields"><header><strong>Поля доски</strong><small>${fields.length ? `${fields.length} настроено` : 'Поля пока не добавлены'}</small></header>${fields.length ? `<div class="form-grid two">${fields.map((field) => collectionFieldInput(field, record?.customFields?.[field.id])).join('')}</div>` : '<p class="muted">Карточка будет использовать основные поля Tessavie. Администратор может добавить тип, номер, канал, клиента, сумму или другие свойства в настройках доски.</p>'}</section><div class="form-actions"><button type="submit" class="primary">${icon('check')} ${editingFields ? 'Сохранить поля' : 'Создать карточку'}</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
+	content.innerHTML = `<div class="workspace-editor-shell collection-card-editor"><header><div><p class="eyebrow">${escapeHTML(collection.name)}</p><h2>${editingFields ? 'Поля карточки' : `Создать: ${escapeHTML(collection.cardLabel)}`}</h2><p>${editingFields ? escapeHTML(record.title) : 'Заполните только нужное сейчас. Остальные поля можно дополнить позже.'}</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="collection-card-form" class="card-form">${editingFields ? '' : `<label>Название<input name="title" required maxlength="240" placeholder="Что нужно сделать"></label><label>Описание<textarea name="description" rows="4" placeholder="Контекст, ожидаемый результат или детали"></textarea></label><div class="form-grid three"><label>Этап<select name="stageId">${collection.stages.map((stage) => `<option value="${stage.id}" ${(stageID || collection.stages[0]?.id) === stage.id ? 'selected' : ''}>${escapeHTML(stage.name)}</option>`).join('')}</select></label><label>Ответственный<select name="ownerId">${userOptions(state.me.id)}</select></label><label>Приоритет<select name="priority">${Object.entries(priorityLabels).map(([value, label]) => `<option value="${value}" ${value === 'normal' ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>`}<section class="collection-custom-fields"><header><strong>Поля доски</strong><small>${fields.length ? `${fields.length} настроено` : 'Поля пока не добавлены'}</small></header>${fields.length ? `<div class="form-grid two">${fields.map((field) => collectionFieldInput(field, record?.customFields?.[field.id])).join('')}</div>` : '<p class="muted">Карточка будет использовать основные поля Tessavie. Администратор может добавить тип, номер, канал, клиента, сумму или другие свойства в настройках доски.</p>'}</section><div class="form-actions"><button type="submit" class="primary">${icon('check')} ${editingFields ? 'Сохранить поля' : 'Создать карточку'}</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
 	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
 	if (!record) $('.collection-custom-fields', content).insertAdjacentHTML('beforebegin', `<label>Срок <small>необязательно</small><input type="datetime-local" name="dueAt" value="${escapeHTML(defaults.dueAt || '')}"></label>`);
 	enhanceSelects(dialog);
@@ -4108,17 +4119,49 @@ function openCollectionCardDialog(collection, record = null, stageID = '', defau
 	openModal(dialog);
 }
 
-function openCollectionCreateDialog({ afterCreate } = {}) {
+function bindCollectionTemplatePicker(form, templates) {
+  const select = form.elements.templateId, preview = form.querySelector('[data-template-preview]');
+  const find = () => templates.find(item => item.id === select.value) || templates[0];
+  let previous = find();
+  const defaults = item => ({name:item.id === 'blank' ? '' : item.name,description:item.id === 'blank' ? '' : item.description,cardLabel:item.cardLabel});
+  const render = () => {
+    const item = find();
+    preview.innerHTML = `<p>${escapeHTML(item.description)}</p><strong>Колонки</strong><p>${item.stages.map(stage => escapeHTML(stage.name)).join(' → ')}</p><strong>Поля</strong><p>${item.fields.length ? item.fields.map(field => escapeHTML(field.name)).join(' · ') : 'Добавите в конструкторе'}</p><small>Создаётся отдельная доска без тестовых карточек. Колонки и поля можно менять после создания.</small>`;
+  };
+  select.addEventListener('change', () => {
+    const next = find(), oldValues = defaults(previous), newValues = defaults(next);
+    for (const key of ['name','description','cardLabel']) {
+      const input = form.elements[key];
+      if (!input.value.trim() || input.value === oldValues[key]) input.value = newValues[key];
+    }
+    previous = next; render();
+    form.dispatchEvent(new Event('input', {bubbles:true}));
+  });
+  render();
+}
+
+async function openCollectionCreateDialog({ afterCreate } = {}) {
 	const workspace = state.activeWorkspaceId;
+	const context = captureProjectContext();
+	let templates;
+	try { templates = await api('/api/collection-templates'); } catch (error) { toast(error.message, true); return; }
+	if (!isProjectContextCurrent(context)) return;
 	const dialog = $('#workspace-dialog');
-	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Команда')}</p><h2>Новая доска</h2><p>Этапы и поля можно менять без разработки. Связи и история остаются общими для всей команды.</p></div><button type="button" class="icon-button" data-close-workspace-dialog>${icon('x')}</button></header><form id="collection-create-form" class="card-form"><label>Название доски<input name="name" required maxlength="100" placeholder="Например: CRM"></label><label>Описание<textarea name="description" rows="3" maxlength="800" placeholder="Какой процесс ведём на этой доске"></textarea></label><label>Как называть карточку<input name="cardLabel" maxlength="40" value="Задача" placeholder="Лид, сделка, кандидат, заявка"></label><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать доску</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
+	$('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Команда')}</p><h2>Новая доска</h2><p>Этапы и поля можно менять без разработки. Связи и история остаются общими для всей команды.</p></div><button type="button" class="icon-button" data-close-workspace-dialog aria-label="Закрыть">${icon('x')}</button></header><form id="collection-create-form" class="card-form"><label>Название доски<input name="name" required maxlength="100" placeholder="Например: CRM"></label><label>Описание<textarea name="description" rows="3" maxlength="800" placeholder="Какой процесс ведём на этой доске"></textarea></label><label>Как называть карточку<input name="cardLabel" maxlength="40" value="Задача" placeholder="Лид, сделка, кандидат, заявка"></label><div class="form-actions"><button type="submit" class="primary">${icon('plus')} Создать доску</button><button type="button" class="secondary" data-close-workspace-dialog>Отмена</button></div></form></div>`;
 	$$('[data-close-workspace-dialog]', dialog).forEach((button) => button.addEventListener('click', closeWorkspaceDialog));
-	$('#collection-create-form', dialog).addEventListener('submit', async (event) => {
+	const createForm = $('#collection-create-form', dialog);
+	createForm.insertAdjacentHTML('afterbegin', `<label>С чего начать<select name="templateId">${templates.map(item => `<option value="${item.id}">${escapeHTML(item.name)}</option>`).join('')}</select></label><section class="collection-template-preview" data-template-preview aria-live="polite"></section>`);
+	createForm.elements.cardLabel.value = templates[0].cardLabel;
+	bindWorkingDraft(createForm, `collection-create:${workspace}`);
+	bindCollectionTemplatePicker(createForm, templates);
+	enhanceSelects(createForm);
+	createForm.addEventListener('submit', async (event) => {
 		event.preventDefault(); const element = event.currentTarget, form = new FormData(element), submit = $('button[type="submit"]', element);
 		if (submit.disabled) return;
 		submit.disabled = true;
 		try {
-			const created = await api('/api/collections', { method: 'POST', body: JSON.stringify({ name: form.get('name'), description: form.get('description'), cardLabel: form.get('cardLabel'), defaultRecordType: 'task' }) });
+			const created = await api('/api/collections', { method: 'POST', body: JSON.stringify({ name: form.get('name'), description: form.get('description'), cardLabel: form.get('cardLabel'), defaultRecordType: 'task', templateId: form.get('templateId') }) });
+			clearWorkingDraftFor(element);
 			if (workspace !== state.activeWorkspaceId) return;
 			state.activeCollectionId = created.id;
       if (state.view === 'work') state.workCollection = created.id;

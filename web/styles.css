@@ -4227,8 +4227,10 @@ body:has(.calendar-expanded) { overflow: hidden; }
 
 /* Team controls are role-aware, with one pane instead of an unbounded form wall. */
 .team-settings-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
-.team-settings-tabs > button { flex: 1 1 auto; min-height: 44px; padding: 9px 8px; border-bottom: 2px solid transparent; color: var(--muted); }
-.team-settings-tabs > button.active { border-color: var(--accent); color: var(--accent); }
+.team-settings-tabs > button { flex: 1 1 auto; min-height: 44px; padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.team-settings-tabs > button:hover { background: var(--surface-soft); color: var(--ink); }
+.team-settings-tabs > button.active { border-bottom-color: var(--accent); color: var(--accent); }
+.team-settings-tabs > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 .team-settings-shell > .team-settings-section { border-right: 0; padding-inline: 0; }
 .team-settings-shell > footer { padding-top: 12px; }
 .team-header-actions, .directory-team-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -4321,6 +4323,7 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .schema-create .card-form { padding-top: 14px; }
 .collection-settings-shell > section > p { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 16px 0; }
 .collection-settings-shell .team-settings-tabs { flex-wrap: wrap; }
+.collection-settings-shell .schema-row-actions > .icon-button { min-width: 44px; min-height: 44px; }
 @media (max-width: 600px) {
   .work-pagination { gap: 10px; padding: 10px 6px; }
   .work-page-navigation { width: 100%; justify-content: space-between; gap: 4px; }
@@ -4931,6 +4934,8 @@ body:has(.calendar-expanded) { overflow: hidden; }
  .reading-form { padding: 16px; }
 }
 @media (max-width: 600px) {
+  .collection-settings-shell .team-settings-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 0; }
+  .collection-settings-shell .team-settings-tabs > button { padding-inline: 4px; font-size: 12px; }
  .reading-page { gap: 0; }
  .reading-page > .reading-hero { display: none; }
  .reading-reader { padding: 10px 0 20px; border: 0; border-radius: 0; background: transparent; gap: 8px; }
@@ -5061,7 +5066,7 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .chat-pinned-list button { display: flex; width: 100%; align-items: baseline; gap: 10px; text-align: left; border: 0; background: transparent; padding: 8px 0; }
 .chat-pinned-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .chat-history-older,.chat-history-latest,.chat-history-newer { display: block; margin: 8px auto; flex-shrink: 0; min-height: 44px; }
-.collection-multi-field { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 0; }
+.collection-multi-field { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0; }
 .collection-multi-field legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
 .collection-multi-options { display: grid; max-height: 240px; overflow-y: auto; gap: 2px; }
 .collection-multi-options .check { min-height: 44px; margin: 0; padding: 6px; align-items: center; }
@@ -5162,3 +5167,41 @@ body:has(.calendar-expanded) { overflow: hidden; }
 
 .chat-filter-notice { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .chat-filter-notice > span { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
+.collection-template-preview {padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);overflow-wrap:anywhere;}
+.collection-template-preview p {margin:6px 0 12px;font-size:13px;line-height:1.5;}
+.collection-template-preview strong {font-size:12px;}
+.collection-template-preview small {display:block;font-size:12px;line-height:1.5;}
+.collection-tabs > button {flex:0 0 auto;max-width:290px;grid-template-columns:20px minmax(0,1fr) auto;}
+.collection-tabs > button strong {min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.collection-tabs {scrollbar-width:thin;}
+.collection-tabs::-webkit-scrollbar {display:block;height:4px;}
+.collection-picker-mobile {display:none;}
+.workspace-editor-shell:has(#collection-create-form) > header > .icon-button {flex:0 0 44px;min-width:44px;min-height:44px;}
+@media (max-width:600px) {
+  .collection-toolbar > .collection-tabs {display:none;}
+  .collection-picker-mobile {display:flex;grid-column:1 / -1;gap:8px;align-items:end;min-width:0;}
+  .collection-picker-mobile label {min-width:0;flex:1;}
+  .collection-picker-mobile .icon-button {flex:0 0 44px;min-height:44px;}
+  .collection-toolbar > .collection-search {grid-column:1 / -1;}
+}
+/* One quiet scrollbar treatment for pages, dialogs and nested work surfaces. */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+::-webkit-scrollbar { width: 6px; height: 6px; background: transparent; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-corner { background: transparent; }
+@supports selector(::-webkit-scrollbar) {
+  /* Standard properties would override Chromium's arrowless pseudo-elements. */
+  * { scrollbar-width: auto !important; scrollbar-color: auto !important; }
+}
+.collection-settings-shell > header {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start;}
+.collection-settings-shell > header > div {min-width:0;}
+.collection-settings-shell .collection-settings-header-actions {display:flex;gap:6px;align-items:center;}
+@media (max-width:600px) {
+  .collection-settings-shell > header {grid-template-columns:minmax(0,1fr);gap:14px;}
+  .collection-settings-shell .collection-settings-header-actions {width:100%;display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;gap:6px;}
+  .collection-settings-header-actions > [data-schema-preview] {min-width:0;min-height:44px;padding:8px;font-size:12px;white-space:normal;}
+  .collection-settings-header-actions > .icon-button {min-width:44px;min-height:44px;}
+}

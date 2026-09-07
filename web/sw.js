@@ -1,11 +1,11 @@
-const CACHE = 'tessavie-shell-20260907-constructor-1';
+const CACHE = 'tessavie-shell-20260907-templates-5';
 const ASSETS = [
-  '/personal-calendar.js?v=20260907-constructor-1',
-  '/', '/chat-workspace.js?v=20260907-constructor-1', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260907-constructor-1', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260907-constructor-1', '/styles.css?v=20260907-constructor-1',
+  '/personal-calendar.js?v=20260907-templates-5',
+  '/', '/chat-workspace.js?v=20260907-templates-5', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260907-templates-5', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260907-templates-5', '/styles.css?v=20260907-templates-5',
   '/reminder-settings.js?v=20260904-reminder-digests-1',
-  '/personal-reminders.js?v=20260907-constructor-1',
+  '/personal-reminders.js?v=20260907-templates-5',
   '/personal-navigation.js?v=20260904-personal-scope-1',
-  '/personal-today.js?v=20260907-constructor-1',
+  '/personal-today.js?v=20260907-templates-5',
   '/life-map.js?v=20260904-personal-batch-3', '/personal-publish.js?v=20260904-personal-batch-3',
   '/personal-inbox.js?v=20260904-first-use-4', '/first-use.js?v=20260904-first-use-4',
   '/reading.js?v=20260906-reading-groups-1',

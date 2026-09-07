@@ -134,6 +134,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/interface/preset-applications/latest", s.requireAuth(http.HandlerFunc(s.handleLatestInterfacePresetApplication)))
 	s.mux.Handle("POST /api/interface/preset-applications/{id}/undo", s.requireAuth(http.HandlerFunc(s.handleUndoInterfacePresetApplication)))
 	s.mux.Handle("GET /api/collections", s.requireAuth(http.HandlerFunc(s.handleListCollections)))
+	s.mux.Handle("GET /api/collection-templates", s.requireAuth(http.HandlerFunc(s.handleCollectionTemplates)))
 	s.mux.Handle("POST /api/collections", s.requireAuth(http.HandlerFunc(s.handleCreateCollection)))
 	s.mux.Handle("PATCH /api/collections/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollection)))
 	s.mux.Handle("POST /api/collections/{id}/stages", s.requireAuth(http.HandlerFunc(s.handleCreateCollectionStage)))

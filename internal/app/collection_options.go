@@ -7,6 +7,27 @@ import (
 	"strings"
 )
 
+func normalizeCollectionOptionNames(kind string, values []string) ([]string, error) {
+	if kind != "select" && kind != "multi_select" {
+		// Older clients may submit the hidden choice editor after changing type.
+		return nil, nil
+	}
+	if len(values) == 0 || len(values) > 1000 {
+		return nil, errors.New("Добавьте от 1 до 1000 вариантов")
+	}
+	result := make([]string, len(values))
+	seen := map[string]bool{}
+	for i, value := range values {
+		name := strings.TrimSpace(value)
+		key := strings.ToLower(name)
+		if name == "" || len([]rune(name)) > 80 || seen[key] {
+			return nil, errors.New("Названия вариантов должны быть разными, от 1 до 80 символов")
+		}
+		seen[key], result[i] = true, name
+	}
+	return result, nil
+}
+
 // Existing option IDs remain stable: renaming never rewrites card values.
 func updateCollectionOptions(ctx context.Context, tx *sql.Tx, fieldID string, options []CollectionFieldOption, now string) error {
 	var kind string

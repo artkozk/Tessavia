@@ -338,6 +338,7 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		Description       string `json:"description"`
 		CardLabel         string `json:"cardLabel"`
 		DefaultRecordType string `json:"defaultRecordType"`
+		TemplateID        string `json:"templateId"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -355,6 +356,20 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "Некорректные параметры доски")
 		return
 	}
+	if input.TemplateID == "" {
+		input.TemplateID = "blank"
+	}
+	var template *collectionTemplate
+	for _, candidate := range collectionTemplates() {
+		if candidate.ID == input.TemplateID {
+			template = &candidate
+			break
+		}
+	}
+	if template == nil {
+		writeError(w, http.StatusBadRequest, "Шаблон доски не найден")
+		return
+	}
 	workspaceID := currentWorkspace(r).ID
 	id, _ := newID()
 	now := nowText()
@@ -370,12 +385,7 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusConflict, "Доска с таким названием уже существует")
 		return
 	}
-	defaults := []CollectionStage{
-		{Name: "Бэклог", Category: "backlog", ColorKey: "red", SortOrder: 10},
-		{Name: "Открыто", Category: "active", ColorKey: "amber", SortOrder: 20},
-		{Name: "В работе", Category: "active", ColorKey: "blue", SortOrder: 30},
-		{Name: "Готово", Category: "done", ColorKey: "green", SortOrder: 40},
-	}
+	defaults := template.Stages
 	for index := range defaults {
 		stageID, _ := newID()
 		defaults[index].ID = stageID
@@ -384,7 +394,11 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	if err = writeActivity(r.Context(), tx, currentUser(r).ID, "collection", id, "created", "", map[string]any{"name": input.Name}); err != nil {
+	if err = insertTemplateFields(r.Context(), tx, id, template.Fields, now); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось создать поля доски")
+		return
+	}
+	if err = writeActivity(r.Context(), tx, currentUser(r).ID, "collection", id, "created", "", map[string]any{"name": input.Name, "templateId": input.TemplateID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось записать историю доски")
 		return
 	}
@@ -392,7 +406,7 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить создание доски")
 		return
 	}
-	writeJSON(w, http.StatusCreated, WorkspaceCollection{ID: id, WorkspaceID: workspaceID, Name: input.Name, Description: input.Description, CardLabel: input.CardLabel, DefaultRecordType: input.DefaultRecordType, SortOrder: sortOrder, Stages: defaults, Fields: []CollectionField{}})
+	writeJSON(w, http.StatusCreated, WorkspaceCollection{ID: id, WorkspaceID: workspaceID, Name: input.Name, Description: input.Description, CardLabel: input.CardLabel, DefaultRecordType: input.DefaultRecordType, SortOrder: sortOrder, Stages: defaults, Fields: template.Fields})
 }
 
 func (s *Server) handleUpdateCollection(w http.ResponseWriter, r *http.Request) {
@@ -577,8 +591,10 @@ func (s *Server) handleCreateCollectionField(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "Некорректное пользовательское поле")
 		return
 	}
-	if (input.FieldType == "select" || input.FieldType == "multi_select") && len(input.Options) == 0 {
-		writeError(w, http.StatusBadRequest, "Для поля выбора добавьте хотя бы один вариант")
+	var optionsErr error
+	input.Options, optionsErr = normalizeCollectionOptionNames(input.FieldType, input.Options)
+	if optionsErr != nil {
+		writeError(w, http.StatusBadRequest, optionsErr.Error())
 		return
 	}
 	id, _ := newID()
@@ -605,15 +621,8 @@ func (s *Server) handleCreateCollectionField(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	options := make([]CollectionFieldOption, 0)
-	seen := map[string]bool{}
 	colors := []string{"neutral", "blue", "amber", "green", "violet", "red"}
-	for index, rawName := range input.Options {
-		name := strings.TrimSpace(rawName)
-		key := strings.ToLower(name)
-		if name == "" || seen[key] || len([]rune(name)) > 60 {
-			continue
-		}
-		seen[key] = true
+	for index, name := range input.Options {
 		optionID, _ := newID()
 		option := CollectionFieldOption{ID: optionID, Name: name, ColorKey: colors[index%len(colors)], SortOrder: (index + 1) * 10}
 		if _, err = tx.ExecContext(r.Context(), `INSERT INTO collection_field_options(id, field_id, name, color_key, sort_order, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)`, option.ID, id, option.Name, option.ColorKey, option.SortOrder, now, now); err != nil {
