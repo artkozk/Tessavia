@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 func (s *Server) validatePageAppSources(r *http.Request, def *PageAppDefinition) error {
 	for _, block := range def.Blocks {
-		if block.Kind != "records" {
+		if !pageAppHasSource(block) {
 			continue
 		}
 		if !s.collectionBelongsToWorkspace(r.Context(), block.CollectionID, currentWorkspace(r).ID) {
@@ -19,6 +20,9 @@ func (s *Server) validatePageAppSources(r *http.Request, def *PageAppDefinition)
 		}
 		fields, err := s.listCollectionFields(r.Context(), block.CollectionID)
 		if err != nil {
+			return err
+		}
+		if err := validatePageFormSource(block, fields); err != nil {
 			return err
 		}
 		valid := map[string]bool{}
@@ -39,7 +43,7 @@ func (s *Server) validatePageAppSources(r *http.Request, def *PageAppDefinition)
 func (s *Server) snapshotPageAppCollections(r *http.Request, def *PageAppDefinition) error {
 	sources := map[string]bool{}
 	for _, block := range def.Blocks {
-		if block.Kind == "records" {
+		if pageAppHasSource(block) {
 			sources[block.CollectionID] = true
 		}
 	}
@@ -67,7 +71,10 @@ func (s *Server) snapshotPageAppCollections(r *http.Request, def *PageAppDefinit
 			}
 		}
 		for _, block := range def.Blocks {
-			if block.Kind == "records" && block.CollectionID == id {
+			if pageAppHasSource(block) && block.CollectionID == id {
+				if err := validatePageFormSource(block, source.Fields); err != nil {
+					return err
+				}
 				for _, fieldID := range block.Fields {
 					if !valid[fieldID] {
 						return errors.New("Поле списка изменилось. Обновите состав списка перед сохранением набора")
@@ -148,6 +155,7 @@ func readPageAppSource(ctx context.Context, tx *sql.Tx, workspace, id string) (W
 // A template installs fresh schema IDs inside the page installation transaction, never source records.
 func installPageAppCollections(ctx context.Context, tx *sql.Tx, workspace string, userID int64, def *PageAppDefinition, now string) error {
 	collectionIDs := map[string]string{}
+	sourceSchemas := map[string][]CollectionField{}
 	fieldIDs := map[string]string{}
 	fieldOrigins := map[string]string{}
 	for _, source := range def.Collections {
@@ -159,6 +167,7 @@ func installPageAppCollections(ctx context.Context, tx *sql.Tx, workspace string
 			return err
 		}
 		collectionIDs[source.ID] = id
+		sourceSchemas[source.ID] = source.Fields
 		name := []rune(source.Name)
 		if len(name) > 78 {
 			name = name[:78]
@@ -258,7 +267,7 @@ func installPageAppCollections(ctx context.Context, tx *sql.Tx, workspace string
 	}
 	for i := range def.Blocks {
 		b := &def.Blocks[i]
-		if b.Kind != "records" {
+		if !pageAppHasSource(*b) {
 			continue
 		}
 		target := collectionIDs[b.CollectionID]
@@ -266,6 +275,19 @@ func installPageAppCollections(ctx context.Context, tx *sql.Tx, workspace string
 			return fmt.Errorf("У списка %s отсутствует схема источника", b.Title)
 		}
 		sourceID := b.CollectionID
+		if err := validatePageFormSource(*b, sourceSchemas[sourceID]); err != nil {
+			return err
+		}
+		for j, f := range b.FormFields {
+			if !strings.HasPrefix(f.Key, "custom:") {
+				continue
+			}
+			old := strings.TrimPrefix(f.Key, "custom:")
+			if fieldIDs[old] == "" || fieldOrigins[old] != sourceID {
+				return errors.New("Поле формы отсутствует в наборе")
+			}
+			b.FormFields[j].Key = "custom:" + fieldIDs[old]
+		}
 		b.CollectionID = target
 		for j, old := range b.Fields {
 			if fieldIDs[old] == "" || fieldOrigins[old] != sourceID {

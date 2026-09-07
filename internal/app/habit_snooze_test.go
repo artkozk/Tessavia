@@ -65,14 +65,16 @@ func TestHabitSnoozePreservesFactAndRejectsStaleReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	store.db.QueryRow(`SELECT COUNT(*) FROM habit_reminder_sources WHERE habit_id=?`, h.ID).Scan(&count)
+	// Advancing the clock near midnight can also create tomorrow's ordinary reminder.
+	store.db.QueryRow(`SELECT COUNT(*) FROM habit_reminder_sources WHERE habit_id=? AND day=?`, h.ID, today).Scan(&count)
 	if count != 1 {
 		t.Fatal("reminded before one hour")
 	}
 	if err = deliverHabitReminders(context.Background(), store, at.Add(61*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	store.db.QueryRow(`SELECT COUNT(*) FROM habit_reminder_sources WHERE habit_id=?`, h.ID).Scan(&count)
+	// Advancing the clock near midnight can also create tomorrow's ordinary reminder.
+	store.db.QueryRow(`SELECT COUNT(*) FROM habit_reminder_sources WHERE habit_id=? AND day=?`, h.ID, today).Scan(&count)
 	if at.Add(61*time.Minute).UTC().Format("2006-01-02") == today && count != 2 {
 		t.Fatal("partial fact did not get deferred reminder")
 	}

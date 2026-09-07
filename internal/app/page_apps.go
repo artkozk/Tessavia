@@ -16,25 +16,28 @@ type PageAppItem struct {
 	Label  string `json:"label"`
 }
 type PageAppBlock struct {
-	CollectionID string        `json:"collectionId,omitempty"`
-	Fields       []string      `json:"fields,omitempty"`
-	AllowCreate  bool          `json:"allowCreate,omitempty"`
-	ActionLabel  string        `json:"actionLabel,omitempty"`
-	ID           string        `json:"id"`
-	Kind         string        `json:"kind"`
-	Title        string        `json:"title"`
-	Text         string        `json:"text"`
-	Items        []PageAppItem `json:"items,omitempty"`
-	Source       string        `json:"source,omitempty"`
-	Width        int           `json:"width"`
-	Height       int           `json:"height,omitempty"`
-	FontSize     int           `json:"fontSize,omitempty"`
-	Color        string        `json:"color,omitempty"`
-	Background   string        `json:"background,omitempty"`
-	Radius       int           `json:"radius,omitempty"`
-	Padding      int           `json:"padding,omitempty"`
-	Hidden       bool          `json:"hidden,omitempty"`
-	Format       string        `json:"format,omitempty"`
+	FormFields   []PageAppFormField `json:"formFields,omitempty"`
+	DefaultTitle string             `json:"defaultTitle,omitempty"`
+	SuccessText  string             `json:"successText,omitempty"`
+	CollectionID string             `json:"collectionId,omitempty"`
+	Fields       []string           `json:"fields,omitempty"`
+	AllowCreate  bool               `json:"allowCreate,omitempty"`
+	ActionLabel  string             `json:"actionLabel,omitempty"`
+	ID           string             `json:"id"`
+	Kind         string             `json:"kind"`
+	Title        string             `json:"title"`
+	Text         string             `json:"text"`
+	Items        []PageAppItem      `json:"items,omitempty"`
+	Source       string             `json:"source,omitempty"`
+	Width        int                `json:"width"`
+	Height       int                `json:"height,omitempty"`
+	FontSize     int                `json:"fontSize,omitempty"`
+	Color        string             `json:"color,omitempty"`
+	Background   string             `json:"background,omitempty"`
+	Radius       int                `json:"radius,omitempty"`
+	Padding      int                `json:"padding,omitempty"`
+	Hidden       bool               `json:"hidden,omitempty"`
+	Format       string             `json:"format,omitempty"`
 }
 type PageAppDefinition struct {
 	Collections []WorkspaceCollection `json:"collections,omitempty"`
@@ -63,11 +66,16 @@ func validatePageApp(d *PageAppDefinition) error {
 		if !pageAppID.MatchString(b.ID) || ids[b.ID] != "" {
 			return errors.New("У блоков должны быть разные постоянные ключи")
 		}
-		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" {
+		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" {
 			return errors.New("Неизвестный тип блока")
 		}
-		if b.Kind == "records" && (!pageAppID.MatchString(b.CollectionID) || len(b.Fields) > 40 || len([]rune(b.ActionLabel)) > 80) {
+		if pageAppHasSource(*b) && (!pageAppID.MatchString(b.CollectionID) || len(b.Fields) > 40 || len([]rune(b.ActionLabel)) > 80) {
 			return errors.New("Для списка выберите доску и не более 40 полей")
+		}
+		if b.Kind == "form" {
+			if err := validatePageAppForm(*b); err != nil {
+				return err
+			}
 		}
 		ids[b.ID] = b.Kind
 		b.Title = strings.TrimSpace(b.Title)

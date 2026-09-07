@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"regexp"
 	"sort"
 	"strings"
@@ -1052,6 +1053,14 @@ func (s *Server) normalizeCollectionFieldValue(ctx context.Context, record Recor
 		}
 		if len([]rune(value)) > 10000 {
 			return "", false, errors.New("значение слишком длинное")
+		}
+		if field.FieldType == "email" {
+			value = strings.TrimSpace(value)
+			address, err := mail.ParseAddress(value)
+			if err != nil || address.Address != value {
+				return "", false, errors.New("укажите адрес электронной почты")
+			}
+			raw, _ = json.Marshal(value)
 		}
 	}
 	var value any
