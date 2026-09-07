@@ -1,0 +1,21 @@
+{
+  "commit": "fd49fa85b947c1811a899b5412e49eb9990a4b04",
+  "release": "/opt/business-control/releases/20260907-record-chat-fd49fa8",
+  "sha256": "9bd6b68fd71898f7a910ffcc209bf915819013cbe4c669741f8a6ee9d4296486",
+  "backup": "/var/lib/business-control/backups/pre-record-chat-20260907T072900Z",
+  "checkedAt": "2026-09-07T07:30:18.357475Z",
+  "tasks": [
+    {
+      "id": "45bbc1b549a12bb12b1c0ab92cf23a84",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    }
+  ]
+}
