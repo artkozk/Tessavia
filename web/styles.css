@@ -5264,3 +5264,23 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .calendar-recurrence-preview .form-actions button { min-height:44px; }
 
 @media (min-width:601px) { #workspace-dialog:has(.calendar-recurrence-preview) {width:min(680px,calc(100vw - 32px));} }
+
+/* Today forecasts share the real schedule rhythm without fake completion controls. */
+.today-event-title { min-width: 0; display: grid; gap: 4px; }
+.today-event-title small, .today-forecast small { color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.5; }
+.today-forecast { display: grid; grid-template-columns: 20px minmax(0, 1fr) 20px; gap: 12px; align-items: center; width: 100%; min-height: 48px; padding: 14px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; }
+.today-forecast > span:nth-child(2) { min-width: 0; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.today-forecast > span:first-child { color: var(--accent); }
+.today-forecast:hover { background: var(--surface); }
+
+.personal-plan-header { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: start; gap: 12px; }
+.personal-plan-header > div { min-width: 0; }
+.personal-plan-header h2, .personal-plan-header p { overflow-wrap: anywhere; }
+.personal-plan-header [data-plan-close] { width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; }
+@media (max-width: 600px) {
+ .personal-plan-header > div { display: contents; }
+ .personal-plan-header .record-kind { grid-column: 1; grid-row: 1; align-self: center; }
+ .personal-plan-header [data-plan-close] { grid-column: 2; grid-row: 1; }
+ .personal-plan-header h2 { grid-column: 1 / -1; grid-row: 2; font-size: 22px; }
+ .personal-plan-header p { grid-column: 1 / -1; grid-row: 3; margin: 0; }
+}

@@ -97,32 +97,46 @@ func calendarConflictPairs(items []calendarBusyItem, start, end time.Time) []cal
 	return out
 }
 
-func (s *Server) readCalendarOverview(ctx context.Context, q calendarQueryer, owner int64, start, end time.Time, loc *time.Location) (calendarOverview, error) {
-	out := calendarOverview{Work: []calendarWorkItem{}, Conflicts: []calendarConflict{}}
-	busy := []calendarBusyItem{}
+// readCalendarWork keeps assignment and access checks identical in day and month views.
+func readCalendarWork(ctx context.Context, q calendarQueryer, owner int64) ([]calendarWorkItem, error) {
+	out := []calendarWorkItem{}
 	rows, err := q.QueryContext(ctx, `SELECT r.id,r.title,w.id,w.name,`+projectDayKindSQL()+`,CASE WHEN r.progress>=100 AND r.status<>'review' THEN 'completed' ELSE r.status END,COALESCE(r.due_at,''),COALESCE(b.starts_at,''),COALESCE(b.ends_at,''),COALESCE(b.updated_at,'') FROM records r LEFT JOIN personal_calendar_work_blocks b ON b.record_id=r.id AND b.owner_id=?`+reviewWorkspaceAccess+` AND r.owner_id=? AND r.status NOT IN ('archived','cancelled','rejected','postponed') ORDER BY w.name,r.title,r.id`, owner, owner, owner)
 	if err != nil {
-		return out, err
+		return nil, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var item calendarWorkItem
 		if err = rows.Scan(&item.ID, &item.Title, &item.WorkspaceID, &item.Workspace, &item.Kind, &item.Status, &item.DueAt, &item.StartsAt, &item.EndsAt, &item.UpdatedAt); err != nil {
-			rows.Close()
-			return out, err
+			return nil, err
 		}
-		out.Work = append(out.Work, item)
-		a, ea := time.Parse(time.RFC3339Nano, item.StartsAt)
-		b, eb := time.Parse(time.RFC3339Nano, item.EndsAt)
-		if ea == nil && eb == nil && b.After(a) && a.Before(end) && b.After(start) && item.Status != "completed" {
-			busy = append(busy, calendarBusyItem{ID: item.ID, Kind: "work", Title: item.Title, WorkspaceID: item.WorkspaceID, Workspace: item.Workspace, Start: a, End: b})
-		}
+		out = append(out, item)
 	}
-	err = rows.Err()
-	rows.Close()
+	return out, rows.Err()
+}
+
+func calendarWorkInterval(item calendarWorkItem) (time.Time, time.Time, bool) {
+	a, ea := time.Parse(time.RFC3339Nano, item.StartsAt)
+	b, eb := time.Parse(time.RFC3339Nano, item.EndsAt)
+	return a, b, ea == nil && eb == nil && b.After(a) && item.Status != "completed"
+}
+
+func (s *Server) readCalendarOverview(ctx context.Context, q calendarQueryer, owner int64, start, end time.Time, loc *time.Location) (calendarOverview, error) {
+	out := calendarOverview{Conflicts: []calendarConflict{}}
+	var err error
+	out.Work, err = readCalendarWork(ctx, q, owner)
 	if err != nil {
 		return out, err
 	}
-	rows, err = q.QueryContext(ctx, `SELECT id,title,item_kind,start_date,end_date,starts_at,ends_at FROM personal_plans WHERE owner_id=? AND status NOT IN ('archived','done') AND occurrence_state<>'skipped'`, owner)
+	busy := []calendarBusyItem{}
+	for _, item := range out.Work {
+		a, b, valid := calendarWorkInterval(item)
+		if valid && a.Before(end) && b.After(start) {
+			busy = append(busy, calendarBusyItem{ID: item.ID, Kind: "work", Title: item.Title, WorkspaceID: item.WorkspaceID, Workspace: item.Workspace, Start: a, End: b})
+		}
+	}
+
+	rows, err := q.QueryContext(ctx, `SELECT id,title,item_kind,start_date,end_date,starts_at,ends_at FROM personal_plans WHERE owner_id=? AND status NOT IN ('archived','done') AND occurrence_state<>'skipped'`, owner)
 	if err != nil {
 		return out, err
 	}

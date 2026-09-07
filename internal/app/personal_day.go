@@ -26,6 +26,8 @@ type dayWindow struct {
 	Minutes int       `json:"minutes"`
 }
 type personalDaySummary struct {
+	Recurrences          []calendarRecurrence      `json:"recurrences"`
+	WorkBusyCount        int                       `json:"workBusyCount"`
 	Date                 string                    `json:"date"`
 	Settings             personalDaySettings       `json:"settings"`
 	Focus                personalDayFocus          `json:"focus"`
@@ -119,7 +121,35 @@ func (s *Server) handlePersonalDay(w http.ResponseWriter, r *http.Request) {
 	if !found {
 		focus.PlanID = ""
 	} // Never return a foreign or archived source identifier.
-	summary := calculatePersonalDay(day, settings, plans, time.Now())
+	loc, _ := time.LoadLocation(settings.Timezone)
+	start, _ := time.ParseInLocation("2006-01-02", day, loc)
+	// Include the selected day and seven following days, also covering overnight windows.
+	recurrences, err := readCalendarRecurrences(r.Context(), s.store.db, currentUser(r).ID, start, start.AddDate(0, 0, 8), loc)
+	if err != nil {
+		if errors.Is(err, errRecurrenceHorizonLimit) {
+			writeError(w, 422, err.Error())
+		} else {
+			writeError(w, 500, "Не удалось прочитать повторения дня")
+		}
+		return
+	}
+	for _, item := range recurrences {
+		plans = append(plans, item.PersonalPlan)
+	}
+	work, err := readCalendarWork(r.Context(), s.store.db, currentUser(r).ID)
+	if err != nil {
+		writeError(w, 500, "Не удалось проверить рабочую занятость дня")
+		return
+	}
+	workBusy := []dayWindow{}
+	for _, item := range work {
+		a, b, valid := calendarWorkInterval(item)
+		if valid {
+			workBusy = append(workBusy, dayWindow{Start: a, End: b})
+		}
+	}
+	summary := calculatePersonalDay(day, settings, plans, time.Now(), workBusy...)
+	summary.Recurrences = recurrences
 	summary.Focus = focus
 	summary.ProjectWork, summary.ProjectAttention, err = s.personalDayProjects(r.Context(), currentUser(r).ID, day, settings.Timezone)
 	if err != nil {
@@ -280,7 +310,7 @@ func minDayTime(a, b time.Time) time.Time {
 	return b
 }
 
-func calculatePersonalDay(day string, settings personalDaySettings, plans []PersonalPlan, now time.Time) personalDaySummary {
+func calculatePersonalDay(day string, settings personalDaySettings, plans []PersonalPlan, now time.Time, workBusy ...dayWindow) personalDaySummary {
 	out := personalDaySummary{Date: day, Settings: settings, Today: []string{}, Overdue: []string{}, Upcoming: []string{}, Completed: []string{}, Events: []string{}, Free: []dayWindow{}, RemainingFree: []dayWindow{}}
 	loc, err := time.LoadLocation(settings.Timezone)
 	if err != nil {
@@ -307,6 +337,12 @@ func calculatePersonalDay(day string, settings personalDaySettings, plans []Pers
 		out.TimeKnown = a && b && windowEnd.After(windowStart)
 		if !out.TimeKnown {
 			out.TimeReason = "Границы дня попали на смену часового пояса. Уточните время"
+		}
+	}
+	for _, block := range workBusy {
+		if out.TimeKnown && block.End.After(block.Start) && block.Start.Before(windowEnd) && block.End.After(windowStart) {
+			busy = append(busy, dayWindow{Start: maxDayTime(block.Start, windowStart), End: minDayTime(block.End, windowEnd)})
+			out.WorkBusyCount++
 		}
 	}
 	for _, p := range plans {

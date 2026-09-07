@@ -41,3 +41,19 @@ test('calendar includes the second day of a time block but excludes an exact mid
  assert.equal(ctx.plannerMatchesDay(plan,'2026-09-04',true),true);
  assert.equal(ctx.plannerMatchesDay({...plan,endsAt:'2026-09-04T00:00:00Z'},'2026-09-04',true),false);
 });
+
+
+test('forecasts resolve in Today without entering real plan storage or exposing completion controls',async()=>{
+ const forecast={id:'recurrence:series:2026-09-07',calendarKind:'recurrence',title:'Review',occurrenceDate:'2026-09-07',status:'planned'};
+ const state={me:{id:1},view:'personal',personalTab:'today'};
+ const summary={date:'2026-09-07',settings:{timezone:'UTC'},focus:{},recurrences:[forecast],today:[forecast.id],events:[forecast.id],upcoming:[forecast.id],projectWork:{items:[]},projectAttention:{items:[]},timeKnown:false};
+ const root={},button={dataset:{todayOpen:forecast.id}};let opened=null,realCalls=0,rowCalls=0;
+ const ctx=vm.createContext({Intl,Date,encodeURIComponent,setInterval(){},document:{querySelector:s=>s==='.today-focus'?root:null,querySelectorAll:s=>s==='[data-today-open]'?[button]:[]}});
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'personal-today.js'),'utf8').replaceAll('export function','function'),ctx);
+ const ui=ctx.createPersonalTodayUI({state,api:()=>Promise.resolve(summary),escapeHTML:String,icon:()=>'',renderPersonal(){},renderPlanRow(){rowCalls++;return 'real-row';},formatMinutes:String,openPlan(){realCalls++;},openRecurrence:item=>opened=item});
+ ui.bind();await new Promise(setImmediate);ui.bind();button.onclick();assert.equal(opened,forecast);assert.equal(realCalls,0);
+ const data={plans:[],links:[],projects:[],goals:[]};const html=ui.renderPlans(data);
+ assert.match(html,/Повторение по серии/);assert.match(html,/7 дней/);assert.equal(rowCalls,0);assert.equal(data.plans.length,0);
+ assert.ok(!ctx.todayHiddenBlocks(data,summary,false,false).includes('plans'));
+ state.me={id:2};opened=null;button.onclick();assert.equal(opened,null);assert.equal(realCalls,0);
+});

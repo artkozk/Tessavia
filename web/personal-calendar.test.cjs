@@ -32,17 +32,19 @@ test('unchanged periodic responses do not redraw the calendar and steal keyboard
 });
 
 test('forecast preview is read-only until explicit opening and ignores a late response after dismissal',async()=>{
- for(const dismiss of [false,true]){
+ for(const mode of ['calendar','today','dismiss']){
+  const dismiss=mode==='dismiss';
   const state={me:{id:1},view:'calendar',calendarScope:'personal'},dialog={open:false},button={disabled:false},error={hidden:true},close={};
   const root={innerHTML:'',contains:b=>b===button,querySelector:s=>s==='[data-close]'?close:s==='[data-materialize]'?button:error};
   const calls=[];let resolve,opened='',refreshes=0;
   const ctx=vm.createContext({Intl,URLSearchParams,Date,encodeURIComponent,document:{visibilityState:'visible',querySelector:s=>s==='#workspace-dialog'?dialog:root},setTimeout:()=>0,clearTimeout(){}});vm.runInContext(source,ctx);
   const item={id:'recurrence:s:2026-09-14',seriesId:'s',title:'Future',notes:'note',occurrenceDate:'2026-09-14',recurrence:{updatedAt:'v1'}};
   const ui=ctx.createPersonalCalendarUI({state,api:(path,options)=>{calls.push({path,options});return options?new Promise(ok=>resolve=ok):Promise.resolve({work:[],conflicts:[],recurrences:[item]});},esc:String,icon:()=>'',rerender(){},openModal:d=>d.open=true,closeDialog:d=>{d.open=false;return true;},openPlan:id=>opened=id,refreshPersonal:()=>{refreshes++;},toast(){}});
-  ui.ensure('2026-09-01','2026-10-01');await new Promise(setImmediate);await ui.openRecurrence(item.id);
-  assert.equal(calls.length,1);assert.equal(dialog.open,true);assert.match(root.innerHTML,/Будущее повторение/);
-  const pending=button.onclick({currentTarget:button});await button.onclick({currentTarget:button});assert.equal(calls.length,2);
-  assert.equal(JSON.parse(calls[1].options.body).expectedSeriesUpdatedAt,'v1');
+  if(mode!=='today'){ui.ensure('2026-09-01','2026-10-01');await new Promise(setImmediate);}
+  await ui.openRecurrence(item.id,mode==='today'?item:null);
+  const reads=mode==='today'?0:1;assert.equal(calls.length,reads);assert.equal(dialog.open,true);assert.match(root.innerHTML,/Будущее повторение/);
+  const pending=button.onclick({currentTarget:button});await button.onclick({currentTarget:button});assert.equal(calls.length,reads+1);
+  assert.equal(JSON.parse(calls[reads].options.body).expectedSeriesUpdatedAt,'v1');
   if(dismiss)close.onclick();resolve({id:'real'});await pending;
   assert.equal(opened,dismiss?'':'real');assert.equal(refreshes,dismiss?0:1);assert.equal(button.disabled,false);
  }

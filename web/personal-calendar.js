@@ -22,8 +22,8 @@ export function createPersonalCalendarUI({state,api,esc,icon,rerender,openModal,
   catch(failure){if(expected!==key||owner!==state.me?.id||sequence!==request)return;error=failure.message;data=null;}
   finally{if(expected===key&&owner===state.me?.id&&sequence===request){pending=false;if(previous!==JSON.stringify(data)||previousError!==error)rerender();timer=setTimeout(()=>{if(visible())void load();},15000);}}
  }
- async function openRecurrence(id){
-  const item=data?.recurrences?.find(value=>value.id===id),owner=state.me?.id;
+ async function openRecurrence(id,preview=null){
+  const item=preview?.id===id?preview:data?.recurrences?.find(value=>value.id===id),owner=state.me?.id;
   if(!item){toast('Повторение изменилось. Обновите календарь');return;}
   const dialog=document.querySelector('#workspace-dialog'),root=document.querySelector('#workspace-dialog-content');if(dialog.open)return;
   root.innerHTML=`<div class="workspace-editor-shell calendar-recurrence-preview"><header><div><h2>${esc(item.title)}</h2><p>Будущее повторение · ${esc(new Date(item.occurrenceDate+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'}))}</p></div><button type="button" class="icon-button" data-close aria-label="Закрыть">${icon('x')}</button></header><p>Рассчитано по серии. Открытие дела создаст отдельный экземпляр: его можно перенести, изменить или пропустить. Остальные повторения сохранятся.</p>${item.recurrence.needsReview?'<p class="muted">Старая серия: проверьте её шаблон после открытия дела.</p>':''}${item.startsAt?`<p>${esc(formatDate(item.startsAt,true))} — ${esc(formatDate(item.endsAt,true))}</p>`:''}${item.notes?`<p class="recurrence-preview-notes">${esc(item.notes)}</p>`:''}<p class="form-error" role="alert" hidden></p><div class="form-actions"><button type="button" class="primary" data-materialize>Открыть дело</button></div></div>`;
