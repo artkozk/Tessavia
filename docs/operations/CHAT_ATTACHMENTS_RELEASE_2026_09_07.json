@@ -1,0 +1,26 @@
+{
+  "commit": "a65c0ec50cdf1e3f47ab542eae5a5b87e9356044",
+  "release": "/opt/business-control/releases/20260907-chat-attachments-a65c0ec",
+  "sha256": "941512306f0dba9b5e9ee6d4fe78b5b18d98c850ee68cd9cb65d152e36a2f742",
+  "backup": "/var/lib/business-control/backups/pre-chat-attachments-20260907T181052Z",
+  "checkedAt": "2026-09-07T18:11:55.494232Z",
+  "preservedTables": 112,
+  "schema": "061_chat_personal_pins.sql",
+  "tables": 112,
+  "nodeTests": 230,
+  "assets": "20260907-chat-attachments-2",
+  "tasks": [
+    {
+      "id": "e402d353a684b074f852fa1fd277d895",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    }
+  ]
+}
