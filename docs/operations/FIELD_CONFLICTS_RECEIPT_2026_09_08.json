@@ -1,0 +1,29 @@
+{
+  "commit": "be090b98dadf0ff308049ff4a77ade63917c0536",
+  "release": "/opt/business-control/releases/20260908-field-conflicts-be090b9",
+  "sha256": "579f13582a6df40943c44eb97a7f4f536c212aa094a827d64f2ab50cf8873934",
+  "backup": "/var/lib/business-control/backups/pre-field-conflicts-20260907T215436Z",
+  "checkedAt": "2026-09-07T21:55:24.203542Z",
+  "tablesUnchanged": 116,
+  "schema": "064_page_app_composition.sql",
+  "nodeTests": 239,
+  "assets": "20260908-field-conflicts-2",
+  "tasks": [
+    {
+      "id": "e45e995dbc1b20bb00c578ae89ae2558",
+      "status": "completed"
+    },
+    {
+      "id": "26c54f79aa1c9110536670ae8371a868",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "completed"
+    }
+  ]
+}
