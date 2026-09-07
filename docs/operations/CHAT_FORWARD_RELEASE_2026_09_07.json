@@ -1,0 +1,25 @@
+{
+  "commit": "3a8f1f8fa5308dc0391b364c449c22e70580e618",
+  "release": "/opt/business-control/releases/20260907-chat-forward-3a8f1f8",
+  "sha256": "04cc02e1fbf39ba0b454b99ef2c2d0d97a3aac43e2a21c2ddf1eca099408f788",
+  "backup": "/var/lib/business-control/backups/pre-chat-forward-20260907T083731Z",
+  "checkedAt": "2026-09-07T08:39:29.334619Z",
+  "preservedTables": 106,
+  "nodeTests": 214,
+  "goTests": "go test ./... passed",
+  "tasks": [
+    {
+      "id": "45bbc1b549a12bb12b1c0ab92cf23a84",
+      "status": "in_progress"
+    },
+    {
+      "id": "e402d353a684b074f852fa1fd277d895",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    }
+  ],
+  "productionHistoryApi": "200 with forward cursor contract; messages omitted"
+}
