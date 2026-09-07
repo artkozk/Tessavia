@@ -306,6 +306,8 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/chat/threads", s.requireAuth(http.HandlerFunc(s.handleCreateChatThread)))
 	s.mux.Handle("GET /api/chat/threads/{id}/messages", s.requireAuth(http.HandlerFunc(s.handleListChatMessages)))
 	s.mux.Handle("GET /api/chat/threads/{id}/history", s.requireAuth(http.HandlerFunc(s.handleChatHistory)))
+	s.mux.Handle("GET /api/chat/threads/{id}/group", s.requireAuth(http.HandlerFunc(s.handleChatGroup)))
+	s.mux.Handle("PATCH /api/chat/threads/{id}/group", s.requireAuth(http.HandlerFunc(s.handleChatGroup)))
 	s.mux.Handle("GET /api/chat/threads/{id}/pins", s.requireAuth(http.HandlerFunc(s.handleChatPins)))
 	s.mux.Handle("PUT /api/chat/threads/{id}/pins", s.requireAuth(http.HandlerFunc(s.handleChatPins)))
 	s.mux.Handle("POST /api/chat/threads/{id}/messages", s.requireAuth(http.HandlerFunc(s.handleCreateChatMessage)))

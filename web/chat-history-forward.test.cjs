@@ -23,3 +23,11 @@ test('forward reading keeps loaded history, draft and new edge through periodic 
  assert.equal(state.chatHistoryAfter,'c');assert.equal(state.chatHistoryNewer,false);
  assert.deepEqual(state.chatMessages.map(m=>m.id),['a','b','c']);
 });
+
+test('revocation clears an open conversation, closes its settings and selects only a remaining permitted thread',async()=>{
+ const state={me:{id:2},activeWorkspaceId:'project',activeChatThreadId:'private',chatSearch:'',chatMessages:[message('secret')],chatPins:[message('secret')],chatDigests:new Map([['private','secret digest']]),chatThreads:[{id:'private'},{id:'general'}],view:'chat',chatDraftText:'keep draft'};
+ let closed=false,stopped=false,saved='',selected='';const main={innerHTML:''};
+ const ctx=vm.createContext({state,URLSearchParams,JSON,localStorage:{},document:{visibilityState:'visible',querySelector:selector=>selector.includes('.chat-group-dialog')?{}:null,querySelectorAll:()=>[]},$:selector=>selector==='#main-content'?main:null,captureProjectContext:()=>1,isProjectContextCurrent:()=>true,renderNav(){},renderChat(){},toast(){},persistChatDraft(){saved=state.chatDraftText;return true;},closeDialogImmediately(){closed=true;},cleanupChatCall(){stopped=true;},chooseConversation:(_storage,_owner,_workspace,threads)=>threads[0]?.id,activateChatConversation(id){selected=id;},api:async path=>{if(path.includes('/history?'))throw Object.assign(Error('forbidden'),{status:403});return path==='/api/chat/threads'?[{id:'general'}]:[];}});
+ vm.runInContext(loader,ctx);await ctx.loadChatThread('private',true);
+ assert.equal(state.chatMessages.length,0);assert.equal(state.chatPins.length,0);assert.equal(state.chatDigests.size,0);assert.equal(closed,true);assert.equal(stopped,true);assert.equal(saved,'keep draft');assert.equal(selected,'general');assert.match(main.innerHTML,/Доступ к разговору закрыт/);
+});

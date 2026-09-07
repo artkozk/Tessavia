@@ -90,6 +90,12 @@ func (s *Server) createChatConversation(w http.ResponseWriter, r *http.Request, 
 			}
 		}
 	}
+	if err == nil && input.Kind == "group" {
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO chat_group_settings(thread_id) VALUES(?)`, id)
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), `INSERT INTO chat_group_roles(thread_id,user_id,role) VALUES(?,?,'owner')`, id, actor.ID)
+		}
+	}
 	if err == nil {
 		err = tx.Commit()
 	}

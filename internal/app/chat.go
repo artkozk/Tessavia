@@ -539,9 +539,9 @@ func (s *Server) handleArchiveChatMessage(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "Укажите причину удаления сообщения")
 		return
 	}
-	var threadID, oldBody string
+	var threadID, oldBody, messageType string
 	var authorID int64
-	err := s.store.db.QueryRowContext(r.Context(), `SELECT thread_id, author_id, body FROM chat_messages WHERE id = ? AND archived_at IS NULL`, messageID).Scan(&threadID, &authorID, &oldBody)
+	err := s.store.db.QueryRowContext(r.Context(), `SELECT thread_id, author_id, body, message_type FROM chat_messages WHERE id = ? AND archived_at IS NULL`, messageID).Scan(&threadID, &authorID, &oldBody, &messageType)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "Сообщение не найдено")
 		return
@@ -549,7 +549,7 @@ func (s *Server) handleArchiveChatMessage(w http.ResponseWriter, r *http.Request
 	if err != nil || !s.requireChatMember(w, r, threadID) {
 		return
 	}
-	if authorID != currentUser(r).ID {
+	if authorID != currentUser(r).ID || messageType == "system" {
 		writeError(w, http.StatusForbidden, "Можно убрать только своё сообщение")
 		return
 	}
