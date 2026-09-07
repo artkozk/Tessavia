@@ -1,11 +1,11 @@
-import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-questions-1';
+import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-record-chat-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-questions-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-record-chat-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-questions-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-record-chat-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-questions-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-record-chat-1';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -6467,10 +6467,48 @@ function renderExecutionPane(record, detail, canEdit) {
   </div>`;
 }
 
+async function openRecordChat(recordID, button) {
+  if (button.disabled) return;
+  const context = captureRecordView(recordID);
+  if (!isRecordViewCurrent(context) || !persistChatDraft()) return;
+  button.disabled = true;
+  try {
+    const thread = await api('/api/chat/threads', {
+      method: 'POST', headers: { 'X-Workspace-ID': context.workspace },
+      body: JSON.stringify({ recordId: recordID }),
+    });
+    if (!isRecordViewCurrent(context)) return;
+    const threads = await api('/api/chat/threads', { headers: { 'X-Workspace-ID': context.workspace } });
+    if (!isRecordViewCurrent(context)) return;
+    if (!threads.some(item => item.id === thread.id && item.recordId === recordID)) {
+      throw new Error('Чат карточки недоступен. Обновите состав команды и повторите.');
+    }
+    if (!await requestDialogClose($('#record-dialog'))) return;
+    if (!isProjectContextCurrent(context)) return;
+    state.chatThreads = threads;
+    state.activeChatThreadId = thread.id;
+    state.chatLoadedThreadId = '';
+    state.chatMessages = [];
+    state.chatEmojiTarget = '';
+    restoreChatDraft();
+    state.chatHistoryQuery = null;
+    state.chatHistoryAround = '';
+    state.chatSearch = '';
+    state.chatSearchOpen = false;
+    state.chatFavoritesOnly = false;
+    await navigateToView('chat');
+  } catch (error) {
+    if (isProjectContextCurrent(context)) toast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderDiscussionPane(detail) {
   if (!detail.workflowLoaded) return renderWorkflowLoading('discussion');
   const comments = detail.workflow.comments || [];
-  return `<div class="record-pane ${state.activeRecordTab === 'discussion' ? 'active' : ''}" data-record-pane="discussion"><section class="discussion-panel"><div class="section-heading"><div><p class="eyebrow">Командный контекст</p><h3>Обсуждение</h3><p>Упомяните партнёра через @логин. Комментарии не редактируются и остаются в истории.</p></div></div><div class="comment-list">${comments.map((comment) => { const author = state.users.find((user) => user.username === comment.authorUsername) || { username: comment.authorUsername }; return `<article class="comment"><header>${avatarMarkup(author)}<div><strong>${escapeHTML(author.displayName || author.username)}</strong><time>${formatDate(comment.createdAt, true)}</time></div></header>${markdownView(comment.body, '', `Комментарий ${comment.authorUsername}`)}</article>`; }).join('') || `<div class="guided-empty compact">${icon('messages')}<h3>Обсуждение ещё не начато</h3><p>Фиксируйте вопросы и договорённости рядом с самой карточкой.</p></div>`}</div><form id="comment-form" class="comment-form">${markdownEditor('body', 'Новый комментарий', '', 6, `Например: @${state.users.find((user) => user.id !== state.me.id)?.username || 'партнёр'} посмотри аргументы`, 'comment')}<button type="submit" class="primary">${icon('send')} Отправить</button></form></section></div>`;
+  const chatEntry = `<div class="record-chat-entry"><div><h3>Чат карточки</h3><p>Сообщения, ответы и файлы по этой работе.</p></div><button type="button" class="primary" data-open-record-chat>${icon('messages')} Открыть чат</button></div>`;
+  return `<div class="record-pane ${state.activeRecordTab === 'discussion' ? 'active' : ''}" data-record-pane="discussion">${chatEntry}<section class="discussion-panel"><div class="section-heading"><div><h3>Комментарии карточки</h3><p>Здесь сохранены отдельные комментарии и упоминания. Переписка с ответами и файлами открывается кнопкой «Открыть чат».</p></div></div><div class="comment-list">${comments.map((comment) => { const author = state.users.find((user) => user.username === comment.authorUsername) || { username: comment.authorUsername }; return `<article class="comment"><header>${avatarMarkup(author)}<div><strong>${escapeHTML(author.displayName || author.username)}</strong><time>${formatDate(comment.createdAt, true)}</time></div></header>${markdownView(comment.body, '', `Комментарий ${comment.authorUsername}`)}</article>`; }).join('') || `<div class="guided-empty compact">${icon('messages')}<h3>Комментариев пока нет</h3><p>Для разговора с командой откройте чат этой карточки.</p></div>`}</div><form id="comment-form" class="comment-form">${markdownEditor('body', 'Новый комментарий', '', 6, `Например: @${state.users.find((user) => user.id !== state.me.id)?.username || 'партнёр'} посмотри аргументы`, 'comment')}<button type="submit" class="primary">${icon('send')} Отправить</button></form></section></div>`;
 }
 
 function formatFileSize(bytes) {
@@ -6783,6 +6821,8 @@ function bindRecordDialogEvents() {
   $('[data-close-dialog]').addEventListener('click', () => requestDialogClose($('#record-dialog')));
   $$('[data-record-tab]').forEach((button) => button.addEventListener('click', async () => {
     state.activeRecordTab = button.dataset.recordTab;
+    const mobileTabs = $('#record-tab-select');
+    if (mobileTabs) mobileTabs.value = state.activeRecordTab;
     $$('.record-tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.recordTab === state.activeRecordTab));
     $$('[data-record-pane]').forEach((pane) => pane.classList.toggle('active', pane.dataset.recordPane === state.activeRecordTab));
     if (state.activeRecordTab === 'relations' && !state.activeDetail.relationsLoaded) await loadRecordRelations(record.id);
@@ -7159,6 +7199,7 @@ function bindRecordDialogEvents() {
     const saved = await mutateWorkflow(`/api/records/${record.id}/checklist/${event.currentTarget.dataset.checklistReport}`, { method: 'PATCH', body: JSON.stringify(body) });
     if (saved) clearWorkingDraftFor(event.currentTarget);
   }));
+  $('[data-open-record-chat]')?.addEventListener('click', event => openRecordChat(record.id, event.currentTarget));
   $('#comment-form')?.addEventListener('submit', async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
     const saved = await mutateWorkflow(`/api/records/${record.id}/comments`, { method: 'POST', body: JSON.stringify({ body: form.get('body') }) });

@@ -1,6 +1,32 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/app.js','utf8');
 
+function recordChatHarness({fail=false,close=true}={}) {
+ const state={chatThreads:[],chatMessages:['old'],chatSearch:'old filter',chatFavoritesOnly:true};
+ const context={workspace:'team'},calls=[];let current=true,resolve;
+ const ctx=vm.createContext({state,captureRecordView:()=>context,isRecordViewCurrent:()=>current,isProjectContextCurrent:()=>current,persistChatDraft:()=>true,
+  api:(path,options)=>{calls.push([path,options]);if(calls.length===1)return new Promise((ok,bad)=>{resolve=()=>fail?bad(new Error('Unavailable')):ok({id:'record-thread'});});return Promise.resolve([{id:'record-thread',recordId:'r'}]);},
+  requestDialogClose:async()=>{calls.push(['close']);return close;},$:()=>({}),restoreChatDraft:()=>calls.push(['restore']),navigateToView:async view=>calls.push([view]),toast:message=>calls.push(['error',message])});
+ vm.runInContext(source.slice(source.indexOf('async function openRecordChat('),source.indexOf('function renderDiscussionPane(')),ctx);
+ return {state,calls,button:{disabled:false},open:button=>ctx.openRecordChat('r',button),resolve:()=>resolve(),leave:()=>{current=false;}};
+}
+
+test('opening a record chat resolves its existing thread, preserves drafts and clears hidden filters',async()=>{
+ const h=recordChatHarness(),pending=h.open(h.button);assert.equal(h.button.disabled,true);
+ await h.open(h.button);assert.equal(h.calls.length,1);h.resolve();await pending;
+ assert.equal(h.state.activeChatThreadId,'record-thread');assert.equal(h.state.chatSearch,'');assert.equal(h.state.chatFavoritesOnly,false);
+ assert.deepEqual(h.calls.map(call=>call[0]),['/api/chat/threads','/api/chat/threads','close','restore','chat']);
+ assert.equal(h.calls[0][1].headers['X-Workspace-ID'],'team');assert.deepEqual(JSON.parse(h.calls[0][1].body),{recordId:'r'});assert.equal(h.button.disabled,false);
+});
+
+test('record chat failures, cancelled close and late replies cannot discard the open card or redirect another workspace',async()=>{
+ for(const options of [{fail:true},{close:false},{leave:true}]) {
+  const h=recordChatHarness(options),pending=h.open(h.button);if(options.leave)h.leave();h.resolve();await pending;
+  assert.equal(h.state.activeChatThreadId,undefined);assert.equal(h.button.disabled,false);assert.ok(!h.calls.some(call=>call[0]==='chat'));
+  if(options.fail||options.leave)assert.ok(!h.calls.some(call=>call[0]==='close'));
+ }
+});
+
 test('question UI does not count a former participant in place of a current answer',()=>{
  const ctx=vm.createContext({state:{users:[{id:1},{id:2},{id:4}]},icon:()=>'',escapeHTML:s=>String(s).replaceAll('<','&lt;'),renderFounderAnswer:()=>'',renderDecisionComposer:()=>'<div>READY</div>',renderJointDecision:()=>''});
  vm.runInContext(source.slice(source.indexOf('function renderQuestionItem('),source.indexOf('function renderMissingFounder(')),ctx);
