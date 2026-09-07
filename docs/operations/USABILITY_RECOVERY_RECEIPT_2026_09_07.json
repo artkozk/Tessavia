@@ -1,0 +1,34 @@
+{
+  "commit": "40e9495ff62cb55bc79d9500dafb11d656f97c57",
+  "release": "/opt/business-control/releases/20260907-usability-recovery-40e9495",
+  "sha256": "9924560cd781077e4630ae75f9c2eb0bf4a1a55c59500bfb7e1bfeebc56de9a9",
+  "backup": "/var/lib/business-control/backups/pre-usability-recovery-20260907T203050Z",
+  "checkedAt": "2026-09-07T20:33:26.066187Z",
+  "verifiedTables": 113,
+  "recoveredLegacyTasks": 1,
+  "schema": "063_task_completion_review.sql",
+  "nodeTests": 233,
+  "assets": "20260907-usability-recovery-5",
+  "tasks": [
+    {
+      "id": "52c498b3ad2f538cf123d4e93b451a80",
+      "status": "completed"
+    },
+    {
+      "id": "431e76a3ee0d16d9561580dfd70fd80e",
+      "status": "completed"
+    },
+    {
+      "id": "f1255834acdea742463798840208706b",
+      "status": "completed"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    }
+  ]
+}
