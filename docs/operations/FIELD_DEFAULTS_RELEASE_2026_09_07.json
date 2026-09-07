@@ -1,0 +1,26 @@
+{
+  "commit": "3177df94d950506bf99fc1be603b2443441ff329",
+  "release": "/opt/business-control/releases/20260907-field-defaults-3177df9",
+  "sha256": "2a278b03bb7006fc2ba6fa381ff810ff2418d57e413e3141f4931e87826ab4b3",
+  "backup": "/var/lib/business-control/backups/pre-field-defaults-20260907T151600Z",
+  "checkedAt": "2026-09-07T15:17:02.008254Z",
+  "preservedTables": 110,
+  "schema": "060_collection_field_defaults.sql",
+  "tables": 111,
+  "nodeTests": 228,
+  "assets": "20260907-field-defaults-3",
+  "tasks": [
+    {
+      "id": "a288364706d6c9f0ff683003aea39009",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    }
+  ]
+}
