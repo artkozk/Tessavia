@@ -1,0 +1,25 @@
+{
+  "commit": "44795ef1fe8bfb4d76a691f9c5651cc472a06976",
+  "release": "/opt/business-control/releases/20260907-templates-44795ef",
+  "sha256": "9925fc772dd66abc98f8aae51904a278bf11a3c13714ecc7f38b604495a97355",
+  "backup": "/var/lib/business-control/backups/pre-templates-20260907T100114Z",
+  "checkedAt": "2026-09-07T10:02:20.784858Z",
+  "preservedTables": 106,
+  "nodeTests": 218,
+  "goTests": "go test ./... passed; focused server and asset checks repeated",
+  "productionTemplates": 5,
+  "tasks": [
+    {
+      "id": "a288364706d6c9f0ff683003aea39009",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    }
+  ]
+}
