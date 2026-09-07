@@ -1,0 +1,28 @@
+{
+  "commit": "a53521c07b4b8a5bc6eaf466a6a5ff5860e24daa",
+  "release": "/opt/business-control/releases/20260907-chat-pending-a53521c",
+  "sha256": "b6a6ee66317b4e1b10f21a4ff8097addb691a7805bac4cf06027892c35db18df",
+  "backup": "/var/lib/business-control/backups/pre-chat-pending-20260907T101955Z",
+  "checkedAt": "2026-09-07T10:22:08.068085Z",
+  "preservedTables": 106,
+  "nodeTests": 219,
+  "goTests": "go test ./... passed; asset checks repeated",
+  "tasks": [
+    {
+      "id": "45bbc1b549a12bb12b1c0ab92cf23a84",
+      "status": "in_progress"
+    },
+    {
+      "id": "3d9a860505030ea14061633f22b115fd",
+      "status": "in_progress"
+    },
+    {
+      "id": "e402d353a684b074f852fa1fd277d895",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    }
+  ]
+}
