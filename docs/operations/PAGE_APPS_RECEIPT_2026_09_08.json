@@ -1,0 +1,48 @@
+{
+  "commit": "e6e302fc9f1f3497b4ee2c47b3139ac1bf3204a2",
+  "release": "/opt/business-control/releases/20260908-page-apps-e6e302f",
+  "sha256": "c3b98d6af9da5073f737ec639e924c638471646ece396eda3acc9e09da9992bf",
+  "backup": "/var/lib/business-control/backups/pre-page-apps-20260907T212646Z",
+  "checkedAt": "2026-09-07T21:27:39.699573Z",
+  "schema": "064_page_app_composition.sql",
+  "oldTablesUnchanged": 113,
+  "newTables": 3,
+  "nodeTests": 235,
+  "assets": "20260908-page-apps-4",
+  "tasks": [
+    {
+      "id": "fc2ba2b05128d7d8d57e38627bbc2d3e",
+      "title": "P0 · Устанавливать независимые наборы страниц из базовых блоков",
+      "status": "in_progress"
+    },
+    {
+      "id": "26c54f79aa1c9110536670ae8371a868",
+      "title": "P0 · Связать пользовательские данные, формы и действия страницы",
+      "status": "planned"
+    },
+    {
+      "id": "fc2ba2b05128d7d8d57e38627bbc2d3e",
+      "status": "completed"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    },
+    {
+      "id": "a288364706d6c9f0ff683003aea39009",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    },
+    {
+      "id": "b8a99823ccf3f3a9f39093fe3c1af2bf",
+      "status": "planned"
+    }
+  ]
+}
