@@ -1,0 +1,25 @@
+{
+  "commit": "7171d64334e6b0ea3efdca4034257ff859aff2ae",
+  "release": "/opt/business-control/releases/20260907-recurrence-template-7171d64",
+  "sha256": "c0c34fe2aa7bf72c20b0eabd577fa21fb2a0cfbc8f58a1f038e6432818444909",
+  "backup": "/var/lib/business-control/backups/pre-recurrence-template-20260907T114443Z",
+  "checkedAt": "2026-09-07T11:46:02.557802Z",
+  "preservedTables": 108,
+  "schema": "059_personal_recurrence_templates.sql",
+  "nodeTests": 223,
+  "goTests": "go test ./... passed; final web assets passed",
+  "tasks": [
+    {
+      "id": "0311dbcf668203acd4ffb32461307d9b",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    }
+  ]
+}
