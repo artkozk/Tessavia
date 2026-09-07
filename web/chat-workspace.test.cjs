@@ -56,3 +56,16 @@ test('pending chat isolates destinations and reconciles server IDs and author no
  assert.equal(pendingConversationItems(items,[{id:'server',authorId:2,clientNonce:'first'}],context).length,4);
  assert.equal(pendingConversationItems([entry('ack',{resultID:'server'})],[{id:'server',authorId:1}],context).length,0);
 });
+
+
+test('conversation lookup matches name tokens without changing order or searching message previews',async()=>{
+ const {filterConversations}=await modulePromise;
+ const threads=[{id:'pinned',title:'Ёлка — дизайн команды',pinned:true},{id:'dm',title:'',partnerUsername:'alice',lastMessage:'дизайн ёлки'},{id:'record',title:'Обсуждение',recordTitle:'План команды'}];
+ const title=t=>t.title||t.partnerUsername;
+ assert.deepEqual(filterConversations(threads,'  КОМАНДЫ   елка ',title).map(t=>t.id),['pinned']);
+ assert.deepEqual(filterConversations(threads,'команды',title).map(t=>t.id),['pinned','record']);
+ assert.deepEqual(filterConversations(threads,'ALICE',title).map(t=>t.id),['dm']);
+ assert.deepEqual(filterConversations(threads,'дизайн ёлки',title),[]);
+ assert.equal(filterConversations(threads,' ',title),threads);
+ assert.deepEqual(threads.map(t=>t.id),['pinned','dm','record']);
+});

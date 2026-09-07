@@ -1,13 +1,13 @@
-import { createChatGroupUI } from './chat-groups.js?v=20260907-chat-personal-pins-2';
-import { conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-chat-personal-pins-2';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-chat-personal-pins-2';
+import { createChatGroupUI } from './chat-groups.js?v=20260907-chat-list-search-2';
+import { filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-chat-list-search-2';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-chat-list-search-2';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-chat-personal-pins-2';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-chat-list-search-2';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-chat-personal-pins-2';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-chat-list-search-2';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute } from './personal-navigation.js?v=20260907-chat-personal-pins-2';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-chat-personal-pins-2';
+import { personalRoute } from './personal-navigation.js?v=20260907-chat-list-search-2';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-chat-list-search-2';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -18,7 +18,7 @@ import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260907-chat-personal-pins-2';
+import { createOutboxUI } from './outbox-ui.js?v=20260907-chat-list-search-2';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -4417,6 +4417,7 @@ function restoreChatDraft() {
   state.chatEditingMessageId=draft.edit?.id||'';state.chatEditDraft=draft.edit?{messageID:draft.edit.id,threadID:state.activeChatThreadId,context:captureProjectContext(),body:draft.edit.body}:null;state.chatHistoryQuery=null;state.chatHistoryAround='';state.chatSearch='';state.chatSearchOpen=false;state.chatFavoritesOnly=false;state.chatPins=[];
 }
 function activateChatConversation(id) {
+  $('.chat-shell')?.classList.remove('show-threads');
   if(!persistChatDraft())return;
   state.activeChatThreadId=id;state.chatLoadedThreadId='';state.chatMessages=[];state.chatEmojiTarget='';
   restoreChatDraft();renderChat();
@@ -4606,11 +4607,27 @@ function chatFilteredMessages() {
 	return state.chatMessages.filter((message) => `${message.body || ''} ${message.authorUsername || ''} ${message.linkedRecordTitle || ''} ${message.attachment?.originalName || ''}`.toLowerCase().includes(query));
 }
 
+let chatListSearch={context:'',query:''};
+function chatListQuery() {
+  const context=JSON.stringify([state.me?.id,state.activeWorkspaceId,state.projectContextEpoch||0]);
+  if(chatListSearch.context!==context)chatListSearch={context,query:''};
+  return chatListSearch.query;
+}
+function applyChatListFilter() {
+  const query=chatListQuery(), matching=new Set(filterConversations(state.chatThreads,query,chatThreadTitle).map(item=>item.id));
+  $$('[data-chat-thread]').forEach(button=>{button.hidden=!matching.has(button.dataset.chatThread);});
+  const empty=$('[data-chat-list-empty]');if(empty)empty.hidden=!query.trim()||matching.size>0;
+  const clear=$('[data-clear-chat-list-search]');if(clear)clear.hidden=!query;
+  const count=$('[data-chat-list-count]');if(count)count.textContent=query.trim()?`Найдено диалогов: ${matching.size}`:'';
+}
+
 function renderChat() {
+  const drawerOpen=$('.chat-shell')?.classList.contains('show-threads');
+  const listQuery=chatListQuery();
   const oldList=$('.chat-messages');
   const scroll=oldList?{thread:oldList.dataset.thread,top:oldList.scrollTop,height:oldList.scrollHeight,bottom:oldList.scrollHeight-oldList.scrollTop-oldList.clientHeight<64}:null;
   const focused=document.activeElement;
-  const focusInfo=focused?.matches?.('#chat-composer textarea,.chat-search input')?{selector:focused.matches('textarea')?'#chat-composer textarea':'.chat-search input',start:focused.selectionStart,end:focused.selectionEnd}:null;
+  const focusInfo=focused?.matches?.('#chat-composer textarea,.chat-search input,.chat-list-search input')?{selector:focused.matches('textarea')?'#chat-composer textarea':focused.closest('.chat-list-search')?'.chat-list-search input':'.chat-search input',start:focused.selectionStart,end:focused.selectionEnd}:null;
   chatEmojiPicker.close(false);
 	clearTimeout(state.chatPollTimer);
 	const selected=chooseConversation(localStorage,state.me?.id,state.activeWorkspaceId,state.chatThreads,state.activeChatThreadId);
@@ -4627,9 +4644,9 @@ function renderChat() {
 	const editDraft = state.chatEditDraft;
 	const editingBody = editingMessage && editDraft?.messageID === editingMessage.id && editDraft.threadID === state.activeChatThreadId && isProjectContextCurrent(editDraft.context) ? editDraft.body : editingMessage?.body;
 	const threadTitle = chatThreadTitle(thread);
-	$('#main-content').innerHTML = `<section class="chat-shell">
+	$('#main-content').innerHTML = `<section class="chat-shell ${drawerOpen ? 'show-threads' : ''}">
 		<button type="button" class="chat-thread-backdrop" data-close-chat-threads aria-label="Закрыть список диалогов"></button>
-		<aside class="chat-thread-list"><header><div><h1>Сообщения</h1><p>Диалоги, группы и работа проекта</p></div><button type="button" class="icon-button" data-new-chat-thread title="Новый разговор" aria-label="Новый разговор">${icon('plus')}</button></header><div>${state.chatThreads.map((item) => `<button type="button" class="chat-thread ${item.id === state.activeChatThreadId ? 'active' : ''}" data-chat-thread="${item.id}">${avatarMarkup(state.users.find((user) => user.username === item.partnerUsername) || { username: item.kind === 'team' ? item.partnerUsername || 'П' : item.title })}<span><strong>${escapeHTML(chatThreadTitle(item))}</strong><small>${escapeHTML(item.lastMessage || (item.kind === 'record' ? 'Обсуждение карточки' : chatPresenceLabel(item)))}</small></span><time datetime="${escapeHTML(item.lastMessageAt || '')}" title="${escapeHTML(formatDate(item.lastMessageAt, true))}">${escapeHTML(conversationTimeLabel(item.lastMessageAt))}${item.pinned ? `<span class="chat-personal-pin" title="Закреплён в вашем списке" aria-label="Закреплён в вашем списке">${icon('pin')}</span>` : ''}</time>${item.unreadCount ? `<b>${item.unreadCount}</b>` : ''}</button>`).join('') || '<div class="guided-empty compact">Диалоги ещё не созданы</div>'}</div></aside>
+		<aside class="chat-thread-list"><header><div><h1>Сообщения</h1><p>Диалоги, группы и работа проекта</p></div><button type="button" class="icon-button" data-new-chat-thread title="Новый разговор" aria-label="Новый разговор">${icon('plus')}</button><label class="chat-list-search">${icon('search')}<input type="search" maxlength="120" autocomplete="off" placeholder="Найти диалог" aria-label="Найти диалог" value="${escapeHTML(listQuery)}"><button type="button" class="icon-button" data-clear-chat-list-search aria-label="Очистить поиск диалогов" hidden>${icon('x')}</button></label></header><div>${state.chatThreads.map((item) => `<button type="button" class="chat-thread ${item.id === state.activeChatThreadId ? 'active' : ''}" data-chat-thread="${item.id}">${avatarMarkup(state.users.find((user) => user.username === item.partnerUsername) || { username: item.kind === 'team' ? item.partnerUsername || 'П' : item.title })}<span><strong>${escapeHTML(chatThreadTitle(item))}</strong><small>${escapeHTML(item.lastMessage || (item.kind === 'record' ? 'Обсуждение карточки' : chatPresenceLabel(item)))}</small></span><time datetime="${escapeHTML(item.lastMessageAt || '')}" title="${escapeHTML(formatDate(item.lastMessageAt, true))}">${escapeHTML(conversationTimeLabel(item.lastMessageAt))}${item.pinned ? `<span class="chat-personal-pin" title="Закреплён в вашем списке" aria-label="Закреплён в вашем списке">${icon('pin')}</span>` : ''}</time>${item.unreadCount ? `<b>${item.unreadCount}</b>` : ''}</button>`).join('') || '<div class="guided-empty compact">Диалоги ещё не созданы</div>'}<p class="chat-list-empty" data-chat-list-empty hidden>Диалог не найден. Попробуйте другое имя или название.</p><span class="sr-only" data-chat-list-count role="status"></span></div></aside>
 		<main class="chat-main">${thread ? `<header class="chat-header"><button type="button" class="chat-mobile-threads icon-button" data-toggle-chat-threads title="Диалоги" aria-label="Диалоги">${icon('menu')}</button>${avatarMarkup(state.users.find((user) => user.username === thread.partnerUsername) || { username: thread.partnerUsername || thread.title })}<div><h2>${thread.kind === 'group' ? `<button type="button" class="chat-group-title" data-chat-group title="Участники и настройки">${escapeHTML(threadTitle)}</button>` : escapeHTML(threadTitle)}</h2><p class="${thread.partnerOnline ? 'online' : ''}">${thread.kind === 'record' ? `Ветка карточки · ${escapeHTML(thread.recordTitle)}` : escapeHTML(chatPresenceLabel(thread))}</p></div><div class="chat-header-actions">${thread.recordId ? `<button type="button" class="icon-button" data-open-record="${thread.recordId}" title="Открыть карточку">${icon('link')}</button>` : ''}<button type="button" class="icon-button ${state.chatSearchOpen ? 'active' : ''}" data-toggle-chat-search title="Поиск в диалоге">${icon('search')}</button><details class="chat-header-more"><summary class="icon-button" aria-label="Действия диалога" title="Действия диалога">${icon('more')}</summary><div>${thread.kind === 'group' ? `<button type="button" data-chat-group>${icon('users')}<span>Участники и настройки</span></button>` : ''}<button type="button" data-chat-personal-pin title="Только в вашем списке разговоров">${icon('pin')}<span>${thread.pinned ? 'Открепить из списка' : 'Закрепить в списке'}</span></button><button type="button" data-chat-ai-digest>${icon('sparkles')}<span>Собрать AI-выжимку</span></button><button type="button" class="${state.chatFavoritesOnly ? 'active' : ''}" data-chat-favorites>${icon('bookmark')}<span>${state.chatFavoritesOnly ? 'Все сообщения' : 'Сохранённые сообщения'}</span></button><button type="button" data-start-call>${icon('phone')}<span>Аудиозвонок</span></button></div></details></div>${state.chatSearchOpen ? `<label class="chat-search">${icon('search')}<input type="search" value="${escapeHTML(state.chatSearch)}" placeholder="Найти сообщение" aria-label="Поиск в диалоге"><button type="button" data-close-chat-search aria-label="Закрыть поиск">${icon('x')}</button></label>` : ''}</header><div class="chat-context-stack">${renderChatCallBanner(thread)}${renderChatDigest(thread)}${state.chatPins?.length ? `<details class="chat-pinned-list"><summary>Закреплённые · ${state.chatPins.length}</summary>${state.chatPins.map(pin=>`<button type="button" data-scroll-message="${pin.id}"><strong>${escapeHTML(pin.author)}</strong><span>${escapeHTML(markdownPlain(pin.body).slice(0,180)||'Вложение')}</span></button>`).join('')}</details>` : ''}</div><div class="chat-messages" data-drag-scroll="true">${state.chatHistoryAround ? `<button type="button" class="text-button chat-history-latest" data-chat-latest>К последним сообщениям</button>` : ''}${state.chatHistoryMore ? `<button type="button" class="text-button chat-history-older" data-chat-history-older>Ранние сообщения</button>` : ''}${renderChatTimeline(messages) || `<div class="chat-empty"><span>${icon(state.chatSearch ? 'search' : 'messages')}</span><strong>${state.chatSearch ? 'Совпадений нет' : 'Начните разговор'}</strong><p>${state.chatSearch ? 'Измените запрос или очистите поиск.' : `Напишите ${escapeHTML(threadTitle)} или прикрепите карточку проекта.`}</p></div>`}${state.chatHistoryAround && state.chatHistoryNewer && !state.chatSearch && !state.chatFavoritesOnly ? `<button type="button" class="text-button chat-history-newer" data-chat-history-newer>Следующие сообщения</button>` : ''}</div><div class="chat-composer-context">${editingMessage ? `<div><span>${icon('edit')}</span><span><strong>Редактирование сообщения</strong><small>Предыдущая версия останется в журнале.</small></span><button type="button" data-clear-chat-edit>${icon('x')}</button></div>` : ''}${state.chatReplyToId ? (() => { const reply = state.chatMessages.find((item) => item.id === state.chatReplyToId); return `<div><span>${icon('reply')}</span><span><strong>Ответ ${escapeHTML(reply?.authorUsername || '')}</strong><small>${escapeHTML(chatMessagePreview(reply || {}).slice(0, 120))}</small></span><button type="button" data-clear-chat-reply aria-label="Отменить ответ">${icon('x')}</button></div>`; })() : ''}${state.chatLinkedRecordId ? (() => { const linked = state.records.find((item) => item.id === state.chatLinkedRecordId); return `<div><span>${icon('link')}</span><span><strong>Прикреплена карточка</strong><small>${escapeHTML(linked?.title || '')}</small></span><button type="button" data-clear-chat-record>${icon('x')}</button></div>`; })() : ''}</div><form class="chat-composer" id="chat-composer"><label class="chat-drop" data-chat-drop><textarea name="body" rows="1" placeholder="${editingMessage ? 'Исправьте сообщение' : 'Сообщение'}" aria-label="Сообщение" ${state.chatSending ? 'disabled' : ''}>${escapeHTML(editingBody ?? state.chatDraftText)}</textarea><input type="file" name="file" multiple hidden></label><div class="chat-composer-actions"><details class="chat-composer-more"><summary class="icon-button" title="Вложения и дополнительные действия" aria-label="Вложения и дополнительные действия">${icon('plus')}</summary><div><button type="button" class="${state.chatEmojiTarget === 'composer' ? 'active' : ''}" data-chat-composer-emoji ${state.chatSending ? 'disabled' : ''}>${icon('smile')}<span>Эмодзи</span></button><button type="button" data-chat-attach ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('fileText')}<span>Отправить файл</span></button><button type="button" data-chat-link-record ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('link')}<span>Прикрепить карточку</span></button><button type="button" data-chat-video ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('video')}<span>Видеосообщение</span></button></div></details><button type="button" class="icon-button" data-chat-voice title="Записать голосовое" aria-label="Записать голосовое" ${editingMessage || state.chatSending ? 'disabled' : ''}>${icon('mic')}</button><button type="submit" class="primary icon-button" title="${editingMessage ? 'Сохранить' : 'Отправить'}" aria-label="${editingMessage ? 'Сохранить сообщение' : 'Отправить сообщение'}" ${state.chatSending ? 'disabled' : ''}>${state.chatSending ? '<span class="spinner"></span>' : icon(editingMessage ? 'check' : 'send')}</button></div><div class="chat-upload-progress" hidden><span></span><progress max="100" value="0"></progress></div></form>` : `<div class="chat-empty"><strong>Выберите диалог</strong></div>`}</main>
 	</section>`;
 	decorateChatUI();
@@ -4896,6 +4913,12 @@ function bindChatDropSurface() {
 }
 
 function bindChatEvents() {
+  applyChatListFilter();
+  const listSearch=$('.chat-list-search input');
+  listSearch?.addEventListener('compositionstart',()=>{state.chatInputComposing=true;});
+  listSearch?.addEventListener('compositionend',()=>{state.chatInputComposing=false;});
+  listSearch?.addEventListener('input',()=>{chatListQuery();chatListSearch.query=listSearch.value;applyChatListFilter();});
+  $('[data-clear-chat-list-search]')?.addEventListener('click',()=>{chatListSearch.query='';listSearch.value='';applyChatListFilter();listSearch.focus();});
 	$$('[data-chat-thread]').forEach(button=>button.addEventListener('click',()=>activateChatConversation(button.dataset.chatThread)));
 	$('[data-toggle-chat-threads]')?.addEventListener('click', () => $('.chat-shell').classList.toggle('show-threads'));
 	const chatThreadBackdrop = $('[data-close-chat-threads]');

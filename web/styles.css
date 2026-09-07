@@ -5311,3 +5311,16 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .chat-personal-pin { display: inline-flex; color: var(--muted); }
 .chat-personal-pin svg { width: 13px; height: 13px; }
 .chat-thread:has(> b) .chat-personal-pin { margin-bottom: 19px; }
+
+/* Conversation lookup stays inside the drawer and does not rebuild the open chat. */
+.chat-thread-list > header { flex-wrap: wrap; gap: 10px; }
+.chat-list-search { flex: 1 0 100%; min-width: 0; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding-left: 10px; }
+.chat-list-search > svg { width: 16px; height: 16px; color: var(--muted); flex-shrink: 0; }
+.chat-list-search input { min-width: 0; width: 100%; height: 44px; border: 0; background: transparent; padding: 8px 4px; font-size: 13px; }
+.chat-list-search .icon-button { flex: 0 0 44px; width: 44px; height: 44px; border: 0; background: transparent; }
+.chat-list-empty { padding: 16px 10px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+.chat-list-search input::-webkit-search-cancel-button,
+.chat-list-search input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+.chat-list-search:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-list-search input:focus { outline: none; box-shadow: none; }

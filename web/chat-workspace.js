@@ -1,3 +1,12 @@
+export function filterConversations(threads, query, titleForThread) {
+  const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase('ru-RU').replaceAll('ё','е');
+  const words=normalize(query).trim().split(/\s+/).filter(Boolean);
+  if(!words.length)return threads;
+  return threads.filter(thread=>{
+    const text=normalize(`${titleForThread(thread)} ${thread.partnerUsername||''} ${thread.recordTitle||''}`);
+    return words.every(word=>text.includes(word));
+  });
+}
 export function conversationTimeLabel(value, now=new Date()) {
   if(!value)return '';
   const date=new Date(value);
