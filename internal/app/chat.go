@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const chatMessageSelect = `SELECT m.id, m.thread_id, m.author_id, u.username, COALESCE(m.reply_to_id, ''), COALESCE(ru.username, ''), COALESCE(rm.body, ''), COALESCE(m.linked_record_id, ''), COALESCE(CASE WHEN lr.business_kind <> '' THEN lr.business_kind WHEN lr.subtype = 'question_set' THEN 'question_set' WHEN lr.record_kind = 'meeting' THEN 'meeting' ELSE lr.type END, ''), COALESCE(lr.title, ''), COALESCE(m.attachment_id, ''), COALESCE(a.original_name, ''), COALESCE(a.content_type, ''), COALESCE(a.size_bytes, 0), m.message_type, m.body, EXISTS(SELECT 1 FROM chat_favorites f WHERE f.message_id = m.id AND f.user_id = ?), m.created_at, m.edited_at FROM chat_messages m JOIN users u ON u.id = m.author_id LEFT JOIN chat_messages rm ON rm.id = m.reply_to_id AND rm.thread_id=m.thread_id AND rm.archived_at IS NULL LEFT JOIN users ru ON ru.id = rm.author_id LEFT JOIN records lr ON lr.id = m.linked_record_id LEFT JOIN chat_attachments a ON a.id = m.attachment_id`
+const chatMessageSelect = `SELECT m.id, m.thread_id, m.author_id, u.username, COALESCE(m.reply_to_id, ''), COALESCE(ru.username, ''), COALESCE(rm.body, ''), COALESCE(m.linked_record_id, ''), COALESCE(CASE WHEN lr.business_kind <> '' THEN lr.business_kind WHEN lr.subtype = 'question_set' THEN 'question_set' WHEN lr.record_kind = 'meeting' THEN 'meeting' ELSE lr.type END, ''), COALESCE(lr.title, ''), COALESCE(m.attachment_id, ''), COALESCE(a.original_name, ''), COALESCE(a.content_type, ''), COALESCE(a.size_bytes, 0), m.message_type, m.body, EXISTS(SELECT 1 FROM chat_favorites f WHERE f.message_id = m.id AND f.user_id = ?), m.created_at, m.edited_at, COALESCE(m.client_nonce, '') FROM chat_messages m JOIN users u ON u.id = m.author_id LEFT JOIN chat_messages rm ON rm.id = m.reply_to_id AND rm.thread_id=m.thread_id AND rm.archived_at IS NULL LEFT JOIN users ru ON ru.id = rm.author_id LEFT JOIN records lr ON lr.id = m.linked_record_id LEFT JOIN chat_attachments a ON a.id = m.attachment_id`
 
 type ChatThread struct {
 	ID              string  `json:"id"`
@@ -44,6 +44,7 @@ type ChatAttachment struct {
 }
 
 type ChatMessage struct {
+	ClientNonce       string            `json:"clientNonce,omitempty"`
 	ID                string            `json:"id"`
 	ThreadID          string            `json:"threadId"`
 	AuthorID          int64             `json:"authorId"`
@@ -273,8 +274,11 @@ func (s *Server) listChatMessages(ctx context.Context, threadID string, userID i
 		var attachmentID, attachmentName, attachmentType string
 		var attachmentSize int64
 		var edited sql.NullString
-		if err := rows.Scan(&item.ID, &item.ThreadID, &item.AuthorID, &item.AuthorUsername, &item.ReplyToID, &item.ReplyAuthor, &item.ReplyBody, &item.LinkedRecordID, &item.LinkedRecordType, &item.LinkedRecordTitle, &attachmentID, &attachmentName, &attachmentType, &attachmentSize, &item.MessageType, &item.Body, &item.Favorite, &item.CreatedAt, &edited); err != nil {
+		if err := rows.Scan(&item.ID, &item.ThreadID, &item.AuthorID, &item.AuthorUsername, &item.ReplyToID, &item.ReplyAuthor, &item.ReplyBody, &item.LinkedRecordID, &item.LinkedRecordType, &item.LinkedRecordTitle, &attachmentID, &attachmentName, &attachmentType, &attachmentSize, &item.MessageType, &item.Body, &item.Favorite, &item.CreatedAt, &edited, &item.ClientNonce); err != nil {
 			return nil, err
+		}
+		if item.AuthorID != userID {
+			item.ClientNonce = ""
 		}
 		if attachmentID != "" {
 			item.Attachment = &ChatAttachment{ID: attachmentID, OriginalName: attachmentName, ContentType: attachmentType, SizeBytes: attachmentSize}

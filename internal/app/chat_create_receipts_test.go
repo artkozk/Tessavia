@@ -43,6 +43,18 @@ func TestOfflineChatReceiptsAndUploads(t *testing.T) {
 		t.Fatalf("concurrent messages: %#v %#v", first, second)
 	}
 	id := first.data["id"].(string)
+	if first.data["clientNonce"] != "outbox-chat-original" {
+		t.Fatal("receipt lost client nonce")
+	}
+	var ownHistory, otherHistory []ChatMessage
+	requestJSON(t, client, "GET", endpoint+"/messages", nil, 200, &ownHistory)
+	requestJSON(t, other, "GET", endpoint+"/messages", nil, 200, &otherHistory)
+	if len(ownHistory) != 1 || ownHistory[0].ClientNonce != "outbox-chat-original" {
+		t.Fatal("author cannot reconcile uncertain delivery")
+	}
+	if len(otherHistory) != 1 || otherHistory[0].ClientNonce != "" {
+		t.Fatal("another member received author nonce")
+	}
 	// Move the receipt out of the latest page without paying for 205 HTTP sessions.
 	tx, err := store.db.Begin()
 	if err != nil {

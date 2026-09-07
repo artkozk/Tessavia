@@ -39,9 +39,12 @@ func readChatCreateReceipt(ctx context.Context, tx *sql.Tx, id string, userID in
 	var attachmentID, attachmentName, attachmentType string
 	var attachmentSize int64
 	var edited sql.NullString
-	err := tx.QueryRowContext(ctx, chatMessageSelect+` WHERE m.id=? AND m.archived_at IS NULL`, userID, id).Scan(&item.ID, &item.ThreadID, &item.AuthorID, &item.AuthorUsername, &item.ReplyToID, &item.ReplyAuthor, &item.ReplyBody, &item.LinkedRecordID, &item.LinkedRecordType, &item.LinkedRecordTitle, &attachmentID, &attachmentName, &attachmentType, &attachmentSize, &item.MessageType, &item.Body, &item.Favorite, &item.CreatedAt, &edited)
+	err := tx.QueryRowContext(ctx, chatMessageSelect+` WHERE m.id=? AND m.archived_at IS NULL`, userID, id).Scan(&item.ID, &item.ThreadID, &item.AuthorID, &item.AuthorUsername, &item.ReplyToID, &item.ReplyAuthor, &item.ReplyBody, &item.LinkedRecordID, &item.LinkedRecordType, &item.LinkedRecordTitle, &attachmentID, &attachmentName, &attachmentType, &attachmentSize, &item.MessageType, &item.Body, &item.Favorite, &item.CreatedAt, &edited, &item.ClientNonce)
 	if err != nil {
 		return ChatMessage{}, err
+	}
+	if item.AuthorID != userID {
+		item.ClientNonce = ""
 	}
 	if attachmentID != "" {
 		item.Attachment = &ChatAttachment{ID: attachmentID, OriginalName: attachmentName, ContentType: attachmentType, SizeBytes: attachmentSize}

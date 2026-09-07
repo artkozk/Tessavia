@@ -5205,3 +5205,11 @@ body:has(.calendar-expanded) { overflow: hidden; }
   .collection-settings-header-actions > [data-schema-preview] {min-width:0;min-height:44px;padding:8px;font-size:12px;white-space:normal;}
   .collection-settings-header-actions > .icon-button {min-width:44px;min-height:44px;}
 }
+.chat-pending-list {display:flex;flex-direction:column;gap:14px;min-width:0;}
+.chat-pending-list:empty {display:none;}
+.chat-pending-message footer {flex-wrap:wrap;gap:8px;}
+.chat-pending-actions {display:flex;justify-content:flex-end;gap:12px;}
+.chat-pending-actions .text-button {min-height:44px;font-size:12px;}
+.chat-pending-error {font-size:12px;color:var(--red);overflow-wrap:anywhere;}
+.chat-pending-file {display:flex;gap:8px;align-items:center;overflow-wrap:anywhere;}
+.chat-pending-file .icon {flex:0 0 18px;}

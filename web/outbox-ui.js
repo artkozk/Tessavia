@@ -122,7 +122,7 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
   }
   const open = () => { lastMarkup = ''; openDialog(dialog); void refresh(); };
   trigger.onclick = open; local.querySelector('[data-open-outbox]').onclick = open;
-  if (typeof BroadcastChannel !== 'undefined') { channel = new BroadcastChannel('tessavie-outbox'); channel.onmessage = event => { if (event.data === 'logout') { void ui.signOut(); onAuthRequired(); } else void refresh(); }; }
+  if (typeof BroadcastChannel !== 'undefined') { channel = new BroadcastChannel('tessavie-outbox'); channel.onmessage = event => { if (event.data === 'logout') { void ui.signOut(); onAuthRequired(); } else { void refresh(); window.dispatchEvent(new Event('tessavie-outbox-change')); } }; }
   window.addEventListener('online', () => { void queue.pump(); });
   setInterval(() => { void queue.pump(); }, 10000);
   const ui = {
@@ -160,6 +160,8 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
     async addTriage(note,payload,expected){return queue.enqueue([{kind:'note-to-plan',note,payload,title:payload.title}],expected);},
     async pendingTriage(note,expected){return (await store.list(expected)).filter(item=>item.kind==='note-to-plan'&&item.note===note&&!['confirmed','paused'].includes(item.status));},
     stop: id=>queue.stop(id),
+    retry: async id=>{await queue.retry(id);void queue.pump();},
+    async chatItems(expected){return (await store.list(expected)).filter(item=>['message','attachment'].includes(item.kind));},
     async addNoteFiles(files,context){await queue.enqueue(files.map(file=>({...context,kind:'note-attachment',payload:{},blob:file,fileName:file.name})),context.owner);},
     async pendingNoteFiles(expected){return pendingNoteFileEntries(await store.list(expected));},
     context(thread, destination) { return { owner: user()?.id, workspace: workspace(), thread, destination }; },

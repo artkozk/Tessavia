@@ -70,3 +70,7 @@ export function createChatWorkspaceUI({state,api,esc,icon,openModal,closeDialog,
   }
   return {openNew};
 }
+export function pendingConversationItems(items,messages,{owner,workspace,thread}) {
+  const ids=new Set(messages.map(item=>item.id)),nonces=new Set(messages.filter(item=>item.authorId===owner&&item.clientNonce).map(item=>item.clientNonce));
+  return items.filter(item=>item.owner===owner&&item.workspace===workspace&&item.thread===thread&&['message','attachment'].includes(item.kind)&&item.status!=='confirmed'&&!ids.has(item.resultID)&&!nonces.has(item.id)).sort((a,b)=>a.createdAt-b.createdAt||(a.sequence||0)-(b.sequence||0)||a.id.localeCompare(b.id));
+}

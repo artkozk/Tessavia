@@ -1,12 +1,12 @@
-import { chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-templates-5';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-templates-5';
+import { pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-chat-pending-2';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-chat-pending-2';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-templates-5';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-chat-pending-2';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-templates-5';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-chat-pending-2';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-templates-5';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-chat-pending-2';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -17,7 +17,7 @@ import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260906-reading-groups-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260907-chat-pending-2';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1192,7 +1192,13 @@ offlineOutbox = createOutboxUI({
     if (item.kind === 'note-attachment') noteMediaUI.confirmed(item,result);
     if (['capture','note-to-plan'].includes(item.kind)) personalInboxUI.confirmed(item,result);
     if (['note','plan','habit-checkin','note-attachment','capture','note-to-plan'].includes(item.kind)) void loadPersonal({ force: true });
-    else if (item.workspace === state.activeWorkspaceId && item.thread === state.activeChatThreadId) void loadChatThread(item.thread,true);
+    else if (item.workspace === state.activeWorkspaceId && item.thread === state.activeChatThreadId) {
+      if (!state.chatSearch && !state.chatFavoritesOnly && !state.chatHistoryAround && state.chatLoadedThreadId === item.thread) {
+        state.chatMessages = mergeChatHistory(state.chatMessages,[result]);
+        if (state.view === 'chat') renderChat();
+      }
+      void loadChatThread(item.thread,true);
+    }
   },
 });
 }
@@ -4453,6 +4459,36 @@ function renderChatMessage(message) {
 	return `<article class="chat-message ${mine ? 'mine' : ''} type-${message.messageType}" id="chat-message-${message.id}" data-chat-message="${message.id}"><div class="chat-bubble"><div class="chat-message-actions"><button type="button" data-chat-reply="${message.id}" title="Ответить" aria-label="Ответить">${icon('reply')}</button><button type="button" data-chat-emoji-more="${message.id}" title="Реакция" aria-label="Добавить реакцию">${icon('smile')}</button><details class="chat-message-menu"><summary aria-label="Другие действия">•••</summary><div><button type="button" data-chat-reply="${message.id}">${icon('reply')} Ответить</button><button type="button" data-chat-copy="${message.id}">${icon('copy')} Копировать</button><button type="button" data-chat-favorite="${message.id}">${icon('bookmark')} ${message.favorite ? 'Убрать из сохранённых' : 'Сохранить сообщение'}</button><button type="button" data-chat-pin="${message.id}">${icon('bookmark')} ${state.chatPins?.some(pin=>pin.id===message.id) ? 'Открепить для всех' : 'Закрепить в диалоге'}</button>${state.chatSearch ? `<button type="button" data-scroll-message="${message.id}">${icon('messages')} Открыть в переписке</button>` : ''}${projectActions}${ownActions}<span>${quick.map((emoji) => `<button type="button" data-chat-reaction="${message.id}" data-emoji="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}<button type="button" data-chat-emoji-more="${message.id}" aria-label="Все эмодзи">${icon('smile')}</button></span></div></details></div>${!mine ? `<header><strong>${escapeHTML(message.authorUsername)}</strong></header>` : ''}${reply}${message.body ? `<div class="markdown-body chat-message-body">${renderMarkdown(message.body)}</div>` : ''}${linked}${media}<footer>${message.favorite ? `<span class="chat-saved" title="Сохранено">${icon('bookmark')}</span>` : ''}<time>${formatDate(message.createdAt, true)}</time>${message.editedAt ? `<span title="Изменено ${escapeHTML(formatDate(message.editedAt, true))}">изменено</span>` : ''}${read}</footer></div>${reactions ? `<div class="chat-reactions">${reactions}<button type="button" class="chat-add-reaction" data-chat-emoji-more="${message.id}" aria-label="Добавить реакцию">${icon('smile')}</button></div>` : ''}</article>`;
 }
 
+let pendingChatRefresh = 0;
+const pendingChatMarkup = new WeakMap();
+async function refreshPendingChat() {
+  const root = document.querySelector('[data-chat-outbox]');
+  if (!root || state.view !== 'chat' || !offlineOutbox) return;
+  const context = {owner:state.me?.id,workspace:state.activeWorkspaceId,thread:state.activeChatThreadId}, version = ++pendingChatRefresh;
+  try {
+    const all = await offlineOutbox.chatItems(context.owner);
+    if (!root.isConnected || version !== pendingChatRefresh || context.owner !== state.me?.id || context.workspace !== state.activeWorkspaceId || context.thread !== state.activeChatThreadId) return;
+    const items = pendingConversationItems(all,state.chatMessages,context);
+    const labels = {queued:'Ожидает отправки',sending:'Отправляется',blocked:'Не удалось отправить',paused:'Повторы остановлены'};
+    const markup = items.map(item => `<article class="chat-message mine chat-pending-message" data-pending-chat="${escapeHTML(item.id)}"><div class="chat-bubble">${item.payload?.body ? `<div class="markdown-body chat-message-body">${renderMarkdown(item.payload.body)}</div>` : ''}${item.fileName ? `<p class="chat-pending-file">${icon('fileText')} ${escapeHTML(item.fileName)}</p>` : ''}${item.payload?.linkedRecordId ? '<small>Прикреплена карточка</small>' : ''}<footer><time>${formatDate(new Date(item.createdAt).toISOString(),true)}</time><span>${escapeHTML(labels[item.status] || 'Ожидает отправки')}</span></footer>${item.error ? `<p class="chat-pending-error">${escapeHTML(item.error)}</p>` : ''}<div class="chat-pending-actions">${['queued','blocked','paused'].includes(item.status) ? '<button type="button" class="text-button" data-pending-retry>Повторить</button>' : ''}<button type="button" class="text-button" data-pending-queue>В очереди</button></div></div></article>`).join('');
+    if (pendingChatMarkup.get(root) === markup) return;
+    const list = root.closest('.chat-messages'), bottom = list.scrollHeight-list.scrollTop-list.clientHeight < 64, top = list.scrollTop;
+    pendingChatMarkup.set(root,markup); root.innerHTML = markup;
+    root.querySelectorAll('[data-pending-chat]').forEach(row => {
+      row.querySelector('[data-pending-queue]').onclick = () => offlineOutbox.open();
+      row.querySelector('[data-pending-retry]')?.addEventListener('click',async event => {
+        event.currentTarget.disabled = true;
+        const button = event.currentTarget;
+        try { await offlineOutbox.retry(row.dataset.pendingChat); } catch(error) {toast(error.message,true);void refreshPendingChat();}
+        finally {if(button.isConnected) button.disabled = false;}
+      });
+    });
+    const empty = list.querySelector('.chat-empty'); if (empty) empty.hidden = items.length > 0;
+    requestAnimationFrame(() => {if(root.isConnected) list.scrollTop = bottom ? list.scrollHeight : top;});
+  } catch(error) {if(root.isConnected) root.textContent = 'Не удалось прочитать очередь этого браузера. Откройте очередь отправки.';}
+}
+window.addEventListener('tessavie-outbox-change',()=>{void refreshPendingChat();});
+
 function renderChatTimeline(messages) {
 	let previousDay = '';
 	return messages.map((message) => {
@@ -4550,6 +4586,8 @@ function renderChat() {
 	const mobileThreadsButton = $('[data-toggle-chat-threads]');
 	if (mobileThreadsButton) mobileThreadsButton.innerHTML = icon('messages');
 	bindChatEvents();
+	$('.chat-messages')?.insertAdjacentHTML('beforeend','<div class="chat-pending-list" data-chat-outbox></div>');
+	void refreshPendingChat();
 	bindOpenRecords();
 	updateChatComposerAction();
 	requestAnimationFrame(() => {
@@ -4624,7 +4662,7 @@ async function uploadChatFiles(files, context = null, payload = null) {
   payload ||= { replyToId: state.chatReplyToId, linkedRecordId: state.chatLinkedRecordId };
   try {
     await offlineOutbox.addFiles(batch,context,payload);
-    if (context.owner === state.me?.id) toastAction('Файлы сохранены в браузере и ожидают отправки.', 'Очередь', () => offlineOutbox.open());
+    if (context.owner === state.me?.id && !(state.view === 'chat' && context.workspace === state.activeWorkspaceId && context.thread === state.activeChatThreadId)) toastAction('Файлы сохранены в браузере и ожидают отправки.', 'Очередь', () => offlineOutbox.open());
     void offlineOutbox.pump();
     return true;
   } catch (error) { toast(error.message || 'Не удалось сохранить файлы в браузере',true); return false; }
@@ -4927,7 +4965,7 @@ function bindChatEvents() {
       if (context.owner === state.me?.id && context.workspace === state.activeWorkspaceId && context.thread === state.activeChatThreadId && state.chatDraftNonce === clientNonce) {
         state.chatReplyToId = ''; state.chatLinkedRecordId = ''; state.chatDraftNonce = ''; state.chatDraftText = ''; persistChatDraft();
       }
-      if (context.owner === state.me?.id) toastAction('Сообщение сохранено в очередь отправки.', 'Проверить', () => offlineOutbox.open());
+      if (context.owner === state.me?.id && !(state.view === 'chat' && context.workspace === state.activeWorkspaceId && context.thread === state.activeChatThreadId)) toastAction('Сообщение сохранено в очередь отправки.', 'Проверить', () => offlineOutbox.open());
       void offlineOutbox.pump();
 		} catch (error) { toast(error.message, true); }
 		finally { state.chatSending = false; if (state.view === 'chat') renderChat(); }

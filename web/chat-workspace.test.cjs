@@ -46,3 +46,13 @@ test('mobile conversation drawer leaves taps alone and captures only a horizonta
   events.pointerdown(down);events.pointermove({...down,clientX:197,clientY:150,preventDefault:()=>assert.fail('vertical scroll prevented')});events.pointerup();assert.equal(captures,0);
   events.pointerdown(down);events.pointermove({...down,clientX:110,clientY:102,preventDefault:()=>{}});events.pointerup();assert.equal(captures,1);assert.equal(classes.has('show-threads'),false);
 });
+test('pending chat isolates destinations and reconciles server IDs and author nonces without matching text',async()=>{
+ const {pendingConversationItems}=await modulePromise;
+ const context={owner:1,workspace:'a',thread:'direct'};
+ const entry=(id,extra={})=>({id,...context,kind:'message',status:'queued',payload:{body:'same text'},createdAt:1,...extra});
+ const items=[entry('first'),entry('second'),entry('other-owner',{owner:2}),entry('other-project',{workspace:'b'}),entry('other-thread',{thread:'group'}),entry('done',{status:'confirmed'}),entry('note',{kind:'note'}),entry('file',{kind:'attachment',status:'blocked',createdAt:2}),entry('paused',{status:'paused',createdAt:3})];
+ assert.deepEqual(pendingConversationItems(items,[],context).map(item=>item.id),['first','second','file','paused']);
+ assert.deepEqual(pendingConversationItems(items,[{id:'server',authorId:1,clientNonce:'first',body:'same text'}],context).map(item=>item.id),['second','file','paused']);
+ assert.equal(pendingConversationItems(items,[{id:'server',authorId:2,clientNonce:'first'}],context).length,4);
+ assert.equal(pendingConversationItems([entry('ack',{resultID:'server'})],[{id:'server',authorId:1}],context).length,0);
+});
