@@ -1,0 +1,13 @@
+{
+  "checkedAt": "2026-09-07T20:40:46.297789Z",
+  "applicationCommit": "40e9495ff62cb55bc79d9500dafb11d656f97c57",
+  "parent": "a288364706d6c9f0ff683003aea39009",
+  "parentStatus": "in_progress",
+  "task": {
+    "id": "2092665a817cc23073154bc1adf06377",
+    "title": "P1 · Безопасно менять тип заполненного поля с предпросмотром",
+    "status": "planned"
+  },
+  "auditMarker": "[audit:constructor-filled-fields-20260907]",
+  "applicationChanged": false
+}
