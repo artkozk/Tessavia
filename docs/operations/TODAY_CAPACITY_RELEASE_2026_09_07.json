@@ -1,0 +1,26 @@
+{
+  "commit": "dbf77d77e684e17889336b3a7542363ea9002bab",
+  "release": "/opt/business-control/releases/20260907-today-capacity-dbf77d7",
+  "sha256": "dbe165e2c33bae1c670c42391bedfaf749f1595c41d0a7bea1b1cc0cfb6600fc",
+  "backup": "/var/lib/business-control/backups/pre-today-capacity-20260907T142258Z",
+  "checkedAt": "2026-09-07T14:24:22.061060Z",
+  "preservedTables": 110,
+  "schema": "059_personal_recurrence_templates.sql",
+  "goTests": "go test ./... passed; internal/app52.748s; web suite repeated after final UI edits",
+  "nodeTests": 228,
+  "assets": "20260907-today-capacity-4",
+  "tasks": [
+    {
+      "id": "40842b928756f5898e49a6ea09629584",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    }
+  ]
+}
