@@ -1,0 +1,30 @@
+{
+  "commit": "441de704305beac460d637830029034e55c38388",
+  "release": "/opt/business-control/releases/20260907-calendar-work-441de70",
+  "sha256": "abe0f33b50479b7d96178b10fbed1c2e1dee2f2d539a16a4e47f5c1c01f21fa2",
+  "backup": "/var/lib/business-control/backups/pre-calendar-work-20260907T080502Z",
+  "checkedAt": "2026-09-07T08:07:33.884696Z",
+  "preservedTables": 104,
+  "addedTables": 2,
+  "nodeTests": 213,
+  "goTests": "go test ./... passed",
+  "productionCalendarApi": "200 with expected shape; private content omitted",
+  "tasks": [
+    {
+      "id": "b87ad8e45df20a57217a4e02e4eb8423",
+      "status": "completed"
+    },
+    {
+      "id": "40842b928756f5898e49a6ea09629584",
+      "status": "in_progress"
+    },
+    {
+      "id": "a288364706d6c9f0ff683003aea39009",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    }
+  ]
+}

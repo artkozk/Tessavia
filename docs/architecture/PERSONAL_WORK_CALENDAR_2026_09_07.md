@@ -109,3 +109,13 @@ owner_id берётся из сессии, а не параметра клиен
 закрываются по одному этому выпуску. Миграция проверяется отдельным
 verify-calendar-preservation.py: две новые пустые таблицы, ровно одна запись
 миграции, все старые схемы и строки совпадают с резервной копией.
+
+## Фактический выпуск
+
+07.09.2026: commit 441de704305beac460d637830029034e55c38388 опубликован и запущен
+на https://control.e-rd.ru. Release 20260907-calendar-work-441de70, SHA256
+abe0f33b50479b7d96178b10fbed1c2e1dee2f2d539a16a4e47f5c1c01f21fa2.
+Backup /var/lib/business-control/backups/pre-calendar-work-20260907T080502Z.
+Dry run: 104 прежние таблицы сохранены, две добавлены, integrity/FK успешны.
+Проверки версии модуля, CSS, service worker, HTTPS, службы и nginx прошли.
+Полное свидетельство: docs/operations/PERSONAL_CALENDAR_RELEASE_2026_09_07.json.
