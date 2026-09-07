@@ -31,3 +31,15 @@ test('revocation clears an open conversation, closes its settings and selects on
  vm.runInContext(loader,ctx);await ctx.loadChatThread('private',true);
  assert.equal(state.chatMessages.length,0);assert.equal(state.chatPins.length,0);assert.equal(state.chatDigests.size,0);assert.equal(closed,true);assert.equal(stopped,true);assert.equal(saved,'keep draft');assert.equal(selected,'general');assert.match(main.innerHTML,/Доступ к разговору закрыт/);
 });
+
+
+test('filtered attachment and favorite views do not mark the entire conversation as read',async()=>{
+ for(const mode of ['files','favorites','all']) {
+  const state={activeChatThreadId:'thread',chatSearch:'',chatMessages:[],view:'chat',chatFilesOnly:mode==='files',chatFavoritesOnly:mode==='favorites',chatDraftText:'keep draft'},requests=[];
+  const ctx=vm.createContext({state,URLSearchParams,JSON,document:{visibilityState:'visible',querySelector:()=>null,querySelectorAll:()=>[]},$:()=>null,captureProjectContext:()=>1,isProjectContextCurrent:()=>true,renderNav(){},renderChat(){},toast(){},api:async path=>{requests.push(path);return path.includes('/history?')?{messages:[message('a')],hasMore:false,nextBefore:'a',nextAfter:'a'}:path==='/api/chat/threads'?[{id:'thread',unreadCount:4}]:[];}});
+  vm.runInContext(loader,ctx);await ctx.loadChatThread('thread');
+  assert.equal(requests.some(path=>path.endsWith('/read')),mode==='all');
+  assert.equal(requests.some(path=>path.includes('attachments=true')),mode==='files');
+  assert.equal(state.chatDraftText,'keep draft');
+ }
+});

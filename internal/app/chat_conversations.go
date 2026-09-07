@@ -107,6 +107,7 @@ func (s *Server) createChatConversation(w http.ResponseWriter, r *http.Request, 
 }
 
 type chatHistoryOptions struct {
+	Attachments                   bool
 	Before, Query, Through, After string
 	Limit                         int
 }
@@ -123,6 +124,11 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 	if !s.requireChatMember(w, r, thread) {
 		return
 	}
+	attachments := r.URL.Query().Get("attachments")
+	if attachments != "" && attachments != "true" && attachments != "false" {
+		writeError(w, 400, "Некорректный фильтр вложений")
+		return
+	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	before := r.URL.Query().Get("before")
 	through := r.URL.Query().Get("around")
@@ -131,7 +137,7 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "Слишком длинный поисковый запрос")
 		return
 	}
-	if after != "" && (before != "" || through != "" || query != "" || r.URL.Query().Get("favorites") == "true") {
+	if after != "" && (before != "" || through != "" || query != "" || attachments == "true" || r.URL.Query().Get("favorites") == "true") {
 		writeError(w, 400, "Продолжение вперёд нельзя совмещать с поиском и другими границами")
 		return
 	}
@@ -145,7 +151,7 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	messages, err := s.listChatMessages(r.Context(), thread, currentUser(r).ID, r.URL.Query().Get("favorites") == "true", chatHistoryOptions{Before: before, Query: query, Through: through, After: after, Limit: 51})
+	messages, err := s.listChatMessages(r.Context(), thread, currentUser(r).ID, r.URL.Query().Get("favorites") == "true", chatHistoryOptions{Attachments: attachments == "true", Before: before, Query: query, Through: through, After: after, Limit: 51})
 	if err != nil {
 		writeError(w, 500, "Не удалось загрузить историю")
 		return
@@ -164,7 +170,7 @@ func (s *Server) handleChatHistory(w http.ResponseWriter, r *http.Request) {
 	if len(page.Messages) > 0 {
 		page.NextBefore = page.Messages[0].ID
 		page.NextAfter = page.Messages[len(page.Messages)-1].ID
-		if after == "" && query == "" && r.URL.Query().Get("favorites") != "true" {
+		if after == "" && query == "" && attachments != "true" && r.URL.Query().Get("favorites") != "true" {
 			err = s.store.db.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM chat_messages WHERE thread_id=? AND archived_at IS NULL AND (created_at,id) > (SELECT created_at,id FROM chat_messages WHERE id=? AND thread_id=?))`, thread, page.NextAfter, thread).Scan(&page.HasNewer)
 			if err != nil {
 				writeError(w, 500, "Не удалось проверить продолжение истории")

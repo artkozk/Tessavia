@@ -245,6 +245,9 @@ func (s *Server) listChatMessages(ctx context.Context, threadID string, userID i
 	limit, query, ascending := 200, "", false
 	if len(options) > 0 {
 		limit, query = options[0].Limit, strings.ToLower(options[0].Query)
+		if options[0].Attachments {
+			where += " AND m.attachment_id IS NOT NULL"
+		}
 		if options[0].After != "" {
 			ascending = true
 			where += " AND (m.created_at,m.id) > (SELECT created_at,id FROM chat_messages WHERE id=? AND thread_id=?)"

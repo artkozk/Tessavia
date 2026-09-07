@@ -107,6 +107,15 @@ func TestReminderDigestsSchedulePrivacyGroupingAndProjectFilter(t *testing.T) {
 	if count != 2 {
 		t.Fatalf("digest missing or duplicated: %d", count)
 	}
+	// Delivery uses a fixed civil date; inbox freshness uses SQLite's real clock.
+	// Check the scheduled expiry before moving only the fixture validity into the live inbox window.
+	var dailyExpiry string
+	if err = store.db.QueryRow(`SELECT valid_until FROM reminder_digest_sources WHERE digest_kind='daily'`).Scan(&dailyExpiry); err != nil || dailyExpiry != "2026-09-07T18:00:00Z" {
+		t.Fatalf("daily expiry: %s %v", dailyExpiry, err)
+	}
+	if _, err = store.db.Exec(`UPDATE reminder_digest_sources SET valid_until=datetime('now','+1 day')`); err != nil {
+		t.Fatal(err)
+	}
 	var page notificationInbox
 	requestJSON(t, owner, http.MethodGet, server.URL+"/api/notifications/inbox?status=unread", nil, http.StatusOK, &page)
 	if page.UnreadCount != 2 || len(page.Items) != 2 {
@@ -133,6 +142,16 @@ func TestReminderDigestsSchedulePrivacyGroupingAndProjectFilter(t *testing.T) {
 		t.Fatal("digest leaked to another account")
 	}
 
+	if _, err = store.db.Exec(`UPDATE reminder_digest_sources SET valid_until=datetime('now','-1 second')`); err != nil {
+		t.Fatal(err)
+	}
+	requestJSON(t, owner, http.MethodGet, server.URL+"/api/notifications/inbox?status=unread", nil, http.StatusOK, &page)
+	if page.UnreadCount != 0 || len(page.Items) != 0 {
+		t.Fatal("expired digest remained a live alert")
+	}
+	if _, err = store.db.Exec(`UPDATE reminder_digest_sources SET valid_until=datetime('now','+1 day')`); err != nil {
+		t.Fatal(err)
+	}
 	payload["dailyDigestEnabled"] = false
 	payload["weeklyDigestEnabled"] = false
 	payload["expectedUpdatedAt"] = saved.UpdatedAt
