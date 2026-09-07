@@ -1,0 +1,26 @@
+{
+  "commit": "b365ad79335e0d95f25d2b6fa89e296e04a49e76",
+  "release": "/opt/business-control/releases/20260907-chat-personal-pins-b365ad7",
+  "sha256": "2798952a2c6bfefc185346f67682445bd2ad5659c802e9ba67f17a7b2adf8c4a",
+  "backup": "/var/lib/business-control/backups/pre-chat-personal-pins-20260907T160600Z",
+  "checkedAt": "2026-09-07T16:07:09.985953Z",
+  "preservedTables": 111,
+  "schema": "061_chat_personal_pins.sql",
+  "tables": 112,
+  "nodeTests": 228,
+  "assets": "20260907-chat-personal-pins-2",
+  "tasks": [
+    {
+      "id": "e402d353a684b074f852fa1fd277d895",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    }
+  ]
+}
