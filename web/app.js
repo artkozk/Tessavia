@@ -1,12 +1,12 @@
-import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-chat-forward-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-chat-forward-1';
+import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-chat-forward-2';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-chat-forward-2';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-chat-forward-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-chat-forward-2';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-chat-forward-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-chat-forward-2';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-chat-forward-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-chat-forward-2';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
