@@ -1,0 +1,64 @@
+{
+  "commit": "843114abf07778b004e4c4f7f0bdf337a8c8fd77",
+  "release": "/opt/business-control/releases/20260907-questions-843114a",
+  "sha256": "2dd8fa174d1a6f78ed7c4987312954a59122c478e5bd6eaf92b28d77e05f871d",
+  "backup": "/var/lib/business-control/backups/pre-questions-20260907T064540Z",
+  "checkedAt": "2026-09-07T07:16:55.378248Z",
+  "scenarioCounts": {
+    "passed": 32,
+    "partial": 15,
+    "failed": 6,
+    "not_verified": 2
+  },
+  "tasks": [
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    },
+    {
+      "id": "45bbc1b549a12bb12b1c0ab92cf23a84",
+      "status": "in_progress"
+    },
+    {
+      "id": "e402d353a684b074f852fa1fd277d895",
+      "status": "in_progress"
+    },
+    {
+      "id": "3d9a860505030ea14061633f22b115fd",
+      "status": "in_progress"
+    },
+    {
+      "id": "367c7dcd4dc87dc1847ae53dd5f56d0c",
+      "status": "in_progress"
+    },
+    {
+      "id": "be5f232ab56aa47ae05bada70c13388d",
+      "status": "planned"
+    },
+    {
+      "id": "a884188bdc07d57ebe3c48987d208815",
+      "status": "planned"
+    },
+    {
+      "id": "07a3522ffe51ab9bd7187a4a2a75c504",
+      "status": "planned"
+    },
+    {
+      "id": "eb3e4591f3bf0f22989bc8c947ab6b54",
+      "status": "postponed"
+    },
+    {
+      "id": "54f7cd0225c5ef0f5eba56e3ffb71e51",
+      "status": "in_progress"
+    },
+    {
+      "id": "7f24e7e1da0d0376dcddc25c335f2296",
+      "title": "Не блокировать решение команды аккаунтами из других пространств",
+      "status": "completed"
+    }
+  ]
+}
