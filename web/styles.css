@@ -5326,3 +5326,8 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .chat-list-search input:focus { outline: none; box-shadow: none; }
 
 .chat-files-view .chat-file strong { white-space: normal; overflow-wrap: anywhere; display: block; }
+
+.chat-archive-folder { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 10px; color: var(--muted); border: 0; border-radius: 8px; background: transparent; text-align: left; }
+.chat-archive-folder:hover { color: var(--accent); background: var(--surface); }
+.chat-archive-folder svg { width: 18px; height: 18px; flex-shrink: 0; }
+.chat-archive-folder span { margin-left: auto; font-size: 12px; }

@@ -309,6 +309,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/chat/threads/{id}/history", s.requireAuth(http.HandlerFunc(s.handleChatHistory)))
 	s.mux.Handle("GET /api/chat/threads/{id}/group", s.requireAuth(http.HandlerFunc(s.handleChatGroup)))
 	s.mux.Handle("PATCH /api/chat/threads/{id}/group", s.requireAuth(http.HandlerFunc(s.handleChatGroup)))
+	s.mux.Handle("PUT /api/chat/threads/{id}/personal-archive", s.requireAuth(http.HandlerFunc(s.handleChatPersonalArchive)))
 	s.mux.Handle("PUT /api/chat/threads/{id}/personal-pin", s.requireAuth(http.HandlerFunc(s.handleChatPersonalPin)))
 	s.mux.Handle("GET /api/chat/threads/{id}/pins", s.requireAuth(http.HandlerFunc(s.handleChatPins)))
 	s.mux.Handle("PUT /api/chat/threads/{id}/pins", s.requireAuth(http.HandlerFunc(s.handleChatPins)))

@@ -69,3 +69,16 @@ test('conversation lookup matches name tokens without changing order or searchin
  assert.equal(filterConversations(threads,' ',title),threads);
  assert.deepEqual(threads.map(t=>t.id),['pinned','dm','record']);
 });
+
+
+test('archive folder preserves order and automatic selection skips archived conversations',async()=>{
+ const {conversationFolder,chooseConversation}=await modulePromise;
+ const threads=[{id:'archived-pin',archived:true,pinned:true},{id:'active-pin',pinned:true},{id:'active'},{id:'archive',archived:true}];
+ assert.deepEqual(conversationFolder(threads).map(t=>t.id),['active-pin','active']);
+ assert.deepEqual(conversationFolder(threads,true).map(t=>t.id),['archived-pin','archive']);
+ const values=new Map(),storage={getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+ assert.equal(chooseConversation(storage,1,'project',threads),'active-pin');
+ assert.equal(chooseConversation(storage,1,'project',threads,'archived-pin'),'archived-pin');
+ assert.equal(chooseConversation(storage,1,'project',threads),'archived-pin');
+ assert.equal(chooseConversation(storage,2,'project',conversationFolder(threads,true)),'');
+});

@@ -1,3 +1,6 @@
+export function conversationFolder(threads, archived=false) {
+  return threads.filter(thread=>!!thread.archived===archived);
+}
 export function filterConversations(threads, query, titleForThread) {
   const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase('ru-RU').replaceAll('ё','е');
   const words=normalize(query).trim().split(/\s+/).filter(Boolean);
@@ -22,7 +25,7 @@ export function chooseConversation(storage,owner,workspace,threads,current='') {
   let saved='';
   try { saved=storage.getItem(key)||''; } catch (_) {}
   const allowed=id=>threads.some(thread=>thread.id===id);
-  const selected=allowed(current)?current:allowed(saved)?saved:threads[0]?.id||'';
+  const selected=allowed(current)?current:allowed(saved)?saved:threads.find(thread=>!thread.archived)?.id||'';
   try { if(selected)storage.setItem(key,selected);else storage.removeItem(key); } catch (_) {}
   return selected;
 }
