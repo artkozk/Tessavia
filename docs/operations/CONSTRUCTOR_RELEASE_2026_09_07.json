@@ -1,0 +1,24 @@
+{
+  "commit": "b8e48d9de2cd7573ff58c6d1f12d7a1c39f52612",
+  "release": "/opt/business-control/releases/20260907-constructor-b8e48d9",
+  "sha256": "7c0d9881f032cdd5a846b8fa0881532e6f62d2fd106e2b55befa8636154af8c9",
+  "backup": "/var/lib/business-control/backups/pre-constructor-20260907T093849Z",
+  "checkedAt": "2026-09-07T09:39:57.294293Z",
+  "preservedTables": 106,
+  "nodeTests": 217,
+  "goTests": "go test ./... passed",
+  "tasks": [
+    {
+      "id": "a288364706d6c9f0ff683003aea39009",
+      "status": "in_progress"
+    },
+    {
+      "id": "45bbc1b549a12bb12b1c0ab92cf23a84",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    }
+  ]
+}
