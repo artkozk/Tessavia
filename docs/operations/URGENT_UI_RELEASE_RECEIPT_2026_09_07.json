@@ -1,0 +1,18 @@
+{
+  "commit": "fd25e02f0f85c186bdc9cd5cc354364d864f21e2",
+  "release": "/opt/business-control/releases/20260907-urgent-ui-fd25e02",
+  "sha256": "3c0a459529059bc1f8799aa59385d236797c428450b6437f03ab58804697b1d9",
+  "backup": "/var/lib/business-control/backups/pre-urgent-ui-20260907T051711Z",
+  "taskId": "1db98ed1eb695ba4e4c550fdacd36d69",
+  "status": "in_progress",
+  "proofVerified": true,
+  "fixed": [
+    "calendar-workspace",
+    "board-card-height",
+    "work-filter-position"
+  ],
+  "open": [
+    "assignee-report-reproduction",
+    "reported-admin-role"
+  ]
+}
