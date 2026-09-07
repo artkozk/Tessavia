@@ -23,9 +23,9 @@ export function todayPlanGroups(plans,summary){
   return {today:group('today'),events:group('events'),overdue:group('overdue'),upcoming:group('upcoming'),completed:group('completed'),focus:summary?.focus.title?{...(map.get(summary.focus.planId)||{}),id:summary.focus.planId,title:summary.focus.title,status:summary.focus.status}:map.get(summary?.focus.planId)||null};
 }
 
-export function createPersonalTodayUI({state,api,escapeHTML:esc,icon,renderPersonal,renderPlanRow,formatMinutes,openPlan,openRecurrence,openProject,togglePlan,openDay,openModal,closeDialog,bindDraft,clearDraft,flushDrafts,toast}){
+export function createPersonalTodayUI({state,api,escapeHTML:esc,icon,renderPersonal,renderPlanRow,formatMinutes,openPlan,openRecurrence,refreshPersonal,openProject,togglePlan,openDay,openModal,closeDialog,bindDraft,clearDraft,flushDrafts,toast}){
   const q=(selector,root=document)=>root.querySelector(selector);
-  let cached=null,request=null,generation=0;
+  let cached=null,request=null,generation=0,refreshKey='';
   const zone=()=>Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';
   const current=()=>cached?.owner===state.me?.id?cached.value:null;
   const hasNoProjectContext=()=>{const value=current();return !!value&&!(value.projectWork?.total||value.projectAttention?.total);};
@@ -37,6 +37,16 @@ export function createPersonalTodayUI({state,api,escapeHTML:esc,icon,renderPerso
     try{
       const value=await read(owner,`/api/personal/day?timezone=${encodeURIComponent(zone())}`);
       if(owner!==state.me?.id||version!==generation)return;
+      const available=new Set([...(state.personal?.plans||[]),...(value.recurrences||[])].map(item=>item.id));
+      const missing=[...new Set(['today','events','upcoming','overdue','completed'].flatMap(key=>value[key]||[]).concat(value.focus?.planId||[]))].filter(id=>id&&!available.has(id));
+      if(refreshPersonal&&missing.length){
+        const key=owner+':'+missing.sort().join(',');
+        if(refreshKey===key)throw new Error('Дела дня изменились. Обновите расписание.');
+        refreshKey=key;
+        await refreshPersonal();
+        return;
+      }
+      refreshKey='';
       cached={owner,value};
     }catch(error){if(owner===state.me?.id&&version===generation)cached={owner,error:error.message};}
     finally{if(request===entry)request=null;if(owner===state.me?.id&&version===generation&&state.view==='personal'&&state.personalTab==='today'&&!state.pageLayoutDraft&&!state.layoutDraft)renderPersonal();}
@@ -114,7 +124,7 @@ export function createPersonalTodayUI({state,api,escapeHTML:esc,icon,renderPerso
   function bind(){
     const root=q('.today-focus');if(!root)return;
     if(!cached||cached.owner!==state.me?.id)void load();
-    document.querySelectorAll('[data-today-retry]').forEach(button=>button.onclick=()=>{invalidate();void load();});
+    document.querySelectorAll('[data-today-retry]').forEach(button=>button.onclick=()=>{refreshKey='';invalidate();void load();});
     document.querySelectorAll('[data-today-open]').forEach(button=>button.onclick=()=>{
       const id=button.dataset.todayOpen,forecast=current()?.recurrences?.find(item=>item.id===id);
       if(forecast)return openRecurrence(forecast);

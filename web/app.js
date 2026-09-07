@@ -1,13 +1,13 @@
-import { createChatGroupUI } from './chat-groups.js?v=20260907-today-capacity-3';
-import { pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-today-capacity-3';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-today-capacity-3';
+import { createChatGroupUI } from './chat-groups.js?v=20260907-today-capacity-4';
+import { pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-today-capacity-4';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-today-capacity-4';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-today-capacity-3';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-today-capacity-4';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-today-capacity-3';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-today-capacity-4';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute } from './personal-navigation.js?v=20260907-today-capacity-3';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-today-capacity-3';
+import { personalRoute } from './personal-navigation.js?v=20260907-today-capacity-4';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-today-capacity-4';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -18,7 +18,7 @@ import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260907-today-capacity-3';
+import { createOutboxUI } from './outbox-ui.js?v=20260907-today-capacity-4';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -2606,7 +2606,7 @@ const personalWaitingUI=createPersonalWaitingUI({state,api,escapeHTML,icon,openM
 const personalRemindersUI=createPersonalRemindersUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,renderPersonal,openSource:openPersonalReminderSource,openHabit:openHabitReminderSource,openPlans:()=>navigateToView('personal',{personalTab:'plans'}),refreshNotifications:loadNotificationInbox});
 async function openPersonalReminderSource(id){const owner=state.me?.id;await navigateToView('personal',{personalTab:'today'});if(owner!==state.me?.id)return;await loadPersonal({force:true});if(owner===state.me?.id)openPersonalPlanDetails(id);}
 const reminderSettingsUI=createReminderSettingsUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
-const personalTodayUI=createPersonalTodayUI({state,api,escapeHTML,icon,renderPersonal,renderPlanRow,formatMinutes,openPlan:openPersonalPlanDetails,openRecurrence:plan=>personalCalendarUI.openRecurrence(plan.id,plan),openProject:(id,workspaceId)=>openPersonalReviewSource({sourceKind:'record',sourceId:id,workspaceId}),togglePlan:togglePersonalPlan,openDay:openDayWorkspace,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
+const personalTodayUI=createPersonalTodayUI({state,api,escapeHTML,icon,renderPersonal,renderPlanRow,formatMinutes,openPlan:openPersonalPlanDetails,openRecurrence:plan=>personalCalendarUI.openRecurrence(plan.id,plan),refreshPersonal:async()=>{await loadPersonal({force:true});if(state.personalError)throw new Error(state.personalError);},openProject:(id,workspaceId)=>openPersonalReviewSource({sourceKind:'record',sourceId:id,workspaceId}),togglePlan:togglePersonalPlan,openDay:openDayWorkspace,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
 const firstUseUI = createFirstUseUI({state,api,escapeHTML,icon,activeWorkspace,canConfigureWorkspace,openModal,closeDialog:requestDialogClose,toast,
   actions:{capture:openPersonalCapture,inbox:openPersonalInbox,teams:openTeamsDirectory,board:openCollectionCreateDialog,menu:openNavigationSettings,page:openWorkspacePageEditor},
 });

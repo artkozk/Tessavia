@@ -57,3 +57,15 @@ test('forecasts resolve in Today without entering real plan storage or exposing 
  assert.ok(!ctx.todayHiddenBlocks(data,summary,false,false).includes('plans'));
  state.me={id:2};opened=null;button.onclick();assert.equal(opened,null);assert.equal(realCalls,0);
 });
+
+
+test('an occurrence materialized in another tab refreshes personal sources before replacing the forecast',async()=>{
+ const state={me:{id:1},view:'personal',personalTab:'today',personal:{plans:[]}},summary={focus:{},upcoming:['new-real'],recurrences:[]};
+ let refreshes=0,ui;
+ const ctx=vm.createContext({Intl,Date,encodeURIComponent,setInterval(){},document:{querySelector:s=>s==='.today-focus'?{}:null,querySelectorAll:()=>[]}});
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'personal-today.js'),'utf8').replaceAll('export function','function'),ctx);
+ ui=ctx.createPersonalTodayUI({state,api:()=>Promise.resolve(summary),escapeHTML:String,icon:()=>'',renderPersonal(){},refreshPersonal:async()=>{refreshes++;state.personal.plans=[{id:'new-real',title:'Created elsewhere',status:'planned'}];ui.invalidate();},renderPlanRow:plan=>plan.title});
+ ui.bind();await new Promise(setImmediate);assert.equal(refreshes,1);
+ ui.bind();await new Promise(setImmediate);assert.equal(refreshes,1);
+ assert.match(ui.renderPlans({plans:state.personal.plans,links:[]}),/Created elsewhere/);
+});
