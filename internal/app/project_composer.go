@@ -22,6 +22,7 @@ type ProjectNavigation struct {
 }
 
 type WorkspacePage struct {
+	App          bool     `json:"app"`
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
 	CollectionID string   `json:"collectionId"`
@@ -105,7 +106,7 @@ func (s *Server) navigationKeys(ctx context.Context, workspaceID string) (map[st
 }
 
 func (s *Server) handleListWorkspacePages(w http.ResponseWriter, r *http.Request) {
-	query := `SELECT id, name, COALESCE(collection_id,''), record_type, record_types_json, status_filter, owner_filter, view_mode, fields_json, sort_order, archived_at IS NOT NULL FROM workspace_pages WHERE workspace_id = ?`
+	query := `SELECT id, name, COALESCE(collection_id,''), record_type, record_types_json, status_filter, owner_filter, view_mode, fields_json, sort_order, archived_at IS NOT NULL, EXISTS(SELECT 1 FROM page_app_definitions a WHERE a.page_id=workspace_pages.id) FROM workspace_pages WHERE workspace_id = ?`
 	if r.URL.Query().Get("includeArchived") != "true" {
 		query += ` AND archived_at IS NULL`
 	}
@@ -119,7 +120,7 @@ func (s *Server) handleListWorkspacePages(w http.ResponseWriter, r *http.Request
 	for rows.Next() {
 		var page WorkspacePage
 		var fields, types string
-		if err := rows.Scan(&page.ID, &page.Name, &page.CollectionID, &page.RecordType, &types, &page.StatusFilter, &page.OwnerFilter, &page.ViewMode, &fields, &page.SortOrder, &page.Archived); err != nil {
+		if err := rows.Scan(&page.ID, &page.Name, &page.CollectionID, &page.RecordType, &types, &page.StatusFilter, &page.OwnerFilter, &page.ViewMode, &fields, &page.SortOrder, &page.Archived, &page.App); err != nil {
 			writeError(w, 500, "Не удалось прочитать страницу")
 			return
 		}

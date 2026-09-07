@@ -1,24 +1,25 @@
-import { createChatGroupUI } from './chat-groups.js?v=20260907-usability-recovery-5';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-usability-recovery-5';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260907-usability-recovery-5';
+import { createPageAppUI } from './page-apps.js?v=20260908-page-apps-4';
+import { createChatGroupUI } from './chat-groups.js?v=20260908-page-apps-4';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260908-page-apps-4';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260908-page-apps-4';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-usability-recovery-5';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260908-page-apps-4';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-usability-recovery-5';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260908-page-apps-4';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute } from './personal-navigation.js?v=20260907-usability-recovery-5';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-usability-recovery-5';
+import { personalRoute } from './personal-navigation.js?v=20260908-page-apps-4';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260908-page-apps-4';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260907-usability-recovery-5';
+import { createLifeMapUI } from './life-map.js?v=20260908-page-apps-4';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260907-usability-recovery-5';
+import { createOutboxUI } from './outbox-ui.js?v=20260908-page-apps-4';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1206,7 +1207,9 @@ offlineOutbox = createOutboxUI({
 });
 }
 
+let pageAppUI;
 async function bootstrap() {
+  pageAppUI=createPageAppUI({state,api,escapeHTML,icon,$,$$,openModal,requestDialogClose,toast,canConfigureWorkspace,reloadPages:async()=>{state.workspacePages=await api('/api/workspace/pages?includeArchived=true');renderNav();},navigate:navigateToView,openRecordPageEditor:()=>openWorkspacePageEditor()});
   initializeOfflineOutbox();
   bindGlobalEvents();
   enhanceSelects(document);
@@ -2307,7 +2310,7 @@ function navCount(key) {
   if (key === 'work') return state.records.filter((record) => isWorkRecord(record) && isActiveRecord(record)).length;
   if (key === 'collections') return state.collections.length;
   if (key === 'chat') return state.chatThreads.reduce((sum, thread) => sum + thread.unreadCount, 0);
-  if (key.startsWith('page:')) return workspacePageRecords(state.workspacePages.find((page) => `page:${page.id}` === key), '').length;
+  if (key.startsWith('page:')) {const page=state.workspacePages.find(page=>`page:${page.id}`===key);return page?.app?'':workspacePageRecords(page,'').length;}
   return '';
 }
 
@@ -8694,6 +8697,7 @@ async function openInterfacePresetsDialog(scope = state.interfacePresetScope, qu
     }
     $('[data-preset-menu]', dialog).addEventListener('click', () => openNavigationSettings());
     $('[data-new-preset]', dialog).addEventListener('click', () => openCreateInterfacePresetDialog());
+    $('.preset-library-toolbar',dialog).insertAdjacentHTML('beforeend','<button type="button" class="secondary" data-full-page-presets>Наборы страниц и сценариев</button>');$('[data-full-page-presets]',dialog).onclick=()=>pageAppUI.library();
     $$('[data-preset-scope]', dialog).forEach((button) => button.addEventListener('click', () => openInterfacePresetsDialog(button.dataset.presetScope)));
     $$('[data-open-preset]', dialog).forEach((button) => button.addEventListener('click', () => openInterfacePresetDetail(button.dataset.openPreset, scope)));
     $('.preset-search', dialog).addEventListener('submit', (event) => { event.preventDefault(); openInterfacePresetsDialog(scope, new FormData(event.currentTarget).get('query').trim()); });
@@ -8797,7 +8801,7 @@ function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
   let body = '';
   if (tab === 'menu') body = `${deviceSelector(device)}<form id="navigation-personal-form"><div class="composer-rows">${items.map((item) => `<div class="composer-menu-row" data-menu-key="${escapeHTML(item.key)}"><button type="button" class="drag-handle" data-reorder-handle aria-label="Переместить: ${escapeHTML(item.label)}" title="Переместить">${icon('grip')}</button><label class="check"><input type="checkbox" name="visibleItem" value="${escapeHTML(item.key)}" ${!hidden.has(item.key) && !hiddenGroups.has(item.group) ? 'checked' : ''}><span>${escapeHTML(item.label)}</span></label></div>`).join('')}</div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить меню ${device === 'mobile' ? 'телефона' : 'ПК'}</button><button type="button" class="secondary" data-reset-nav>По умолчанию</button></div></form>`;
   if (tab === 'modules') body = `<form id="project-modules-form"><div class="composer-module-grid">${navItems.filter(([key]) => key !== 'personal').map(([key, label, iconName]) => `<label class="check module-option"><input type="checkbox" name="module" value="${key}" ${state.projectNavigation.enabledViews.includes(key) ? 'checked' : ''} ${admin ? '' : 'disabled'}><span>${icon(iconName)} ${escapeHTML(label)}</span></label>`).join('')}</div>${admin ? '<div class="form-actions"><button type="submit" class="primary">Сохранить разделы проекта</button></div>' : '<p class="composer-access-note">Состав разделов настраивает администратор проекта.</p>'}</form>`;
-  if (tab === 'pages') body = `${admin ? `<button type="button" class="primary" data-new-page>${icon('plus')} Создать страницу</button>` : ''}<div class="composer-page-list">${state.workspacePages.map((page) => `<article><div><strong>${escapeHTML(page.name)}</strong><small>${page.archived ? 'В архиве' : page.collectionId ? escapeHTML(state.collections.find((collection) => collection.id === page.collectionId)?.name || 'Доска недоступна') : 'Карточки проекта'} · ${page.viewMode === 'board' ? 'Доска' : 'Список'}</small></div>${admin ? `<button type="button" class="icon-button" data-configure-page="${page.id}" aria-label="Настроить страницу ${escapeHTML(page.name)}" title="Настроить">${icon('edit')}</button><button type="button" class="icon-button" data-archive-page="${page.id}" aria-label="${page.archived ? 'Восстановить' : 'Архивировать'} страницу ${escapeHTML(page.name)}" title="${page.archived ? 'Восстановить' : 'Архивировать'}">${icon(page.archived ? 'rotate' : 'archive')}</button>` : ''}</article>`).join('') || '<p class="composer-access-note">Своих страниц пока нет.</p>'}</div>`;
+  if (tab === 'pages') body = `${admin ? `<button type="button" class="primary" data-new-page>${icon('plus')} Создать страницу</button>` : ''}<div class="composer-page-list">${state.workspacePages.map((page) => `<article><div><strong>${escapeHTML(page.name)}</strong><small>${page.archived ? 'В архиве' : page.app ? 'Пользовательский сценарий' : page.collectionId ? escapeHTML(state.collections.find((collection) => collection.id === page.collectionId)?.name || 'Доска недоступна') : 'Карточки проекта'} · ${page.app ? 'Своя страница' : page.viewMode === 'board' ? 'Доска' : 'Список'}</small></div>${admin ? `<button type="button" class="icon-button" data-configure-page="${page.id}" aria-label="Настроить страницу ${escapeHTML(page.name)}" title="Настроить">${icon('edit')}</button><button type="button" class="icon-button" data-archive-page="${page.id}" aria-label="${page.archived ? 'Восстановить' : 'Архивировать'} страницу ${escapeHTML(page.name)}" title="${page.archived ? 'Восстановить' : 'Архивировать'}">${icon(page.archived ? 'rotate' : 'archive')}</button>` : ''}</article>`).join('') || '<p class="composer-access-note">Своих страниц пока нет.</p>'}</div>`;
   $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>Меню и страницы</h2><p>${tab === 'menu' ? 'Ваше меню, только для вас' : 'Общие настройки этого проекта'}</p></div><button type="button" class="icon-button" data-close-composer aria-label="Закрыть">${icon('x')}</button></header><div class="segmented composer-tabs" role="tablist" aria-label="Настройка меню">${tabs.map(([key, label]) => `<button type="button" class="segment ${key === tab ? 'active' : ''}" role="tab" aria-selected="${key === tab}" data-composer-tab="${key}">${label}</button>`).join('')}</div>${body}<footer class="composer-shortcuts"><button type="button" class="text-button" data-composer-layout>${icon('sliders')} Настроить страницу</button><button type="button" class="text-button" data-composer-templates>${icon('settings')} Содержимое карточек</button></footer></div>`;
   $('[data-close-composer]', dialog).addEventListener('click', closeWorkspaceDialog);
   $$('[data-composer-tab]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings(button.dataset.composerTab, device)));
@@ -8836,7 +8840,7 @@ function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
       } catch (error) { button.disabled = false; toast(error.message, true); }
     });
   }
-  $('[data-new-page]', dialog)?.addEventListener('click', () => openWorkspacePageEditor());
+  const newPage=$('[data-new-page]',dialog);if(newPage){newPage.addEventListener('click',()=>pageAppUI.create());newPage.insertAdjacentHTML('afterend','<button type="button" class="secondary" data-page-app-library>Наборы страниц</button>');$('[data-page-app-library]',dialog).onclick=()=>pageAppUI.library();}
   $$('[data-configure-page]', dialog).forEach((button) => button.addEventListener('click', () => openWorkspacePageEditor(state.workspacePages.find((page) => page.id === button.dataset.configurePage))));
   $$('[data-archive-page]', dialog).forEach((button) => button.addEventListener('click', async () => {
     const page = state.workspacePages.find((item) => item.id === button.dataset.archivePage);
@@ -8848,6 +8852,7 @@ function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
 }
 
 function openWorkspacePageEditor(page = null) {
+  if(page?.app)return pageAppUI.edit(page);
   const dialog = $('#workspace-dialog');
   if (!discardComposerChanges(dialog)) return;
   const value = page || { name: '', collectionId: '', recordType: '', statusFilter: 'active', ownerFilter: 'all', viewMode: 'list', fields: ['description', 'owner', 'status', 'due'] };
@@ -8905,6 +8910,7 @@ function workspacePageRecords(page, search = state.pageSearch) {
 function renderWorkspacePage() {
   const page = state.workspacePages.find((item) => `page:${item.id}` === state.view && !item.archived);
   if (!page) { $('#main-content').innerHTML='<div class="guided-empty"><h2>Страница недоступна</h2><button type="button" class="secondary" data-page-library>Мои страницы</button></div>'; $('[data-page-library]').addEventListener('click',()=>openNavigationSettings('pages')); return; }
+  if(page.app){pageAppUI.render(page);return;}
   const records = workspacePageRecords(page);
   const collection = state.collections.find((item) => item.id === page.collectionId);
   const selectedTypes = workspacePageTypes(page);
@@ -9196,6 +9202,7 @@ function leavePageLayoutEditor() {
 }
 
 function startPageLayoutEditor(device = interfaceDevice()) {
+  const appPage=state.workspacePages.find(page=>page.app&&state.view===`page:${page.id}`);if(appPage){if(canConfigureWorkspace())pageAppUI.edit(appPage);else toast('Общую страницу настраивает администратор пространства',true);return;}
   if (!leavePageLayoutEditor()) return;
   $('.page-layout-editor')?.remove();
   $$('.page-block-tools').forEach((node) => node.remove());
@@ -9289,6 +9296,7 @@ async function editPageBlockTitle(block,node) {
 
 function applyPageLayout() {
   const root = $('#main-content');
+  if(state.workspacePages?.some(page=>page.app&&state.view===`page:${page.id}`))return;
   if (!state.me || !root || state.layoutDraft || $('.reorder-dragging, .page-block-resizing', root)) return;
   if (state.pageLayoutDraft && state.pageLayoutDraft.key !== pageLayoutKey()) { state.pageLayoutDraft = null; $('.page-layout-editor', root)?.remove(); }
   applyInterfaceLayout();
@@ -9872,6 +9880,5 @@ function bindBlockResize(node, block) {
     update(current.span+(desktop?(event.key==='ArrowLeft'?-1:event.key==='ArrowRight'?1:0):0),(current.height||node.clientHeight)+(event.key==='ArrowUp'?-20:event.key==='ArrowDown'?20:0));
   });
 }
-
 
 bootstrap();

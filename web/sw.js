@@ -1,17 +1,18 @@
-const CACHE = 'tessavie-shell-20260907-usability-recovery-5';
+const CACHE = 'tessavie-shell-20260908-page-apps-4';
 const ASSETS = [
-  '/chat-groups.js?v=20260907-usability-recovery-5',
-  '/personal-calendar.js?v=20260907-usability-recovery-5',
-  '/', '/chat-workspace.js?v=20260907-usability-recovery-5', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260907-usability-recovery-5', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260907-usability-recovery-5', '/styles.css?v=20260907-usability-recovery-5',
+ '/page-apps.js?v=20260908-page-apps-4',
+  '/chat-groups.js?v=20260908-page-apps-4',
+  '/personal-calendar.js?v=20260908-page-apps-4',
+  '/', '/chat-workspace.js?v=20260908-page-apps-4', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260908-page-apps-4', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260908-page-apps-4', '/styles.css?v=20260908-page-apps-4',
   '/reminder-settings.js?v=20260904-reminder-digests-1',
-  '/personal-reminders.js?v=20260907-usability-recovery-5',
-  '/personal-navigation.js?v=20260907-usability-recovery-5',
-  '/personal-today.js?v=20260907-usability-recovery-5',
-  '/life-map.js?v=20260907-usability-recovery-5', '/personal-publish.js?v=20260904-personal-batch-3',
+  '/personal-reminders.js?v=20260908-page-apps-4',
+  '/personal-navigation.js?v=20260908-page-apps-4',
+  '/personal-today.js?v=20260908-page-apps-4',
+  '/life-map.js?v=20260908-page-apps-4', '/personal-publish.js?v=20260904-personal-batch-3',
   '/personal-inbox.js?v=20260904-first-use-4', '/first-use.js?v=20260904-first-use-4',
   '/reading.js?v=20260906-reading-groups-1',
   '/emoji-picker.js?v=20260904-chat-emoji-3', '/vendor/emoji-17.0-cldr48.2.json',
-  '/outbox-ui.js?v=20260907-usability-recovery-5', '/offline-outbox.js?v=20260903-offline-outbox-3',
+  '/outbox-ui.js?v=20260908-page-apps-4', '/offline-outbox.js?v=20260903-offline-outbox-3',
   '/note-media.js?v=20260904-note-media-3',
   '/note-library.js?v=20260904-note-media-3',
   '/bulk-work.js?v=20260904-bulk-actions-3',
@@ -22,7 +23,7 @@ const ASSETS = [
   '/brand/tessavie-logo.svg?v=linked-1', '/brand/tessavie-logo-light.svg?v=linked-1',
   '/brand/tessavie-mark.svg?v=linked-1', '/brand/tessavie-192.png?v=linked-1', '/brand/tessavie-512.png?v=linked-1', '/brand/tessavie-maskable-512.png?v=linked-1',
 ];
-const allowed = new Set(ASSETS.slice(1).map(path => new URL(path,self.location.origin).href));
+const allowed = new Set(ASSETS.filter(path => path !== '/').map(path => new URL(path,self.location.origin).href));
 self.addEventListener('install', event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
   // Installation is atomic: a failed asset keeps the prior complete shell active.

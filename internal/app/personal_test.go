@@ -66,11 +66,13 @@ func TestPersonalWorkspaceIsPrivateAndConnected(t *testing.T) {
 	requestJSON(t, ownerClient, http.MethodPost, server.URL+"/api/personal/notes", map[string]any{
 		"title": "", "body": "   ", "pinned": false,
 	}, http.StatusBadRequest, nil)
+	// Keep the fixture inside the rolling overview window regardless of calendar date.
+	checkinDate := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	var habit PersonalHabit
 	requestJSON(t, ownerClient, http.MethodPost, server.URL+"/api/personal/habits", map[string]any{
-		"title": "Читать", "scheduleKind": "weekly_target", "targetPerWeek": 5, "unit": "дней", "startDate": "2026-09-01",
+		"title": "Читать", "scheduleKind": "weekly_target", "targetPerWeek": 5, "unit": "дней", "startDate": checkinDate,
 	}, http.StatusCreated, &habit)
-	requestJSON(t, ownerClient, http.MethodPut, server.URL+"/api/personal/habits/"+habit.ID+"/checkins/2026-09-01", map[string]any{
+	requestJSON(t, ownerClient, http.MethodPut, server.URL+"/api/personal/habits/"+habit.ID+"/checkins/"+checkinDate, map[string]any{
 		"value": 1, "note": "30 минут",
 	}, http.StatusOK, nil)
 
