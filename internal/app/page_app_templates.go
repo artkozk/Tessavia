@@ -112,8 +112,16 @@ func (s *Server) handleCreatePageAppTemplate(w http.ResponseWriter, r *http.Requ
 		writeError(w, 409, "Страница изменилась. Обновите предпросмотр набора")
 		return
 	}
-	// Only the declarative structure is portable. Personal marks never enter the payload.
+	if err := s.snapshotPageAppCollections(r, &state.Definition); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	// Only the declarative structure is portable. Personal marks and business records never enter the payload.
 	raw, _ := json.Marshal(state.Definition)
+	if len(raw) > 2*1024*1024 {
+		writeError(w, 400, "Структура набора больше 2 МБ. Разделите её на несколько страниц")
+		return
+	}
 	id, err := newID()
 	if err != nil {
 		writeError(w, 500, "Не удалось создать набор")
@@ -176,6 +184,10 @@ func (s *Server) handleInstallPageAppTemplate(w http.ResponseWriter, r *http.Req
 		return
 	}
 	now := nowText()
+	if err = installPageAppCollections(r.Context(), tx, workspace, currentUser(r).ID, item.Definition, now); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
 	raw, _ := json.Marshal(item.Definition)
 	_, err = tx.ExecContext(r.Context(), `INSERT INTO workspace_pages(id,workspace_id,name,record_type,record_types_json,status_filter,owner_filter,view_mode,fields_json,sort_order,created_by,created_at,updated_at) VALUES(?,?,?,'','[]','all','all','list','[]',?,?,?,?)`, id, workspace, input.Name, order, currentUser(r).ID, now, now)
 	if err == nil {

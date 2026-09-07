@@ -11,3 +11,8 @@ test('template preview contains escaped user content and never interactive track
  c.def={version:1,blocks:[{id:'title',kind:'text',title:'<script>bad</script>',text:'<img src=x>'},{id:'chapters',kind:'tracker',items:[{id:'one',label:'<b>One</b>'},{id:'hidden',label:'secret hidden',hidden:true}]}]};c.escape=v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
  const html=run('pageAppMarkup(def,{},escape,true)');assert.ok(!html.includes('<script>'));assert.ok(!html.includes('<img'));assert.ok(html.includes('&lt;b&gt;One'));assert.ok(!html.includes('secret hidden'));assert.match(html,/disabled/);
 });
+
+test('source template preview explains empty data and escapes copied schema names',()=>{
+ c.def={version:1,blocks:[{id:'list',kind:'records',title:'Requests',collectionId:'source',fields:[]}],collections:[{id:'source',name:'<script>Board</script>',fields:[{name:'<b>Amount</b>'}]}]};c.escape=v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+ const html=run('pageAppMarkup(def,{},escape,true)');assert.ok(html.includes('Записи автора не копируются'));assert.ok(html.includes('&lt;script&gt;Board'));assert.ok(html.includes('&lt;b&gt;Amount'));assert.ok(!html.includes('<script>'));assert.ok(!html.includes('data-app-record-create'));
+});
