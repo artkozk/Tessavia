@@ -5126,3 +5126,11 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .today-tools { margin-top: 16px; }
 .today-tools > summary { color: var(--muted); cursor: pointer; font-size: 13px; }
 .today-tools > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.kanban-column > .board-column-scroll, .collection-column > .board-column-scroll { grid-auto-rows: max-content; }
+.work-filter-popover { left: 0; right: auto; max-width: calc(100vw - 32px); }
+@media (max-width: 820px) {
+  .work-filter-popover { left: 14px; right: 14px; max-width: none; }
+}
+@media (max-width: 600px) {
+  .work-filter-popover { left: 8px; right: 8px; }
+}

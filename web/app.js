@@ -1,11 +1,11 @@
-import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-today-3';
+import { chatDraftKey, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260907-urgent-ui-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-today-3';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260907-urgent-ui-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-today-3';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260907-urgent-ui-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
 import { personalRoute } from './personal-navigation.js?v=20260904-personal-scope-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-today-3';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260907-urgent-ui-1';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
@@ -2961,7 +2961,8 @@ async function navigateToView(view, options = {}) {
   const account = state.me?.id;
   state.layoutDraft = null;
   rememberView();
-  const route = personalRoute({ view: normalized, calendarScope: options.calendarScope || state.calendarScope, workspaceId: state.activeWorkspaceId }, state.workspaces);
+  const calendarScope = options.calendarScope || (state.workspaces.find(workspace => workspace.id === state.activeWorkspaceId)?.kind === 'personal' ? 'personal' : 'project');
+  const route = personalRoute({ view: normalized, calendarScope, workspaceId: state.activeWorkspaceId }, state.workspaces);
   if (!route.workspaceId) { toast('Личное пространство недоступно. Обновите список пространств.', true); return false; }
   const changedWorkspace = route.workspaceId !== state.activeWorkspaceId;
   if (changedWorkspace) {

@@ -28,3 +28,12 @@ test('legacy private routes resolve to personal scope while team calendars stay 
  assert.equal(h.run("personalRoute({view:'calendar',calendarScope:'project',workspaceId:'team'},state.workspaces).workspaceId"),'team');
  assert.equal(h.run("personalRoute({view:'personal',workspaceId:'team'},[]).workspaceId"),'');
 });
+
+test('sidebar calendar follows the current workspace even after visiting a personal calendar',async()=>{
+ const h=harness();h.state.calendarScope='personal';
+ assert.equal(await h.run("navigateToView('calendar')"),true);
+ assert.equal(h.state.activeWorkspaceId,'team');assert.equal(h.state.calendarScope,'project');assert.equal(h.state.view,'calendar');
+ h.state.activeWorkspaceId='private';h.state.calendarScope='project';
+ assert.equal(await h.run("navigateToView('calendar')"),true);
+ assert.equal(h.state.activeWorkspaceId,'private');assert.equal(h.state.calendarScope,'personal');
+});
