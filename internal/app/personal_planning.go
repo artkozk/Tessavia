@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -99,7 +100,7 @@ func (s *Server) listPersonalGoals(r *http.Request, ownerID int64) ([]PersonalGo
 }
 
 func (s *Server) listPersonalRecurrenceRules(r *http.Request, ownerID int64) (map[string]PersonalRecurrenceRule, error) {
-	rows, err := s.store.db.QueryContext(r.Context(), `SELECT series_id,cadence,interval_count,timezone,start_date,until_date,active,updated_at FROM personal_recurrence_rules WHERE owner_id=?`, ownerID)
+	rows, err := s.store.db.QueryContext(r.Context(), `SELECT r.series_id,r.cadence,r.interval_count,r.timezone,r.start_date,r.until_date,r.active,r.updated_at,COALESCE(t.plan_json,''),COALESCE(t.needs_review,0) FROM personal_recurrence_rules r LEFT JOIN personal_recurrence_templates t ON t.series_id=r.series_id AND t.owner_id=r.owner_id WHERE r.owner_id=?`, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +109,16 @@ func (s *Server) listPersonalRecurrenceRules(r *http.Request, ownerID int64) (ma
 	for rows.Next() {
 		var item PersonalRecurrenceRule
 		var active int
-		if err := rows.Scan(&item.SeriesID, &item.Cadence, &item.Interval, &item.Timezone, &item.StartDate, &item.UntilDate, &active, &item.UpdatedAt); err != nil {
+		var templateJSON string
+		if err := rows.Scan(&item.SeriesID, &item.Cadence, &item.Interval, &item.Timezone, &item.StartDate, &item.UntilDate, &active, &item.UpdatedAt, &templateJSON, &item.NeedsReview); err != nil {
 			return nil, err
+		}
+		if templateJSON != "" {
+			var template PersonalPlan
+			if err := json.Unmarshal([]byte(templateJSON), &template); err != nil {
+				return nil, err
+			}
+			item.Template = &template
 		}
 		item.Active = active == 1
 		result[item.SeriesID] = item
@@ -365,7 +374,7 @@ func applyPersonalPlanInput(plan PersonalPlan, input personalPlanInput) (Persona
 	if plan.PlannedMinutes < 0 || plan.PlannedMinutes > 525600 || plan.ActualMinutes < 0 || plan.ActualMinutes > 525600 {
 		return plan, errors.New("Проверьте плановое и фактическое время")
 	}
-	if plan.OccurrenceDate != "" && !validDate(plan.OccurrenceDate) {
+	if (plan.OccurrenceDate != "" || plan.SeriesID != "") && !validDate(plan.OccurrenceDate) {
 		return plan, errors.New("Некорректная дата экземпляра")
 	}
 	return plan, nil
@@ -533,61 +542,40 @@ func (s *Server) spawnNextPersonalOccurrence(ctx context.Context, tx *sql.Tx, ow
 	}
 	var rule PersonalRecurrenceRule
 	var active int
-	err := tx.QueryRowContext(ctx, `SELECT series_id,cadence,interval_count,timezone,start_date,until_date,active,updated_at FROM personal_recurrence_rules WHERE series_id=? AND owner_id=?`, current.SeriesID, ownerID).
-		Scan(&rule.SeriesID, &rule.Cadence, &rule.Interval, &rule.Timezone, &rule.StartDate, &rule.UntilDate, &active, &rule.UpdatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+	err := tx.QueryRowContext(ctx, `SELECT series_id,cadence,interval_count,timezone,start_date,until_date,active,updated_at FROM personal_recurrence_rules WHERE series_id=? AND owner_id=?`, current.SeriesID, ownerID).Scan(&rule.SeriesID, &rule.Cadence, &rule.Interval, &rule.Timezone, &rule.StartDate, &rule.UntilDate, &active, &rule.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) || active == 0 {
+		return err
 	}
 	if err != nil {
 		return err
 	}
-	if active == 0 {
-		return nil
+	var scheduled string
+	if err = tx.QueryRowContext(ctx, `SELECT scheduled_date FROM personal_recurrence_instances WHERE plan_id=? AND series_id=? AND owner_id=?`, current.ID, current.SeriesID, ownerID).Scan(&scheduled); err != nil {
+		return err
 	}
-	nextDate, err := nextPersonalOccurrenceDate(current.OccurrenceDate, rule.Cadence, rule.Interval)
+	nextDate, err := nextPersonalSeriesDate(rule, scheduled)
 	if err != nil || rule.UntilDate != "" && nextDate > rule.UntilDate {
 		return err
 	}
 	var exists int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM personal_plans WHERE owner_id=? AND series_id=? AND occurrence_date=?`, ownerID, current.SeriesID, nextDate).Scan(&exists); err != nil || exists > 0 {
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM personal_recurrence_instances WHERE owner_id=? AND series_id=? AND scheduled_date=?`, ownerID, current.SeriesID, nextDate).Scan(&exists); err != nil || exists > 0 {
 		return err
 	}
-	next := current
+	template, err := loadPersonalRecurrenceTemplate(ctx, tx, ownerID, current.SeriesID)
+	if err != nil {
+		return err
+	}
+	next, err := projectPersonalRecurrence(template, nextDate, rule.Timezone)
+	if err != nil {
+		return err
+	}
 	next.ID, err = newID()
 	if err != nil {
 		return err
 	}
-	next.Status, next.CompletedAt, next.ActualMinutes = "planned", nil, 0
-	next.CreatedAt, next.UpdatedAt = now, now
-	next.OccurrenceDate, next.OccurrenceState = nextDate, "scheduled"
-	next.StartDate, next.EndDate, err = shiftDateRange(current.StartDate, current.EndDate, current.OccurrenceDate, nextDate)
-	if err != nil {
-		return err
-	}
-	location, err := time.LoadLocation(rule.Timezone)
-	if err != nil {
-		return err
-	}
-	next.DueAt, err = shiftInstantToDate(current.DueAt, nextDate, location)
-	if err != nil {
-		return err
-	}
-	if current.StartsAt != nil && current.EndsAt != nil {
-		start, _ := time.Parse(time.RFC3339Nano, *current.StartsAt)
-		end, _ := time.Parse(time.RFC3339Nano, *current.EndsAt)
-		duration := end.Sub(start)
-		next.StartsAt, err = shiftInstantToDate(current.StartsAt, nextDate, location)
-		if err != nil {
-			return err
-		}
-		shiftedStart, _ := time.Parse(time.RFC3339Nano, *next.StartsAt)
-		shiftedEnd := shiftedStart.Add(duration).UTC().Format(time.RFC3339)
-		next.EndsAt = &shiftedEnd
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO personal_plans(id,owner_id,title,notes,due_at,status,completed_at,created_at,updated_at,start_date,end_date,color_key,title_generated,item_kind,project_id,goal_id,parent_id,planned_minutes,actual_minutes,starts_at,ends_at,series_id,occurrence_date,occurrence_state) VALUES(?,?,?,?,?,'planned',NULL,?,?,?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),NULLIF(?,''),?,?,?,?,?,?,?)`, next.ID, ownerID, next.Title, next.Notes, next.DueAt, now, now, next.StartDate, next.EndDate, next.ColorKey, next.TitleGenerated, next.ItemKind, next.ProjectID, next.GoalID, next.ParentID, next.PlannedMinutes, 0, next.StartsAt, next.EndsAt, next.SeriesID, next.OccurrenceDate, next.OccurrenceState)
-	return err
+	next.SeriesID = current.SeriesID
+	return insertPersonalRecurrenceInstance(ctx, tx, ownerID, next, nextDate, now)
 }
-
 func (s *Server) handleSkipPersonalPlan(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		ExpectedUpdatedAt string `json:"expectedUpdatedAt"`
@@ -664,12 +652,22 @@ func (s *Server) handleUpdatePersonalSeries(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать параметры серии")
 		return
 	}
-	updated, err := applyPersonalPlanInput(plan, input)
+	if input.ExpectedSeriesUpdatedAt != existingRule.UpdatedAt {
+		writeError(w, http.StatusConflict, "Настройки серии изменились. Откройте её актуальную версию")
+		return
+	}
+	updated, err := input.calendarFields(plan)
+	if err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	updated, err = applyPersonalPlanInput(updated, input)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	updated.Title, updated.Notes = input.Title, strings.TrimSpace(input.Notes)
+	updated.TitleGenerated = strings.TrimSpace(input.Title) == ""
 	if !validatePersonalText(w, &updated.Title, updated.Notes) {
 		return
 	}
@@ -693,22 +691,35 @@ func (s *Server) handleUpdatePersonalSeries(w http.ResponseWriter, r *http.Reque
 	if requestedStartDate == "" {
 		rule.StartDate = existingRule.StartDate
 	}
+	if rule.UntilDate != "" && rule.UntilDate < rule.StartDate {
+		writeError(w, 400, "Окончание серии не может быть раньше её начала")
+		return
+	}
 	now := nowText()
 	active := boolInt(rule.Active)
 	_, err = tx.ExecContext(r.Context(), `UPDATE personal_recurrence_rules SET cadence=?,interval_count=?,timezone=?,start_date=?,until_date=?,active=?,updated_at=? WHERE series_id=? AND owner_id=?`, rule.Cadence, rule.Interval, rule.Timezone, rule.StartDate, rule.UntilDate, active, now, plan.SeriesID, ownerID)
 	if err == nil {
-		_, err = tx.ExecContext(r.Context(), `UPDATE personal_plans SET title=?,notes=?,item_kind=?,project_id=NULLIF(?,''),goal_id=NULLIF(?,''),parent_id=NULLIF(?,''),planned_minutes=?,updated_at=? WHERE owner_id=? AND series_id=? AND status='planned'`, updated.Title, updated.Notes, updated.ItemKind, updated.ProjectID, updated.GoalID, updated.ParentID, updated.PlannedMinutes, now, ownerID, plan.SeriesID)
+		err = savePersonalRecurrenceTemplate(r.Context(), tx, ownerID, plan.SeriesID, updated, now)
+	}
+	if err == nil {
+		err = updatePlannedPersonalSeries(r.Context(), tx, ownerID, plan.SeriesID, updated, rule.Timezone, now)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось изменить серию")
+		return
+	}
+	actual, err := loadPersonalPlan(r.Context(), tx, ownerID, plan.ID)
+	if err != nil {
+		writeError(w, 500, "Не удалось прочитать результат изменения серии")
 		return
 	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось изменить серию")
 		return
 	}
-	updated.UpdatedAt = now
 	rule.SeriesID, rule.UpdatedAt = plan.SeriesID, now
-	updated.Recurrence = rule
-	writeJSON(w, http.StatusOK, updated)
+	template := recurrenceTemplate(updated)
+	rule.Template = &template
+	actual.Recurrence = rule
+	writeJSON(w, http.StatusOK, actual)
 }

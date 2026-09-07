@@ -6,25 +6,26 @@ import (
 )
 
 type personalPlanInput struct {
-	RequestKey        string                   `json:"requestKey"`
-	Title             string                   `json:"title"`
-	Notes             string                   `json:"notes"`
-	Status            string                   `json:"status"`
-	DueAt             *string                  `json:"dueAt"`
-	StartDate         *string                  `json:"startDate"`
-	EndDate           *string                  `json:"endDate"`
-	ColorKey          *string                  `json:"colorKey"`
-	ExpectedUpdatedAt string                   `json:"expectedUpdatedAt"`
-	ItemKind          *string                  `json:"itemKind"`
-	ProjectID         *string                  `json:"projectId"`
-	GoalID            *string                  `json:"goalId"`
-	ParentID          *string                  `json:"parentId"`
-	PlannedMinutes    *int                     `json:"plannedMinutes"`
-	ActualMinutes     *int                     `json:"actualMinutes"`
-	StartsAt          *string                  `json:"startsAt"`
-	EndsAt            *string                  `json:"endsAt"`
-	OccurrenceDate    *string                  `json:"occurrenceDate"`
-	Recurrence        *personalRecurrenceInput `json:"recurrence"`
+	ExpectedSeriesUpdatedAt string                   `json:"expectedSeriesUpdatedAt"`
+	RequestKey              string                   `json:"requestKey"`
+	Title                   string                   `json:"title"`
+	Notes                   string                   `json:"notes"`
+	Status                  string                   `json:"status"`
+	DueAt                   *string                  `json:"dueAt"`
+	StartDate               *string                  `json:"startDate"`
+	EndDate                 *string                  `json:"endDate"`
+	ColorKey                *string                  `json:"colorKey"`
+	ExpectedUpdatedAt       string                   `json:"expectedUpdatedAt"`
+	ItemKind                *string                  `json:"itemKind"`
+	ProjectID               *string                  `json:"projectId"`
+	GoalID                  *string                  `json:"goalId"`
+	ParentID                *string                  `json:"parentId"`
+	PlannedMinutes          *int                     `json:"plannedMinutes"`
+	ActualMinutes           *int                     `json:"actualMinutes"`
+	StartsAt                *string                  `json:"startsAt"`
+	EndsAt                  *string                  `json:"endsAt"`
+	OccurrenceDate          *string                  `json:"occurrenceDate"`
+	Recurrence              *personalRecurrenceInput `json:"recurrence"`
 }
 
 // Calendar dates stay timezone-free; a timed deadline retains its RFC3339 instant.

@@ -38,3 +38,16 @@ test('private search labels and opens projects and goals as personal entities', 
   assert.match(search, /goal:'Цель'/);
   assert.match(fragment('async function runGlobalSearch(', 'function setAuthMode('), /openPersonalEditor\(button\.dataset\.personalType/);
 });
+
+test('recurrence scope keeps rule controls explicit and shifts only calendar dates of a moved instance',()=>{
+ const code=fragment('function personalRecurrenceLabel(', 'function personalPlanContextFields(');
+ const ctx=vm.createContext({Date,Number,Event,escapeHTML:value=>String(value),icon:()=>''});vm.runInContext(code,ctx);
+ const markup=ctx.personalRecurrenceFields({seriesId:'series',occurrenceDate:'2026-09-07',recurrence:{cadence:'weekly',interval:1,active:true,template:{title:'Original template'}}});
+ assert.match(markup,/data-series-settings disabled/);assert.match(markup,/Original template/);assert.match(markup,/Изменить все незавершённые повторения/);
+ const fields={startDate:{value:'2026-09-07'},endDate:{value:'2026-09-09'},startsAt:{value:'2026-09-07T10:00'},endsAt:{value:'2026-09-07T11:00'},dueAt:{value:''}};
+ ctx.shiftPersonalOccurrenceDates({elements:fields},'2026-09-07','2026-09-14');
+ assert.equal(fields.startsAt.value,'2026-09-14T10:00');assert.equal(fields.endsAt.value,'2026-09-14T11:00');assert.equal(fields.endDate.value,'2026-09-16');assert.equal(fields.dueAt.value,'');
+ let scopeChange;const settings={disabled:false},notice={hidden:false},scope={checked:false,addEventListener(_event,fn){scopeChange=fn;}},cadence={value:'weekly',addEventListener(){}};
+ const form={elements:{applyToSeries:scope,recurrenceCadence:cadence,recurrenceInterval:{},recurrenceStartDate:{},recurrenceUntilDate:{}},querySelector:selector=>selector==='[data-series-settings]'?settings:notice};
+ ctx.bindPersonalRecurrenceScope(form);assert.equal(settings.disabled,true);assert.equal(notice.hidden,true);scope.checked=true;scopeChange();assert.equal(settings.disabled,false);assert.equal(notice.hidden,false);
+});

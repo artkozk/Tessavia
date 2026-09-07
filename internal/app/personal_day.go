@@ -334,9 +334,10 @@ func calculatePersonalDay(day string, settings personalDaySettings, plans []Pers
 			}
 		} else {
 			if scheduled {
-				if p.ItemKind == "event" {
+				if p.ItemKind == "event" || overlaps {
 					out.Events = append(out.Events, p.ID)
-				} else {
+				}
+				if p.ItemKind != "event" {
 					out.Today = append(out.Today, p.ID)
 				}
 			}

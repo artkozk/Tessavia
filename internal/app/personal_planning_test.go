@@ -113,7 +113,8 @@ func TestPersonalRecurrenceCreatesOneNextOccurrenceAndCanStop(t *testing.T) {
 	requestJSON(t, owner, http.MethodGet, server.URL+"/api/personal/overview", nil, http.StatusOK, &overview)
 	second := onlyPlannedOccurrence(t, overview.Plans, "2026-03-29")
 	requestJSON(t, owner, http.MethodPut, server.URL+"/api/personal/plans/"+second.ID+"/series", map[string]any{
-		"title": "Обзор по новому правилу", "notes": "", "itemKind": "task", "plannedMinutes": 30,
+		"expectedSeriesUpdatedAt": second.Recurrence.UpdatedAt,
+		"title":                   "Обзор по новому правилу", "notes": "", "itemKind": "task", "plannedMinutes": 30,
 		"expectedUpdatedAt": second.UpdatedAt,
 		"recurrence":        map[string]any{"cadence": "daily", "interval": 1, "timezone": "Europe/Berlin", "untilDate": "2026-03-31", "active": false},
 	}, http.StatusOK, &second)
@@ -166,8 +167,8 @@ func TestPersonalRecurrenceCompletionAndInstanceMove(t *testing.T) {
 	}, http.StatusOK, &second)
 	overview = PersonalOverview{}
 	requestJSON(t, owner, http.MethodGet, server.URL+"/api/personal/overview", nil, http.StatusOK, &overview)
-	third := onlyPlannedOccurrence(t, overview.Plans, "2026-09-18")
-	if third.ActualMinutes != 0 || third.Title != "Перенесён только этот экземпляр" {
+	third := onlyPlannedOccurrence(t, overview.Plans, "2026-09-17")
+	if third.ActualMinutes != 0 || third.Title != "Еженедельная проверка" {
 		t.Fatalf("next occurrence = %#v", third)
 	}
 }

@@ -99,14 +99,16 @@ type PersonalGoal struct {
 }
 
 type PersonalRecurrenceRule struct {
-	SeriesID  string `json:"seriesId"`
-	Cadence   string `json:"cadence"`
-	Interval  int    `json:"interval"`
-	Timezone  string `json:"timezone"`
-	StartDate string `json:"startDate"`
-	UntilDate string `json:"untilDate"`
-	Active    bool   `json:"active"`
-	UpdatedAt string `json:"updatedAt"`
+	Template    *PersonalPlan `json:"template,omitempty"`
+	NeedsReview bool          `json:"needsReview,omitempty"`
+	SeriesID    string        `json:"seriesId"`
+	Cadence     string        `json:"cadence"`
+	Interval    int           `json:"interval"`
+	Timezone    string        `json:"timezone"`
+	StartDate   string        `json:"startDate"`
+	UntilDate   string        `json:"untilDate"`
+	Active      bool          `json:"active"`
+	UpdatedAt   string        `json:"updatedAt"`
 }
 
 type HabitCheckin struct {
@@ -734,6 +736,14 @@ func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request
 	_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_plans(id,owner_id,title,notes,due_at,status,completed_at,created_at,updated_at,start_date,end_date,color_key,title_generated,item_kind,project_id,goal_id,parent_id,planned_minutes,actual_minutes,starts_at,ends_at,series_id,occurrence_date,occurrence_state) VALUES(?,?,?,?,?,'planned',NULL,?,?,?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),NULLIF(?,''),?,?,?,?,?,?,?)`, id, user.ID, plan.Title, plan.Notes, plan.DueAt, now, now, plan.StartDate, plan.EndDate, plan.ColorKey, titleGenerated, plan.ItemKind, plan.ProjectID, plan.GoalID, plan.ParentID, plan.PlannedMinutes, plan.ActualMinutes, plan.StartsAt, plan.EndsAt, plan.SeriesID, plan.OccurrenceDate, plan.OccurrenceState)
 	if err == nil && rule != nil {
 		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_recurrence_rules(series_id,owner_id,cadence,interval_count,timezone,start_date,until_date,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, user.ID, rule.Cadence, rule.Interval, rule.Timezone, rule.StartDate, rule.UntilDate, boolInt(rule.Active), now, now)
+		if err == nil {
+			err = savePersonalRecurrenceTemplate(r.Context(), tx, user.ID, id, plan, now)
+		}
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_recurrence_instances(plan_id,series_id,owner_id,scheduled_date) VALUES(?,?,?,?)`, id, id, user.ID, rule.StartDate)
+		}
+		template := recurrenceTemplate(plan)
+		rule.Template = &template
 	}
 	if err == nil {
 		err = recordPersonalCreate(r.Context(), tx, user.ID, "plan", input.RequestKey, payloadHash, id, now)
@@ -787,6 +797,21 @@ func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if plan.SeriesID != "" && plan.OccurrenceDate != current.OccurrenceDate && samePersonalCalendarFields(plan, current) {
+		var zone string
+		if err = tx.QueryRowContext(r.Context(), `SELECT timezone FROM personal_recurrence_rules WHERE series_id=? AND owner_id=?`, plan.SeriesID, user.ID).Scan(&zone); err != nil {
+			writeError(w, 500, "Не удалось прочитать часовой пояс серии")
+			return
+		}
+		moved, err := projectPersonalRecurrence(current, plan.OccurrenceDate, zone)
+		if err != nil {
+			writeError(w, 400, "Не удалось перенести время экземпляра")
+			return
+		}
+		plan.DueAt, plan.StartsAt, plan.EndsAt = moved.DueAt, moved.StartsAt, moved.EndsAt
+		plan.StartDate, plan.EndDate = moved.StartDate, moved.EndDate
+	}
+
 	if err := validatePersonalPlanReferences(r.Context(), tx, user.ID, &plan, current.ID); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

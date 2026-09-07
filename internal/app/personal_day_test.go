@@ -31,6 +31,9 @@ func TestPersonalDaySeparatesDatesAndMergesTimeBlocks(t *testing.T) {
 	if out.Unscheduled != 1 {
 		t.Fatal("unscheduled estimated tasks should not reserve an arbitrary time", out.Unscheduled)
 	}
+	if !reflect.DeepEqual(out.Events, []string{"a", "b", "c"}) {
+		t.Fatalf("timed task missing from schedule even though it reserves time: %#v", out.Events)
+	}
 	if out.RemainingFreeMinutes != 240 {
 		t.Fatal("past free time was offered as remaining", out.RemainingFreeMinutes)
 	}
