@@ -1,0 +1,33 @@
+{
+  "commit": "21ad00a6a5083a7524aba1cfbd3d2e841fc2e8da",
+  "release": "/opt/business-control/releases/20260907-chat-groups-21ad00a",
+  "sha256": "a1362a12e66c9f1386d35010cf788e8a5481c25b0d004537234eeb68e57c00b7",
+  "backup": "/var/lib/business-control/backups/pre-chat-groups-20260907T105953Z",
+  "checkedAt": "2026-09-07T11:01:11.258571Z",
+  "preservedTables": 106,
+  "schema": "058_chat_group_lifecycle.sql",
+  "nodeTests": 222,
+  "goTests": "go test ./... passed; final web assets passed",
+  "tasks": [
+    {
+      "id": "524e18c09b0fad83704dbc82de46b700",
+      "status": "completed"
+    },
+    {
+      "id": "45bbc1b549a12bb12b1c0ab92cf23a84",
+      "status": "in_progress"
+    },
+    {
+      "id": "e402d353a684b074f852fa1fd277d895",
+      "status": "in_progress"
+    },
+    {
+      "id": "6e4f34f50ea37062254b52d8d63292b6",
+      "status": "in_progress"
+    },
+    {
+      "id": "f1a7f01c558ae9a84bc6e5cb90f2c73f",
+      "status": "in_progress"
+    }
+  ]
+}
