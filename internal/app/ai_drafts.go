@@ -103,8 +103,8 @@ func (s *Server) handleAIQuestionDraft(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Вопрос не найден")
 		return
 	}
-	if len(question.Answers) < workflow.UserCount {
-		writeError(w, http.StatusConflict, "AI-итог доступен после ответов всех основателей")
+	if workflow.UserCount == 0 || question.ActiveAnswerCount < workflow.UserCount {
+		writeError(w, http.StatusConflict, "AI-итог доступен после ответов всех действующих участников этой команды")
 		return
 	}
 	dossier, coverage, err := s.buildAIRecordContext(r.Context(), record)
@@ -114,9 +114,9 @@ func (s *Server) handleAIQuestionDraft(w http.ResponseWriter, r *http.Request) {
 	}
 	dossierJSON, _ := json.Marshal(dossier)
 	questionJSON, _ := json.Marshal(question)
-	promptInstruction := `Подготовь нейтральный черновик совместного решения двух сооснователей.`
+	promptInstruction := `Подготовь нейтральный черновик совместного решения участников команды.`
 	if mode == "structure" {
-		promptInstruction = `Проанализируй ответы двух сооснователей и выдели только самостоятельные знания, которые пригодятся в будущей работе: критерии-предпочтения, ограничения, правила принятия решений и проверяемые выводы. Не превращай каждую фразу в сущность. Формулируй один атомарный смысл на одну карточку. Например, "не хотим постоянно работать в холоде" становится criterion с kind limitation; "контрольное решение принимает ответственный за направление" становится decision с kind rule. Одновременно подготовь короткий редактируемый общий итог.`
+		promptInstruction = `Проанализируй ответы участников команды и выдели только самостоятельные знания, которые пригодятся в будущей работе: критерии-предпочтения, ограничения, правила принятия решений и проверяемые выводы. Не превращай каждую фразу в сущность. Формулируй один атомарный смысл на одну карточку. Например, "не хотим постоянно работать в холоде" становится criterion с kind limitation; "контрольное решение принимает ответственный за направление" становится decision с kind rule. Одновременно подготовь короткий редактируемый общий итог.`
 	}
 	prompt := fmt.Sprintf(`%s Верни только JSON:
 {"decision":"общий итог в Markdown","rationale":"коротко, какие общие позиции и различия учтены","suggestedOutputs":[{"type":"task|idea|criterion|research|decision|goal|risk|hypothesis|experiment","kind":"|preference|limitation|rule|insight","title":"...","description":"...","priority":"low|normal|high|critical","estimateMinutes":60,"reason":"..."}]}.

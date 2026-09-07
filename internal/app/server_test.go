@@ -381,7 +381,7 @@ func TestSecurityHeadersAllowSameOriginMediaCapture(t *testing.T) {
 	}
 }
 
-func TestQuestionDecisionWaitsForSecondFounder(t *testing.T) {
+func TestQuestionDecisionUsesActualSingleMember(t *testing.T) {
 	store, err := OpenStore(filepath.Join(t.TempDir(), "single-founder.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
@@ -398,8 +398,8 @@ func TestQuestionDecisionWaitsForSecondFounder(t *testing.T) {
 	requestJSON(t, client, http.MethodPost, server.URL+"/api/records/"+questionSet.ID+"/questions", map[string]any{
 		"questions": "Кто принимает финальное решение?",
 	}, http.StatusCreated, &workflow)
-	if workflow.UserCount != 2 || workflow.Expected != 2 {
-		t.Fatalf("single registered founder must still require two answers: %#v", workflow)
+	if workflow.UserCount != 1 || workflow.Expected != 1 {
+		t.Fatalf("single-member workspace must not wait for a nonexistent account: %#v", workflow)
 	}
 	question := workflow.Questions[0]
 	requestJSON(t, client, http.MethodPut, server.URL+"/api/records/"+questionSet.ID+"/questions/"+question.ID+"/answer", map[string]any{
@@ -408,7 +408,7 @@ func TestQuestionDecisionWaitsForSecondFounder(t *testing.T) {
 	answerID := workflow.Questions[0].Answers[0].ID
 	requestJSON(t, client, http.MethodPost, server.URL+"/api/records/"+questionSet.ID+"/questions/"+question.ID+"/decision", map[string]any{
 		"mode": "answer", "answerId": answerID,
-	}, http.StatusConflict, nil)
+	}, http.StatusOK, nil)
 }
 
 func TestGraphSearchAndPriority(t *testing.T) {

@@ -1,6 +1,16 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/app.js','utf8');
 
+test('question UI does not count a former participant in place of a current answer',()=>{
+ const ctx=vm.createContext({state:{users:[{id:1},{id:2},{id:4}]},icon:()=>'',escapeHTML:s=>String(s).replaceAll('<','&lt;'),renderFounderAnswer:()=>'',renderDecisionComposer:()=>'<div>READY</div>',renderJointDecision:()=>''});
+ vm.runInContext(source.slice(source.indexOf('function renderQuestionItem('),source.indexOf('function renderMissingFounder(')),ctx);
+ const question={id:'q',body:'Test',activeAnswerCount:2,answers:[{authorId:1},{authorId:2},{authorId:3,authorUsername:'former',content:'Historical answer'}]};
+ const blocked=ctx.renderQuestionItem(question,0,3);
+ assert.match(blocked,/2 из 3 ответов/);assert.doesNotMatch(blocked,/READY/);assert.match(blocked,/Historical answer/);
+ question.activeAnswerCount=3;question.answers.push({authorId:4});
+ assert.match(ctx.renderQuestionItem(question,0,3),/READY/);
+});
+
 test('invalid calendar ranges are rejected before saving; undated and same-day plans remain valid',()=>{
  const ctx=vm.createContext({});
  vm.runInContext(source.slice(source.indexOf('function personalPlanDateError('),source.indexOf('function openPersonalEditor(')),ctx);

@@ -237,17 +237,18 @@ type QuestionOutput struct {
 }
 
 type QuestionItem struct {
-	ID        string            `json:"id"`
-	RecordID  string            `json:"recordId"`
-	Body      string            `json:"body"`
-	Status    string            `json:"status"`
-	SortOrder int               `json:"sortOrder"`
-	CreatedBy int64             `json:"createdBy"`
-	CreatedAt string            `json:"createdAt"`
-	UpdatedAt string            `json:"updatedAt"`
-	Answers   []QuestionAnswer  `json:"answers"`
-	Decision  *QuestionDecision `json:"decision"`
-	Outputs   []QuestionOutput  `json:"outputs"`
+	ID                string            `json:"id"`
+	RecordID          string            `json:"recordId"`
+	Body              string            `json:"body"`
+	Status            string            `json:"status"`
+	SortOrder         int               `json:"sortOrder"`
+	CreatedBy         int64             `json:"createdBy"`
+	CreatedAt         string            `json:"createdAt"`
+	UpdatedAt         string            `json:"updatedAt"`
+	Answers           []QuestionAnswer  `json:"answers"`
+	ActiveAnswerCount int               `json:"activeAnswerCount"`
+	Decision          *QuestionDecision `json:"decision"`
+	Outputs           []QuestionOutput  `json:"outputs"`
 }
 
 type QuestionWorkflow struct {

@@ -2547,11 +2547,8 @@ func (s *Server) handlePendingQuestions(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) listQuestionWorkflow(ctx context.Context, recordID string) (QuestionWorkflow, error) {
 	workflow := QuestionWorkflow{Questions: make([]QuestionItem, 0)}
-	if err := s.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&workflow.UserCount); err != nil {
+	if err := s.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM workspace_members wm JOIN records r ON r.workspace_id=wm.workspace_id WHERE r.id=? AND wm.status='active'`, recordID).Scan(&workflow.UserCount); err != nil {
 		return workflow, err
-	}
-	if workflow.UserCount < 2 {
-		workflow.UserCount = 2
 	}
 	rows, err := s.store.db.QueryContext(ctx, `SELECT id, record_id, body, status, sort_order, created_by, created_at, updated_at FROM question_items WHERE record_id = ? AND status <> 'archived' ORDER BY sort_order, created_at`, recordID)
 	if err != nil {
@@ -2590,6 +2587,9 @@ func (s *Server) listQuestionWorkflow(ctx context.Context, recordID string) (Que
 		if err := answerRows.Close(); err != nil {
 			return workflow, err
 		}
+		if err := s.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM question_answers a JOIN workspace_members wm ON wm.user_id=a.author_id JOIN records r ON r.workspace_id=wm.workspace_id WHERE r.id=? AND a.question_id=? AND wm.status='active'`, recordID, item.ID).Scan(&item.ActiveAnswerCount); err != nil {
+			return workflow, err
+		}
 		var decision QuestionDecision
 		var sourceAnswerID, sourceAuthor sql.NullString
 		err = s.store.db.QueryRowContext(ctx, `SELECT d.id, d.question_id, d.content, d.source_answer_id, source_user.username, d.decided_by, decider.username, d.created_at, d.updated_at FROM question_decisions d JOIN users decider ON decider.id = d.decided_by LEFT JOIN question_answers source_answer ON source_answer.id = d.source_answer_id LEFT JOIN users source_user ON source_user.id = source_answer.author_id WHERE d.question_id = ?`, item.ID).Scan(&decision.ID, &decision.QuestionID, &decision.Content, &sourceAnswerID, &sourceAuthor, &decision.DecidedBy, &decision.DecidedByUsername, &decision.CreatedAt, &decision.UpdatedAt)
@@ -2626,7 +2626,7 @@ func (s *Server) listQuestionWorkflow(ctx context.Context, recordID string) (Que
 		if err := outputRows.Close(); err != nil {
 			return workflow, err
 		}
-		workflow.Answered += len(item.Answers)
+		workflow.Answered += item.ActiveAnswerCount
 		workflow.Expected += workflow.UserCount
 		if item.Decision != nil {
 			workflow.Resolved++
@@ -2819,11 +2819,6 @@ func (s *Server) handleSaveQuestionDecision(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "Итоговое решение обязательно")
 		return
 	}
-	var registeredUserCount, answerCount int
-	if err := s.store.db.QueryRowContext(r.Context(), `SELECT (SELECT COUNT(*) FROM users), (SELECT COUNT(*) FROM question_answers WHERE question_id = ?)`, questionID).Scan(&registeredUserCount, &answerCount); err != nil || registeredUserCount < 2 || answerCount < registeredUserCount {
-		writeError(w, http.StatusConflict, "Совместное решение можно зафиксировать после ответов всех основателей")
-		return
-	}
 	user := currentUser(r)
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -2832,6 +2827,15 @@ func (s *Server) handleSaveQuestionDecision(w http.ResponseWriter, r *http.Reque
 	}
 	defer tx.Rollback()
 	var decisionID, before string
+	var memberCount, answerCount int
+	if err := tx.QueryRowContext(r.Context(), `SELECT COUNT(*),COUNT(a.id) FROM workspace_members wm JOIN records r ON r.workspace_id=wm.workspace_id LEFT JOIN question_answers a ON a.author_id=wm.user_id AND a.question_id=? WHERE r.id=? AND wm.status='active'`, questionID, record.ID).Scan(&memberCount, &answerCount); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить ответы участников команды")
+		return
+	}
+	if memberCount == 0 || answerCount < memberCount {
+		writeError(w, http.StatusConflict, "Итог можно зафиксировать после ответов всех действующих участников этой команды")
+		return
+	}
 	err = tx.QueryRowContext(r.Context(), `SELECT id, content FROM question_decisions WHERE question_id = ?`, questionID).Scan(&decisionID, &before)
 	now := nowText()
 	if errors.Is(err, sql.ErrNoRows) {
