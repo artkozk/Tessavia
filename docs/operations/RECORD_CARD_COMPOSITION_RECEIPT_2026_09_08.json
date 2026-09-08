@@ -1,0 +1,26 @@
+{
+  "commit": "0e93a5232b102900d189e7a27f90dffcf00e2bfb",
+  "release": "/opt/business-control/releases/20260908-record-card-composition-0e93a52",
+  "sha256": "8c2ef771298c337093b70b23cf7c0c4a72dbc99068dca7a8389a603db87e66b1",
+  "backup": "/var/lib/business-control/backups/pre-record-card-composition-20260908T143043Z",
+  "checkedAt": "2026-09-08T14:31:09.684096Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 298,
+  "assets": "20260908-record-card-composition-1",
+  "tasks": [
+    {
+      "id": "d7c3e0a88408025472ab61119f4509c5",
+      "status": "completed"
+    },
+    {
+      "id": "26c54f79aa1c9110536670ae8371a868",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
