@@ -1,5 +1,5 @@
 import { habitStateLabel, habitScheduleLabel } from './habit-tracker.js?v=20260904-personal-waiting-4';
-import { todayPlanGroups } from './personal-today.js?v=20260908-copy-field-1';
+import { todayPlanGroups } from './personal-today.js?v=20260908-compound-action-2';
 
 export const dataSources={habits:'Мои привычки',plans:'Мои дела и планы',work:'Моя работа в проектах',reading:'Чтение и мой дневник'};
 export const dataFields={title:'Название',description:'Подробности',status:'Состояние',progress:'Прогресс',date:'Дата'};

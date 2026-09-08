@@ -287,34 +287,44 @@ func (s *Server) installPageAppCollections(ctx context.Context, tx *sql.Tx, work
 			return err
 		}
 		for j := range b.Actions {
-			a := &b.Actions[j]
-			for _, field := range sourceSchemas[sourceID] {
-				if field.ID == a.FieldID {
-					if err := remapPageActionValue(a, field.FieldType, optionMappings[field.ID]); err != nil {
-						return err
-					}
-				}
-			}
-			if a.Condition != nil {
-				c := a.Condition
+			parent := &b.Actions[j]
+			steps := actionChanges(*parent)
+			for k := range steps {
+				a := &steps[k]
 				for _, field := range sourceSchemas[sourceID] {
-					if field.ID == c.FieldID && c.Operator != "empty" && c.Operator != "not_empty" {
-						mapped := PageRecordAction{Value: c.Value}
-						if err := remapPageActionValue(&mapped, field.FieldType, optionMappings[field.ID]); err != nil {
+					if field.ID == a.FieldID {
+						if err := remapPageActionValue(a, field.FieldType, optionMappings[field.ID]); err != nil {
 							return err
 						}
-						c.Value = mapped.Value
 					}
 				}
-				c.FieldID = fieldIDs[c.FieldID]
-			}
-			if a.Operation == "copy" {
-				if fieldIDs[a.SourceFieldID] == "" || fieldOrigins[a.SourceFieldID] != sourceID {
-					return errors.New("Источник значения отсутствует в наборе")
+				if a.Condition != nil {
+					c := a.Condition
+					for _, field := range sourceSchemas[sourceID] {
+						if field.ID == c.FieldID && c.Operator != "empty" && c.Operator != "not_empty" {
+							mapped := PageRecordAction{Value: c.Value}
+							if err := remapPageActionValue(&mapped, field.FieldType, optionMappings[field.ID]); err != nil {
+								return err
+							}
+							c.Value = mapped.Value
+						}
+					}
+					c.FieldID = fieldIDs[c.FieldID]
 				}
-				a.SourceFieldID = fieldIDs[a.SourceFieldID]
+				if a.Operation == "copy" {
+					if fieldIDs[a.SourceFieldID] == "" || fieldOrigins[a.SourceFieldID] != sourceID {
+						return errors.New("Источник значения отсутствует в наборе")
+					}
+					a.SourceFieldID = fieldIDs[a.SourceFieldID]
+				}
+				a.FieldID = fieldIDs[a.FieldID]
 			}
-			a.FieldID = fieldIDs[a.FieldID]
+			extra := []PageActionChange{}
+			for _, a := range steps[1:] {
+				extra = append(extra, PageActionChange{FieldID: a.FieldID, Operation: a.Operation, SourceFieldID: a.SourceFieldID, Value: a.Value})
+			}
+			*parent = steps[0]
+			parent.Changes = extra
 		}
 		if err := validatePageFormSource(*b, sourceSchemas[sourceID]); err != nil {
 			return err

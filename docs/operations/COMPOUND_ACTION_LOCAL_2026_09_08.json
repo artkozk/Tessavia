@@ -1,0 +1,46 @@
+{
+  "syntheticOnly": true,
+  "checkedAt": "2026-09-08T08:15:13.048635Z",
+  "pages": [
+    {
+      "pageId": "2a79dbd925622662821c82ac02bc353f",
+      "revision": 2,
+      "collectionId": "9d837c40e2316c71d2f2ae6e2a76f0f7",
+      "sourceFieldId": "0a4de640e201f77ac8416cada6d2e7b8",
+      "targetFieldId": "442bb00a81d6d870cb0334a8f47f928e",
+      "recordId": "d617c5ebaa135be7c5c2a2f5d858fb02",
+      "sourceValue": 7,
+      "targetValue": 4,
+      "stepCount": 2
+    },
+    {
+      "pageId": "442d76442cf04ea6e9ddb1952e33e7c5",
+      "revision": 3,
+      "collectionId": "e31e05f158bc7e7602829f6bec8fe542",
+      "sourceFieldId": "89994b497757f6f15d61b0bd6e45694f",
+      "targetFieldId": "a80083f1761f8e3020bf2fc7b92561c4",
+      "recordId": "d41c83e3cc7a46cf9508e9af164e64f1",
+      "sourceValue": 9,
+      "targetValue": 7,
+      "stepCount": 2
+    }
+  ],
+  "uiManualConfigure": true,
+  "draftReloadRestore": true,
+  "sourceChangedDuringPreview": {
+    "before": 0,
+    "after": 4,
+    "staleApplyRejected": true
+  },
+  "kitInstalledWithNewFieldIDs": true,
+  "copyZeroApplied": true,
+  "firstChangeRemovedSavedAndRecreated": true,
+  "originalSnapshotSemanticsVerified": true,
+  "width320": true,
+  "physicalPhoneTested": false,
+  "nodeTests": 266,
+  "goAppSeconds": 64.885,
+  "goWebSeconds": 0.375,
+  "vetPassed": true,
+  "nodeMs": 870.3396
+}

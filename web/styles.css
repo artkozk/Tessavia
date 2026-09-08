@@ -5451,3 +5451,8 @@ body:has(.calendar-expanded) { overflow: hidden; }
 
 /* Conditional presentation uses existing surfaces and contains no access policy. */
 .app-visibility-config,.app-visibility-preview{margin-block:16px;padding:14px;border:1px solid var(--line);border-radius:10px;min-width:0}.app-visibility-config>summary,.app-visibility-preview>summary{font-weight:600;color:var(--accent);cursor:pointer}.app-visibility-config label,.app-visibility-preview label{margin-block:12px}.app-visibility-note{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+
+/* SC-85: one visual group per field, matching the existing action editor. */
+.app-action-change{display:grid;gap:10px;min-width:0;padding:14px 0;border-bottom:1px solid var(--line);}.app-action-change:last-child{border-bottom:0;}.app-action-change>strong,.app-action-change>p{overflow-wrap:anywhere;}.app-action-change .app-action-comparison{margin:0;}
+
+.app-action-dialog-body .form-actions{background:var(--surface);border-top:1px solid var(--line);padding-top:12px;z-index:2;}

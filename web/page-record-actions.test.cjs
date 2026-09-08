@@ -51,3 +51,15 @@ test('copy editor replaces literal input, stores source and clears it on another
  c.fieldInput=()=>'<input data-literal>';const html=run('recordActionConfig(block,collection,e,fieldInput)');assert.ok(html.includes('data-action-source-field'));assert.ok(!html.includes('data-literal'));assert.ok(html.includes('&lt;b&gt;Source'));
  c.input.value='set';run('updateActionProperty(input,block,collection)');assert.equal(c.action.sourceFieldId,undefined);
 });
+
+test('compound editor keeps independent values and condition when editing a later field',()=>{
+ c.action={id:'a',label:'Approve',fieldId:'n',operation:'copy',sourceFieldId:'s',condition:{fieldId:'s',operator:'not_empty'},changes:[{fieldId:'flag',value:false}]};c.block={actions:[c.action]};c.collection={fields:[{id:'n',fieldType:'number'},{id:'s',fieldType:'number'},{id:'flag',fieldType:'checkbox'}]};
+ const change={dataset:{actionChange:'1'},querySelector:()=>({querySelectorAll:()=>[{checked:true}]})};
+ c.input={closest:sel=>sel==='[data-record-action]'?{dataset:{recordAction:'a'}}:sel==='[data-action-change]'?change:null,hasAttribute:()=>false};
+ run('updateActionProperty(input,block,collection)');assert.equal(c.action.changes[0].value,true);assert.equal(c.action.sourceFieldId,'s');assert.equal(c.action.condition.fieldId,'s');
+});
+test('removing first change promotes next without losing button identity or condition',()=>{
+ c.action={id:'a',label:'Approve',fieldId:'n',operation:'copy',sourceFieldId:'s',condition:{fieldId:'s',operator:'not_empty'},changes:[{fieldId:'flag',value:false},{fieldId:'count',operation:'add',value:1}]};
+ assert.equal(run('removeActionChange(action,0)'),true);assert.equal(c.action.fieldId,'flag');assert.equal(c.action.sourceFieldId,undefined);assert.equal(c.action.value,false);assert.equal(c.action.id,'a');assert.equal(c.action.condition.fieldId,'s');assert.equal(c.action.changes.length,1);
+ run('removeActionChange(action,1)');assert.equal(run('removeActionChange(action,0)'),false);assert.equal(c.action.fieldId,'flag');
+});
