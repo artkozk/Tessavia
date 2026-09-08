@@ -1,0 +1,26 @@
+{
+  "commit": "cf08ea57b3803131f4b9cb82c6a3e075b02f4a2d",
+  "release": "/opt/business-control/releases/20260908-copy-field-cf08ea5",
+  "sha256": "6fe7cfa6a8ff22877ddaae30b153d2507b255ded12eb7dee2a225b2989a67e03",
+  "backup": "/var/lib/business-control/backups/pre-copy-field-20260908T071501Z",
+  "checkedAt": "2026-09-08T07:15:38.000524Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 264,
+  "assets": "20260908-copy-field-1",
+  "tasks": [
+    {
+      "id": "2603cbd315162bc158387127d29c7e84",
+      "status": "completed"
+    },
+    {
+      "id": "f4dd60e96ccb69635a2faa05a60fd058",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
