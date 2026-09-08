@@ -19,7 +19,7 @@ type PageAppFormField struct {
 }
 
 func pageAppHasSource(b PageAppBlock) bool {
-	return b.Kind == "records" || b.Kind == "form" || len(b.RecordBindings) > 0
+	return b.Kind == "records" || b.Kind == "form" || len(b.RecordBindings) > 0 || hasFieldElementStyles(b)
 }
 
 func validatePageAppForm(b PageAppBlock) error {

@@ -1,0 +1,308 @@
+{
+  "syntheticOnly": true,
+  "checkedAt": "2026-09-08T10:36:32.030335+00:00",
+  "pages": [
+    {
+      "id": "442d76442cf04ea6e9ddb1952e33e7c5",
+      "revision": 7,
+      "blocks": [
+        {
+          "elementStyles": {
+            "action:18961ce1d0d44e50a9ab9a332cac7f02": {
+              "minHeight": 58,
+              "padding": 14,
+              "radius": 12,
+              "background": "#dcebe4"
+            },
+            "fieldLabel": {
+              "hidden": true
+            },
+            "fieldLabel:89994b497757f6f15d61b0bd6e45694f": {
+              "hidden": false
+            },
+            "fieldValue": {
+              "fontSize": 24,
+              "color": "#245ea8"
+            },
+            "fieldValue:a80083f1761f8e3020bf2fc7b92561c4": {
+              "fontSize": 18,
+              "color": "#854c19"
+            }
+          },
+          "recordBindings": {
+            "subtitle": {
+              "fieldId": "a80083f1761f8e3020bf2fc7b92561c4",
+              "prefix": "Подтверждено: ",
+              "suffix": " часов"
+            },
+            "title": {
+              "fieldId": "89994b497757f6f15d61b0bd6e45694f",
+              "prefix": "Оценка: ",
+              "suffix": " часов",
+              "emptyText": "Оценка ещё не задана"
+            }
+          },
+          "actions": [
+            {
+              "changes": [
+                {
+                  "fieldId": "a80083f1761f8e3020bf2fc7b92561c4",
+                  "operation": "copy",
+                  "sourceFieldId": "89994b497757f6f15d61b0bd6e45694f",
+                  "value": null
+                }
+              ],
+              "operation": "set",
+              "condition": {
+                "mode": "any",
+                "conditions": [
+                  {
+                    "fieldId": "89994b497757f6f15d61b0bd6e45694f",
+                    "operator": "not_empty"
+                  },
+                  {
+                    "fieldId": "a80083f1761f8e3020bf2fc7b92561c4",
+                    "operator": "gt",
+                    "value": 10
+                  }
+                ]
+              },
+              "id": "18961ce1d0d44e50a9ab9a332cac7f02",
+              "label": "Подтвердить оценку и подготовить следующую",
+              "fieldId": "89994b497757f6f15d61b0bd6e45694f",
+              "value": 9
+            }
+          ],
+          "collectionId": "e31e05f158bc7e7602829f6bec8fe542",
+          "fields": [
+            "89994b497757f6f15d61b0bd6e45694f",
+            "a80083f1761f8e3020bf2fc7b92561c4"
+          ],
+          "allowCreate": true,
+          "actionLabel": "Добавить запись",
+          "id": "bee51fb31c1e41219ad19e96c68cc08e",
+          "kind": "records",
+          "title": "Согласование оценки работ",
+          "text": "",
+          "width": 12,
+          "format": "list"
+        }
+      ],
+      "marks": [],
+      "records": [
+        {
+          "id": "d41c83e3cc7a46cf9508e9af164e64f1",
+          "title": "SC-85 Новая независимая оценка"
+        }
+      ]
+    },
+    {
+      "id": "03e4cb96b7888d25fd5fa9b274ae0181",
+      "revision": 2,
+      "blocks": [
+        {
+          "elementStyles": {
+            "action:18961ce1d0d44e50a9ab9a332cac7f02": {
+              "minHeight": 58,
+              "padding": 14,
+              "radius": 12,
+              "background": "#dcebe4"
+            },
+            "fieldLabel": {
+              "hidden": true
+            },
+            "fieldLabel:15c00cf86ee3c674d9a2a92f52e0089e": {
+              "hidden": false
+            },
+            "fieldValue": {
+              "fontSize": 24,
+              "color": "#245ea8"
+            }
+          },
+          "recordBindings": {
+            "subtitle": {
+              "fieldId": "be5fbd8d04c29d1ca1d42967c596c8f9",
+              "prefix": "Подтверждено: ",
+              "suffix": " часов"
+            },
+            "title": {
+              "fieldId": "15c00cf86ee3c674d9a2a92f52e0089e",
+              "prefix": "Оценка: ",
+              "suffix": " часов",
+              "emptyText": "Оценка ещё не задана"
+            }
+          },
+          "actions": [
+            {
+              "changes": [
+                {
+                  "fieldId": "be5fbd8d04c29d1ca1d42967c596c8f9",
+                  "operation": "copy",
+                  "sourceFieldId": "15c00cf86ee3c674d9a2a92f52e0089e",
+                  "value": null
+                }
+              ],
+              "operation": "set",
+              "condition": {
+                "mode": "any",
+                "conditions": [
+                  {
+                    "fieldId": "15c00cf86ee3c674d9a2a92f52e0089e",
+                    "operator": "not_empty"
+                  },
+                  {
+                    "fieldId": "be5fbd8d04c29d1ca1d42967c596c8f9",
+                    "operator": "gt",
+                    "value": 10
+                  }
+                ]
+              },
+              "id": "18961ce1d0d44e50a9ab9a332cac7f02",
+              "label": "Подтвердить оценку и подготовить следующую",
+              "fieldId": "15c00cf86ee3c674d9a2a92f52e0089e",
+              "value": 9
+            }
+          ],
+          "collectionId": "90e1020bdbef464f40a489811b75dc2f",
+          "fields": [
+            "15c00cf86ee3c674d9a2a92f52e0089e",
+            "be5fbd8d04c29d1ca1d42967c596c8f9"
+          ],
+          "allowCreate": true,
+          "actionLabel": "Добавить запись",
+          "id": "bee51fb31c1e41219ad19e96c68cc08e",
+          "kind": "records",
+          "title": "Согласование оценки работ",
+          "text": "",
+          "width": 12,
+          "format": "list"
+        }
+      ],
+      "marks": [],
+      "records": [
+        {
+          "id": "93a5c1f47b86f4dd1c8f5782a7730f61",
+          "title": "SC-89 Собственная запись копии"
+        }
+      ]
+    },
+    {
+      "id": "55cff8d254510e98b1ae6a7342b9675d",
+      "revision": 6,
+      "blocks": [
+        {
+          "elementStyles": {
+            "item": {
+              "minHeight": 56,
+              "fontSize": 20,
+              "padding": 12,
+              "radius": 12
+            },
+            "item:131c66296c814e43a0a1a8a048866159": {
+              "fontSize": 16,
+              "padding": 0
+            }
+          },
+          "actionLabel": "Добавить запись",
+          "id": "66eeffe261f6467a86c7b54e4beea149",
+          "kind": "tracker",
+          "title": "Подготовка",
+          "text": "",
+          "items": [
+            {
+              "id": "131c66296c814e43a0a1a8a048866159",
+              "label": "Проверить материалы"
+            },
+            {
+              "id": "e82ecf205ac14dc9b816db074b2c6127",
+              "label": "Подготовить вопросы"
+            }
+          ],
+          "width": 12,
+          "format": "list"
+        },
+        {
+          "visibility": {
+            "mode": "any",
+            "conditions": [
+              {
+                "source": "66eeffe261f6467a86c7b54e4beea149",
+                "metric": "remaining",
+                "operator": "eq",
+                "value": 0
+              },
+              {
+                "source": "d577d77054d54ede95defe735cc6eb0f",
+                "metric": "remaining",
+                "operator": "eq",
+                "value": 0
+              }
+            ],
+            "value": 0
+          },
+          "actionLabel": "Добавить запись",
+          "id": "d97645d6037347f78c21f03c002e9e41",
+          "kind": "text",
+          "title": "Следующий этап — изучение материала и обсуждение",
+          "text": "Материалы подготовлены. Можно переходить к изучению и обсуждению.",
+          "source": "66eeffe261f6467a86c7b54e4beea149",
+          "width": 12,
+          "format": "list"
+        },
+        {
+          "actionLabel": "Добавить запись",
+          "id": "d577d77054d54ede95defe735cc6eb0f",
+          "kind": "tracker",
+          "title": "Чтение",
+          "text": "",
+          "items": [
+            {
+              "id": "fc66cbf37d34402fabbc504059bd3221",
+              "label": "Прочитать главу"
+            }
+          ],
+          "source": "66eeffe261f6467a86c7b54e4beea149",
+          "width": 12,
+          "format": "list"
+        },
+        {
+          "elementStyles": {
+            "progressBar": {
+              "minHeight": 18,
+              "radius": 9,
+              "color": "#245ea8"
+            }
+          },
+          "actionLabel": "Добавить запись",
+          "id": "62ff0a5ba87d4edaa5cfb69011ab6cd3",
+          "kind": "progress",
+          "title": "Прогресс подготовки",
+          "text": "",
+          "source": "66eeffe261f6467a86c7b54e4beea149",
+          "width": 12,
+          "format": "list"
+        }
+      ],
+      "marks": [
+        {
+          "block_id": "66eeffe261f6467a86c7b54e4beea149",
+          "item_id": "131c66296c814e43a0a1a8a048866159",
+          "checked": 0
+        },
+        {
+          "block_id": "66eeffe261f6467a86c7b54e4beea149",
+          "item_id": "e82ecf205ac14dc9b816db074b2c6127",
+          "checked": 1
+        },
+        {
+          "block_id": "d577d77054d54ede95defe735cc6eb0f",
+          "item_id": "fc66cbf37d34402fabbc504059bd3221",
+          "checked": 0
+        }
+      ],
+      "records": []
+    }
+  ],
+  "nodeTests": 278,
+  "physicalDevicesTested": false
+}

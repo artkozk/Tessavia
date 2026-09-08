@@ -1,4 +1,4 @@
-import { conditionConfig, updateConditionProperty, conditionMatches, conditionDescription, bindConditionConfig, conditionReview, conditionLeaves } from './page-action-conditions.js?v=20260908-record-text-bindings-2';
+import { conditionConfig, updateConditionProperty, conditionMatches, conditionDescription, bindConditionConfig, conditionReview, conditionLeaves } from './page-action-conditions.js?v=20260908-nested-element-styles-2';
 export const actionFields=collection=>(collection?.fields||[]).filter(f=>!['user','relation'].includes(f.fieldType));
 export const copyActionFieldType=kind=>['text','long_text','number','money','date','datetime','checkbox','url','email','phone'].includes(kind);
 export function compatibleActionSourceFields(collection,target){
@@ -54,7 +54,7 @@ export function bindRecordActionConfig(root,block,collection,persist,draw,fieldD
  });
  fieldDeps.enhance(root);fieldDeps.bindMulti(root);
 }
-export function recordActionMenu(block,record,e,collection,displayField){return block.actions?.length?`<details class="app-record-action-menu"><summary>Действия<span class="sr-only">: ${e(record.title)}</span></summary><div>${block.actions.map(a=>{const allowed=conditionMatches(a.condition,record,collection?.fields);return `<div class="app-record-action-choice"><button type="button" class="text-button" data-run-record-action="${e(a.id)}" data-action-record="${e(record.id)}" ${allowed?'':'disabled'}>${e(a.label)}</button>${!allowed?`<small class="muted">${e(conditionDescription(a.condition,collection,displayField))}</small>`:''}</div>`;}).join('')}</div></details>`:'';}
+export function recordActionMenu(block,record,e,collection,displayField){return block.actions?.length?`<details class="app-record-action-menu"><summary>Действия<span class="sr-only">: ${e(record.title)}</span></summary><div>${block.actions.map(a=>{const allowed=conditionMatches(a.condition,record,collection?.fields);return `<div class="app-record-action-choice"><button type="button" class="text-button" data-app-element="actionButton action:${e(a.id)}" data-run-record-action="${e(a.id)}" data-action-record="${e(record.id)}" ${allowed?'':'disabled'}>${e(a.label)}</button>${!allowed?`<small class="muted">${e(conditionDescription(a.condition,collection,displayField))}</small>`:''}</div>`;}).join('')}</div></details>`:'';}
 export async function openPageRecordAction(context,block,actionId,recordId,deps){
  const {state,api,escapeHTML:e,displayField,dialog,root,openModal,close,refresh,toast}=deps,owner=state.me.id;
  const active=()=>state.me?.id===owner&&state.activeWorkspaceId===context.workspace&&state.view===`page:${context.page.id}`;

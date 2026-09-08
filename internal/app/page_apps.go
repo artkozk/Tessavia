@@ -16,32 +16,33 @@ type PageAppItem struct {
 	Label  string `json:"label"`
 }
 type PageAppBlock struct {
-	RecordBindings map[string]PageTextBinding `json:"recordBindings,omitempty"`
-	Visibility     *PageBlockVisibility       `json:"visibility,omitempty"`
-	Data           *PageDataConfig            `json:"data,omitempty"`
-	Actions        []PageRecordAction         `json:"actions,omitempty"`
-	FormFields     []PageAppFormField         `json:"formFields,omitempty"`
-	DefaultTitle   string                     `json:"defaultTitle,omitempty"`
-	SuccessText    string                     `json:"successText,omitempty"`
-	CollectionID   string                     `json:"collectionId,omitempty"`
-	Fields         []string                   `json:"fields,omitempty"`
-	AllowCreate    bool                       `json:"allowCreate,omitempty"`
-	ActionLabel    string                     `json:"actionLabel,omitempty"`
-	ID             string                     `json:"id"`
-	Kind           string                     `json:"kind"`
-	Title          string                     `json:"title"`
-	Text           string                     `json:"text"`
-	Items          []PageAppItem              `json:"items,omitempty"`
-	Source         string                     `json:"source,omitempty"`
-	Width          int                        `json:"width"`
-	Height         int                        `json:"height,omitempty"`
-	FontSize       int                        `json:"fontSize,omitempty"`
-	Color          string                     `json:"color,omitempty"`
-	Background     string                     `json:"background,omitempty"`
-	Radius         int                        `json:"radius,omitempty"`
-	Padding        int                        `json:"padding,omitempty"`
-	Hidden         bool                       `json:"hidden,omitempty"`
-	Format         string                     `json:"format,omitempty"`
+	ElementStyles  map[string]PageElementStyle `json:"elementStyles,omitempty"`
+	RecordBindings map[string]PageTextBinding  `json:"recordBindings,omitempty"`
+	Visibility     *PageBlockVisibility        `json:"visibility,omitempty"`
+	Data           *PageDataConfig             `json:"data,omitempty"`
+	Actions        []PageRecordAction          `json:"actions,omitempty"`
+	FormFields     []PageAppFormField          `json:"formFields,omitempty"`
+	DefaultTitle   string                      `json:"defaultTitle,omitempty"`
+	SuccessText    string                      `json:"successText,omitempty"`
+	CollectionID   string                      `json:"collectionId,omitempty"`
+	Fields         []string                    `json:"fields,omitempty"`
+	AllowCreate    bool                        `json:"allowCreate,omitempty"`
+	ActionLabel    string                      `json:"actionLabel,omitempty"`
+	ID             string                      `json:"id"`
+	Kind           string                      `json:"kind"`
+	Title          string                      `json:"title"`
+	Text           string                      `json:"text"`
+	Items          []PageAppItem               `json:"items,omitempty"`
+	Source         string                      `json:"source,omitempty"`
+	Width          int                         `json:"width"`
+	Height         int                         `json:"height,omitempty"`
+	FontSize       int                         `json:"fontSize,omitempty"`
+	Color          string                      `json:"color,omitempty"`
+	Background     string                      `json:"background,omitempty"`
+	Radius         int                         `json:"radius,omitempty"`
+	Padding        int                         `json:"padding,omitempty"`
+	Hidden         bool                        `json:"hidden,omitempty"`
+	Format         string                      `json:"format,omitempty"`
 }
 type PageAppDefinition struct {
 	Collections []WorkspaceCollection `json:"collections,omitempty"`
@@ -83,6 +84,9 @@ func validatePageApp(d *PageAppDefinition) error {
 			if err := validatePageAppForm(*b); err != nil {
 				return err
 			}
+		}
+		if err := validatePageElementStyles(*b); err != nil {
+			return err
 		}
 		if err := validatePageRecordBindings(*b); err != nil {
 			return err

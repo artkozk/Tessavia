@@ -25,6 +25,9 @@ func (s *Server) validatePageAppSources(r *http.Request, def *PageAppDefinition)
 		if err := s.validatePageActionSource(r.Context(), block, fields); err != nil {
 			return err
 		}
+		if err := validatePageElementStyleSource(block, fields); err != nil {
+			return err
+		}
 		if err := validatePageRecordBindingSource(block, fields); err != nil {
 			return err
 		}
@@ -79,6 +82,9 @@ func (s *Server) snapshotPageAppCollections(r *http.Request, def *PageAppDefinit
 		for _, block := range def.Blocks {
 			if pageAppHasSource(block) && block.CollectionID == id {
 				if err := s.validatePageActionSource(r.Context(), block, source.Fields); err != nil {
+					return err
+				}
+				if err := validatePageElementStyleSource(block, source.Fields); err != nil {
 					return err
 				}
 				if err := validatePageRecordBindingSource(block, source.Fields); err != nil {
@@ -331,6 +337,20 @@ func (s *Server) installPageAppCollections(ctx context.Context, tx *sql.Tx, work
 			*parent = steps[0]
 			parent.Changes = extra
 		}
+		if err := validatePageElementStyleSource(*b, sourceSchemas[sourceID]); err != nil {
+			return err
+		}
+		remappedStyles := map[string]PageElementStyle{}
+		for key, style := range b.ElementStyles {
+			if old := elementFieldID(key); old != "" {
+				if fieldIDs[old] == "" || fieldOrigins[old] != sourceID {
+					return errors.New("Поле оформления отсутствует в наборе")
+				}
+				key = strings.TrimSuffix(key, old) + fieldIDs[old]
+			}
+			remappedStyles[key] = style
+		}
+		b.ElementStyles = remappedStyles
 		if err := validatePageRecordBindingSource(*b, sourceSchemas[sourceID]); err != nil {
 			return err
 		}
