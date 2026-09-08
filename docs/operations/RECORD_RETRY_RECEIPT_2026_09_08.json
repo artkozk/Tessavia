@@ -1,0 +1,26 @@
+{
+  "commit": "868d111838d53228d64ac882dc02aaee78f23383",
+  "release": "/opt/business-control/releases/20260908-record-retry-868d111",
+  "sha256": "88b9d520f77baaa042b4c9c8da9b78446e8e3cd8551918d060369a96d373e885",
+  "backup": "/var/lib/business-control/backups/pre-record-retry-20260908T005916Z",
+  "checkedAt": "2026-09-08T00:59:35.293449Z",
+  "oldTablesUnchanged": 116,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 245,
+  "assets": "20260908-record-retry-2",
+  "tasks": [
+    {
+      "id": "c45a25ade37a8a0db4d2c309f622f3a4",
+      "status": "completed"
+    },
+    {
+      "id": "26c54f79aa1c9110536670ae8371a868",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
