@@ -1,0 +1,32 @@
+[
+  {
+    "page": "SC-80 Условные действия",
+    "pageId": "8d93a574d9f7412753b60a142d4b2e17",
+    "collectionId": "ae680ec981e38a9e4bedc068cabc3e09",
+    "recordId": "25576d13127d55d0514aa5e07d33cf65",
+    "recordCount": 1,
+    "action": {
+      "operation": "add",
+      "id": "e93841c75df84b67b2f05fbcddf0facc",
+      "label": "Добавить час на проверку",
+      "fieldId": "2809f460e940e7cf79ecbaea96d12a10",
+      "value": 1
+    },
+    "value": 3
+  },
+  {
+    "page": "SC-81 Счётчики рабочего процесса",
+    "pageId": "5a8cfd0107967bce38125f4674a85b04",
+    "collectionId": "4b5159ab21f422c61857be0422c0b153",
+    "recordId": "897e9547d9faa4a243daa61faa0e74a9",
+    "recordCount": 1,
+    "action": {
+      "operation": "add",
+      "id": "e93841c75df84b67b2f05fbcddf0facc",
+      "label": "Убрать полчаса проверки",
+      "fieldId": "1a63a829b31608a5f32b669f742f8f0d",
+      "value": -0.5
+    },
+    "value": 2.5
+  }
+]

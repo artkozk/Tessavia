@@ -12,6 +12,7 @@ import (
 )
 
 type PageRecordAction struct {
+	Operation string               `json:"operation,omitempty"`
 	Condition *PageActionCondition `json:"condition,omitempty"`
 	ID        string               `json:"id"`
 	Label     string               `json:"label"`
@@ -27,6 +28,9 @@ func validatePageRecordActions(b PageAppBlock) error {
 	for _, a := range b.Actions {
 		if !pageAppID.MatchString(a.ID) || seen[a.ID] || !pageAppID.MatchString(a.FieldID) || strings.TrimSpace(a.Label) == "" || len([]rune(a.Label)) > 80 || len(a.Value) > 40000 || !json.Valid(a.Value) {
 			return errors.New("Укажите подпись, поле, значение и разные ключи действий")
+		}
+		if a.Operation != "" && a.Operation != "set" && a.Operation != "add" {
+			return errors.New("Неизвестный способ изменения поля")
 		}
 		seen[a.ID] = true
 	}
@@ -47,6 +51,9 @@ func (s *Server) validatePageActionSource(ctx context.Context, b PageAppBlock, f
 		for _, f := range fields {
 			if f.ID == a.FieldID {
 				found = true
+				if err := validateActionOperation(a, f); err != nil {
+					return err
+				}
 				if !portableActionField(f) {
 					return errors.New("Действия со ссылкой на участника или запись требуют отдельного контекста")
 				}
@@ -221,7 +228,12 @@ func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) 
 	}
 	hash := sha256.Sum256(schema)
 	schemaHash := hex.EncodeToString(hash[:])
-	normalized, empty, err := s.normalizeCollectionFieldValue(r.Context(), record, field, action.Value)
+	resolved, err := resolvePageActionValue(action, record)
+	if err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
+	normalized, empty, err := s.normalizeCollectionFieldValue(r.Context(), record, field, resolved)
 	if err != nil {
 		writeError(w, 400, err.Error())
 		return

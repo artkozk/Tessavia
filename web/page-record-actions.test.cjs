@@ -27,3 +27,16 @@ test('unavailable action remains visible with escaped explanation',()=>{
  c.collection={fields:[{id:'hours',name:'<b>Hours</b>',fieldType:'number'}]};c.block={actions:[{id:'reset',label:'Reset',condition:{fieldId:'hours',operator:'gt',value:0}}]};c.record={id:'record',title:'Request',customFields:{hours:0}};c.display=(_field,value)=>String(value);
  const html=run('recordActionMenu(block,record,e,collection,display)');assert.match(html,/disabled/);assert.ok(html.includes('&lt;b&gt;Hours'));assert.ok(html.includes('больше: 0'));
 });
+
+
+test('numeric action editor exposes arithmetic without offering it for text fields',()=>{
+ c.block={actions:[{id:'one',label:'One more',fieldId:'n',operation:'add',value:1}]};c.collection={fields:[{id:'n',name:'Count',fieldType:'number'}]};c.input=(field,value)=>field.name+':'+value;
+ let html=run('recordActionConfig(block,collection,e,input)');assert.match(html,/data-action-operation/);assert.match(html,/Сколько прибавить:1/);assert.match(html,/Отрицательное число/);
+ c.collection.fields[0].fieldType='text';html=run('recordActionConfig(block,collection,e,input)');assert.ok(!html.includes('data-action-operation'));
+});
+test('switching action modes and fields resets operand while preserving independent condition',()=>{
+ c.action={id:'one',fieldId:'n',operation:'set',value:42,condition:{fieldId:'n',operator:'lt',value:10}};c.block={actions:[c.action]};c.collection={fields:[{id:'n',fieldType:'number'},{id:'t',fieldType:'text'}]};
+ c.input={value:'add',closest:selector=>selector==='[data-record-action]'?{dataset:{recordAction:'one'}}:null,hasAttribute:attr=>attr==='data-action-operation'};
+ run('updateActionProperty(input,block,collection)');assert.equal(c.action.operation,'add');assert.equal(c.action.value,1);assert.equal(c.action.condition.value,10);
+ c.input.value='t';c.input.hasAttribute=attr=>attr==='data-action-field';run('updateActionProperty(input,block,collection)');assert.equal(c.action.operation,'set');assert.equal(c.action.value,null);
+});

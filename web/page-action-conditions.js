@@ -6,7 +6,7 @@ export function conditionConfig(action,collection,e,fieldInput){
 }
 export function updateConditionProperty(input,action,collection,readValue){
  const root=input.closest('[data-condition-editor]');if(!root)return false;
- if(input.hasAttribute('data-condition-toggle')){if(input.checked)action.condition={fieldId:action.fieldId,operator:'ne',value:structuredClone(action.value)};else delete action.condition;return true;}
+ if(input.hasAttribute('data-condition-toggle')){if(input.checked)action.condition=action.operation==='add'?{fieldId:action.fieldId,operator:'not_empty'}:{fieldId:action.fieldId,operator:'ne',value:structuredClone(action.value)};else delete action.condition;return true;}
  const c=action.condition;if(!c)return true;
  if(input.hasAttribute('data-condition-field')){c.fieldId=input.value;c.operator='eq';const f=collection?.fields.find(f=>f.id===c.fieldId);c.value=f?.defaultValue??(f?.fieldType==='checkbox'?false:null);}
  else if(input.hasAttribute('data-condition-operator')){c.operator=input.value;if(['empty','not_empty'].includes(c.operator))delete c.value;else if(c.value==null){const f=collection?.fields.find(f=>f.id===c.fieldId);c.value=['number','money'].includes(f?.fieldType)?0:f?.fieldType==='checkbox'?false:null;}}
