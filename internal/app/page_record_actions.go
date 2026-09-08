@@ -12,10 +12,11 @@ import (
 )
 
 type PageRecordAction struct {
-	ID      string          `json:"id"`
-	Label   string          `json:"label"`
-	FieldID string          `json:"fieldId"`
-	Value   json.RawMessage `json:"value"`
+	Condition *PageActionCondition `json:"condition,omitempty"`
+	ID        string               `json:"id"`
+	Label     string               `json:"label"`
+	FieldID   string               `json:"fieldId"`
+	Value     json.RawMessage      `json:"value"`
 }
 
 func validatePageRecordActions(b PageAppBlock) error {
@@ -39,6 +40,9 @@ func (s *Server) validatePageActionSource(ctx context.Context, b PageAppBlock, f
 		return err
 	}
 	for _, a := range b.Actions {
+		if err := s.validateActionCondition(ctx, a.Condition, fields); err != nil {
+			return err
+		}
 		found := false
 		for _, f := range fields {
 			if f.ID == a.FieldID {
@@ -96,15 +100,19 @@ func remapPageActionValue(a *PageRecordAction, kind string, options map[string]s
 }
 
 type pageActionPreview struct {
-	RecordID          string          `json:"recordId"`
-	Title             string          `json:"title"`
-	Label             string          `json:"label"`
-	Field             CollectionField `json:"field"`
-	Before            any             `json:"before"`
-	After             json.RawMessage `json:"after"`
-	ExpectedUpdatedAt string          `json:"expectedUpdatedAt"`
-	ExpectedRevision  int             `json:"expectedRevision"`
-	SchemaHash        string          `json:"schemaHash"`
+	Condition         *PageActionCondition `json:"condition,omitempty"`
+	ConditionField    *CollectionField     `json:"conditionField,omitempty"`
+	Allowed           bool                 `json:"allowed"`
+	ConditionReason   string               `json:"conditionReason,omitempty"`
+	RecordID          string               `json:"recordId"`
+	Title             string               `json:"title"`
+	Label             string               `json:"label"`
+	Field             CollectionField      `json:"field"`
+	Before            any                  `json:"before"`
+	After             json.RawMessage      `json:"after"`
+	ExpectedUpdatedAt string               `json:"expectedUpdatedAt"`
+	ExpectedRevision  int                  `json:"expectedRevision"`
+	SchemaHash        string               `json:"schemaHash"`
 }
 
 func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +209,16 @@ func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) 
 			field = f
 		}
 	}
+	var conditionField *CollectionField
 	schema, _ := json.Marshal(field)
+	if action.Condition != nil {
+		for _, f := range source.Fields {
+			if f.ID == action.Condition.FieldID {
+				conditionField = &f
+				schema, _ = json.Marshal([]CollectionField{field, f})
+			}
+		}
+	}
 	hash := sha256.Sum256(schema)
 	schemaHash := hex.EncodeToString(hash[:])
 	normalized, empty, err := s.normalizeCollectionFieldValue(r.Context(), record, field, action.Value)
@@ -209,7 +226,15 @@ func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) 
 		writeError(w, 400, err.Error())
 		return
 	}
-	preview := pageActionPreview{RecordID: record.ID, Title: record.Title, Label: action.Label, Field: field, Before: record.CustomFields[field.ID], After: json.RawMessage(normalized), ExpectedUpdatedAt: record.UpdatedAt, ExpectedRevision: revision, SchemaHash: schemaHash}
+	allowed := actionConditionMatches(action.Condition, record, source.Fields)
+	if input.Apply && !allowed {
+		writeError(w, 409, "Условие действия не выполнено. Запись не изменена")
+		return
+	}
+	preview := pageActionPreview{Condition: action.Condition, ConditionField: conditionField, Allowed: allowed, RecordID: record.ID, Title: record.Title, Label: action.Label, Field: field, Before: record.CustomFields[field.ID], After: json.RawMessage(normalized), ExpectedUpdatedAt: record.UpdatedAt, ExpectedRevision: revision, SchemaHash: schemaHash}
+	if !allowed {
+		preview.ConditionReason = "Условие действия не выполнено. Сначала проверьте поля записи"
+	}
 	if !input.Apply {
 		writeJSON(w, 200, preview)
 		return

@@ -1,0 +1,28 @@
+[
+  {
+    "page": "SC-79 Реестр с действиями",
+    "pageId": "3736323eb9437249836d39be683771fb",
+    "collectionId": "a5334d3f95936c82cc00b7ef1f22781b",
+    "recordId": "32a416d06f00742b85a70b1f328e3131",
+    "recordCount": 1,
+    "condition": {
+      "fieldId": "43bdf430bba318e3e4bca6f2068e2c72",
+      "operator": "gt",
+      "value": 0
+    },
+    "value": 0
+  },
+  {
+    "page": "SC-80 Условные действия",
+    "pageId": "8d93a574d9f7412753b60a142d4b2e17",
+    "collectionId": "ae680ec981e38a9e4bedc068cabc3e09",
+    "recordId": "25576d13127d55d0514aa5e07d33cf65",
+    "recordCount": 1,
+    "condition": {
+      "fieldId": "2809f460e940e7cf79ecbaea96d12a10",
+      "operator": "gt",
+      "value": 0
+    },
+    "value": 0
+  }
+]

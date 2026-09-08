@@ -295,6 +295,19 @@ func (s *Server) installPageAppCollections(ctx context.Context, tx *sql.Tx, work
 					}
 				}
 			}
+			if a.Condition != nil {
+				c := a.Condition
+				for _, field := range sourceSchemas[sourceID] {
+					if field.ID == c.FieldID && c.Operator != "empty" && c.Operator != "not_empty" {
+						mapped := PageRecordAction{Value: c.Value}
+						if err := remapPageActionValue(&mapped, field.FieldType, optionMappings[field.ID]); err != nil {
+							return err
+						}
+						c.Value = mapped.Value
+					}
+				}
+				c.FieldID = fieldIDs[c.FieldID]
+			}
 			a.FieldID = fieldIDs[a.FieldID]
 		}
 		if err := validatePageFormSource(*b, sourceSchemas[sourceID]); err != nil {
