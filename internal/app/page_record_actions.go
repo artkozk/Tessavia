@@ -126,6 +126,8 @@ func remapPageActionValue(a *PageRecordAction, kind string, options map[string]s
 }
 
 type pageActionPreview struct {
+	ConditionFields   []CollectionField         `json:"conditionFields,omitempty"`
+	ConditionResults  []bool                    `json:"conditionResults,omitempty"`
 	Changes           []pageActionChangePreview `json:"changes,omitempty"`
 	SourceField       *CollectionField          `json:"sourceField,omitempty"`
 	SourceValue       any                       `json:"sourceValue,omitempty"`
@@ -146,14 +148,15 @@ type pageActionPreview struct {
 
 func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		BlockID             string `json:"blockId"`
-		ActionID            string `json:"actionId"`
-		RecordID            string `json:"recordId"`
-		ExpectedRevision    int    `json:"expectedRevision"`
-		ExpectedUpdatedAt   string `json:"expectedUpdatedAt"`
-		SchemaHash          string `json:"schemaHash"`
-		Apply               bool   `json:"apply"`
-		ExpectedChangeCount int    `json:"expectedChangeCount"`
+		BlockID                string `json:"blockId"`
+		ActionID               string `json:"actionId"`
+		RecordID               string `json:"recordId"`
+		ExpectedRevision       int    `json:"expectedRevision"`
+		ExpectedUpdatedAt      string `json:"expectedUpdatedAt"`
+		SchemaHash             string `json:"schemaHash"`
+		Apply                  bool   `json:"apply"`
+		ExpectedChangeCount    int    `json:"expectedChangeCount"`
+		ExpectedConditionCount int    `json:"expectedConditionCount"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -242,6 +245,10 @@ func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) 
 		writeError(w, 409, "Обновите приложение и предпросмотр: требуется подтверждение всех изменений кнопки")
 		return
 	}
+	if input.Apply && action.Condition != nil && action.Condition.Mode != "" && input.ExpectedConditionCount != len(action.Condition.Conditions) {
+		writeError(w, 409, "Обновите приложение и предпросмотр: требуется проверка всех условий кнопки")
+		return
+	}
 	first := changes[0]
 	field, valueSource := first.Field, first.SourceField
 	var conditionField *CollectionField
@@ -258,6 +265,10 @@ func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	preview := pageActionPreview{SourceField: valueSource, SourceValue: record.CustomFields[action.SourceFieldID], Condition: action.Condition, ConditionField: conditionField, Allowed: allowed, RecordID: record.ID, Title: record.Title, Label: action.Label, Field: field, Before: record.CustomFields[field.ID], After: first.After, Changes: changes, ExpectedUpdatedAt: record.UpdatedAt, ExpectedRevision: revision, SchemaHash: schemaHash}
+	preview.ConditionFields = actionConditionFields(action.Condition, source.Fields)
+	for _, leaf := range actionConditionLeaves(action.Condition) {
+		preview.ConditionResults = append(preview.ConditionResults, actionConditionMatches(leaf, record, source.Fields))
+	}
 	if !allowed {
 		preview.ConditionReason = "Условие действия не выполнено. Сначала проверьте поля записи"
 	}

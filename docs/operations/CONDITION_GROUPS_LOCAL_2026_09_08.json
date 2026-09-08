@@ -1,0 +1,64 @@
+{
+  "syntheticOnly": true,
+  "checkedAt": "2026-09-08T08:41:24.263457Z",
+  "pages": [
+    {
+      "pageId": "442d76442cf04ea6e9ddb1952e33e7c5",
+      "revision": 5,
+      "collectionId": "e31e05f158bc7e7602829f6bec8fe542",
+      "fieldIDs": [
+        "89994b497757f6f15d61b0bd6e45694f",
+        "a80083f1761f8e3020bf2fc7b92561c4"
+      ],
+      "recordId": "d41c83e3cc7a46cf9508e9af164e64f1",
+      "values": [
+        9,
+        5
+      ],
+      "condition": {
+        "mode": "any",
+        "conditions": [
+          {
+            "fieldId": "89994b497757f6f15d61b0bd6e45694f",
+            "operator": "not_empty"
+          },
+          {
+            "fieldId": "a80083f1761f8e3020bf2fc7b92561c4",
+            "operator": "gt",
+            "value": 10
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "204c67d3cbdbdd5d7f81319c54913ee2",
+      "revision": 3,
+      "collectionId": "2f00d925e1e15a643ebc91c3b31a11fe",
+      "fieldIDs": [
+        "a4c783f2aad790f445d92e93c0ff38af",
+        "fa5621bc2fb58b782da3e2a7138e7205"
+      ],
+      "recordId": "30673bddbb3714a8b110a9cc495aa005",
+      "values": [
+        9,
+        0
+      ],
+      "condition": null
+    }
+  ],
+  "uiManualConfigure": true,
+  "draftReloadRestore": true,
+  "allBlockedAnyAllowed": true,
+  "conditionChangedDuringPreviewRejected": true,
+  "refreshedPreviewBothFalse": true,
+  "kitInstalledWithNewFieldIDs": true,
+  "zeroMatchesNotEmpty": true,
+  "firstAndLastConditionsRemovedSaved": true,
+  "width320": true,
+  "physicalPhoneTested": false,
+  "goAppSeconds": 63.453,
+  "goWebSeconds": 0.375,
+  "vetPassed": true,
+  "nodeTests": 269,
+  "nodeMs": 979.6588
+}

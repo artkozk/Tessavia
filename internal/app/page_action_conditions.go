@@ -10,9 +10,11 @@ import (
 )
 
 type PageActionCondition struct {
-	FieldID  string          `json:"fieldId"`
-	Operator string          `json:"operator"`
-	Value    json.RawMessage `json:"value,omitempty"`
+	Mode       string                `json:"mode,omitempty"`
+	Conditions []PageActionCondition `json:"conditions,omitempty"`
+	FieldID    string                `json:"fieldId,omitempty"`
+	Operator   string                `json:"operator,omitempty"`
+	Value      json.RawMessage       `json:"value,omitempty"`
 }
 
 func conditionOperatorAllowed(operator, kind string) bool {
@@ -26,6 +28,21 @@ func conditionOperatorAllowed(operator, kind string) bool {
 }
 func (s *Server) validateActionCondition(ctx context.Context, c *PageActionCondition, fields []CollectionField) error {
 	if c == nil {
+		return nil
+	}
+	if c.Mode != "" || len(c.Conditions) > 0 {
+		if (c.Mode != "all" && c.Mode != "any") || len(c.Conditions) < 1 || len(c.Conditions) > 8 || c.FieldID != "" || c.Operator != "" || len(c.Value) > 0 {
+			return errors.New("Укажите от 1 до 8 условий и способ: Все или Любое")
+		}
+		for i := range c.Conditions {
+			child := &c.Conditions[i]
+			if child.Mode != "" || len(child.Conditions) > 0 {
+				return errors.New("Вложенные группы условий пока не поддерживаются")
+			}
+			if err := s.validateActionCondition(ctx, child, fields); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	for _, field := range fields {
@@ -92,6 +109,25 @@ func actionConditionMatches(c *PageActionCondition, record Record, fields []Coll
 	if c == nil {
 		return true
 	}
+	if c.Mode != "" || len(c.Conditions) > 0 {
+		if (c.Mode != "all" && c.Mode != "any") || len(c.Conditions) < 1 || len(c.Conditions) > 8 {
+			return false
+		}
+		matched := 0
+		for i := range c.Conditions {
+			child := &c.Conditions[i]
+			if child.Mode != "" || len(child.Conditions) > 0 {
+				return false
+			}
+			if actionConditionMatches(child, record, fields) {
+				matched++
+			}
+		}
+		if c.Mode == "all" {
+			return matched == len(c.Conditions)
+		}
+		return matched > 0
+	}
 	var field CollectionField
 	for _, f := range fields {
 		if f.ID == c.FieldID {
@@ -138,4 +174,30 @@ func actionConditionMatches(c *PageActionCondition, record Record, fields []Coll
 		return a <= b
 	}
 	return false
+}
+
+// Groups are a bounded flat list. Call validation before resolving bindings or executing.
+func actionConditionLeaves(c *PageActionCondition) []*PageActionCondition {
+	if c == nil {
+		return nil
+	}
+	if c.Mode == "" {
+		return []*PageActionCondition{c}
+	}
+	out := []*PageActionCondition{}
+	for i := range c.Conditions {
+		out = append(out, &c.Conditions[i])
+	}
+	return out
+}
+func actionConditionFields(c *PageActionCondition, fields []CollectionField) []CollectionField {
+	out := []CollectionField{}
+	for _, leaf := range actionConditionLeaves(c) {
+		for _, f := range fields {
+			if f.ID == leaf.FieldID {
+				out = append(out, f)
+			}
+		}
+	}
+	return out
 }

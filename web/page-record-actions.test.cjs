@@ -63,3 +63,19 @@ test('removing first change promotes next without losing button identity or cond
  assert.equal(run('removeActionChange(action,0)'),true);assert.equal(c.action.fieldId,'flag');assert.equal(c.action.sourceFieldId,undefined);assert.equal(c.action.value,false);assert.equal(c.action.id,'a');assert.equal(c.action.condition.fieldId,'s');assert.equal(c.action.changes.length,1);
  run('removeActionChange(action,1)');assert.equal(run('removeActionChange(action,0)'),false);assert.equal(c.action.fieldId,'flag');
 });
+
+test('condition groups agree on all/any with zero and false and fail closed on invalid groups',()=>{
+ c.fields=[{id:'n',fieldType:'number'},{id:'flag',fieldType:'checkbox'}];c.record={customFields:{n:0,flag:false}};c.group={mode:'all',conditions:[{fieldId:'n',operator:'gt',value:0},{fieldId:'flag',operator:'eq',value:false}]};
+ assert.equal(run('conditionMatches(group,record,fields)'),false);c.group.mode='any';assert.equal(run('conditionMatches(group,record,fields)'),true);c.record.customFields.flag=true;assert.equal(run('conditionMatches(group,record,fields)'),false);
+ c.group.conditions=[];assert.equal(run('conditionMatches(group,record,fields)'),false);c.group={mode:'all',conditions:[{mode:'any',conditions:[]}]};assert.equal(run('conditionMatches(group,record,fields)'),false);
+});
+test('editing and removing group conditions preserves independent rules then explicitly clears the last',()=>{
+ c.action={condition:{mode:'any',conditions:[{fieldId:'n',operator:'gt',value:0},{fieldId:'flag',operator:'eq',value:false}]}};c.collection={fields:[{id:'n',fieldType:'number'},{id:'flag',fieldType:'checkbox'}]};
+ const row={dataset:{conditionIndex:'1'},querySelector:()=>({querySelectorAll:()=>[{checked:true}]})};c.input={closest:sel=>sel==='[data-condition-editor]'?{}:sel==='[data-condition-index]'?row:null,hasAttribute:()=>false};
+ run('updateConditionProperty(input,action,collection,readActionValue)');assert.equal(c.action.condition.conditions[1].value,true);assert.equal(c.action.condition.conditions[0].value,0);
+ run('removeActionCondition(action,0)');assert.equal(c.action.condition.fieldId,'flag');assert.equal(c.action.condition.mode,undefined);run('removeActionCondition(action,0)');assert.equal(c.action.condition,undefined);
+});
+test('group review lists all checks and escapes field labels',()=>{
+ c.value={condition:{mode:'any',conditions:[{fieldId:'n',operator:'gt',value:0},{fieldId:'flag',operator:'eq',value:false}]},conditionFields:[{id:'n',name:'<b>Estimate</b>',fieldType:'number'},{id:'flag',name:'Ready',fieldType:'checkbox'}],conditionResults:[false,true]};c.display=(_,v)=>String(v);
+ const html=run('conditionReview(value,e,display)');assert.ok(html.includes('Достаточно любого'));assert.ok(html.includes('Не выполнено'));assert.ok(html.includes('Выполнено'));assert.ok(html.includes('&lt;b&gt;Estimate'));assert.ok(!html.includes('<b>Estimate'));
+});

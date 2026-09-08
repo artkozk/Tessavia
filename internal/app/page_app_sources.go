@@ -298,8 +298,7 @@ func (s *Server) installPageAppCollections(ctx context.Context, tx *sql.Tx, work
 						}
 					}
 				}
-				if a.Condition != nil {
-					c := a.Condition
+				for _, c := range actionConditionLeaves(a.Condition) {
 					for _, field := range sourceSchemas[sourceID] {
 						if field.ID == c.FieldID && c.Operator != "empty" && c.Operator != "not_empty" {
 							mapped := PageRecordAction{Value: c.Value}

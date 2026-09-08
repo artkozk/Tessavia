@@ -83,11 +83,7 @@ func (s *Server) previewActionChanges(ctx context.Context, a PageRecordAction, r
 		c.SourceValue = record.CustomFields[step.SourceFieldID]
 		changes = append(changes, c)
 	}
-	for _, f := range fields {
-		if a.Condition != nil && f.ID == a.Condition.FieldID {
-			schemas = append(schemas, f)
-		}
-	}
+	schemas = append(schemas, actionConditionFields(a.Condition, fields)...)
 	schema, err := json.Marshal(schemas)
 	return changes, schema, err
 }
