@@ -1,0 +1,26 @@
+{
+  "commit": "aee34e7a8d0c072d49c5d8ba30f3d20bc194ab5e",
+  "release": "/opt/business-control/releases/20260908-record-text-bindings-aee34e7",
+  "sha256": "7fb0a2533965f246edb86638bddbca11c1bd93440b41bcd5921080a378cd9f7f",
+  "backup": "/var/lib/business-control/backups/pre-record-text-bindings-20260908T092629Z",
+  "checkedAt": "2026-09-08T09:27:29.072730Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 275,
+  "assets": "20260908-record-text-bindings-2",
+  "tasks": [
+    {
+      "id": "7a85114ee0eb76dddd109eaf264e3b2a",
+      "status": "completed"
+    },
+    {
+      "id": "2ad192a4298615883945e23a87d8ecd2",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
