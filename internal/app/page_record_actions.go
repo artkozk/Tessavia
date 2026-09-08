@@ -12,12 +12,13 @@ import (
 )
 
 type PageRecordAction struct {
-	Operation string               `json:"operation,omitempty"`
-	Condition *PageActionCondition `json:"condition,omitempty"`
-	ID        string               `json:"id"`
-	Label     string               `json:"label"`
-	FieldID   string               `json:"fieldId"`
-	Value     json.RawMessage      `json:"value"`
+	SourceFieldID string               `json:"sourceFieldId,omitempty"`
+	Operation     string               `json:"operation,omitempty"`
+	Condition     *PageActionCondition `json:"condition,omitempty"`
+	ID            string               `json:"id"`
+	Label         string               `json:"label"`
+	FieldID       string               `json:"fieldId"`
+	Value         json.RawMessage      `json:"value"`
 }
 
 func validatePageRecordActions(b PageAppBlock) error {
@@ -26,11 +27,18 @@ func validatePageRecordActions(b PageAppBlock) error {
 	}
 	seen := map[string]bool{}
 	for _, a := range b.Actions {
-		if !pageAppID.MatchString(a.ID) || seen[a.ID] || !pageAppID.MatchString(a.FieldID) || strings.TrimSpace(a.Label) == "" || len([]rune(a.Label)) > 80 || len(a.Value) > 40000 || !json.Valid(a.Value) {
+		if !pageAppID.MatchString(a.ID) || seen[a.ID] || !pageAppID.MatchString(a.FieldID) || strings.TrimSpace(a.Label) == "" || len([]rune(a.Label)) > 80 || len(a.Value) > 40000 || (a.Operation != "copy" && !json.Valid(a.Value)) {
 			return errors.New("Укажите подпись, поле, значение и разные ключи действий")
 		}
-		if a.Operation != "" && a.Operation != "set" && a.Operation != "add" {
+		if a.Operation != "" && a.Operation != "set" && a.Operation != "add" && a.Operation != "copy" {
 			return errors.New("Неизвестный способ изменения поля")
+		}
+		if a.Operation == "copy" {
+			if !pageAppID.MatchString(a.SourceFieldID) || a.SourceFieldID == a.FieldID || (len(a.Value) > 0 && strings.TrimSpace(string(a.Value)) != "null") {
+				return errors.New("Для копирования выберите другое поле; фиксированное значение не требуется")
+			}
+		} else if a.SourceFieldID != "" {
+			return errors.New("Источник значения доступен только для копирования")
 		}
 		seen[a.ID] = true
 	}
@@ -56,6 +64,12 @@ func (s *Server) validatePageActionSource(ctx context.Context, b PageAppBlock, f
 				}
 				if !portableActionField(f) {
 					return errors.New("Действия со ссылкой на участника или запись требуют отдельного контекста")
+				}
+				if a.Operation == "copy" {
+					if err := validateActionCopySource(a, f, fields); err != nil {
+						return err
+					}
+					continue
 				}
 				_, empty, err := s.normalizeCollectionFieldValue(ctx, Record{}, f, a.Value)
 				if err != nil {
@@ -107,6 +121,8 @@ func remapPageActionValue(a *PageRecordAction, kind string, options map[string]s
 }
 
 type pageActionPreview struct {
+	SourceField       *CollectionField     `json:"sourceField,omitempty"`
+	SourceValue       any                  `json:"sourceValue,omitempty"`
 	Condition         *PageActionCondition `json:"condition,omitempty"`
 	ConditionField    *CollectionField     `json:"conditionField,omitempty"`
 	Allowed           bool                 `json:"allowed"`
@@ -217,6 +233,7 @@ func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	var conditionField *CollectionField
+	var valueSource *CollectionField
 	schema, _ := json.Marshal(field)
 	if action.Condition != nil {
 		for _, f := range source.Fields {
@@ -225,6 +242,18 @@ func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) 
 				schema, _ = json.Marshal([]CollectionField{field, f})
 			}
 		}
+	}
+	if action.Operation == "copy" {
+		for _, f := range source.Fields {
+			if f.ID == action.SourceFieldID {
+				valueSource = &f
+			}
+		}
+		schema, _ = json.Marshal(struct {
+			Target    CollectionField
+			Condition *CollectionField
+			Source    *CollectionField
+		}{field, conditionField, valueSource})
 	}
 	hash := sha256.Sum256(schema)
 	schemaHash := hex.EncodeToString(hash[:])
@@ -238,12 +267,16 @@ func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) 
 		writeError(w, 400, err.Error())
 		return
 	}
+	if empty && field.Required {
+		writeError(w, 409, "Источник пуст: обязательное поле нельзя очистить. Заполните источник и обновите предпросмотр")
+		return
+	}
 	allowed := actionConditionMatches(action.Condition, record, source.Fields)
 	if input.Apply && !allowed {
 		writeError(w, 409, "Условие действия не выполнено. Запись не изменена")
 		return
 	}
-	preview := pageActionPreview{Condition: action.Condition, ConditionField: conditionField, Allowed: allowed, RecordID: record.ID, Title: record.Title, Label: action.Label, Field: field, Before: record.CustomFields[field.ID], After: json.RawMessage(normalized), ExpectedUpdatedAt: record.UpdatedAt, ExpectedRevision: revision, SchemaHash: schemaHash}
+	preview := pageActionPreview{SourceField: valueSource, SourceValue: record.CustomFields[action.SourceFieldID], Condition: action.Condition, ConditionField: conditionField, Allowed: allowed, RecordID: record.ID, Title: record.Title, Label: action.Label, Field: field, Before: record.CustomFields[field.ID], After: json.RawMessage(normalized), ExpectedUpdatedAt: record.UpdatedAt, ExpectedRevision: revision, SchemaHash: schemaHash}
 	if !allowed {
 		preview.ConditionReason = "Условие действия не выполнено. Сначала проверьте поля записи"
 	}
@@ -274,7 +307,7 @@ func (s *Server) handlePageRecordAction(w http.ResponseWriter, r *http.Request) 
 		writeError(w, 500, "Не удалось сохранить поле")
 		return
 	}
-	if err = writeActivity(r.Context(), tx, currentUser(r).ID, record.Type, record.ID, "custom_fields_updated", "Действие: "+action.Label, map[string]any{"pageId": r.PathValue("id"), "actionId": action.ID, "fieldId": field.ID, "before": preview.Before, "after": preview.After}); err != nil {
+	if err = writeActivity(r.Context(), tx, currentUser(r).ID, record.Type, record.ID, "custom_fields_updated", "Действие: "+action.Label, map[string]any{"pageId": r.PathValue("id"), "actionId": action.ID, "fieldId": field.ID, "sourceFieldId": action.SourceFieldID, "before": preview.Before, "after": preview.After}); err != nil {
 		writeError(w, 500, "Не удалось записать историю")
 		return
 	}

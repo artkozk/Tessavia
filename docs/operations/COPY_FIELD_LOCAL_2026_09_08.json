@@ -1,0 +1,40 @@
+{
+  "syntheticOnly": true,
+  "checkedAt": "2026-09-08T07:11:51.893784Z",
+  "pages": [
+    {
+      "pageId": "ae5b590409d6e6817a3191a2620fc747",
+      "revision": 2,
+      "collectionId": "bf62c8ed95f227846442e4fb22e8d5f5",
+      "sourceFieldId": "bb515549de2595884ecb39a57f206377",
+      "targetFieldId": "73998b745ffb170adb3ceec077240663",
+      "recordId": "edfe02b8f4454d5ed6e804011dbe5c28",
+      "value": 5
+    },
+    {
+      "pageId": "2a79dbd925622662821c82ac02bc353f",
+      "revision": 1,
+      "collectionId": "9d837c40e2316c71d2f2ae6e2a76f0f7",
+      "sourceFieldId": "0a4de640e201f77ac8416cada6d2e7b8",
+      "targetFieldId": "442bb00a81d6d870cb0334a8f47f928e",
+      "recordId": "d617c5ebaa135be7c5c2a2f5d858fb02",
+      "value": 0
+    }
+  ],
+  "uiManualConfigure": true,
+  "draftReloadRestore": true,
+  "sourceChangedDuringPreview": {
+    "before": 3,
+    "after": 5,
+    "staleApplyRejected": true
+  },
+  "kitInstalledWithNewFieldIDs": true,
+  "copyZeroCancelThenApply": true,
+  "modeSwitchCancelled": true,
+  "width320": true,
+  "goAppSeconds": 65.151,
+  "goWebSeconds": 0.484,
+  "vetPassed": true,
+  "nodeTests": 264,
+  "nodeMs": 1064.8008
+}

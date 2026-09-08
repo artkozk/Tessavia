@@ -1,7 +1,7 @@
-import { blockVisible, visibilityDescription, visibilityConfig, updateVisibility, previewVisibilityMarks, visibilityPreviewControls } from './page-block-visibility.js?v=20260908-block-visibility-2';
-import { createPageDataUI, dataSources, dataConfigMarkup, updateDataConfig, defaultDataConfig } from './page-data-sources.js?v=20260908-block-visibility-2';
-import { recordActionConfig, updateActionProperty, bindRecordActionConfig, recordActionMenu, openPageRecordAction } from './page-record-actions.js?v=20260908-block-visibility-2';
-import { initialFormFields, pageFormConfig, updateFormProperty, bindFormConfig, mountPageForms } from './page-forms.js?v=20260908-block-visibility-2';
+import { blockVisible, visibilityDescription, visibilityConfig, updateVisibility, previewVisibilityMarks, visibilityPreviewControls } from './page-block-visibility.js?v=20260908-copy-field-1';
+import { createPageDataUI, dataSources, dataConfigMarkup, updateDataConfig, defaultDataConfig } from './page-data-sources.js?v=20260908-copy-field-1';
+import { recordActionConfig, updateActionProperty, bindRecordActionConfig, recordActionMenu, openPageRecordAction } from './page-record-actions.js?v=20260908-copy-field-1';
+import { initialFormFields, pageFormConfig, updateFormProperty, bindFormConfig, mountPageForms } from './page-forms.js?v=20260908-copy-field-1';
 const kinds={heading:'Заголовок',text:'Текст',tracker:'Пункты и отметки',progress:'Прогресс',button:'Кнопка перехода',records:'Список записей',form:'Форма записи',data:'Данные и действия'};
 const uid=()=>crypto.randomUUID().replaceAll('-','');
 export function appProgress(block,definition,marks){const source=definition.blocks.find(item=>item.id===block.source&&item.kind==='tracker');const items=(source?.items||[]).filter(item=>!item.hidden);const done=items.filter(item=>marks[`${source.id}:${item.id}`]).length;return{done,total:items.length,percent:items.length?Math.round(done/items.length*100):0};}

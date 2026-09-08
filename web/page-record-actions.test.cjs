@@ -32,11 +32,22 @@ test('unavailable action remains visible with escaped explanation',()=>{
 test('numeric action editor exposes arithmetic without offering it for text fields',()=>{
  c.block={actions:[{id:'one',label:'One more',fieldId:'n',operation:'add',value:1}]};c.collection={fields:[{id:'n',name:'Count',fieldType:'number'}]};c.input=(field,value)=>field.name+':'+value;
  let html=run('recordActionConfig(block,collection,e,input)');assert.match(html,/data-action-operation/);assert.match(html,/Сколько прибавить:1/);assert.match(html,/Отрицательное число/);
- c.collection.fields[0].fieldType='text';html=run('recordActionConfig(block,collection,e,input)');assert.ok(!html.includes('data-action-operation'));
+ c.collection.fields[0].fieldType='text';html=run('recordActionConfig(block,collection,e,input)');assert.ok(html.includes('Взять из другого поля'));assert.ok(!html.includes('Прибавить к текущему'));
 });
 test('switching action modes and fields resets operand while preserving independent condition',()=>{
  c.action={id:'one',fieldId:'n',operation:'set',value:42,condition:{fieldId:'n',operator:'lt',value:10}};c.block={actions:[c.action]};c.collection={fields:[{id:'n',fieldType:'number'},{id:'t',fieldType:'text'}]};
  c.input={value:'add',closest:selector=>selector==='[data-record-action]'?{dataset:{recordAction:'one'}}:null,hasAttribute:attr=>attr==='data-action-operation'};
  run('updateActionProperty(input,block,collection)');assert.equal(c.action.operation,'add');assert.equal(c.action.value,1);assert.equal(c.action.condition.value,10);
  c.input.value='t';c.input.hasAttribute=attr=>attr==='data-action-field';run('updateActionProperty(input,block,collection)');assert.equal(c.action.operation,'set');assert.equal(c.action.value,null);
+});
+test('copy choices are type-compatible and exclude self, options and cross-type coercion',()=>{
+ c.collection={fields:[{id:'n',fieldType:'number'},{id:'m',fieldType:'money'},{id:'t',fieldType:'text'},{id:'l',fieldType:'long_text'},{id:'s',fieldType:'select'},{id:'u',fieldType:'user'},{id:'c',fieldType:'checkbox'},{id:'c2',fieldType:'checkbox'}]};
+ assert.equal(JSON.stringify(run('compatibleActionSourceFields(collection,collection.fields[0]).map(f=>f.id)')),'["m"]');assert.equal(JSON.stringify(run('compatibleActionSourceFields(collection,collection.fields[2]).map(f=>f.id)')),'["l"]');assert.equal(run('compatibleActionSourceFields(collection,collection.fields[4]).length'),0);
+ assert.equal(JSON.stringify(run('compatibleActionSourceFields(collection,collection.fields[6]).map(f=>f.id)')),'["c2"]');
+});
+test('copy editor replaces literal input, stores source and clears it on another mode',()=>{
+ c.action={id:'a',fieldId:'n',label:'Copy',operation:'set',value:4};c.block={actions:[c.action]};c.collection={fields:[{id:'n',name:'Target',fieldType:'number'},{id:'s',name:'<b>Source</b>',fieldType:'number'}]};
+ c.input={value:'copy',closest:sel=>sel==='[data-record-action]'?{dataset:{recordAction:'a'}}:null,hasAttribute:attr=>attr==='data-action-operation'};run('updateActionProperty(input,block,collection)');assert.equal(c.action.sourceFieldId,'s');assert.equal(c.action.value,null);
+ c.fieldInput=()=>'<input data-literal>';const html=run('recordActionConfig(block,collection,e,fieldInput)');assert.ok(html.includes('data-action-source-field'));assert.ok(!html.includes('data-literal'));assert.ok(html.includes('&lt;b&gt;Source'));
+ c.input.value='set';run('updateActionProperty(input,block,collection)');assert.equal(c.action.sourceFieldId,undefined);
 });

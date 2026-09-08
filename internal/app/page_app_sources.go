@@ -308,6 +308,12 @@ func (s *Server) installPageAppCollections(ctx context.Context, tx *sql.Tx, work
 				}
 				c.FieldID = fieldIDs[c.FieldID]
 			}
+			if a.Operation == "copy" {
+				if fieldIDs[a.SourceFieldID] == "" || fieldOrigins[a.SourceFieldID] != sourceID {
+					return errors.New("Источник значения отсутствует в наборе")
+				}
+				a.SourceFieldID = fieldIDs[a.SourceFieldID]
+			}
 			a.FieldID = fieldIDs[a.FieldID]
 		}
 		if err := validatePageFormSource(*b, sourceSchemas[sourceID]); err != nil {

@@ -11,6 +11,12 @@ import (
 const actionNumberLimit = 9007199254740991
 
 func validateActionOperation(a PageRecordAction, field CollectionField) error {
+	if a.Operation == "copy" {
+		if !copyActionFieldType(field.FieldType) {
+			return errors.New("Копирование этого типа требует отдельного сопоставления")
+		}
+		return nil
+	}
 	if a.Operation == "" || a.Operation == "set" {
 		return nil
 	}
@@ -25,6 +31,9 @@ func validateActionOperation(a PageRecordAction, field CollectionField) error {
 }
 
 func resolvePageActionValue(a PageRecordAction, record Record) (json.RawMessage, error) {
+	if a.Operation == "copy" {
+		return json.Marshal(record.CustomFields[a.SourceFieldID])
+	}
 	if a.Operation == "" || a.Operation == "set" {
 		return a.Value, nil
 	}
