@@ -1,0 +1,26 @@
+{
+  "commit": "9d293b4b336ddf41a28dfd8dd7b6a5d5638a857a",
+  "release": "/opt/business-control/releases/20260908-compound-action-9d293b4",
+  "sha256": "40ea8d1531887180bffd2e81f9ad4b28ceb194365ca70ae833adce34dcbe6799",
+  "backup": "/var/lib/business-control/backups/pre-compound-action-20260908T081906Z",
+  "checkedAt": "2026-09-08T08:19:30.290066Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 266,
+  "assets": "20260908-compound-action-2",
+  "tasks": [
+    {
+      "id": "6f727d718fdc52acb1396084600e9108",
+      "status": "completed"
+    },
+    {
+      "id": "f4dd60e96ccb69635a2faa05a60fd058",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
