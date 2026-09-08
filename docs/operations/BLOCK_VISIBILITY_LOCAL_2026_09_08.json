@@ -1,0 +1,34 @@
+{
+  "syntheticOnly": true,
+  "checkedAt": "2026-09-08T06:07:57.658103Z",
+  "source": {
+    "id": "ecf8bbeaafdfc905ae84377396ad96e6",
+    "revision": 2,
+    "rule": {
+      "source": "66eeffe261f6467a86c7b54e4beea149",
+      "metric": "percent",
+      "operator": "eq",
+      "value": 100
+    },
+    "checked": 2
+  },
+  "copy": {
+    "id": "55cff8d254510e98b1ae6a7342b9675d",
+    "revision": 2,
+    "ruleRemoved": true,
+    "marks": 0
+  },
+  "uiManualBuild": true,
+  "uiPreviewZeroThenTwo": true,
+  "uiDraftReloadRestore": true,
+  "uiUndoHidesRedoShows": true,
+  "uiPrivateKitPreviewInstall": true,
+  "uiCancelThenRemoveCondition": true,
+  "width320": true,
+  "goAppSeconds": 64.709,
+  "goWebSeconds": 0.376,
+  "finalWebSeconds": 0.371,
+  "vetPassed": true,
+  "nodeTests": 262,
+  "nodeMs": 985.7058
+}
