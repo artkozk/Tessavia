@@ -1,0 +1,26 @@
+{
+  "commit": "d44651f78e1c71d863b9859c90daf77199d5d179",
+  "release": "/opt/business-control/releases/20260908-record-actions-d44651f",
+  "sha256": "a364ccb710e7eaa3e3b699cd06dabcb250a57717554764eb56e3efc72641b62f",
+  "backup": "/var/lib/business-control/backups/pre-record-actions-20260908T025417Z",
+  "checkedAt": "2026-09-08T02:54:38.259817Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 248,
+  "assets": "20260908-record-actions-2",
+  "tasks": [
+    {
+      "id": "b73efad20925509be8828c2862eb95dd",
+      "status": "completed"
+    },
+    {
+      "id": "26c54f79aa1c9110536670ae8371a868",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
