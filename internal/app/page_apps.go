@@ -16,6 +16,7 @@ type PageAppItem struct {
 	Label  string `json:"label"`
 }
 type PageAppBlock struct {
+	Data         *PageDataConfig    `json:"data,omitempty"`
 	Actions      []PageRecordAction `json:"actions,omitempty"`
 	FormFields   []PageAppFormField `json:"formFields,omitempty"`
 	DefaultTitle string             `json:"defaultTitle,omitempty"`
@@ -67,11 +68,14 @@ func validatePageApp(d *PageAppDefinition) error {
 		if !pageAppID.MatchString(b.ID) || ids[b.ID] != "" {
 			return errors.New("У блоков должны быть разные постоянные ключи")
 		}
-		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" {
+		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" && b.Kind != "data" {
 			return errors.New("Неизвестный тип блока")
 		}
 		if pageAppHasSource(*b) && (!pageAppID.MatchString(b.CollectionID) || len(b.Fields) > 40 || len([]rune(b.ActionLabel)) > 80) {
 			return errors.New("Для списка выберите доску и не более 40 полей")
+		}
+		if err := validatePageDataConfig(*b); err != nil {
+			return err
 		}
 		if b.Kind == "form" {
 			if err := validatePageAppForm(*b); err != nil {

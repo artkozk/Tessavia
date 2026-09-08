@@ -1,4 +1,4 @@
-import { conditionConfig, updateConditionProperty, conditionMatches, conditionDescription } from './page-action-conditions.js?v=20260908-action-increment-1';
+import { conditionConfig, updateConditionProperty, conditionMatches, conditionDescription } from './page-action-conditions.js?v=20260908-live-sources-3';
 export const actionFields=collection=>(collection?.fields||[]).filter(f=>!['user','relation'].includes(f.fieldType));
 export function recordActionConfig(block,collection,e,fieldInput){
  const fields=actionFields(collection);

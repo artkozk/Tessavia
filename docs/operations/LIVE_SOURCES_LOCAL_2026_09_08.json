@@ -1,0 +1,40 @@
+{
+  "syntheticOnly": true,
+  "checkedAt": "2026-09-08T05:49:59.093643Z",
+  "pages": [
+    {
+      "id": "2c9328b60b2015783c48375faa2aee50",
+      "revision": 3,
+      "sources": [
+        "habits",
+        "plans",
+        "reading"
+      ],
+      "readerSize": 22,
+      "readLabel": "Открыть главу"
+    },
+    {
+      "id": "3bb7f329ef022d2799b38169ef652c07",
+      "revision": 1,
+      "sources": [
+        "habits",
+        "plans",
+        "reading"
+      ],
+      "readerSize": 22,
+      "readLabel": "Открыть главу"
+    }
+  ],
+  "habitCompleted": true,
+  "planCompletedThenReopened": true,
+  "chapter1Completed": true,
+  "chapter2ReadWithoutMark": true,
+  "partialChapter3CompletedWithNotePreserved": true,
+  "uiDraftRestored": true,
+  "uiPrivateKitInstalled": true,
+  "uiWidth320": true,
+  "goAppSeconds": 64.056,
+  "goWebSeconds": 0.346,
+  "vetPassed": true,
+  "nodeTests": 257
+}
