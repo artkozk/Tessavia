@@ -1,0 +1,26 @@
+{
+  "commit": "24bbd108e30f2b93d781f9893387d64b00d39f81",
+  "release": "/opt/business-control/releases/20260908-action-increment-24bbd10",
+  "sha256": "fd32d7f87e59498a53f4dd769e4ec1e9e7f4626030ad1bd69b06131f0e79a2d4",
+  "backup": "/var/lib/business-control/backups/pre-action-increment-20260908T045516Z",
+  "checkedAt": "2026-09-08T04:55:36.816055Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 252,
+  "assets": "20260908-action-increment-1",
+  "tasks": [
+    {
+      "id": "e3462bb4cf8717ae77cb7f01f38c6103",
+      "status": "completed"
+    },
+    {
+      "id": "26c54f79aa1c9110536670ae8371a868",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
