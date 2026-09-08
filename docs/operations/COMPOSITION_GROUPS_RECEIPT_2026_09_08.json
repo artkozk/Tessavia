@@ -1,0 +1,26 @@
+{
+  "commit": "4f7e1f3ec814b0482d46af4b9beedf82ca1bd98b",
+  "release": "/opt/business-control/releases/20260908-composition-groups-4f7e1f3",
+  "sha256": "9c0d13a7f7a7b1eaae3fede63a575af663f910c1b9ec102947c59eba87011736",
+  "backup": "/var/lib/business-control/backups/pre-composition-groups-20260908T123659Z",
+  "checkedAt": "2026-09-08T12:37:39.650386Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 287,
+  "assets": "20260908-composition-groups-3",
+  "tasks": [
+    {
+      "id": "9db4b2d5a60e812a21abf4a0f441b8be",
+      "status": "completed"
+    },
+    {
+      "id": "26c54f79aa1c9110536670ae8371a868",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
