@@ -1,0 +1,26 @@
+{
+  "commit": "b3be3e1f1ac721bc4c896fbac628f8da1e6e39e3",
+  "release": "/opt/business-control/releases/20260908-form-element-styles-b3be3e1",
+  "sha256": "2c7c3dea04fd5d0e977116cbf799828865ca17b9d30ab1533759e5e37e5bec61",
+  "backup": "/var/lib/business-control/backups/pre-form-element-styles-20260908T112611Z",
+  "checkedAt": "2026-09-08T11:26:51.808411Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 281,
+  "assets": "20260908-form-element-styles-3",
+  "tasks": [
+    {
+      "id": "24dace03e01ee45f65328a4ea2e821d0",
+      "status": "completed"
+    },
+    {
+      "id": "b8a99823ccf3f3a9f39093fe3c1af2bf",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
