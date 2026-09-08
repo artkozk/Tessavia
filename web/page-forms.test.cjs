@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const c=vm.createContext({});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-forms.js'),'utf8').replaceAll('export ',''),c);
+const c=vm.createContext({structuredClone});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-forms.js'),'utf8').replaceAll('export ',''),c);
 const run=code=>vm.runInContext(code,c);
 c.escape=v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 test('form preview preserves custom ordering, excludes hidden fields and escapes labels/defaults',()=>{
@@ -16,4 +16,15 @@ test('record payload uses explicit fallback title and keeps false/zero without s
 test('empty-source form remains configurable without inventing personal assignees',()=>{
  const fields=run('initialFormFields(null)');assert.equal(fields.length,2);assert.equal(fields[0].key,'title');
  c.collection={fields:[{id:'f',name:'Email'}]};const choices=run('formFieldChoices(collection)');assert.equal(choices.find(v=>v.key==='custom:f').label,'Email');
+});
+
+test('retry intent snapshots the submitted body and survives a JSON draft round trip',()=>{
+ c.payload={title:'Submitted',customFields:{zero:0,flag:false,tags:['one']}};
+ c.intent=run("recordFormIntent(payload,'one-submit-intent-0001')");c.payload.title='Edited later';c.payload.customFields.tags.push('two');
+ c.draft=JSON.parse(JSON.stringify({pending:c.intent}));const restored=run('restoreRecordFormIntent(draft)');
+ assert.equal(restored.key,'one-submit-intent-0001');assert.equal(restored.payload.title,'Submitted');assert.equal(restored.payload.customFields.tags.length,1);assert.equal(restored.payload.customFields.zero,0);assert.equal(restored.payload.customFields.flag,false);
+});
+test('old drafts carry no invented retry key and malformed pending metadata is ignored',()=>{
+ c.draft={values:[]};assert.equal(run('restoreRecordFormIntent(draft)'),null);
+ c.draft={pending:{key:'bad',payload:{title:'x'}}};assert.equal(run('restoreRecordFormIntent(draft)'),null);
 });

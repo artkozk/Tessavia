@@ -1015,6 +1015,10 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	intent, handled := s.prepareRecordCreate(w, r, input)
+	if handled {
+		return
+	}
 	input.Type = strings.TrimSpace(input.Type)
 	input.Title = strings.TrimSpace(input.Title)
 	input.Description = strings.TrimSpace(input.Description)
@@ -1192,6 +1196,9 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	now := nowText()
+	if s.claimRecordCreate(w, r, tx, intent, id) {
+		return
+	}
 	databaseType := input.Type
 	subtype := ""
 	recordKind := strings.TrimSpace(input.Kind)
@@ -1263,7 +1270,11 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить создание")
 		return
 	}
-	record, _ := s.getRecord(r.Context(), id)
+	record, err := s.getRecord(r.Context(), id)
+	if err != nil {
+		writeError(w, 500, "Карточка сохранена, но результат не загрузился. Повторите отправку с тем же ключом")
+		return
+	}
 	writeJSON(w, http.StatusCreated, record)
 }
 

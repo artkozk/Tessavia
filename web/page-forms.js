@@ -27,8 +27,11 @@ export function pageFormMarkup(b,collection,{escapeHTML:e,fieldInput,users,me,pr
  return `<form class="app-data-form"><fieldset class="app-form-inputs"><div class="app-form-grid">${fields}</div></fieldset><div class="form-actions"><button type="submit" class="primary">${e(b.actionLabel||'Создать запись')}</button></div><p role="status" data-form-result></p></form>`;
 }
 export function pageFormPayload(b,collection,values,customFields){return {type:collection.defaultRecordType,collectionId:collection.id,title:values.title??b.defaultTitle??'',description:values.description||'',dueAt:values.dueAt?new Date(values.dueAt).toISOString():'',ownerId:Number(values.ownerId||0),stageId:values.stageId||'',priority:values.priority||'normal',workstream:'business',editPolicy:'shared',customFields};}
+export function recordFormIntent(payload,key){return {key,payload:structuredClone(payload)};}
+export function restoreRecordFormIntent(draft){const intent=draft?.pending;return intent&&/^[A-Za-z0-9_-]{16,128}$/.test(intent.key)&&intent.payload&&typeof intent.payload==='object'?intent:null;}
 export function mountPageForms(root,definition,context,deps){
  const {state,api,escapeHTML:e,fieldInput,readCustomFields,enhance,bindMulti,priorityLabels,refreshLists,openRecord}=deps;
+ const owner=state.me.id,active=()=>state.me?.id===owner&&state.activeWorkspaceId===context.workspace;
  for(const b of definition.blocks.filter(b=>b.kind==='form'&&!b.hidden)){
   const host=root.querySelector(`[data-app-form="${b.id}"]`);if(!host)continue;
   const collection=(definition.collections||state.collections).find(c=>c.id===b.collectionId);
@@ -37,23 +40,45 @@ export function mountPageForms(root,definition,context,deps){
   const form=host.querySelector('form'),result=form.querySelector('[data-form-result]'),button=form.querySelector('[type=submit]');
   for(const f of b.formFields||[]){const cell=form.querySelector(`[data-form-field-key="${f.key}"]`);if(!cell)continue;cell.style.setProperty('--form-span',f.width||12);if(f.fontSize)cell.style.fontSize=f.fontSize+'px';if(f.color)cell.style.color=f.color;if(f.background)cell.style.setProperty('--form-field-background',f.background);cell.querySelectorAll('input,textarea').forEach(control=>{if(f.placeholder)control.placeholder=f.placeholder;});}
   const scope=`tessavie:page-form:${state.me.id}:${context.workspace}:${context.pageId}:${b.id}`;
+  let pending=null;
   const showResult=recordId=>{result.textContent=b.successText||'Запись создана.';const link=document.createElement('button');link.type='button';link.className='text-button';link.textContent='Открыть запись';link.onclick=()=>openRecord(recordId);result.append(' ',link);};
   const controls=()=>[...form.querySelectorAll('input[name],textarea[name],select[name]')];
-  const saveDraft=()=>{if(context.preview)return;try{const values=controls().map(c=>({name:c.name,value:c.value,checked:c.checked}));localStorage.setItem(scope,JSON.stringify({values,signature:JSON.stringify(b)}));}catch{result.textContent='Не удалось сохранить черновик на устройстве. Оставьте страницу открытой до отправки.';}};
-  if(!context.preview){try{const draft=JSON.parse(localStorage.getItem(scope)||'null');if(draft?.values){for(const c of controls()){const old=draft.values.find(v=>v.name===c.name&&(c.type!=='checkbox'||v.value===c.value));if(!old)continue;if(c.type==='checkbox')c.checked=old.checked;else c.value=old.value;}result.textContent=draft.signature===JSON.stringify(b)?'Восстановлен несохранённый ввод.': 'Форма изменилась. Проверьте восстановленные поля перед отправкой.';}}catch{result.textContent='Черновик не удалось прочитать.';}}
+  const saveDraft=()=>{if(context.preview)return;try{const values=controls().map(c=>({name:c.name,value:c.value,checked:c.checked}));localStorage.setItem(scope,JSON.stringify({values,signature:JSON.stringify(b),pending}));}catch{result.textContent='Не удалось сохранить черновик на устройстве. Оставьте страницу открытой до отправки.';}};
+  if(!context.preview){try{const draft=JSON.parse(localStorage.getItem(scope)||'null');pending=restoreRecordFormIntent(draft);if(draft?.values){for(const c of controls()){const old=draft.values.find(v=>v.name===c.name&&(c.type!=='checkbox'||v.value===c.value));if(!old)continue;if(c.type==='checkbox')c.checked=old.checked;else c.value=old.value;}result.textContent=draft.signature===JSON.stringify(b)?'Восстановлен несохранённый ввод.': 'Форма изменилась. Проверьте восстановленные поля перед отправкой.';}}catch{result.textContent='Черновик не удалось прочитать.';}}
   const changed=()=>{if(formResults.has(scope)){formResults.delete(scope);result.textContent='';}saveDraft();};form.addEventListener('input',changed);form.addEventListener('change',changed);enhance(form);bindMulti(form);if(!context.preview&&formResults.has(scope))showResult(formResults.get(scope));
-  form.onsubmit=async event=>{event.preventDefault();if(button.disabled)return;if(context.preview){result.textContent='Поля заполнены корректно. Предпросмотр не создаёт запись.';return;}
-   if(state.activeWorkspaceId!==context.workspace)return;const values=Object.fromEntries(new FormData(form)),fields=collection.fields.filter(f=>(b.formFields||[]).some(item=>item.key==='custom:'+f.id&&!item.hidden)),payload=pageFormPayload(b,collection,values,readCustomFields(form,fields)),inputs=form.querySelector('.app-form-inputs');button.disabled=true;inputs.disabled=true;form.setAttribute('aria-busy','true');saveDraft();
+  const inputs=form.querySelector('.app-form-inputs');
+  const showPending=(error='')=>{if(!pending)return;inputs.disabled=true;button.textContent='Проверить отправку';result.textContent=`${error?error+' ':''}Ждём подтверждения отправки «${pending.payload.title||'Запись'}». Нажмите «Проверить отправку»: повтор не создаст вторую запись.`;};
+  showPending();
+  form.onsubmit=async event=>{
+   event.preventDefault();if(button.disabled)return;
+   if(context.preview){result.textContent='Поля заполнены корректно. Предпросмотр не создаёт запись.';return;}
+   if(!active())return;
+   let payload;
+   if(!pending){const values=Object.fromEntries(new FormData(form)),fields=collection.fields.filter(f=>(b.formFields||[]).some(item=>item.key==='custom:'+f.id&&!item.hidden));payload=pageFormPayload(b,collection,values,readCustomFields(form,fields));}
+   button.disabled=true;inputs.disabled=true;form.setAttribute('aria-busy','true');
    try{
-    const headers={'X-Workspace-ID':context.workspace},latest=await api(`/api/workspace/pages/${context.pageId}/app`,{headers});
-    if(latest.revision!==context.revision)throw new Error('Страница изменилась. Обновите её и проверьте восстановленный ввод. Запись не создана.');
-    if(state.activeWorkspaceId!==context.workspace)return;
-    const record=await api('/api/records',{method:'POST',headers,body:JSON.stringify(payload)});
+    const headers={'X-Workspace-ID':context.workspace,'X-Outbox-Owner':String(owner)};
+    if(!pending){
+     const latest=await api(`/api/workspace/pages/${context.pageId}/app`,{headers});
+     if(latest.revision!==context.revision)throw new Error('Страница изменилась. Обновите её и проверьте восстановленный ввод. Запись не создана.');
+     if(!active())return;
+     pending=recordFormIntent(payload,crypto.randomUUID());
+     saveDraft();
+     // Do not dispatch an intent that cannot survive a reload on this device.
+     let saved;try{saved=restoreRecordFormIntent(JSON.parse(localStorage.getItem(scope)||'null'));}catch{pending=null;throw new Error('Не удалось сохранить отправку на устройстве. Запись не отправлена.');}
+     if(saved?.key!==pending.key){pending=null;throw new Error('Не удалось сохранить отправку на устройстве. Запись не отправлена.');}
+    }
+    const record=await api('/api/records',{method:'POST',headers:{...headers,'Idempotency-Key':pending.key},body:JSON.stringify(pending.payload)});
+    pending=null;
     try{localStorage.removeItem(scope);}catch{}
-    if(state.activeWorkspaceId!==context.workspace)return;
+    if(!active())return;
     state.records=[record,...state.records.filter(r=>r.id!==record.id)];state.detailCache.delete(record.id);
     form.reset();enhance(form);bindMulti(form);formResults.set(scope,record.id);showResult(record.id);refreshLists();deps.onCreated?.();
-   }catch(error){result.textContent=error.message;saveDraft();}finally{button.disabled=false;inputs.disabled=false;form.removeAttribute('aria-busy');}
+   }catch(error){
+    if(error.status===400)pending=null; // Server validation rolls back the transaction; correcting fields is safe.
+    result.textContent=error.message;saveDraft();
+    if(pending)showPending(error.message);
+   }finally{button.disabled=false;inputs.disabled=!!pending;form.removeAttribute('aria-busy');if(!pending)button.textContent=b.actionLabel||'Создать запись';}
   };
  }
 }

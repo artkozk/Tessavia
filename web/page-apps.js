@@ -1,4 +1,4 @@
-import { initialFormFields, pageFormConfig, updateFormProperty, bindFormConfig, mountPageForms } from './page-forms.js?v=20260908-page-forms-3';
+import { initialFormFields, pageFormConfig, updateFormProperty, bindFormConfig, mountPageForms } from './page-forms.js?v=20260908-record-retry-2';
 const kinds={heading:'Заголовок',text:'Текст',tracker:'Пункты и отметки',progress:'Прогресс',button:'Кнопка перехода',records:'Список записей',form:'Форма записи'};
 const uid=()=>crypto.randomUUID().replaceAll('-','');
 export function appProgress(block,definition,marks){const source=definition.blocks.find(item=>item.id===block.source&&item.kind==='tracker');const items=(source?.items||[]).filter(item=>!item.hidden);const done=items.filter(item=>marks[`${source.id}:${item.id}`]).length;return{done,total:items.length,percent:items.length?Math.round(done/items.length*100):0};}
