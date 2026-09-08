@@ -1,4 +1,5 @@
-import { recordRowText } from './page-record-bindings.js?v=20260908-form-element-styles-3';
+import { blockSubtree } from './page-composition.js?v=20260908-composition-groups-3';
+import { recordRowText } from './page-record-bindings.js?v=20260908-composition-groups-3';
 const styleNames={title:'Заголовок блока',text:'Текст блока',item:'Все пункты',progressValue:'Процент прогресса',progressCount:'Количество выполненного',progressBar:'Полоса прогресса',button:'Кнопка перехода',row:'Карточка целиком',rowTitle:'Заголовки карточек',rowSubtitle:'Подписи карточек',fieldLabel:'Все названия полей',fieldValue:'Все значения полей',createButton:'Кнопка добавления',actionButton:'Все кнопки действий',formLabel:'Все подписи формы',formControl:'Все поля ввода',formSubmit:'Кнопка отправки',formResult:'Сообщение результата'};
 export function elementStyleTargets(b,collection){
  const keys=b.kind==='button'?['button']:['title'];
@@ -14,13 +15,14 @@ export function elementStyleTargets(b,collection){
 }
 export function resolvedElementStyle(block,keys){return Object.assign({},...keys.map(key=>block.elementStyles?.[key]||{}));}
 export function applyElementStyles(root,definition){
- for(const block of definition.blocks)for(const section of root.querySelectorAll(`[data-app-block="${block.id}"]`))for(const node of section.querySelectorAll('[data-app-element]')){
-  const s=resolvedElementStyle(block,node.dataset.appElement.split(' '));
-  const values={width:s.width?s.width+'px':'',maxWidth:s.width?'100%':'',minHeight:s.minHeight?s.minHeight+'px':'',fontSize:s.fontSize?s.fontSize+'px':'',padding:s.padding===undefined?'':s.padding+'px',borderRadius:s.radius===undefined?'':s.radius+'px',color:s.color||'',backgroundColor:s.background||'',textAlign:s.align||'',fontWeight:{normal:'400',medium:'600',bold:'700'}[s.weight]||'',accentColor:s.color||''};
-  for(const [key,value] of Object.entries(values))node.style[key]=value;
-  node.hidden=s.hidden===true;if(node.dataset.appElement==='progressBar'){node.style.setProperty('--element-progress-color',s.color||'');node.style.setProperty('--element-progress-track',s.background||'');}
-  if(node.dataset.appElement.split(' ').includes('actionButton')){const choice=node.closest('.app-record-action-choice');if(choice)choice.hidden=node.hidden;}
- }
+ for(const block of definition.blocks)for(const section of root.querySelectorAll(`[data-app-block="${block.id}"]`))for(const node of section.querySelectorAll('[data-app-element]')){const owner=node.closest?.('[data-app-block]');if(owner&&owner!==section)continue;applyElementStyle(block,node);}
+}
+export function applyElementStyle(block,node){
+ const s=resolvedElementStyle(block,node.dataset.appElement.split(' '));
+ const values={width:s.width?s.width+'px':'',maxWidth:s.width?'100%':'',minHeight:s.minHeight?s.minHeight+'px':'',fontSize:s.fontSize?s.fontSize+'px':'',padding:s.padding===undefined?'':s.padding+'px',borderRadius:s.radius===undefined?'':s.radius+'px',color:s.color||'',backgroundColor:s.background||'',textAlign:s.align||'',fontWeight:{normal:'400',medium:'600',bold:'700'}[s.weight]||'',accentColor:s.color||''};
+ for(const [key,value] of Object.entries(values))node.style[key]=value;
+ node.hidden=s.hidden===true;if(node.dataset.appElement==='progressBar'){node.style.setProperty('--element-progress-color',s.color||'');node.style.setProperty('--element-progress-track',s.background||'');}
+ if(node.dataset.appElement.split(' ').includes('actionButton')){const choice=node.closest('.app-record-action-choice');if(choice)choice.hidden=node.hidden;}
 }
 export function elementStyleConfig(block,collection,selected,e){
  const targets=elementStyleTargets(block,collection);if(!targets.length)return '';const target=targets.find(t=>t.key===selected)||targets[0],s=block.elementStyles?.[target.key]||{},canHide=!['formControl','formSubmit','formResult'].includes(target.key.split(':')[0]);
@@ -35,9 +37,9 @@ export function bindElementStyleConfig(root,block,selected,{persist,draw,preview
  panel.querySelectorAll('[data-element-color]').forEach(input=>input.oninput=()=>{const name=input.dataset.elementColor;panel.querySelector(`[data-element-property="${name}"]`).value=input.value;update(name,input.value);});
  panel.querySelector('[data-element-reset]').onclick=()=>{if(block.elementStyles)delete block.elementStyles[key];persist();draw(key);};
 }
-export function mountElementStylePreview(host,block,definition,marks,collection,records,e,displayField,markup){
- const previewDef={...definition,blocks:definition.blocks.map(b=>({...b,hidden:b.id!==block.id}))};
+export function mountElementStylePreview(host,block,definition,marks,collection,records,e,displayField,markup,collections=[]){
+ const shown=new Set(blockSubtree(definition,block.id).map(b=>b.id));const previewDef={...definition,blocks:definition.blocks.map(b=>({...b,parentId:b.id===block.id?'':b.parentId,hidden:b.id===block.id?false:!shown.has(b.id)||b.hidden}))};
  host.innerHTML=`<p class="eyebrow">Предпросмотр блока · без изменения данных</p><div class="app-canvas">${markup(previewDef,marks,e,true)}</div>`;
- const list=host.querySelector('[data-app-record-list]');if(list){const sample=records.filter(r=>r.collectionId===block.collectionId&&r.status!=='archived').slice(0,2);list.innerHTML=`${block.allowCreate?`<button type="button" disabled class="secondary" data-app-element="createButton">${e(block.actionLabel||'Добавить запись')}</button>`:''}${sample.map(r=>{const text=recordRowText(block,r,collection,displayField);return `<article class="app-record-entry" data-app-element="row"><div class="app-record-row"><strong data-app-element="rowTitle">${e(text.title)}</strong>${text.subtitle?`<span data-app-element="rowSubtitle">${e(text.subtitle)}</span>`:''}<span class="app-record-values">${(block.fields||[]).map(id=>{const f=collection?.fields.find(f=>f.id===id);return f?`<span><small data-app-element="fieldLabel fieldLabel:${f.id}">${e(f.name)}</small><span data-app-element="fieldValue fieldValue:${f.id}">${e(displayField(f,r.customFields?.[id]))}</span></span>`:''}).join('')}</span>${(block.actions||[]).map(a=>`<button type="button" disabled class="text-button" data-app-element="actionButton action:${a.id}">${e(a.label)}</button>`).join('')}</div></article>`}).join('')||'<p class="muted">На доске нет записей для предпросмотра.</p>'}`;}
+ for(const block of definition.blocks.filter(b=>b.kind==='records'&&shown.has(b.id))){const collection=collections.find(c=>c.id===block.collectionId),list=host.querySelector(`[data-app-record-list="${block.id}"]`);if(!list)continue;const sample=records.filter(r=>r.collectionId===block.collectionId&&r.status!=='archived').slice(0,2);list.innerHTML=`${block.allowCreate?`<button type="button" disabled class="secondary" data-app-element="createButton">${e(block.actionLabel||'Добавить запись')}</button>`:''}${sample.map(r=>{const text=recordRowText(block,r,collection,displayField);return `<article class="app-record-entry" data-app-element="row"><div class="app-record-row"><strong data-app-element="rowTitle">${e(text.title)}</strong>${text.subtitle?`<span data-app-element="rowSubtitle">${e(text.subtitle)}</span>`:''}<span class="app-record-values">${(block.fields||[]).map(id=>{const f=collection?.fields.find(f=>f.id===id);return f?`<span><small data-app-element="fieldLabel fieldLabel:${f.id}">${e(f.name)}</small><span data-app-element="fieldValue fieldValue:${f.id}">${e(displayField(f,r.customFields?.[id]))}</span></span>`:''}).join('')}</span>${(block.actions||[]).map(a=>`<button type="button" disabled class="text-button" data-app-element="actionButton action:${a.id}">${e(a.label)}</button>`).join('')}</div></article>`}).join('')||'<p class="muted">На доске нет записей для предпросмотра.</p>'}`;}
  applyElementStyles(host,definition);
 }

@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const c=vm.createContext({});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-block-visibility.js'),'utf8').replaceAll('export ',''),c);vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-apps.js'),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
+const c=vm.createContext({});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-block-visibility.js'),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-apps.js'),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
 const run=code=>vm.runInContext(code,c);
 test('user-authored tracker progress follows stable item IDs and excludes removed items',()=>{
  c.def={version:1,blocks:[{id:'chapters',kind:'tracker',items:[{id:'one',label:'Renamed chapter'},{id:'two',label:'Hidden chapter',hidden:true}]}]};c.marks={'chapters:one':true,'chapters:two':true};

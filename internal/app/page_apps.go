@@ -16,6 +16,9 @@ type PageAppItem struct {
 	Label  string `json:"label"`
 }
 type PageAppBlock struct {
+	ParentID       string                      `json:"parentId,omitempty"`
+	GroupLayout    string                      `json:"groupLayout,omitempty"`
+	Gap            *int                        `json:"gap,omitempty"`
 	ElementStyles  map[string]PageElementStyle `json:"elementStyles,omitempty"`
 	RecordBindings map[string]PageTextBinding  `json:"recordBindings,omitempty"`
 	Visibility     *PageBlockVisibility        `json:"visibility,omitempty"`
@@ -71,7 +74,7 @@ func validatePageApp(d *PageAppDefinition) error {
 		if !pageAppID.MatchString(b.ID) || ids[b.ID] != "" {
 			return errors.New("У блоков должны быть разные постоянные ключи")
 		}
-		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" && b.Kind != "data" {
+		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" && b.Kind != "data" && b.Kind != "group" {
 			return errors.New("Неизвестный тип блока")
 		}
 		if pageAppHasSource(*b) && (!pageAppID.MatchString(b.CollectionID) || len(b.Fields) > 40 || len([]rune(b.ActionLabel)) > 80) {
@@ -128,6 +131,9 @@ func validatePageApp(d *PageAppDefinition) error {
 		if b.Kind == "button" && (ids[b.Source] == "" || b.Source == b.ID) {
 			return errors.New("Для кнопки выберите блок перехода")
 		}
+	}
+	if err := validatePageComposition(d); err != nil {
+		return err
 	}
 	return validatePageBlockVisibility(d)
 }

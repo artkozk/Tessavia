@@ -32,6 +32,9 @@ func validatePageBlockVisibility(d *PageAppDefinition) error {
 	}
 	edges := map[string][]string{}
 	for _, b := range d.Blocks {
+		if b.ParentID != "" {
+			edges[b.ID] = append(edges[b.ID], b.ParentID)
+		}
 		c := b.Visibility
 		if c == nil {
 			continue

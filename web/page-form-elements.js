@@ -1,4 +1,4 @@
-import { applyElementStyles } from './page-element-styles.js?v=20260908-form-element-styles-3';
+import { applyElementStyle } from './page-element-styles.js?v=20260908-composition-groups-3';
 
 // Translate the earlier field-wide presentation once when entering the editor.
 // A later reset can then return to the platform defaults, not a hidden legacy value.
@@ -47,6 +47,5 @@ export function styleFormElements(form,block) {
   const trigger=select.closest('.custom-select')?.querySelector('.custom-select-trigger');
   if(trigger){trigger.dataset.appElement=select.dataset.appElement;const label=select.getAttribute('aria-labelledby');if(label)trigger.setAttribute('aria-labelledby',label);}
  }
- const root={querySelectorAll:()=>[{querySelectorAll:()=>[...form.querySelectorAll('[data-app-element]')].filter(n=>n.tagName!=='SELECT')} ]};
- applyElementStyles(root,{blocks:[block]});
+ for(const node of form.querySelectorAll('[data-app-element]'))if(node.tagName!=='SELECT')applyElementStyle(block,node);
 }

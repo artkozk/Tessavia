@@ -1,0 +1,75 @@
+{
+  "checkedAt": "2026-09-08T12:34:51.723610Z",
+  "pages": [
+    {
+      "id": "2e29fd0a8144ba27583d7a75c05d4c03",
+      "name": "SC-77 Приём обращений",
+      "revision": 7,
+      "groups": [
+        {
+          "id": "a94737836a2a409f8b04bcc6662bb87b",
+          "parentId": null,
+          "layout": "grid",
+          "gap": 16
+        },
+        {
+          "id": "457909319bc64d52b8f7eaf2d20c85b5",
+          "parentId": "a94737836a2a409f8b04bcc6662bb87b",
+          "layout": "grid",
+          "gap": 16
+        }
+      ],
+      "recordCounts": {
+        "0edecb6f6a639007deb3824caaeb3174": 5
+      }
+    },
+    {
+      "id": "55cff8d254510e98b1ae6a7342b9675d",
+      "name": "SC-87 Два условия этапа",
+      "revision": 9,
+      "groups": [
+        {
+          "id": "dd97ce0f54b24a9ab2729c5ecee569dc",
+          "parentId": null,
+          "layout": "grid",
+          "gap": 0
+        }
+      ],
+      "recordCounts": {}
+    },
+    {
+      "id": "7b0908afb118beb745249871b65f1767",
+      "name": "SC-91 Составная страница — тестовый набор",
+      "revision": 2,
+      "groups": [
+        {
+          "id": "a94737836a2a409f8b04bcc6662bb87b",
+          "parentId": null,
+          "layout": "stack",
+          "gap": 16
+        },
+        {
+          "id": "457909319bc64d52b8f7eaf2d20c85b5",
+          "parentId": "a94737836a2a409f8b04bcc6662bb87b",
+          "layout": "grid",
+          "gap": 16
+        }
+      ],
+      "recordCounts": {
+        "9d49dec37fe77ad52bca3edf7603d72e": 1
+      }
+    }
+  ],
+  "nodeTests": 287,
+  "go": "internal/app 67.438s; web 0.368s; vet passed",
+  "ui": [
+    "group tracker 50% and copy 0%",
+    "hidden reload restore type change draft recovery",
+    "nested group form and records 6 columns",
+    "320px select and restored form draft",
+    "private kit empty board then independent record",
+    "group title 24px child headings16 controls18",
+    "real nested records preview and own form success text"
+  ],
+  "physicalDevices": false
+}

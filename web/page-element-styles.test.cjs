@@ -1,5 +1,10 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const c=vm.createContext({});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-element-styles.js'),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);const run=s=>vm.runInContext(s,c);
+test('parent styling never resets nested child properties even when parent follows child in definition',()=>{
+ const childNode={dataset:{appElement:'title'},style:{}},parentNode={dataset:{appElement:'title'},style:{}};
+ const child={querySelectorAll:()=>[childNode]},parent={querySelectorAll:()=>[parentNode,childNode]};childNode.closest=()=>child;parentNode.closest=()=>parent;
+ c.root={querySelectorAll:s=>[s.includes('child')?child:parent]};c.def={blocks:[{id:'child',elementStyles:{title:{fontSize:30,color:'#112233'}}},{id:'parent',elementStyles:{title:{fontSize:18,color:'#445566'}}}]};run('applyElementStyles(root,def)');assert.equal(childNode.style.fontSize,'30px');assert.equal(childNode.style.color,'#112233');assert.equal(parentNode.style.fontSize,'18px');
+});
 test('specific element overrides common group including explicit zero and false without touching data',()=>{
  c.block={id:'b',items:[{id:'one',label:'One'}],elementStyles:{item:{fontSize:22,padding:12,hidden:true,color:'#176b58'},'item:one':{padding:0,hidden:false}}};const before=JSON.stringify(c.block);const s=run("resolvedElementStyle(block,['item','item:one'])");assert.equal(s.fontSize,22);assert.equal(s.padding,0);assert.equal(s.hidden,false);assert.equal(JSON.stringify(c.block),before);
  delete c.block.elementStyles['item:one'];assert.equal(run("resolvedElementStyle(block,['item','item:one']).hidden"),true);
