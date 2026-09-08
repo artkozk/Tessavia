@@ -354,6 +354,17 @@ func (s *Server) installPageAppCollections(ctx context.Context, tx *sql.Tx, work
 		if err := validatePageRecordBindingSource(*b, sourceSchemas[sourceID]); err != nil {
 			return err
 		}
+		if b.RecordCard != nil {
+			for i, p := range b.RecordCard.Parts {
+				if p.FieldID == "" {
+					continue
+				}
+				if fieldIDs[p.FieldID] == "" || fieldOrigins[p.FieldID] != sourceID {
+					return errors.New("Поле части карточки отсутствует в наборе")
+				}
+				b.RecordCard.Parts[i].FieldID = fieldIDs[p.FieldID]
+			}
+		}
 		for property, binding := range b.RecordBindings {
 			if fieldIDs[binding.FieldID] == "" || fieldOrigins[binding.FieldID] != sourceID {
 				return errors.New("Поле привязки отсутствует в наборе")

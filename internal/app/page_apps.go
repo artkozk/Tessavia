@@ -16,6 +16,7 @@ type PageAppItem struct {
 	Label  string `json:"label"`
 }
 type PageAppBlock struct {
+	RecordCard     *PageRecordCard             `json:"recordCard,omitempty"`
 	ParentID       string                      `json:"parentId,omitempty"`
 	GroupLayout    string                      `json:"groupLayout,omitempty"`
 	Gap            *int                        `json:"gap,omitempty"`

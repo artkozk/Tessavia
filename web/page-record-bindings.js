@@ -1,4 +1,4 @@
-import { evaluateCalculation, formatCalculation, calculationConfig, bindCalculationConfig, calculationDescription, numericCalculationField } from './page-calculations.js?v=20260908-record-calculations-2';
+import { evaluateCalculation, formatCalculation, calculationConfig, bindCalculationConfig, calculationDescription, numericCalculationField } from './page-calculations.js?v=20260908-record-card-composition-1';
 export const textBindingTypes=['text','long_text','number','money','date','datetime','url','email','phone','checkbox','select','multi_select'];
 const bindingSlots={title:'Заголовок карточки',subtitle:'Подпись под заголовком'};
 export function recordBindingText(binding,record,collection,displayField,fallback=''){

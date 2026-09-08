@@ -59,7 +59,7 @@ func validatePageElementStyles(b PageAppBlock) error {
 		if style.Hidden != nil && *style.Hidden && (key == "formControl" || strings.HasPrefix(key, "formControl:") || key == "formSubmit" || key == "formResult") {
 			return errors.New("Убирайте поле в структуре формы: там проверяются обязательные значения. Отправка и результат должны оставаться доступны")
 		}
-		for _, prefix := range []string{"item:", "fieldLabel:", "fieldValue:", "action:"} {
+		for _, prefix := range []string{"item:", "fieldLabel:", "fieldValue:", "action:", "recordPart:"} {
 			if strings.HasPrefix(key, prefix) && pageAppID.MatchString(strings.TrimPrefix(key, prefix)) {
 				valid = true
 			}

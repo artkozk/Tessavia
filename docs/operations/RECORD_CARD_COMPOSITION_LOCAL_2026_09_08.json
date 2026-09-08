@@ -1,0 +1,181 @@
+{
+  "nodeTests": 298,
+  "nodeDurationMs": 856.4055,
+  "go": "internal/app67.372s; go vet passed",
+  "checkedAt": "2026-09-08T14:28:58.873962Z",
+  "physicalDevices": false,
+  "pages": [
+    {
+      "id": "2e29fd0a8144ba27583d7a75c05d4c03",
+      "revision": 9,
+      "block": {
+        "recordCard": {
+          "enabled": true,
+          "columns": 2,
+          "gap": 0,
+          "parts": [
+            {
+              "id": "748cc939195148dc8a7165504162913e",
+              "kind": "title",
+              "width": 12
+            },
+            {
+              "id": "8d5573903f26401eb70406916ac17855",
+              "kind": "subtitle",
+              "width": 12
+            },
+            {
+              "id": "e76d2cfdbbdf41859d9cab72bef69bab",
+              "kind": "field",
+              "fieldId": "159a71d7efc2f3d3bb35946c8125a3cf",
+              "label": "Источник запроса",
+              "width": 6,
+              "hideLabel": true
+            },
+            {
+              "id": "83963d13afbb4560abea365bad47cf96",
+              "kind": "text",
+              "text": "Клиентский запрос — длинная подпись для проверки переноса текста и собственной структуры",
+              "width": 12
+            },
+            {
+              "id": "d298a1df7b7648d8b68cde99c9a9993e",
+              "kind": "field",
+              "fieldId": "fd7058c752e48a4f4899067821d12891",
+              "width": 6
+            }
+          ]
+        },
+        "parentId": "a94737836a2a409f8b04bcc6662bb87b",
+        "elementStyles": {
+          "recordPart:83963d13afbb4560abea365bad47cf96": {
+            "fontSize": 20,
+            "color": "#176b58"
+          }
+        },
+        "actions": [
+          {
+            "id": "e93841c75df84b67b2f05fbcddf0facc",
+            "label": "Перевести общение в чат",
+            "fieldId": "159a71d7efc2f3d3bb35946c8125a3cf",
+            "value": "e0fa7773b29d048f9ef55d12f3fa409c"
+          }
+        ],
+        "collectionId": "0edecb6f6a639007deb3824caaeb3174",
+        "fields": [
+          "159a71d7efc2f3d3bb35946c8125a3cf",
+          "fd7058c752e48a4f4899067821d12891"
+        ],
+        "allowCreate": true,
+        "actionLabel": "Новое обращение",
+        "id": "be46ec4b86e24d3994aa2ee0938ccec9",
+        "kind": "records",
+        "title": "Обращения клиентов",
+        "text": "",
+        "width": 12,
+        "format": "list"
+      }
+    },
+    {
+      "id": "84ef4b8c3501a67592c01e26d6f22c7e",
+      "revision": 7,
+      "block": {
+        "recordCard": {
+          "enabled": true,
+          "columns": 1,
+          "gap": 10,
+          "parts": [
+            {
+              "id": "4b6d1c07b70d4263a83d8c43f2af1d00",
+              "kind": "title",
+              "width": 12
+            },
+            {
+              "id": "fcde60c2fa234b1c9bfa22ec9b035226",
+              "kind": "subtitle",
+              "width": 12
+            },
+            {
+              "id": "d1fa9dcc7e904ad59035bd83fe2e416a",
+              "kind": "field",
+              "fieldId": "8e769a0635395a6027f7d806dd577d95",
+              "width": 6
+            },
+            {
+              "id": "d8a9cd68a8a64c779363472ec882570e",
+              "kind": "text",
+              "text": "Мой учебный маршрут",
+              "width": 12
+            },
+            {
+              "id": "b7313ec867644766ab595c3409b27cf7",
+              "kind": "field",
+              "fieldId": "d26845da404d355552d8592dd1d4dd05",
+              "width": 6
+            }
+          ]
+        },
+        "elementStyles": {
+          "action:18961ce1d0d44e50a9ab9a332cac7f02": {
+            "minHeight": 58,
+            "padding": 14,
+            "radius": 12,
+            "background": "#dcebe4"
+          },
+          "fieldLabel": {
+            "hidden": true
+          },
+          "fieldLabel:8e769a0635395a6027f7d806dd577d95": {
+            "hidden": false
+          },
+          "fieldValue": {
+            "fontSize": 24,
+            "color": "#245ea8"
+          },
+          "fieldValue:d26845da404d355552d8592dd1d4dd05": {
+            "fontSize": 18,
+            "color": "#854c19"
+          }
+        },
+        "recordBindings": {
+          "subtitle": {
+            "fieldId": "d26845da404d355552d8592dd1d4dd05",
+            "prefix": "Прочитано: ",
+            "suffix": "%",
+            "emptyText": "Процент пока не рассчитан",
+            "calculation": [
+              {
+                "operation": "divide",
+                "fieldId": "8e769a0635395a6027f7d806dd577d95"
+              },
+              {
+                "operation": "multiply",
+                "value": 100
+              }
+            ],
+            "precision": 1
+          },
+          "title": {
+            "fieldId": "8e769a0635395a6027f7d806dd577d95",
+            "prefix": "Всего: ",
+            "suffix": " глав",
+            "emptyText": "Оценка ещё не задана"
+          }
+        },
+        "collectionId": "e443f663489d76f07acbdb8d5f9a5e2f",
+        "fields": [
+          "8e769a0635395a6027f7d806dd577d95",
+          "d26845da404d355552d8592dd1d4dd05"
+        ],
+        "allowCreate": true,
+        "actionLabel": "Добавить запись",
+        "id": "bee51fb31c1e41219ad19e96c68cc08e",
+        "kind": "records",
+        "title": "Учебный план",
+        "text": "",
+        "width": 12,
+        "format": "list"
+      }
+    }
+  ]
+}

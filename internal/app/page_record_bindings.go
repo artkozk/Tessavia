@@ -55,7 +55,7 @@ func validatePageRecordBindings(b PageAppBlock) error {
 			}
 		}
 	}
-	return nil
+	return validatePageRecordCard(b)
 }
 
 func validatePageRecordBindingSource(b PageAppBlock, fields []CollectionField) error {
@@ -86,5 +86,5 @@ func validatePageRecordBindingSource(b PageAppBlock, fields []CollectionField) e
 			}
 		}
 	}
-	return nil
+	return validatePageRecordCardSource(b, fields)
 }
