@@ -19,7 +19,7 @@ type PageElementStyle struct {
 }
 
 func elementFieldID(key string) string {
-	for _, prefix := range []string{"fieldLabel:", "fieldValue:"} {
+	for _, prefix := range []string{"fieldLabel:", "fieldValue:", "formLabel:custom:", "formControl:custom:"} {
 		if strings.HasPrefix(key, prefix) {
 			return strings.TrimPrefix(key, prefix)
 		}
@@ -42,8 +42,22 @@ func validatePageElementStyles(b PageAppBlock) error {
 	for key, style := range b.ElementStyles {
 		valid := false
 		switch key {
-		case "title", "text", "item", "progressValue", "progressCount", "progressBar", "button", "row", "rowTitle", "rowSubtitle", "fieldLabel", "fieldValue", "createButton", "actionButton":
+		case "title", "text", "item", "progressValue", "progressCount", "progressBar", "button", "row", "rowTitle", "rowSubtitle", "fieldLabel", "fieldValue", "createButton", "actionButton", "formLabel", "formControl", "formSubmit", "formResult":
 			valid = true
+		}
+		for _, prefix := range []string{"formLabel:", "formControl:"} {
+			if strings.HasPrefix(key, prefix) {
+				field := strings.TrimPrefix(key, prefix)
+				switch field {
+				case "title", "description", "dueAt", "ownerId", "stageId", "priority":
+					valid = true
+				default:
+					valid = strings.HasPrefix(field, "custom:") && pageAppID.MatchString(strings.TrimPrefix(field, "custom:"))
+				}
+			}
+		}
+		if style.Hidden != nil && *style.Hidden && (key == "formControl" || strings.HasPrefix(key, "formControl:") || key == "formSubmit" || key == "formResult") {
+			return errors.New("Убирайте поле в структуре формы: там проверяются обязательные значения. Отправка и результат должны оставаться доступны")
 		}
 		for _, prefix := range []string{"item:", "fieldLabel:", "fieldValue:", "action:"} {
 			if strings.HasPrefix(key, prefix) && pageAppID.MatchString(strings.TrimPrefix(key, prefix)) {

@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const c=vm.createContext({structuredClone});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-forms.js'),'utf8').replaceAll('export ',''),c);
+const c=vm.createContext({structuredClone});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-forms.js'),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
 const run=code=>vm.runInContext(code,c);
 c.escape=v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 test('form preview preserves custom ordering, excludes hidden fields and escapes labels/defaults',()=>{
@@ -16,6 +16,10 @@ test('record payload uses explicit fallback title and keeps false/zero without s
 test('empty-source form remains configurable without inventing personal assignees',()=>{
  const fields=run('initialFormFields(null)');assert.equal(fields.length,2);assert.equal(fields[0].key,'title');
  c.collection={fields:[{id:'f',name:'Email'}]};const choices=run('formFieldChoices(collection)');assert.equal(choices.find(v=>v.key==='custom:f').label,'Email');
+});
+
+test('appearance preview inside the editor does not nest a form and retains required input',()=>{
+ c.b={formFields:[{key:'title'}]};c.collection={fields:[],stages:[]};const html=run('pageFormMarkup(b,collection,{escapeHTML:escape,fieldInput:()=>"",users:[],me:{id:1},priorityLabels:{},embeddedPreview:true})');assert.ok(html.startsWith('<div class="app-data-form">'));assert.ok(!html.includes('<form'));assert.match(html,/name="title" required/);assert.ok(html.endsWith('</div>'));
 });
 
 test('retry intent snapshots the submitted body and survives a JSON draft round trip',()=>{

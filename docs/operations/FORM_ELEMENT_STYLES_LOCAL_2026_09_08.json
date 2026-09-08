@@ -1,0 +1,174 @@
+{
+  "syntheticOnly": true,
+  "checkedAt": "2026-09-08T11:23:18.309387+00:00",
+  "pages": [
+    {
+      "id": "2e29fd0a8144ba27583d7a75c05d4c03",
+      "name": "SC-77 Приём обращений",
+      "revision": 6,
+      "form": {
+        "elementStyles": {
+          "formControl": {
+            "minHeight": 54,
+            "fontSize": 18,
+            "radius": 10
+          },
+          "formControl:custom:159a71d7efc2f3d3bb35946c8125a3cf": {
+            "background": "#dcebe4"
+          },
+          "formControl:title": {
+            "fontSize": 18,
+            "color": "#176b58"
+          },
+          "formLabel:title": {
+            "fontSize": 18,
+            "color": "#176b58",
+            "hidden": true
+          },
+          "formResult": {
+            "fontSize": 18,
+            "color": "#245ea8"
+          },
+          "formSubmit": {
+            "minHeight": 58,
+            "padding": 14
+          }
+        },
+        "formFields": [
+          {
+            "key": "title",
+            "label": "Тема обращения",
+            "placeholder": "Что нужно решить",
+            "width": 6
+          },
+          {
+            "key": "custom:159a71d7efc2f3d3bb35946c8125a3cf",
+            "width": 12
+          },
+          {
+            "key": "description",
+            "width": 12
+          },
+          {
+            "key": "custom:fd7058c752e48a4f4899067821d12891",
+            "width": 12
+          },
+          {
+            "key": "custom:8037cbee5240e4ceacb170673f58e832",
+            "width": 12,
+            "hidden": true
+          }
+        ],
+        "successText": "Обращение зарегистрировано",
+        "collectionId": "0edecb6f6a639007deb3824caaeb3174",
+        "actionLabel": "Зарегистрировать обращение",
+        "id": "efc6da932e4f466dbe04fa6800d24c11",
+        "kind": "form",
+        "title": "Оставить обращение",
+        "text": "",
+        "source": "be46ec4b86e24d3994aa2ee0938ccec9",
+        "width": 12,
+        "format": "list"
+      },
+      "records": [
+        {
+          "id": "ee257bf54a54f6fadb91b94d3ba3a28b",
+          "title": "SC-76 Обращение из установленного набора",
+          "description": ""
+        },
+        {
+          "id": "51923e50327e72be38d9e5dcccf3937e",
+          "title": "SC-77 Черновик обращения",
+          "description": "Проверить сохранность введённого текста после обновления страницы."
+        },
+        {
+          "id": "d3f37488b5561825276a57d746c32095",
+          "title": "SC-78 Потерянный ответ",
+          "description": "Сервер сохранит запись, но тестовый прокси потеряет первый ответ."
+        },
+        {
+          "id": "9bc394d1d01e56cdf819c2d2f8da95e9",
+          "title": "SC-90 Проверка оформления формы",
+          "description": "Синтетический черновик: оформление не должно стирать введённый текст."
+        }
+      ]
+    },
+    {
+      "id": "eba467dbc3371eb50353e564136059a4",
+      "name": "SC-90 Учебный дневник — проверка",
+      "revision": 3,
+      "form": {
+        "elementStyles": {
+          "formControl": {
+            "minHeight": 54,
+            "fontSize": 18,
+            "radius": 10
+          },
+          "formControl:custom:884e96dd75119043ef0c1f23031322f9": {
+            "background": "#dcebe4"
+          },
+          "formControl:custom:e7d57f391ab86294ca9c6ec689eb1913": {
+            "background": "#dcebe4"
+          },
+          "formControl:title": {
+            "fontSize": 18,
+            "color": "#176b58"
+          },
+          "formResult": {
+            "fontSize": 18,
+            "color": "#245ea8"
+          },
+          "formSubmit": {
+            "minHeight": 58,
+            "padding": 14
+          }
+        },
+        "formFields": [
+          {
+            "key": "title",
+            "label": "Что прочитал",
+            "placeholder": "Книга и глава",
+            "width": 6
+          },
+          {
+            "key": "custom:884e96dd75119043ef0c1f23031322f9",
+            "width": 12,
+            "hidden": true
+          },
+          {
+            "key": "description",
+            "width": 12
+          },
+          {
+            "key": "custom:260d8582da05718e85c20b712cb99cce",
+            "label": "Минуты чтения",
+            "width": 12
+          },
+          {
+            "key": "custom:e7d57f391ab86294ca9c6ec689eb1913",
+            "width": 12
+          }
+        ],
+        "successText": "Заметка сохранена",
+        "collectionId": "52c7634db24bea0b9ba65e4829c8a8cc",
+        "actionLabel": "Сохранить заметку",
+        "id": "efc6da932e4f466dbe04fa6800d24c11",
+        "kind": "form",
+        "title": "Записать итог чтения",
+        "text": "",
+        "source": "be46ec4b86e24d3994aa2ee0938ccec9",
+        "width": 12,
+        "format": "list"
+      },
+      "records": [
+        {
+          "id": "8034e53a0f9808e0e47c32ef44fe16e2",
+          "title": "SC-90 Чтение и размышления",
+          "description": "Проверка собственного дневника на узком экране"
+        }
+      ]
+    }
+  ],
+  "nodeTests": 281,
+  "physicalDevicesTested": false
+}
