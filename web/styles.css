@@ -5468,3 +5468,6 @@ body:has(.calendar-expanded) { overflow: hidden; }
 
 /* SC-91: groups use the existing twelve-column canvas; narrow screens stack children. */
 .app-group-content{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--app-group-gap,16px);min-width:0}.app-group-content>p{grid-column:1/-1}.app-group-stack>.app-block{grid-column:1/-1}.app-block-group>h2{margin-bottom:14px}@media(max-width:600px){.app-group-content>.app-block{grid-column:1/-1}}
+
+/* SC-92: sequential calculation editor follows existing form surfaces. */
+.app-calculation-config{display:grid;gap:12px;margin:14px 0}.app-calculation-step{display:grid;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px}.app-calculation-actions{display:flex;flex-wrap:wrap;gap:8px}.app-calculation-review{padding:12px 0;border-top:1px solid var(--border);overflow-wrap:anywhere}.app-calculation-review ol{padding-left:22px}.app-calculation-review li{margin:8px 0}

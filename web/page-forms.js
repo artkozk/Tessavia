@@ -1,4 +1,4 @@
-import { prepareFormElements, styleFormElements } from './page-form-elements.js?v=20260908-composition-groups-3';
+import { prepareFormElements, styleFormElements } from './page-form-elements.js?v=20260908-record-calculations-2';
 const formResults=new Map();
 const builtinLabels={title:'Название',description:'Описание',dueAt:'Срок',ownerId:'Ответственный',stageId:'Этап',priority:'Приоритет'};
 export function formFieldChoices(collection){return [...Object.entries(builtinLabels).map(([key,label])=>({key,label})),...(collection?.fields||[]).map(f=>({key:'custom:'+f.id,label:f.name}))];}

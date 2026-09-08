@@ -359,6 +359,15 @@ func (s *Server) installPageAppCollections(ctx context.Context, tx *sql.Tx, work
 				return errors.New("Поле привязки отсутствует в наборе")
 			}
 			binding.FieldID = fieldIDs[binding.FieldID]
+			for i, step := range binding.Calculation {
+				if step.FieldID == "" {
+					continue
+				}
+				if fieldIDs[step.FieldID] == "" || fieldOrigins[step.FieldID] != sourceID {
+					return errors.New("Поле вычисления отсутствует в наборе")
+				}
+				binding.Calculation[i].FieldID = fieldIDs[step.FieldID]
+			}
 			b.RecordBindings[property] = binding
 		}
 		if err := validatePageFormSource(*b, sourceSchemas[sourceID]); err != nil {

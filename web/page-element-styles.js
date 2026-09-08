@@ -1,5 +1,5 @@
-import { blockSubtree } from './page-composition.js?v=20260908-composition-groups-3';
-import { recordRowText } from './page-record-bindings.js?v=20260908-composition-groups-3';
+import { blockSubtree } from './page-composition.js?v=20260908-record-calculations-2';
+import { recordRowText } from './page-record-bindings.js?v=20260908-record-calculations-2';
 const styleNames={title:'Заголовок блока',text:'Текст блока',item:'Все пункты',progressValue:'Процент прогресса',progressCount:'Количество выполненного',progressBar:'Полоса прогресса',button:'Кнопка перехода',row:'Карточка целиком',rowTitle:'Заголовки карточек',rowSubtitle:'Подписи карточек',fieldLabel:'Все названия полей',fieldValue:'Все значения полей',createButton:'Кнопка добавления',actionButton:'Все кнопки действий',formLabel:'Все подписи формы',formControl:'Все поля ввода',formSubmit:'Кнопка отправки',formResult:'Сообщение результата'};
 export function elementStyleTargets(b,collection){
  const keys=b.kind==='button'?['button']:['title'];

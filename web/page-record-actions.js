@@ -1,4 +1,4 @@
-import { conditionConfig, updateConditionProperty, conditionMatches, conditionDescription, bindConditionConfig, conditionReview, conditionLeaves } from './page-action-conditions.js?v=20260908-composition-groups-3';
+import { conditionConfig, updateConditionProperty, conditionMatches, conditionDescription, bindConditionConfig, conditionReview, conditionLeaves } from './page-action-conditions.js?v=20260908-record-calculations-2';
 export const actionFields=collection=>(collection?.fields||[]).filter(f=>!['user','relation'].includes(f.fieldType));
 export const copyActionFieldType=kind=>['text','long_text','number','money','date','datetime','checkbox','url','email','phone'].includes(kind);
 export function compatibleActionSourceFields(collection,target){

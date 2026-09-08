@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const c=vm.createContext({});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-record-bindings.js'),'utf8').replaceAll('export ',''),c);
+const c=vm.createContext({});for(const name of ['page-calculations.js','page-record-bindings.js'])vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,name),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export ',''),c);
 const run=s=>vm.runInContext(s,c);
 test('row text resolves each record independently without changing source and handles zero false empty',()=>{
  c.collection={fields:[{id:'n',fieldType:'number'},{id:'c',fieldType:'checkbox'}]};c.block={recordBindings:{title:{fieldId:'n',prefix:'Прочитано: ',suffix:' глав',emptyText:'Нет оценки'},subtitle:{fieldId:'c',prefix:'Проверено: '}}};c.display=(f,v)=>f.fieldType==='checkbox'?(v?'Да':'Нет'):String(v);c.record={title:'Original',customFields:{n:0,c:false}};

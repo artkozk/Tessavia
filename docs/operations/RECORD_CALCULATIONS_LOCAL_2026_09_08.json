@@ -1,0 +1,112 @@
+{
+  "checkedAt": "2026-09-08T13:26:00.567374Z",
+  "nodeTests": 292,
+  "nodeDurationMs": 965.0156,
+  "go": "internal/app67.073s/web0.383s/vet",
+  "physicalDevices": false,
+  "pages": [
+    {
+      "id": "442d76442cf04ea6e9ddb1952e33e7c5",
+      "name": "SC-89 Оформление реестра",
+      "revision": 8,
+      "collectionId": "e31e05f158bc7e7602829f6bec8fe542",
+      "bindings": {
+        "subtitle": {
+          "fieldId": "a80083f1761f8e3020bf2fc7b92561c4",
+          "prefix": "Согласовано: ",
+          "suffix": "%",
+          "emptyText": "Процент пока не рассчитан",
+          "calculation": [
+            {
+              "operation": "divide",
+              "fieldId": "89994b497757f6f15d61b0bd6e45694f"
+            },
+            {
+              "operation": "multiply",
+              "value": 100
+            }
+          ],
+          "precision": 1
+        },
+        "title": {
+          "fieldId": "89994b497757f6f15d61b0bd6e45694f",
+          "prefix": "Осталось: ",
+          "suffix": " часов",
+          "emptyText": "Оценка ещё не задана",
+          "calculation": [
+            {
+              "operation": "subtract",
+              "fieldId": "a80083f1761f8e3020bf2fc7b92561c4"
+            },
+            {
+              "operation": "max",
+              "value": 0
+            }
+          ]
+        }
+      },
+      "records": [
+        {
+          "id": "d41c83e3cc7a46cf9508e9af164e64f1",
+          "title": "SC-85 Новая независимая оценка",
+          "values": {
+            "89994b497757f6f15d61b0bd6e45694f": 9,
+            "a80083f1761f8e3020bf2fc7b92561c4": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "84ef4b8c3501a67592c01e26d6f22c7e",
+      "name": "SC-92 Учебный журнал — проверка",
+      "revision": 6,
+      "collectionId": "e443f663489d76f07acbdb8d5f9a5e2f",
+      "bindings": {
+        "subtitle": {
+          "fieldId": "d26845da404d355552d8592dd1d4dd05",
+          "prefix": "Прочитано: ",
+          "suffix": "%",
+          "emptyText": "Процент пока не рассчитан",
+          "calculation": [
+            {
+              "operation": "divide",
+              "fieldId": "8e769a0635395a6027f7d806dd577d95"
+            },
+            {
+              "operation": "multiply",
+              "value": 100
+            }
+          ],
+          "precision": 1
+        },
+        "title": {
+          "fieldId": "8e769a0635395a6027f7d806dd577d95",
+          "prefix": "Всего: ",
+          "suffix": " глав",
+          "emptyText": "Оценка ещё не задана"
+        }
+      },
+      "records": [
+        {
+          "id": "bb56b2277299012735b9f3cd30598254",
+          "title": "SC-92 Учебный маршрут",
+          "values": {
+            "8e769a0635395a6027f7d806dd577d95": 10,
+            "d26845da404d355552d8592dd1d4dd05": 3
+          }
+        }
+      ]
+    }
+  ],
+  "ui": [
+    "business residual4 and percent55.6 from9/5",
+    "draft reload restored both steps",
+    "private kit empty before own0/0 record",
+    "division by zero explained; zero residual retained",
+    "own10/3 produced7 and30; fields renamed without broken references",
+    "step reorder trace300 then30; restored order",
+    "first then final title step removed with save/reload",
+    "block type text and back retains formula",
+    "320px operation selector and preview; no horizontal overflow"
+  ]
+}
