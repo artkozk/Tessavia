@@ -1,0 +1,26 @@
+{
+  "commit": "5cb47b19c97bf1c521f3470f4d3dbe18773d52d2",
+  "release": "/opt/business-control/releases/20260908-condition-groups-5cb47b1",
+  "sha256": "5ddf0819df056e8744ac63df630b764765abdf4aa59e7e04cc33eb71eb914a31",
+  "backup": "/var/lib/business-control/backups/pre-condition-groups-20260908T084341Z",
+  "checkedAt": "2026-09-08T08:44:30.723815Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 269,
+  "assets": "20260908-condition-groups-1",
+  "tasks": [
+    {
+      "id": "8dec307305e9c75d378b1cedb3cff9ed",
+      "status": "completed"
+    },
+    {
+      "id": "2ad192a4298615883945e23a87d8ecd2",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
