@@ -1,0 +1,30 @@
+{
+  "commit": "a15e12d89f13422e89a7bd6e410ca42fb519ade7",
+  "release": "/opt/business-control/releases/20260908-page-forms-a15e12d",
+  "sha256": "539b2eebd7dabc0b48c305de7f38e741597f7471e1d2dbbbe8ee5030a237b667",
+  "backup": "/var/lib/business-control/backups/pre-page-forms-20260908T000052Z",
+  "checkedAt": "2026-09-08T00:01:28.619527Z",
+  "tablesUnchanged": 116,
+  "schema": "064_page_app_composition.sql",
+  "nodeTests": 243,
+  "assets": "20260908-page-forms-3",
+  "tasks": [
+    {
+      "id": "4c629c5a9eec7e53a5b11ecba1060cb4",
+      "status": "completed"
+    },
+    {
+      "id": "26c54f79aa1c9110536670ae8371a868",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ],
+  "nextTask": {
+    "id": "c45a25ade37a8a0db4d2c309f622f3a4",
+    "title": "P0 · Повторять отправку формы без дублирования записи",
+    "status": "planned"
+  }
+}
