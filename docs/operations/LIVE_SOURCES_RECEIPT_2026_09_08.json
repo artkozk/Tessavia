@@ -1,0 +1,38 @@
+{
+  "commit": "986a85b84f788e0ff8baee55680783cc10ac5818",
+  "release": "/opt/business-control/releases/20260908-live-sources-986a85b",
+  "sha256": "083c41266153c65f4d3ab41636049575a0e52a9656935bc9b97a986a975e41ab",
+  "backup": "/var/lib/business-control/backups/pre-live-sources-20260908T055239Z",
+  "checkedAt": "2026-09-08T05:53:06.526980Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 257,
+  "assets": "20260908-live-sources-3",
+  "tasks": [
+    {
+      "id": "c04580f862b83f7601ffffb156231c00",
+      "status": "completed"
+    },
+    {
+      "id": "26c54f79aa1c9110536670ae8371a868",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ],
+  "nextTasks": [
+    {
+      "id": "2ad192a4298615883945e23a87d8ecd2",
+      "title": "P0 · Привязки данных и условия видимости элементов конструктора",
+      "status": "planned"
+    },
+    {
+      "id": "f4dd60e96ccb69635a2faa05a60fd058",
+      "title": "P0 · Значения из полей и составные действия конструктора",
+      "status": "planned"
+    }
+  ]
+}
