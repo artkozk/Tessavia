@@ -16,6 +16,7 @@ type PageAppItem struct {
 	Label  string `json:"label"`
 }
 type PageAppBlock struct {
+	Actions      []PageRecordAction `json:"actions,omitempty"`
 	FormFields   []PageAppFormField `json:"formFields,omitempty"`
 	DefaultTitle string             `json:"defaultTitle,omitempty"`
 	SuccessText  string             `json:"successText,omitempty"`
@@ -76,6 +77,9 @@ func validatePageApp(d *PageAppDefinition) error {
 			if err := validatePageAppForm(*b); err != nil {
 				return err
 			}
+		}
+		if err := validatePageRecordActions(*b); err != nil {
+			return err
 		}
 		ids[b.ID] = b.Kind
 		b.Title = strings.TrimSpace(b.Title)

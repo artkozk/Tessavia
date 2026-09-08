@@ -106,6 +106,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/page-app/templates/{id}/install", s.requireAuth(http.HandlerFunc(s.handleInstallPageAppTemplate)))
 	s.mux.Handle("GET /api/workspace/pages/{id}/app", s.requireAuth(http.HandlerFunc(s.handlePageApp)))
 	s.mux.Handle("PUT /api/workspace/pages/{id}/app", s.requireAuth(http.HandlerFunc(s.handlePageApp)))
+	s.mux.Handle("POST /api/workspace/pages/{id}/app/action", s.requireAuth(http.HandlerFunc(s.handlePageRecordAction)))
 	s.mux.Handle("PUT /api/workspace/pages/{id}/app/marks", s.requireAuth(http.HandlerFunc(s.handlePageAppMark)))
 	s.mux.Handle("GET /api/workspace/pages", s.requireAuth(http.HandlerFunc(s.handleListWorkspacePages)))
 	s.mux.Handle("POST /api/workspace/pages", s.requireAuth(http.HandlerFunc(s.handleSaveWorkspacePage)))

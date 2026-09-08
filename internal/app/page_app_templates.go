@@ -184,7 +184,7 @@ func (s *Server) handleInstallPageAppTemplate(w http.ResponseWriter, r *http.Req
 		return
 	}
 	now := nowText()
-	if err = installPageAppCollections(r.Context(), tx, workspace, currentUser(r).ID, item.Definition, now); err != nil {
+	if err = s.installPageAppCollections(r.Context(), tx, workspace, currentUser(r).ID, item.Definition, now); err != nil {
 		writeError(w, 400, err.Error())
 		return
 	}

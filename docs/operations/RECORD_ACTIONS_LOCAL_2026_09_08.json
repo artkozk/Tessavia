@@ -1,0 +1,22 @@
+[
+  {
+    "pageId": "2e29fd0a8144ba27583d7a75c05d4c03",
+    "page": "SC-77 Приём обращений",
+    "collectionId": "0edecb6f6a639007deb3824caaeb3174",
+    "recordId": "d3f37488b5561825276a57d746c32095",
+    "recordCount": 3,
+    "actionLabel": "Перевести общение в чат",
+    "actionFieldId": "159a71d7efc2f3d3bb35946c8125a3cf",
+    "hours": 3
+  },
+  {
+    "pageId": "3736323eb9437249836d39be683771fb",
+    "page": "SC-79 Реестр с действиями",
+    "collectionId": "a5334d3f95936c82cc00b7ef1f22781b",
+    "recordId": "32a416d06f00742b85a70b1f328e3131",
+    "recordCount": 1,
+    "actionLabel": "Сбросить оценку часов",
+    "actionFieldId": "43bdf430bba318e3e4bca6f2068e2c72",
+    "hours": 0
+  }
+]

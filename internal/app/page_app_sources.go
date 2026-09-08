@@ -22,6 +22,9 @@ func (s *Server) validatePageAppSources(r *http.Request, def *PageAppDefinition)
 		if err != nil {
 			return err
 		}
+		if err := s.validatePageActionSource(r.Context(), block, fields); err != nil {
+			return err
+		}
 		if err := validatePageFormSource(block, fields); err != nil {
 			return err
 		}
@@ -72,6 +75,9 @@ func (s *Server) snapshotPageAppCollections(r *http.Request, def *PageAppDefinit
 		}
 		for _, block := range def.Blocks {
 			if pageAppHasSource(block) && block.CollectionID == id {
+				if err := s.validatePageActionSource(r.Context(), block, source.Fields); err != nil {
+					return err
+				}
 				if err := validatePageFormSource(block, source.Fields); err != nil {
 					return err
 				}
@@ -153,11 +159,12 @@ func readPageAppSource(ctx context.Context, tx *sql.Tx, workspace, id string) (W
 }
 
 // A template installs fresh schema IDs inside the page installation transaction, never source records.
-func installPageAppCollections(ctx context.Context, tx *sql.Tx, workspace string, userID int64, def *PageAppDefinition, now string) error {
+func (s *Server) installPageAppCollections(ctx context.Context, tx *sql.Tx, workspace string, userID int64, def *PageAppDefinition, now string) error {
 	collectionIDs := map[string]string{}
 	sourceSchemas := map[string][]CollectionField{}
 	fieldIDs := map[string]string{}
 	fieldOrigins := map[string]string{}
+	optionMappings := map[string]map[string]string{}
 	for _, source := range def.Collections {
 		if !pageAppID.MatchString(source.ID) || collectionIDs[source.ID] != "" || !validCollectionRecordType(source.DefaultRecordType) || len(source.Fields) > 100 || len(source.Stages) == 0 || len(source.Stages) > 100 {
 			return errors.New("Некорректная схема доски в наборе")
@@ -220,6 +227,7 @@ func installPageAppCollections(ctx context.Context, tx *sql.Tx, workspace string
 				return err
 			}
 			options := map[string]string{}
+			optionMappings[field.ID] = options
 			for _, option := range field.Options {
 				if options[option.ID] != "" || !validColorKey(option.ColorKey) {
 					return errors.New("Некорректные варианты поля")
@@ -275,6 +283,20 @@ func installPageAppCollections(ctx context.Context, tx *sql.Tx, workspace string
 			return fmt.Errorf("У списка %s отсутствует схема источника", b.Title)
 		}
 		sourceID := b.CollectionID
+		if err := s.validatePageActionSource(ctx, *b, sourceSchemas[sourceID]); err != nil {
+			return err
+		}
+		for j := range b.Actions {
+			a := &b.Actions[j]
+			for _, field := range sourceSchemas[sourceID] {
+				if field.ID == a.FieldID {
+					if err := remapPageActionValue(a, field.FieldType, optionMappings[field.ID]); err != nil {
+						return err
+					}
+				}
+			}
+			a.FieldID = fieldIDs[a.FieldID]
+		}
 		if err := validatePageFormSource(*b, sourceSchemas[sourceID]); err != nil {
 			return err
 		}
