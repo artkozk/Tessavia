@@ -1,0 +1,26 @@
+{
+  "commit": "9c858481059728208df9b97232598edeaee6e835",
+  "release": "/opt/business-control/releases/20260908-record-calculations-9c85848",
+  "sha256": "4a8029c4b0b5944841aac980306a1a391b17e5582fabe4cf6443910f8a5f47e1",
+  "backup": "/var/lib/business-control/backups/pre-record-calculations-20260908T132837Z",
+  "checkedAt": "2026-09-08T13:29:26.591278Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 292,
+  "assets": "20260908-record-calculations-2",
+  "tasks": [
+    {
+      "id": "cf244d3f551bd65d6d01239dc124a828",
+      "status": "completed"
+    },
+    {
+      "id": "2ad192a4298615883945e23a87d8ecd2",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
