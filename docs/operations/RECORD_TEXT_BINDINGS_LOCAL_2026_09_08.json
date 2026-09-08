@@ -1,0 +1,59 @@
+{
+  "syntheticOnly": true,
+  "checkedAt": "2026-09-08T09:22:58.614645Z",
+  "pages": [
+    {
+      "pageId": "442d76442cf04ea6e9ddb1952e33e7c5",
+      "revision": 6,
+      "collectionId": "e31e05f158bc7e7602829f6bec8fe542",
+      "bindings": {
+        "subtitle": {
+          "fieldId": "a80083f1761f8e3020bf2fc7b92561c4",
+          "prefix": "Подтверждено: ",
+          "suffix": " часов"
+        },
+        "title": {
+          "fieldId": "89994b497757f6f15d61b0bd6e45694f",
+          "prefix": "Оценка: ",
+          "suffix": " часов",
+          "emptyText": "Оценка ещё не задана"
+        }
+      },
+      "recordId": "d41c83e3cc7a46cf9508e9af164e64f1",
+      "recordTitle": "SC-85 Новая независимая оценка",
+      "values": {
+        "89994b497757f6f15d61b0bd6e45694f": 9,
+        "a80083f1761f8e3020bf2fc7b92561c4": 5
+      }
+    },
+    {
+      "pageId": "fd9ee4c29ff4f293fbdba1d7484e5ede",
+      "revision": 5,
+      "collectionId": "16defd1bab8eaf6656ae5fdcb73c981d",
+      "bindings": {},
+      "recordId": "b720ad8a8892624ac11c032ff5e91abd",
+      "recordTitle": "SC-88 Личная запись чтения",
+      "values": {
+        "ee9965b6cebac183095c3a91da714d8a": 0,
+        "fc2dfb6665eeeb7d7b846e18907027ac": 3
+      }
+    }
+  ],
+  "uiConfiguredBothBindings": true,
+  "emptyPreview": true,
+  "actualPreview": true,
+  "draftReloadRestore": true,
+  "kitIndependentFieldsAndRecords": true,
+  "zeroVisible": true,
+  "fieldEditReflectedWithoutReload": true,
+  "typeChangeAndReturnPreservesBinding": true,
+  "removeEachAndLastSavedReload": true,
+  "width320": true,
+  "physicalPhoneTested": false,
+  "twoAccountsTestedViaIntegration": true,
+  "goAppSeconds": 64.829,
+  "goWebSeconds": 0.371,
+  "vetPassed": true,
+  "nodeTests": 275,
+  "nodeMs": 813.971
+}

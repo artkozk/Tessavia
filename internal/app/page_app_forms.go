@@ -18,7 +18,9 @@ type PageAppFormField struct {
 	Hidden      bool   `json:"hidden,omitempty"`
 }
 
-func pageAppHasSource(b PageAppBlock) bool { return b.Kind == "records" || b.Kind == "form" }
+func pageAppHasSource(b PageAppBlock) bool {
+	return b.Kind == "records" || b.Kind == "form" || len(b.RecordBindings) > 0
+}
 
 func validatePageAppForm(b PageAppBlock) error {
 	if len(b.FormFields) > 46 || len(b.DefaultTitle) > 240 || len([]rune(b.SuccessText)) > 240 {

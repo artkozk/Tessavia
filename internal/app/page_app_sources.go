@@ -25,6 +25,9 @@ func (s *Server) validatePageAppSources(r *http.Request, def *PageAppDefinition)
 		if err := s.validatePageActionSource(r.Context(), block, fields); err != nil {
 			return err
 		}
+		if err := validatePageRecordBindingSource(block, fields); err != nil {
+			return err
+		}
 		if err := validatePageFormSource(block, fields); err != nil {
 			return err
 		}
@@ -76,6 +79,9 @@ func (s *Server) snapshotPageAppCollections(r *http.Request, def *PageAppDefinit
 		for _, block := range def.Blocks {
 			if pageAppHasSource(block) && block.CollectionID == id {
 				if err := s.validatePageActionSource(r.Context(), block, source.Fields); err != nil {
+					return err
+				}
+				if err := validatePageRecordBindingSource(block, source.Fields); err != nil {
 					return err
 				}
 				if err := validatePageFormSource(block, source.Fields); err != nil {
@@ -324,6 +330,16 @@ func (s *Server) installPageAppCollections(ctx context.Context, tx *sql.Tx, work
 			}
 			*parent = steps[0]
 			parent.Changes = extra
+		}
+		if err := validatePageRecordBindingSource(*b, sourceSchemas[sourceID]); err != nil {
+			return err
+		}
+		for property, binding := range b.RecordBindings {
+			if fieldIDs[binding.FieldID] == "" || fieldOrigins[binding.FieldID] != sourceID {
+				return errors.New("Поле привязки отсутствует в наборе")
+			}
+			binding.FieldID = fieldIDs[binding.FieldID]
+			b.RecordBindings[property] = binding
 		}
 		if err := validatePageFormSource(*b, sourceSchemas[sourceID]); err != nil {
 			return err

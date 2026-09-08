@@ -16,3 +16,7 @@ test('source template preview explains empty data and escapes copied schema name
  c.def={version:1,blocks:[{id:'list',kind:'records',title:'Requests',collectionId:'source',fields:[]}],collections:[{id:'source',name:'<script>Board</script>',fields:[{name:'<b>Amount</b>'}]}]};c.escape=v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
  const html=run('pageAppMarkup(def,{},escape,true)');assert.ok(html.includes('Записи автора не копируются'));assert.ok(html.includes('&lt;script&gt;Board'));assert.ok(html.includes('&lt;b&gt;Amount'));assert.ok(!html.includes('<script>'));assert.ok(!html.includes('data-app-record-create'));
 });
+
+test('kit preview explains text bindings without source values and escapes empty text',()=>{
+ c.def={version:1,blocks:[{id:'list',kind:'records',collectionId:'source',recordBindings:{title:{fieldId:'f',emptyText:'<img>'}}}],collections:[{id:'source',name:'Board',fields:[{id:'f',name:'<b>Name</b>'}]}]};c.escape=v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');const html=run('pageAppMarkup(def,{},escape,true)');assert.match(html,/Заголовок карточки/);assert.match(html,/&lt;b&gt;Name/);assert.match(html,/&lt;img&gt;/);assert.ok(!html.includes('<img>'));
+});
