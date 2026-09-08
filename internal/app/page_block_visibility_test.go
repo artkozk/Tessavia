@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestPageBlockVisibilityRejectsInvalidDependencies(t *testing.T) {
 	valid := func() PageAppDefinition {
@@ -69,7 +72,7 @@ func TestPageVisibilityKitKeepsRuleButNotPersonalState(t *testing.T) {
 	call("owner", "POST", "/page-app/templates/"+kit.ID+"/install", map[string]any{}, 201, &copy)
 	copyPath := "/workspace/pages/" + copy.ID + "/app"
 	call("owner", "GET", copyPath, nil, 200, &state)
-	if len(state.Marks) != 0 || *state.Definition.Blocks[1].Visibility != *def.Blocks[1].Visibility {
+	if len(state.Marks) != 0 || !reflect.DeepEqual(state.Definition.Blocks[1].Visibility, def.Blocks[1].Visibility) {
 		t.Fatal("copy lost rule or copied personal completion")
 	}
 	def.Blocks[1].Visibility = nil

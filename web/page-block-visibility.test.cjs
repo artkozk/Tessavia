@@ -26,3 +26,14 @@ test('100 percent requires every active item, never a rounded-up partial result'
  c.def=def();c.def.blocks[0].items=Array.from({length:200},(_,i)=>({id:String(i),label:String(i)}));c.def.blocks[1].visibility={source:'steps',metric:'percent',operator:'gte',value:100};c.counts={steps:199};
  assert.equal(run('blockVisible(def.blocks[1],def,previewVisibilityMarks(def,counts))'),false);c.counts.steps=200;assert.equal(run('blockVisible(def.blocks[1],def,previewVisibilityMarks(def,counts))'),true);
 });
+
+test('all and any progress rules use every source in simulation and preserve manual hiding',()=>{
+ c.def={version:1,blocks:[{id:'a',kind:'tracker',title:'Habits',items:[{id:'one',label:'Habit'}]},{id:'b',kind:'tracker',title:'Read',items:[{id:'two',label:'Chapter'}]},{id:'next',kind:'text',text:'Next',visibility:{mode:'all',conditions:[{source:'a',metric:'remaining',operator:'eq',value:0},{source:'b',metric:'percent',operator:'eq',value:100}]}}]};
+ c.marks={'a:one':true};assert.equal(run('blockVisible(def.blocks[2],def,marks)'),false);c.def.blocks[2].visibility.mode='any';assert.equal(run('blockVisible(def.blocks[2],def,marks)'),true);
+ const html=run('visibilityPreviewControls(def,{},e)');assert.ok(html.includes('data-preview-count="a"'));assert.ok(html.includes('data-preview-count="b"'));c.counts={a:1,b:1};c.def.blocks[2].visibility.mode='all';assert.equal(run('blockVisible(def.blocks[2],def,previewVisibilityMarks(def,counts))'),true);
+ c.def.blocks[2].hidden=true;assert.equal(run('blockVisible(def.blocks[2],def,previewVisibilityMarks(def,counts))'),false);
+});
+test('removing first visibility check preserves second and removing last restores unconditional display',()=>{
+ c.block={visibility:{mode:'any',conditions:[{source:'a',metric:'remaining',operator:'eq',value:0},{source:'b',metric:'percent',operator:'eq',value:100}]}};
+ run('removeVisibilityCondition(block,0)');assert.equal(c.block.visibility.source,'b');assert.equal(c.block.visibility.value,100);run('removeVisibilityCondition(block,0)');assert.equal(c.block.visibility,undefined);assert.equal(run('blockVisible(block,{blocks:[]},{})'),true);
+});

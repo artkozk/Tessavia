@@ -1,0 +1,56 @@
+{
+  "syntheticOnly": true,
+  "checkedAt": "2026-09-08T08:59:46.020287Z",
+  "pages": [
+    {
+      "pageId": "55cff8d254510e98b1ae6a7342b9675d",
+      "name": "SC-87 Два условия этапа",
+      "revision": 4,
+      "visibility": {
+        "mode": "any",
+        "conditions": [
+          {
+            "source": "66eeffe261f6467a86c7b54e4beea149",
+            "metric": "remaining",
+            "operator": "eq",
+            "value": 0
+          },
+          {
+            "source": "d577d77054d54ede95defe735cc6eb0f",
+            "metric": "remaining",
+            "operator": "eq",
+            "value": 0
+          }
+        ],
+        "value": 0
+      },
+      "personalMarks": {
+        "66eeffe261f6467a86c7b54e4beea149:131c66296c814e43a0a1a8a048866159": false,
+        "66eeffe261f6467a86c7b54e4beea149:e82ecf205ac14dc9b816db074b2c6127": true,
+        "d577d77054d54ede95defe735cc6eb0f:fc66cbf37d34402fabbc504059bd3221": false
+      }
+    },
+    {
+      "pageId": "087076b5e46e474e5c5231d51d3962cd",
+      "name": "SC-87 Этапы — тестовый набор",
+      "revision": 3,
+      "visibility": null,
+      "personalMarks": {}
+    }
+  ],
+  "uiManualConfigure": true,
+  "draftReloadRestore": true,
+  "allRequiresBothStages": true,
+  "anyNeedsOneStage": true,
+  "undoMarkHidesBlock": true,
+  "previewDoesNotChangeMarks": true,
+  "kitPreservesRulesWithoutMarks": true,
+  "firstAndLastConditionsRemovedSaved": true,
+  "width320": true,
+  "physicalPhoneTested": false,
+  "goAppSeconds": 64.014,
+  "goWebSeconds": 0.369,
+  "vetPassed": true,
+  "nodeTests": 271,
+  "nodeMs": 762.9317
+}
