@@ -1,0 +1,26 @@
+{
+  "commit": "0a01feecc0ff8bf4647457095879ab141db98e16",
+  "release": "/opt/business-control/releases/20260908-nested-element-styles-0a01fee",
+  "sha256": "696bdd2c46a084c5381505d52adb0212fa471c1b590f2ec6a5139d0d52427688",
+  "backup": "/var/lib/business-control/backups/pre-nested-element-styles-20260908T103754Z",
+  "checkedAt": "2026-09-08T10:38:18.175831Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 278,
+  "assets": "20260908-nested-element-styles-2",
+  "tasks": [
+    {
+      "id": "f9bcba53574665d6e2bb132685c0f51a",
+      "status": "completed"
+    },
+    {
+      "id": "b8a99823ccf3f3a9f39093fe3c1af2bf",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
