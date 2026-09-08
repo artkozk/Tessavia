@@ -1,0 +1,26 @@
+{
+  "commit": "4d84e290812ea4a1af65de67f0393211df1a2a4d",
+  "release": "/opt/business-control/releases/20260908-block-visibility-4d84e29",
+  "sha256": "aa8e87b491089202c20a41df232173ab2c0c27a105a80d07ec78ec252ccb8efc",
+  "backup": "/var/lib/business-control/backups/pre-block-visibility-20260908T061051Z",
+  "checkedAt": "2026-09-08T06:11:30.327073Z",
+  "oldTablesUnchanged": 117,
+  "tables": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 262,
+  "assets": "20260908-block-visibility-2",
+  "tasks": [
+    {
+      "id": "05d64b353b1627ee64611c199e63af28",
+      "status": "completed"
+    },
+    {
+      "id": "2ad192a4298615883945e23a87d8ecd2",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ]
+}
