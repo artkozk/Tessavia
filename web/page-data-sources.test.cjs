@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const c=vm.createContext({});
-for(const name of ['habit-tracker.js','personal-today.js','page-data-sources.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,name),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
+for(const name of ['habit-tracker.js','personal-today.js','page-data-sources.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,name),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
 const run=code=>vm.runInContext(code,c);
 c.e=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 test('habit feed respects schedule, success and pause rather than resetting daily marks',()=>{

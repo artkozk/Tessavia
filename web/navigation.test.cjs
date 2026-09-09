@@ -13,7 +13,7 @@ function harness() {
     pushState(entry) { this.state = entry; entries.push(entry); },
   };
   const window = { scrollY: 240, scrollTo({top}) { this.scrollY = top; } };
-  const context = vm.createContext({ state, history, window, structuredClone, confirm: () => true, toast() {}, setSidebarOpen() {}, render() {}, requestAnimationFrame(fn) { fn(); }, async switchWorkspace(id) { state.activeWorkspaceId = id; return true; } });
+  const context = vm.createContext({$:()=>null, state, history, window, structuredClone, confirm: () => true, toast() {}, setSidebarOpen() {}, render() {}, requestAnimationFrame(fn) { fn(); }, async switchWorkspace(id) { state.activeWorkspaceId = id; return true; } });
   vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'personal-navigation.js'),'utf8').replace('export function','function'),context);
   vm.runInContext(source.slice(source.indexOf('const routeFields ='), source.indexOf('const widgetNames =')), context);
   vm.runInContext(source.slice(source.indexOf('async function navigateToView('), source.indexOf('function metric(')), context);

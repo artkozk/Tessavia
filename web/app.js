@@ -1,26 +1,27 @@
-import { reviewFieldConflict } from './field-conflicts.js?v=20260910-calendar-layout-1';
-import { createPageAppUI } from './page-apps.js?v=20260910-calendar-layout-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260910-calendar-layout-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260910-calendar-layout-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260910-calendar-layout-1';
+import { createSettingsHub } from './settings-hub.js?v=20260910-settings-hub-2';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260910-settings-hub-2';
+import { createPageAppUI } from './page-apps.js?v=20260910-settings-hub-2';
+import { createChatGroupUI } from './chat-groups.js?v=20260910-settings-hub-2';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260910-settings-hub-2';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260910-settings-hub-2';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260910-calendar-layout-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260910-settings-hub-2';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260910-calendar-layout-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260910-settings-hub-2';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute } from './personal-navigation.js?v=20260910-calendar-layout-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260910-calendar-layout-1';
-import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
+import { personalRoute } from './personal-navigation.js?v=20260910-settings-hub-2';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260910-settings-hub-2';
+import { createFirstUseUI } from './first-use.js?v=20260910-settings-hub-2';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260910-calendar-layout-1';
+import { createLifeMapUI } from './life-map.js?v=20260910-settings-hub-2';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260910-calendar-layout-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260910-settings-hub-2';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1499,7 +1500,7 @@ function bindGlobalEvents() {
   $('#auth-form').addEventListener('submit', submitAuth);
 	$('#auth-change-registration').addEventListener('click', () => resetRegistrationVerification());
   $('#logout-button').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); await offlineOutbox.signOut({ broadcast: true }); location.reload(); });
-  $('#profile-button').addEventListener('click', () => { setSidebarOpen(false); openProfile(state.me.id); });
+  $('#profile-button').addEventListener('click', () => { setSidebarOpen(false); openInterfaceSettings('personal'); });
   $('#new-record-button').addEventListener('click', (event) => {
     event.stopPropagation();
     if (activeWorkspace()?.readingEnabled && ['dashboard', 'reading'].includes(state.view)) readingUI.open();
@@ -1591,10 +1592,11 @@ function bindGlobalEvents() {
     const dialog = topOpenDialog();
     if (dialog) {
       flushDialogDrafts(dialog);
-      if (protectedWorkspaceDialogs.has(dialog.id)) {
+      if (protectedWorkspaceDialogs.has(dialog.id) || dialog.dataset.composerDirty === 'true' || dialog.dataset.settingsSaving === 'true') {
         history.pushState({ ...history.state, businessControlOverlay: dialog.id }, '');
         dialog.dataset.historyState = 'true';
-        signalProtectedDialog(dialog, dialogHasUnsavedChanges(dialog)
+        signalProtectedDialog(dialog, dialog.dataset.settingsSaving === 'true'
+          ? 'Настройки сохраняются. Дождитесь завершения.' : dialogHasUnsavedChanges(dialog)
           ? 'Есть несохранённые изменения. Сохраните их или закройте окно кнопкой ×.'
           : 'Рабочее окно осталось открытым. Закройте его явной кнопкой ×.');
         return;
@@ -1750,6 +1752,7 @@ function signalProtectedDialog(dialog, message = 'Рабочее окно зак
 }
 
 async function confirmDialogTransition(dialog) {
+  if (dialog.dataset.settingsSaving === 'true') { toast('Дождитесь сохранения настроек'); return false; }
   if (dialog.dataset.profileBusy === 'true') { toast('Дождитесь завершения сохранения профиля'); return false; }
   if (dialog.dataset.composerDirty === 'true') return discardComposerChanges(dialog);
   if (!flushDialogDrafts(dialog)) { toast('Не удалось сохранить черновик на устройстве. Окно оставлено открытым', true); return false; }
@@ -2322,11 +2325,10 @@ function renderNav() {
   const groups = new Set(preferences.hiddenNavGroups || []);
   const items = navigationCatalog().filter((item) => !hidden.has(item.key) && !groups.has(item.group));
   const personal = activeWorkspace()?.kind === 'personal';
-  $('#main-nav').innerHTML = `<div class="project-nav-items">${items.map((item) => { const count = navCount(item.key); return `<button type="button" class="nav-item ${state.view === item.key ? 'active' : ''}" data-view="${escapeHTML(item.key)}" title="${escapeHTML(item.label)}">${icon(item.iconName)}<span>${escapeHTML(item.label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`; }).join('')}</div>${personal ? '' : `<button type="button" class="nav-item nav-configure" data-configure-navigation>${icon('sliders')}<span>Настроить меню</span></button>`}`;
+  $('#main-nav').innerHTML = `<div class="project-nav-items">${items.map((item) => { const count = navCount(item.key); return `<button type="button" class="nav-item ${state.view === item.key ? 'active' : ''}" data-view="${escapeHTML(item.key)}" title="${escapeHTML(item.label)}">${icon(item.iconName)}<span>${escapeHTML(item.label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`; }).join('')}</div>`;
   $$('[data-view]', $('#main-nav')).forEach((button) => button.addEventListener('click', () => navigateToView(button.dataset.view)));
   $('#main-nav').insertAdjacentHTML('beforeend', `<button type="button" class="nav-item" data-teams-directory>${icon('users')}<span>Команды</span></button>`);
   $('[data-teams-directory]').addEventListener('click', () => { setSidebarOpen(false); openTeamsDirectory(); });
-  $('[data-configure-navigation]')?.addEventListener('click', () => { setSidebarOpen(false); openNavigationSettings(); });
 }
 
 async function saveInterfacePreferences(preferences = state.interfacePreferences) {
@@ -2340,13 +2342,125 @@ async function saveInterfacePreferences(preferences = state.interfacePreferences
   return saved;
 }
 
-function openInterfaceSettings() {
-  if (state.layoutDraft) {
-    $('.layout-options').open = true;
-    $('.layout-editor-header').scrollIntoView({ block: 'start', behavior: 'instant' });
-    return;
+function settingsContext() {
+  const workspace = activeWorkspace();
+  const page = state.workspacePages.find(item => `page:${item.id}` === state.view);
+  const collectionID = page?.collectionId || (state.view === 'collections' ? state.activeCollectionId : state.view === 'work' ? state.workCollection : '');
+  return { userId: state.me?.id, workspaceId: state.activeWorkspaceId, workspaceName: workspace?.name || 'Пространство',
+    pageName: $('#page-title')?.textContent || 'Страница', personal: workspace?.kind === 'personal', deviceLabel: interfaceDevice() === 'mobile' ? 'Телефон' : 'ПК',
+    canConfigure: canConfigureWorkspace(), teamId: workspace?.teamId || '', pageApp: Boolean(page?.app), pageId: page?.id || '',
+    collectionId: state.collections.find(item => item.id === collectionID)?.id || '', collections: state.collections.map(({id,name}) => ({id,name})),
+    view: state.view, layoutEditing: Boolean(state.pageLayoutDraft || state.layoutDraft) };
+}
+
+function openInterfaceSettings(section = 'page') {
+  if (!state.me) return;
+  setSidebarOpen(false);
+  settingsHub.open(section);
+}
+
+async function leaveSettingsFor(action) {
+  const hub = $('#settings-dialog');
+  if (!hub?.open) return action();
+  const afterHistory = close => new Promise((resolve, reject) => {
+    const previous = state.afterOverlayClose;
+    const resume = async () => {
+      try { await previous?.(); resolve(await leaveSettingsFor(action)); }
+      catch (error) { reject(error); }
+    };
+    state.afterOverlayClose = resume;
+    if (close) requestDialogClose(close).then(accepted => {
+      if (!accepted) { if (state.afterOverlayClose === resume) state.afterOverlayClose = previous; resolve(false); }
+    }, reject);
+  });
+  // A leaf may already be closed while its Back event is still queued. Wait for
+  // that event, then remove the hub entry before navigating or opening an editor.
+  if (state.suppressOverlayPop) return afterHistory();
+  const dialog = topOpenDialog() || hub;
+  if (dialog.dataset.historyState === 'true' && history.state?.businessControlOverlay === dialog.id) return afterHistory(dialog);
+  if (!await requestDialogClose(dialog)) return false;
+  return leaveSettingsFor(action);
+}
+
+async function runSettingsAction(key, {context}) {
+  if (state.me?.id !== context.userId || state.activeWorkspaceId !== context.workspaceId || state.view !== context.view) throw new Error('Пространство изменилось. Откройте настройки заново.');
+  const page = state.workspacePages.find(item => item.id === context.pageId);
+  const collection = state.collections.find(item => item.id === context.collectionId);
+  const workspace = activeWorkspace();
+  const adminActions = ['board-settings', 'page-share', 'source-settings'];
+  if ((adminActions.includes(key) || key === 'page-edit' && page?.app) && !canConfigureWorkspace()) throw new Error('Общие настройки меняет администратор пространства.');
+  if (key === 'page-edit') {
+    if (page?.app) return pageAppUI.edit(page);
+    return leaveSettingsFor(() => {
+      if (state.pageLayoutDraft || state.layoutDraft) { $('.page-layout-editor, .layout-editor-header')?.scrollIntoView({block:'start'}); return; }
+      startPageLayoutEditor();
+    });
   }
-  startPageLayoutEditor();
+  if (key === 'source-settings' && page && !page.app) return openWorkspacePageEditor(page);
+  if (key === 'card-templates') return leaveSettingsFor(() => navigateToView('structure'));
+  if (key === 'board-settings' && collection) return openCollectionSettingsDialog(collection);
+  if (key === 'page-share' && page?.app) return pageAppUI.share();
+  if (key === 'menu') return openNavigationSettings('menu');
+  if (['appearance', 'interface-presets'].includes(key) && (state.pageLayoutDraft || state.layoutDraft)) throw new Error('Сохраните или отмените редактирование страницы перед сменой оформления.');
+  if (key === 'appearance') return openAppearanceSettings();
+  if (key === 'interface-presets') return openInterfacePresetsDialog();
+  if (key === 'page-library') return pageAppUI.library();
+  if (key === 'profile') return openProfile(state.me.id);
+  if (key === 'reminders') return reminderSettingsUI.open();
+  if (key === 'day') return personalTodayUI.openSettings();
+  if (key === 'pages') return openNavigationSettings('pages');
+  if (key === 'modules') return openNavigationSettings('modules');
+  if (key === 'team' && workspace?.teamId) return openTeamSettings(workspace.teamId);
+  if (key === 'boards') return openSettingsBoards();
+  throw new Error('Эта настройка недоступна на текущей странице.');
+}
+
+function openAppearanceSettings(device = interfaceDevice()) {
+  const dialog = $('#workspace-dialog');
+  if (dialog.dataset.settingsSaving === 'true') { toast('Дождитесь сохранения настроек'); return; }
+  if (!discardComposerChanges(dialog)) return;
+  const context = captureProjectContext();
+  const profile = structuredClone(state.interfaceProfiles[device] || state.interfacePreferences);
+  const layout = interfaceLayout(profile);
+  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell appearance-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Пространство')} · только для вас</p><h2>Плотность и панели</h2><p>Общий вид интерфейса. Отдельные настройки страниц сохраняются.</p></div><button type="button" class="icon-button" data-close-appearance aria-label="Закрыть">${icon('x')}</button></header>${deviceSelector(device)}<form data-appearance-form>${renderLayoutFields(layout,device)}<p class="muted">Настройки ПК и телефона независимы. Кнопка «Настройки» всегда остаётся доступной.</p><div class="form-actions"><button type="submit" class="primary">Сохранить</button></div><p class="form-error" role="alert" hidden></p></form></div>`;
+  const form = $('[data-appearance-form]',dialog);
+  $('.layout-options',form).open = true;
+  // Numeric inputs remain usable by keyboard and do not introduce native range sliders.
+  $$('input[type="range"]',form).forEach(input => { input.type = 'number'; input.setAttribute('aria-label', input.name === 'contentWidth' ? 'Ширина рабочей области' : 'Ширина меню'); });
+  bindComposerForm(form);
+  bindLayoutFields(form, () => { dialog.dataset.composerDirty = 'true'; });
+  $('[data-close-appearance]',dialog).onclick = () => requestDialogClose(dialog);
+  $$('[data-interface-device]',dialog).forEach(button => button.onclick = () => openAppearanceSettings(button.dataset.interfaceDevice));
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (form.dataset.saving === 'true' || !isProjectContextCurrent(context)) return;
+    form.dataset.saving = 'true'; dialog.dataset.settingsSaving='true'; form.inert = true;
+    const error = $('[role="alert"]',form); error.hidden = true;
+    try {
+      await saveInterfacePreferences({...profile,device,layout:readLayoutFields(form,layout)});
+      if (!isProjectContextCurrent(context) || !form.isConnected) return;
+      dialog.dataset.composerDirty = 'false';
+      applyInterfaceLayout(); applyPageLayout();
+      const actions = $('.dashboard-widget-capture .quick-actions');
+      if (actions) {
+        actions.innerHTML = interfaceLayout().quickActions.filter(projectAllowsType).map(key => `<button type="button" class="quick-action" data-quick-create="${key}"><span class="quick-icon">${icon(typeMeta[key]?.icon || 'inbox')}</span><span><strong>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</strong></span>${icon('chevronRight')}</button>`).join('');
+        $$('[data-quick-create]', actions).forEach(button => button.onclick = () => openCreateDialog(button.dataset.quickCreate));
+      }
+      dialog.dataset.settingsSaving='false';
+      await requestDialogClose(dialog); toast('Настройки интерфейса сохранены');
+    } catch (failure) { if(form.isConnected){ error.textContent=failure.message;error.hidden=false; } }
+    finally { form.dataset.saving='false';dialog.dataset.settingsSaving='false';form.inert=false; }
+  };
+  openModal(dialog); enhanceSelects(dialog);
+}
+
+function openSettingsBoards() {
+  const dialog=$('#workspace-dialog'), content=$('#workspace-dialog-content');
+  content.innerHTML=`<div class="workspace-editor-shell settings-boards-shell"><header><div><h2>Доски и поля</h2><p>Схема доски общая для участников пространства.</p></div><button type="button" class="icon-button" data-close-settings-boards aria-label="Закрыть">${icon('x')}</button></header>${state.collections.length?`<div class="composer-page-list">${state.collections.map(item=>`<article><div><strong>${escapeHTML(item.name)}</strong></div><button type="button" class="secondary" data-settings-board="${item.id}" ${canConfigureWorkspace()?'':'disabled'}>Поля и колонки</button></article>`).join('')}</div>`:'<p class="muted">Досок пока нет.</p>'}${canConfigureWorkspace()?`<button type="button" class="secondary" data-settings-new-board>${icon('plus')} Создать доску</button>`:'<p class="muted">Поля и колонки меняет администратор пространства.</p>'}</div>`;
+  $('[data-close-settings-boards]',content).onclick=()=>requestDialogClose(dialog);
+  $$('[data-settings-board]',content).forEach(button=>button.onclick=()=>{const item=state.collections.find(item=>item.id===button.dataset.settingsBoard);if(item&&canConfigureWorkspace())openCollectionSettingsDialog(item);});
+  $('[data-settings-new-board]',content)?.addEventListener('click',openCollectionCreateDialog);
+  openModal(dialog);
 }
 
 function renderContent() {
@@ -2435,7 +2549,7 @@ function renderDashboard() {
 	};
   blocks.capture = `<aside class="capture-panel dashboard-widget dashboard-widget-capture"><div><p class="eyebrow">Создать</p><h3>Быстрая фиксация</h3></div><div class="quick-actions">${layout.quickActions.filter(projectAllowsType).map((key) => `<button type="button" class="quick-action" data-quick-create="${key}"><span class="quick-icon">${icon(typeMeta[key]?.icon || 'inbox')}</span><span><strong>${escapeHTML(typeMeta[key]?.singular || 'Входящее')}</strong></span>${icon('chevronRight')}</button>`).join('')}</div></aside>`;
 	const widgets = (state.layoutDraft ? preferences.dashboardWidgets || ['focus', 'capture', 'capacity', 'quality'] : ['focus', 'capture', 'capacity', 'quality']).filter((key) => blocks[key] && (state.layoutDraft || key !== 'quality' || state.projectNavigation.enabledViews.includes('quality')));
-  $('#main-content').innerHTML = `${state.layoutDraft ? renderLayoutEditorHeader() : `<div class="dashboard-config-row"><span><strong>${escapeHTML(activeWorkspace()?.name || 'Обзор')}</strong></span><button type="button" class="secondary" data-configure-dashboard>${icon('settings')} Настроить главную</button></div>`}<section class="dashboard-custom-grid ${state.layoutDraft ? 'layout-editing' : ''}">${widgets.map((key) => blocks[key]).join('')}</section>`;
+  $('#main-content').innerHTML = `${state.layoutDraft ? renderLayoutEditorHeader() : `<div class="dashboard-config-row"><span><strong>${escapeHTML(activeWorkspace()?.name || 'Обзор')}</strong></span></div>`}<section class="dashboard-custom-grid ${state.layoutDraft ? 'layout-editing' : ''}">${widgets.map((key) => blocks[key]).join('')}</section>`;
   widgets.forEach((key) => {
     const block = $(`.dashboard-widget-${key}`); block.dataset.layoutWidget = key;
     block.style.setProperty('--widget-span', layout.widgetSpans[key]);
@@ -2444,7 +2558,6 @@ function renderDashboard() {
   bindOpenRecords();
   $$('[data-quick-create]').forEach((button) => button.addEventListener('click', () => openCreateDialog(button.dataset.quickCreate)));
   $$('[data-go]').forEach((button) => button.addEventListener('click', () => { navigateToView(button.dataset.go); }));
-	$('[data-configure-dashboard]')?.addEventListener('click', () => startPageLayoutEditor());
   if (state.layoutDraft) bindLayoutEditor();
   loadDashboardInsights();
 }
@@ -2613,10 +2726,11 @@ function renderPlanRow(plan, links) {
 const personalWaitingUI=createPersonalWaitingUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,renderPersonal,toast,openPlan:openPersonalPlanDetails});
 const personalRemindersUI=createPersonalRemindersUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,renderPersonal,openSource:openPersonalReminderSource,openHabit:openHabitReminderSource,openPlans:()=>navigateToView('personal',{personalTab:'plans'}),refreshNotifications:loadNotificationInbox});
 async function openPersonalReminderSource(id){const owner=state.me?.id;await navigateToView('personal',{personalTab:'today'});if(owner!==state.me?.id)return;await loadPersonal({force:true});if(owner===state.me?.id)openPersonalPlanDetails(id);}
+const settingsHub=createSettingsHub({getContext:settingsContext,escapeHTML,icon,openModal,requestDialogClose,runAction:runSettingsAction});
 const reminderSettingsUI=createReminderSettingsUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
 const personalTodayUI=createPersonalTodayUI({state,api,escapeHTML,icon,renderPersonal,renderPlanRow,formatMinutes,openPlan:openPersonalPlanDetails,openRecurrence:plan=>personalCalendarUI.openRecurrence(plan.id,plan),refreshPersonal:async()=>{await loadPersonal({force:true});if(state.personalError)throw new Error(state.personalError);},openProject:(id,workspaceId)=>openPersonalReviewSource({sourceKind:'record',sourceId:id,workspaceId}),togglePlan:togglePersonalPlan,openDay:openDayWorkspace,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
 const firstUseUI = createFirstUseUI({state,api,escapeHTML,icon,activeWorkspace,canConfigureWorkspace,openModal,closeDialog:requestDialogClose,toast,
-  actions:{capture:openPersonalCapture,inbox:openPersonalInbox,teams:openTeamsDirectory,board:openCollectionCreateDialog,menu:openNavigationSettings,page:openWorkspacePageEditor},
+  actions:{capture:openPersonalCapture,inbox:openPersonalInbox,teams:openTeamsDirectory,board:openCollectionCreateDialog,menu:() => openInterfaceSettings('interface'),page:openWorkspacePageEditor},
 });
 
 const personalInboxUI=createPersonalInboxUI({state,api,outbox:()=>offlineOutbox,escapeHTML,icon,renderMarkdown,openModal,closeDialog:requestDialogClose,flushDrafts:flushDialogDrafts,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,loadDraft:loadWorkingDraft,draftMatches:captureDraftMatches,toast,toastAction,loadPersonal,openInbox:openPersonalInbox,openPlan:async id=>{await loadPersonal({force:true});openPersonalPlanDetails(id);}});
@@ -3037,6 +3151,7 @@ function renderQuality() {
 }
 
 async function navigateToView(view, options = {}) {
+  if ($('#settings-dialog')?.open) return leaveSettingsFor(() => navigateToView(view, options));
 	const normalized = ({ goals: 'goal', tasks: 'work', ideas: 'idea' })[view] || view;
   if (!leavePageLayoutEditor()) return;
   if (state.layoutDraft && !confirm('Выйти без сохранения раскладки?')) return;
@@ -3877,21 +3992,14 @@ function activeCollection() {
 
 function renderWorkBoardToolbar() {
   const collection = state.collections.find((item) => item.id === state.workCollection);
-  return `<section class="work-board-toolbar"><label>Доска<select data-work-collection><option value="">Вся работа проекта</option>${state.collections.map((item) => `<option value="${item.id}" ${item.id === state.workCollection ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select></label><label>Состояние<select data-work-visible-status>${[['active', 'Активные'], ['completed', 'Завершённые'], ['all', 'Все'], ['overdue', 'Просроченные'], ['archived', 'Архив']].map(([key, label]) => `<option value="${key}" ${state.workStatus === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label>${!collection || canConfigureWorkspace() ? `<button type="button" class="secondary" data-work-board-settings>${icon('settings')} ${collection ? 'Поля и колонки' : 'Настроить вид'}</button>` : ''}${canConfigureWorkspace() ? `<button type="button" class="icon-button" data-work-board-create aria-label="Новая доска" title="Новая доска">${icon('plus')}</button>` : ''}${collection ? `<button type="button" class="secondary" data-work-board-attach>${icon('link')} Добавить существующую</button>` : ''}</section>`;
+  return `<section class="work-board-toolbar"><label>Доска<select data-work-collection><option value="">Вся работа проекта</option>${state.collections.map((item) => `<option value="${item.id}" ${item.id === state.workCollection ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select></label><label>Состояние<select data-work-visible-status>${[['active', 'Активные'], ['completed', 'Завершённые'], ['all', 'Все'], ['overdue', 'Просроченные'], ['archived', 'Архив']].map(([key, label]) => `<option value="${key}" ${state.workStatus === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label>${canConfigureWorkspace() ? `<button type="button" class="icon-button" data-work-board-create aria-label="Новая доска" title="Новая доска">${icon('plus')}</button>` : ''}${collection ? `<button type="button" class="secondary" data-work-board-attach>${icon('link')} Добавить существующую</button>` : ''}</section>`;
 }
 
 function bindWorkBoardToolbar() {
   $('[data-work-collection]').addEventListener('change', (event) => { state.workCollection = event.target.value; state.workType = 'all'; state.workStatus = 'all'; renderWorkList(); });
   $('[data-work-visible-status]').addEventListener('change', (event) => { state.workStatus = event.target.value; renderWorkList(); });
   $('[data-work-board-create]')?.addEventListener('click', openCollectionCreateDialog);
-  $('[data-work-board-settings]')?.addEventListener('click', () => {
-    const collection = state.collections.find((item) => item.id === state.workCollection);
-    if (collection) openCollectionSettingsDialog(collection);
-    else {
-      startPageLayoutEditor();
-      const options = $('.page-layout-options'); if (options) options.open = true;
-    }
-  });
+
   $('[data-work-board-attach]')?.addEventListener('click', () => openExistingCardPicker(state.collections.find((item) => item.id === state.workCollection)));
 }
 
@@ -4022,7 +4130,7 @@ function renderCollections() {
 	state.activeCollectionId = collection.id;
 	const records = collectionRecords(collection.id);
   rememberWorkScroll();
-	$('#main-content').innerHTML = `<div class="page-heading collection-page-heading"><div><p class="eyebrow">${escapeHTML(workspace?.name || 'Команда')} · Конструктор процессов</p><h1>${escapeHTML(collection.name)}</h1><p>${escapeHTML(collection.description || `${collection.cardLabel}: настраиваемые этапы и поля`)}</p></div><div class="collection-page-actions"><button type="button" class="primary" data-create-collection-card>${icon('plus')} ${escapeHTML(collection.cardLabel)}</button>${canConfigureWorkspace() ? `<button type="button" class="secondary" data-configure-collection>${icon('settings')} Настроить</button>` : ''}</div></div><section class="collection-toolbar"><nav class="collection-tabs" aria-label="Доски">${state.collections.map((item) => `<button type="button" class="${item.id === collection.id ? 'active' : ''}" data-collection-tab="${item.id}"><span>${icon('network')}</span><strong>${escapeHTML(item.name)}</strong><small>${state.records.filter((record) => record.collectionId === item.id && record.status !== 'archived').length}</small></button>`).join('')}${canConfigureWorkspace() ? `<button type="button" class="collection-tab-add" data-create-collection title="Новая доска" aria-label="Новая доска">${icon('plus')}</button>` : ''}</nav><label class="collection-search">${icon('search')}<input type="search" value="${escapeHTML(state.collectionSearch)}" placeholder="Найти на доске" aria-label="Найти карточку на доске"></label></section>${renderCollectionFilters(collection)}${renderWorkCollectionBoard(records, collection)}`;
+	$('#main-content').innerHTML = `<div class="page-heading collection-page-heading"><div><p class="eyebrow">${escapeHTML(workspace?.name || 'Команда')} · Конструктор процессов</p><h1>${escapeHTML(collection.name)}</h1><p>${escapeHTML(collection.description || `${collection.cardLabel}: настраиваемые этапы и поля`)}</p></div><div class="collection-page-actions"><button type="button" class="primary" data-create-collection-card>${icon('plus')} ${escapeHTML(collection.cardLabel)}</button></div></div><section class="collection-toolbar"><nav class="collection-tabs" aria-label="Доски">${state.collections.map((item) => `<button type="button" class="${item.id === collection.id ? 'active' : ''}" data-collection-tab="${item.id}"><span>${icon('network')}</span><strong>${escapeHTML(item.name)}</strong><small>${state.records.filter((record) => record.collectionId === item.id && record.status !== 'archived').length}</small></button>`).join('')}${canConfigureWorkspace() ? `<button type="button" class="collection-tab-add" data-create-collection title="Новая доска" aria-label="Новая доска">${icon('plus')}</button>` : ''}</nav><label class="collection-search">${icon('search')}<input type="search" value="${escapeHTML(state.collectionSearch)}" placeholder="Найти на доске" aria-label="Найти карточку на доске"></label></section>${renderCollectionFilters(collection)}${renderWorkCollectionBoard(records, collection)}`;
   const addBoard = $('[data-create-collection]');
   if (addBoard) addBoard.innerHTML = `${icon('plus')}<strong>Новая доска</strong>`;
   $('.collection-toolbar').insertAdjacentHTML('afterbegin', `<div class="collection-picker-mobile"><label>Доска<select data-collection-picker aria-label="Выбрать доску">${state.collections.map(item => `<option value="${item.id}" ${item.id === collection.id ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select></label>${canConfigureWorkspace() ? `<button type="button" class="icon-button" data-create-collection aria-label="Новая доска">${icon('plus')}</button>` : ''}</div>`);
@@ -4039,7 +4147,6 @@ function renderCollections() {
   $('[data-board-calendar]').addEventListener('click', () => openCalendar('project', collection.id));
 	$$('[data-collection-tab]').forEach((button) => button.addEventListener('click', () => { state.activeCollectionId = button.dataset.collectionTab; state.collectionSearch = ''; state.collectionOwnerFilter = ''; state.collectionFieldFilters = {}; renderCollections(); }));
 	$$('[data-create-collection]').forEach((button) => button.addEventListener('click', openCollectionCreateDialog));
-	$('[data-configure-collection]')?.addEventListener('click', () => openCollectionSettingsDialog(collection));
 	$('[data-create-collection-card]')?.addEventListener('click', () => openCollectionCardDialog(collection));
 	$$('[data-create-at-stage]').forEach((button) => button.addEventListener('click', () => openCollectionCardDialog(collection, null, button.dataset.createAtStage)));
 	$('.collection-search input')?.addEventListener('input', (event) => { state.collectionSearch = event.currentTarget.value; renderCollections(); requestAnimationFrame(() => { const input = $('.collection-search input'); input?.focus(); input?.setSelectionRange(input.value.length, input.value.length); }); });
@@ -8373,8 +8480,8 @@ function renderStructure() {
     if (!admin) return '';
     return `<div class="template-actions"><button type="button" class="icon-button" data-rename-definition="${definition.id}" title="Переименовать" aria-label="Переименовать: ${escapeHTML(definition.name)}">${icon('edit')}</button><button type="button" class="icon-button" data-hide-definition="${definition.id}" title="Скрыть блок" aria-label="Скрыть: ${escapeHTML(definition.name)}">${icon('minus')}</button></div>`;
   };
-  $('#main-content').innerHTML = `<div class="page-heading template-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>Содержимое карточек</h1></div><button type="button" class="secondary" data-back-to-composer>${icon('arrowLeft')} Меню и страницы</button></div><div class="template-editor"><aside>${configurableTypes.map(([key, meta]) => `<button type="button" data-structure-type="${key}" class="${selectedType === key ? 'active' : ''}">${icon(meta.icon)}<span>${meta.label}</span><b>${state.definitions.filter((definition) => definition.scopeType === key && definition.active).length}</b></button>`).join('')}</aside><section><header><h2>${typeMeta[selectedType].label}</h2>${admin ? '' : '<p>Шаблоны изменяет администратор проекта.</p>'}</header><div class="template-block-list" data-template-list>${active.map((definition) => `<article class="template-block" draggable="${admin && Boolean(definition.scopeType)}" data-template-block="${definition.id}" data-scope-type="${definition.scopeType || ''}">${admin ? `<button type="button" class="drag-handle" aria-label="Перетащить блок «${escapeHTML(definition.name)}»" title="Перетащить блок">${icon('grip')}</button>` : ''}<div class="template-block-name"><strong>${escapeHTML(definition.name)}</strong><small>${definition.scopeType ? typeMeta[definition.scopeType].label : 'Во всех типах карточек'}</small></div>${actions(definition)}</article>`).join('') || '<p class="composer-access-note">В шаблоне нет блоков.</p>'}${admin ? `<div class="template-drop-actions"><button type="button" class="template-add" data-add-template-block>${icon('plus')} Добавить блок</button><div class="template-trash" data-template-trash>${icon('archive')} Скрыть блок</div></div>` : ''}</div>${hidden.length ? `<details class="hidden-template-blocks"><summary>Скрытые блоки <b>${hidden.length}</b></summary><div>${hidden.map((definition) => `<button type="button" data-restore-definition="${definition.id}" ${admin ? '' : 'disabled'}>${icon('rotate')}<span><strong>${escapeHTML(definition.name)}</strong><small>Вернуть в шаблон</small></span></button>`).join('')}</div></details>` : ''}</section></div>`;
-  $('[data-back-to-composer]').addEventListener('click', () => openNavigationSettings());
+  $('#main-content').innerHTML = `<div class="page-heading template-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>Содержимое карточек</h1></div><button type="button" class="secondary" data-back-to-composer>${icon('arrowLeft')} Настройки</button></div><div class="template-editor"><aside>${configurableTypes.map(([key, meta]) => `<button type="button" data-structure-type="${key}" class="${selectedType === key ? 'active' : ''}">${icon(meta.icon)}<span>${meta.label}</span><b>${state.definitions.filter((definition) => definition.scopeType === key && definition.active).length}</b></button>`).join('')}</aside><section><header><h2>${typeMeta[selectedType].label}</h2>${admin ? '' : '<p>Шаблоны изменяет администратор проекта.</p>'}</header><div class="template-block-list" data-template-list>${active.map((definition) => `<article class="template-block" draggable="${admin && Boolean(definition.scopeType)}" data-template-block="${definition.id}" data-scope-type="${definition.scopeType || ''}">${admin ? `<button type="button" class="drag-handle" aria-label="Перетащить блок «${escapeHTML(definition.name)}»" title="Перетащить блок">${icon('grip')}</button>` : ''}<div class="template-block-name"><strong>${escapeHTML(definition.name)}</strong><small>${definition.scopeType ? typeMeta[definition.scopeType].label : 'Во всех типах карточек'}</small></div>${actions(definition)}</article>`).join('') || '<p class="composer-access-note">В шаблоне нет блоков.</p>'}${admin ? `<div class="template-drop-actions"><button type="button" class="template-add" data-add-template-block>${icon('plus')} Добавить блок</button><div class="template-trash" data-template-trash>${icon('archive')} Скрыть блок</div></div>` : ''}</div>${hidden.length ? `<details class="hidden-template-blocks"><summary>Скрытые блоки <b>${hidden.length}</b></summary><div>${hidden.map((definition) => `<button type="button" data-restore-definition="${definition.id}" ${admin ? '' : 'disabled'}>${icon('rotate')}<span><strong>${escapeHTML(definition.name)}</strong><small>Вернуть в шаблон</small></span></button>`).join('')}</div></details>` : ''}</section></div>`;
+  $('[data-back-to-composer]').addEventListener('click', () => openInterfaceSettings('workspace'));
   $$('[data-structure-type]').forEach((button) => button.addEventListener('click', () => { state.structureType = button.dataset.structureType; renderStructure(); }));
   const refresh = async () => { state.detailCache.clear(); state.definitions = await api('/api/section-definitions'); renderStructure(); };
   const update = async (id, value) => { try { await api(`/api/section-definitions/${id}`, { method: 'PATCH', body: JSON.stringify(value) }); await refresh(); toast('Шаблон проекта сохранён'); } catch (error) { toast(error.message, true); } };
@@ -8422,8 +8529,7 @@ function renderNotifications() {
     day = label;
     return `${heading}<article class="notification-row ${item.readAt || item.obsolete ? '' : 'unread'}"><button type="button" class="notification" data-open-notification="${escapeHTML(item.id)}"><i></i><span><strong>${escapeHTML(item.title)}</strong><p>${escapeHTML(item.body)}</p><small>${formatDate(item.createdAt, true)}${item.obsolete ? ' · Историческое напоминание — проверьте источник' : ''}</small></span></button><button type="button" class="icon-button" data-notification-read="${escapeHTML(item.id)}" title="${item.readAt ? 'Отметить непрочитанным' : 'Отметить прочитанным'}" aria-label="${item.readAt ? 'Отметить непрочитанным' : 'Отметить прочитанным'}">${icon(item.readAt ? 'rotate' : 'check')}</button></article>`;
   }).join('');
-  $('#main-content').innerHTML = `<section class="notification-inbox"><header class="notification-heading"><button type="button" class="secondary" data-notification-back>${icon('arrowLeft')} Назад</button><button type="button" class="text-button" data-reminder-settings>${icon('settings')} Напоминания</button><button type="button" class="text-button" id="read-all" ${state.unreadCount ? '' : 'disabled'}>${icon('check')} Прочитать все</button></header><div class="notification-filters"><div class="segmented" role="tablist" aria-label="Статус уведомлений">${[['unread', 'Новые'], ['read', 'Прочитанные'], ['all', 'Все']].map(([key, label]) => `<button type="button" role="tab" aria-selected="${state.notificationStatus === key}" class="segment ${state.notificationStatus === key ? 'active' : ''}" data-notification-status="${key}">${label}${key === 'unread' && state.unreadCount ? ` (${state.unreadCount})` : ''}</button>`).join('')}</div><label>Период<select id="notification-period">${[['all', 'За всё время'], ['today', 'Сегодня'], ['week', 'Последние 7 дней'], ['older', 'Раньше этой недели']].map(([key, label]) => `<option value="${key}" ${state.notificationPeriod === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div><div class="notification-list" aria-live="polite" aria-busy="${state.notificationLoading}">${rows || (!state.notificationLoading && !state.notificationError ? emptyState(state.notificationStatus === 'unread' ? 'Новых уведомлений нет.' : 'За этот период уведомлений нет.') : '')}</div>${state.notificationLoading ? '<p class="notification-loading">Загрузка...</p>' : ''}${state.notificationError ? `<div class="notification-error" role="alert"><p>${escapeHTML(state.notificationError)}</p><button type="button" class="secondary" data-notification-retry>Повторить</button></div>` : ''}${state.notificationInbox?.nextCursor && !state.notificationLoading ? '<button type="button" class="secondary" data-notification-more>Загрузить ещё</button>' : ''}</section>`;
-  $('[data-reminder-settings]').addEventListener('click',reminderSettingsUI.open);
+  $('#main-content').innerHTML = `<section class="notification-inbox"><header class="notification-heading"><button type="button" class="secondary" data-notification-back>${icon('arrowLeft')} Назад</button><button type="button" class="text-button" id="read-all" ${state.unreadCount ? '' : 'disabled'}>${icon('check')} Прочитать все</button></header><div class="notification-filters"><div class="segmented" role="tablist" aria-label="Статус уведомлений">${[['unread', 'Новые'], ['read', 'Прочитанные'], ['all', 'Все']].map(([key, label]) => `<button type="button" role="tab" aria-selected="${state.notificationStatus === key}" class="segment ${state.notificationStatus === key ? 'active' : ''}" data-notification-status="${key}">${label}${key === 'unread' && state.unreadCount ? ` (${state.unreadCount})` : ''}</button>`).join('')}</div><label>Период<select id="notification-period">${[['all', 'За всё время'], ['today', 'Сегодня'], ['week', 'Последние 7 дней'], ['older', 'Раньше этой недели']].map(([key, label]) => `<option value="${key}" ${state.notificationPeriod === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div><div class="notification-list" aria-live="polite" aria-busy="${state.notificationLoading}">${rows || (!state.notificationLoading && !state.notificationError ? emptyState(state.notificationStatus === 'unread' ? 'Новых уведомлений нет.' : 'За этот период уведомлений нет.') : '')}</div>${state.notificationLoading ? '<p class="notification-loading">Загрузка...</p>' : ''}${state.notificationError ? `<div class="notification-error" role="alert"><p>${escapeHTML(state.notificationError)}</p><button type="button" class="secondary" data-notification-retry>Повторить</button></div>` : ''}${state.notificationInbox?.nextCursor && !state.notificationLoading ? '<button type="button" class="secondary" data-notification-more>Загрузить ещё</button>' : ''}</section>`;
   $('[data-notification-back]').addEventListener('click', () => { if ((history.state?.businessControlDepth || 0) > 0) history.back(); else navigateToView('dashboard'); });
   $$('[data-notification-status]').forEach((button) => button.addEventListener('click', () => { state.notificationStatus = button.dataset.notificationStatus; loadNotificationInbox(); }));
   $('#notification-period').addEventListener('change', (event) => { state.notificationPeriod = event.target.value; loadNotificationInbox(); });
@@ -8702,7 +8808,7 @@ async function openInterfacePresetsDialog(scope = state.interfacePresetScope, qu
   try {
     const [presets, latest] = await Promise.all([api(`/api/interface/presets?scope=${encodeURIComponent(scope)}&q=${encodeURIComponent(query)}`), api('/api/interface/preset-applications/latest')]);
     if (!dialog.open || !$(`[data-preset-loading="${request}"]`, content)) return;
-    content.innerHTML = `<div class="workspace-editor-shell interface-presets-shell"><header><div><p class="eyebrow">Персонализация</p><h2>Наборы интерфейса</h2></div><button type="button" class="icon-button" data-close-presets aria-label="Закрыть">${icon('x')}</button></header><div class="preset-library-toolbar"><div class="segmented" role="tablist" aria-label="Наборы интерфейса">${[['mine', 'Мои'], ['public', 'Публичные']].map(([key, label]) => `<button type="button" class="segment ${scope === key ? 'active' : ''}" role="tab" aria-selected="${scope === key}" data-preset-scope="${key}">${label}</button>`).join('')}</div><button type="button" class="primary" data-new-preset>${icon('plus')} Сохранить текущий</button></div><form class="preset-search"><label>${icon('search')}<input type="search" name="query" value="${escapeHTML(query)}" placeholder="Найти набор" aria-label="Найти набор"></label><button type="submit" class="secondary">Найти</button></form><div class="preset-library-list">${presets.map((preset) => `<article class="preset-library-item"><div><h3>${escapeHTML(preset.name)}</h3>${preset.description ? `<p>${escapeHTML(preset.description)}</p>` : ''}<small>@${escapeHTML(preset.ownerUsername)} · ${preset.visibility === 'public' ? 'Публичный' : 'Только у вас'}${preset.useCount ? ` · Применений: ${preset.useCount}` : ''}</small><div class="preset-device-lines"><span><b>ПК</b> ${interfacePresetSummaryText(preset.summary.desktop)}</span><span><b>Телефон</b> ${interfacePresetSummaryText(preset.summary.mobile)}</span></div></div><button type="button" class="secondary" data-open-preset="${preset.id}">Посмотреть ${icon('chevronRight')}</button></article>`).join('') || `<div class="preset-library-empty"><h3>${query ? 'Наборы не найдены' : scope === 'mine' ? 'Сохранённых наборов пока нет' : 'Публичных наборов пока нет'}</h3></div>`}</div><footer class="composer-shortcuts"><button type="button" class="text-button" data-preset-menu>${icon('arrowLeft')} Меню и страницы</button></footer></div>`;
+    content.innerHTML = `<div class="workspace-editor-shell interface-presets-shell"><header><div><p class="eyebrow">Персонализация</p><h2>Наборы интерфейса</h2></div><button type="button" class="icon-button" data-close-presets aria-label="Закрыть">${icon('x')}</button></header><div class="preset-library-toolbar"><div class="segmented" role="tablist" aria-label="Наборы интерфейса">${[['mine', 'Мои'], ['public', 'Публичные']].map(([key, label]) => `<button type="button" class="segment ${scope === key ? 'active' : ''}" role="tab" aria-selected="${scope === key}" data-preset-scope="${key}">${label}</button>`).join('')}</div><button type="button" class="primary" data-new-preset>${icon('plus')} Сохранить текущий</button></div><form class="preset-search"><label>${icon('search')}<input type="search" name="query" value="${escapeHTML(query)}" placeholder="Найти набор" aria-label="Найти набор"></label><button type="submit" class="secondary">Найти</button></form><div class="preset-library-list">${presets.map((preset) => `<article class="preset-library-item"><div><h3>${escapeHTML(preset.name)}</h3>${preset.description ? `<p>${escapeHTML(preset.description)}</p>` : ''}<small>@${escapeHTML(preset.ownerUsername)} · ${preset.visibility === 'public' ? 'Публичный' : 'Только у вас'}${preset.useCount ? ` · Применений: ${preset.useCount}` : ''}</small><div class="preset-device-lines"><span><b>ПК</b> ${interfacePresetSummaryText(preset.summary.desktop)}</span><span><b>Телефон</b> ${interfacePresetSummaryText(preset.summary.mobile)}</span></div></div><button type="button" class="secondary" data-open-preset="${preset.id}">Посмотреть ${icon('chevronRight')}</button></article>`).join('') || `<div class="preset-library-empty"><h3>${query ? 'Наборы не найдены' : scope === 'mine' ? 'Сохранённых наборов пока нет' : 'Публичных наборов пока нет'}</h3></div>`}</div></div>`;
     $('[data-close-presets]', dialog).addEventListener('click', closeWorkspaceDialog);
     if (latest) {
       $('.preset-search', dialog).insertAdjacentHTML('afterend', `<div class="preset-last-application"><span><strong>${escapeHTML(latest.presetName)}</strong><small>Последнее применение · ${formatDate(latest.createdAt)}${latest.canUndo ? '' : ' · После него настройки менялись'}</small></span><button type="button" class="secondary" data-undo-preset ${latest.canUndo ? '' : 'disabled'}>${icon('undo')} Отменить</button></div>`);
@@ -8814,24 +8920,14 @@ function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
   const items = navigationCatalog(preferences);
   const hidden = new Set(preferences.hiddenNavItems || []);
   const hiddenGroups = new Set(preferences.hiddenNavGroups || []);
-  const tabs = [['menu', 'Моё меню'], ['modules', 'Разделы проекта'], ['pages', 'Свои страницы']];
+  const settingsTitle = {menu:'Моё меню', modules:'Разделы пространства', pages:'Свои страницы'}[tab];
   let body = '';
   if (tab === 'menu') body = `${deviceSelector(device)}<form id="navigation-personal-form"><div class="composer-rows">${items.map((item) => `<div class="composer-menu-row" data-menu-key="${escapeHTML(item.key)}"><button type="button" class="drag-handle" data-reorder-handle aria-label="Переместить: ${escapeHTML(item.label)}" title="Переместить">${icon('grip')}</button><label class="check"><input type="checkbox" name="visibleItem" value="${escapeHTML(item.key)}" ${!hidden.has(item.key) && !hiddenGroups.has(item.group) ? 'checked' : ''}><span>${escapeHTML(item.label)}</span></label></div>`).join('')}</div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить меню ${device === 'mobile' ? 'телефона' : 'ПК'}</button><button type="button" class="secondary" data-reset-nav>По умолчанию</button></div></form>`;
   if (tab === 'modules') body = `<form id="project-modules-form"><div class="composer-module-grid">${navItems.filter(([key]) => key !== 'personal').map(([key, label, iconName]) => `<label class="check module-option"><input type="checkbox" name="module" value="${key}" ${state.projectNavigation.enabledViews.includes(key) ? 'checked' : ''} ${admin ? '' : 'disabled'}><span>${icon(iconName)} ${escapeHTML(label)}</span></label>`).join('')}</div>${admin ? '<div class="form-actions"><button type="submit" class="primary">Сохранить разделы проекта</button></div>' : '<p class="composer-access-note">Состав разделов настраивает администратор проекта.</p>'}</form>`;
   if (tab === 'pages') body = `${admin ? `<button type="button" class="primary" data-new-page>${icon('plus')} Создать страницу</button>` : ''}<div class="composer-page-list">${state.workspacePages.map((page) => `<article><div><strong>${escapeHTML(page.name)}</strong><small>${page.archived ? 'В архиве' : page.app ? 'Пользовательский сценарий' : page.collectionId ? escapeHTML(state.collections.find((collection) => collection.id === page.collectionId)?.name || 'Доска недоступна') : 'Карточки проекта'} · ${page.app ? 'Своя страница' : page.viewMode === 'board' ? 'Доска' : 'Список'}</small></div>${admin ? `<button type="button" class="icon-button" data-configure-page="${page.id}" aria-label="Настроить страницу ${escapeHTML(page.name)}" title="Настроить">${icon('edit')}</button><button type="button" class="icon-button" data-archive-page="${page.id}" aria-label="${page.archived ? 'Восстановить' : 'Архивировать'} страницу ${escapeHTML(page.name)}" title="${page.archived ? 'Восстановить' : 'Архивировать'}">${icon(page.archived ? 'rotate' : 'archive')}</button>` : ''}</article>`).join('') || '<p class="composer-access-note">Своих страниц пока нет.</p>'}</div>`;
-  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>Меню и страницы</h2><p>${tab === 'menu' ? 'Ваше меню, только для вас' : 'Общие настройки этого проекта'}</p></div><button type="button" class="icon-button" data-close-composer aria-label="Закрыть">${icon('x')}</button></header><div class="segmented composer-tabs" role="tablist" aria-label="Настройка меню">${tabs.map(([key, label]) => `<button type="button" class="segment ${key === tab ? 'active' : ''}" role="tab" aria-selected="${key === tab}" data-composer-tab="${key}">${label}</button>`).join('')}</div>${body}<footer class="composer-shortcuts"><button type="button" class="text-button" data-composer-layout>${icon('sliders')} Настроить страницу</button><button type="button" class="text-button" data-composer-templates>${icon('settings')} Содержимое карточек</button></footer></div>`;
+  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>${settingsTitle}</h2><p>${tab === 'menu' ? 'Ваше меню, только для вас' : 'Общие настройки этого проекта'}</p></div><button type="button" class="icon-button" data-close-composer aria-label="Закрыть">${icon('x')}</button></header>${body}</div>`;
   $('[data-close-composer]', dialog).addEventListener('click', closeWorkspaceDialog);
-  $$('[data-composer-tab]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings(button.dataset.composerTab, device)));
   $$('[data-interface-device]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings('menu', button.dataset.interfaceDevice)));
-  const leaveFor = (view, after) => {
-    if (!discardComposerChanges(dialog)) return;
-    state.afterOverlayClose = async () => { if (await navigateToView(view)) after?.(); };
-    closeWorkspaceDialog();
-  };
-  $('[data-composer-layout]', dialog).addEventListener('click', () => leaveFor(state.view, () => startPageLayoutEditor(device)));
-  $('[data-composer-templates]', dialog).addEventListener('click', () => leaveFor('structure'));
-  $('.composer-shortcuts', dialog).insertAdjacentHTML('beforeend', `<button type="button" class="text-button" data-composer-presets>${icon('copy')} Наборы интерфейса</button>`);
-  $('[data-composer-presets]', dialog).addEventListener('click', openPresetsFromLayout);
   const personalForm = $('#navigation-personal-form', dialog);
   if (personalForm) {
     bindComposerForm(personalForm);
@@ -8936,8 +9032,7 @@ function renderWorkspacePage() {
   const fieldValue = (record,key) => key === 'owner' ? record.ownerUsername : key === 'status' ? statusLabel(record) : key === 'due' ? (record.dueAt ? formatDate(record.dueAt) : '') : collection?.fields.find((field)=>`field:${field.id}`===key) ? collectionFieldDisplay(collection.fields.find((field)=>`field:${field.id}`===key),record.customFields?.[key.slice(6)]) : '';
   const list = `<section class="custom-page-list">${records.map((record)=>`<button type="button" class="custom-page-row" data-open-record="${record.id}"><span class="custom-page-title"><small class="custom-page-kind">${icon(typeMeta[record.type]?.icon || 'fileText')}${escapeHTML(typeMeta[record.type]?.singular || record.type)}</small><strong>${escapeHTML(record.title)}</strong>${page.fields.includes('description') && record.description ? `<span>${escapeHTML(markdownPlain(record.description))}</span>`:''}</span><span class="custom-page-fields">${page.fields.filter((key)=>key!=='description').map((key)=>`<span data-page-field="${escapeHTML(key)}"><small>${escapeHTML(labels[key] || collection?.fields.find((field)=>`field:${field.id}`===key)?.name || '')}</small><b>${escapeHTML(fieldValue(record,key) || '—')}</b></span>`).join('')}</span>${icon('chevronRight')}</button>`).join('') || '<p class="composer-access-note">Карточек по этим условиям нет.</p>'}</section>`;
   const board = collection ? `<section class="collection-board">${collection.stages.map((stage)=>{const items=records.filter((record)=>record.stageId===stage.id || (!record.stageId && stage.id===collection.stages[0]?.id));return `<section class="collection-column tone-${stage.colorKey}" data-collection-drop="${stage.id}"><header><div><i></i><strong>${escapeHTML(stage.name)}</strong></div><span>${items.length}</span></header><div>${items.map((record)=>renderCollectionCard(record,collection,page.fields)).join('') || '<p class="collection-column-empty">Нет карточек</p>'}</div></section>`;}).join('')}</section>` : list;
-  $('#main-content').innerHTML=`<div class="page-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(page.name)}</h1><p>${recordsCountLabel(records.length)}</p></div><div class="custom-page-actions">${createTypes.length > 1 ? `<label class="page-create-type"><span class="sr-only">Тип новой карточки</span><select data-page-create-type aria-label="Тип новой карточки">${createTypes.map((key) => `<option value="${key}" ${state.pageCreateTypes?.[page.id] === key ? 'selected' : ''}>${escapeHTML(typeMeta[key]?.singular || key)}</option>`).join('')}</select></label>` : ''}<button type="button" class="primary" data-page-create>${icon('plus')} Добавить</button>${canConfigureWorkspace()?`<button type="button" class="secondary" data-page-configure>${icon('sliders')} Источник и поля</button>`:''}</div></div><label class="custom-page-search">${icon('search')}<input type="search" value="${escapeHTML(state.pageSearch)}" placeholder="Найти на странице" aria-label="Найти на странице"></label>${page.viewMode==='board'?board:list}`;
-  $('[data-page-configure]')?.addEventListener('click',()=>openWorkspacePageEditor(page));
+  $('#main-content').innerHTML=`<div class="page-heading"><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(page.name)}</h1><p>${recordsCountLabel(records.length)}</p></div><div class="custom-page-actions">${createTypes.length > 1 ? `<label class="page-create-type"><span class="sr-only">Тип новой карточки</span><select data-page-create-type aria-label="Тип новой карточки">${createTypes.map((key) => `<option value="${key}" ${state.pageCreateTypes?.[page.id] === key ? 'selected' : ''}>${escapeHTML(typeMeta[key]?.singular || key)}</option>`).join('')}</select></label>` : ''}<button type="button" class="primary" data-page-create>${icon('plus')} Добавить</button></div></div><label class="custom-page-search">${icon('search')}<input type="search" value="${escapeHTML(state.pageSearch)}" placeholder="Найти на странице" aria-label="Найти на странице"></label>${page.viewMode==='board'?board:list}`;
   enhanceSelects($('.custom-page-actions'));
   $('[data-page-create-type]')?.addEventListener('change', (event) => {
     state.pageCreateTypes ||= {};
@@ -9709,7 +9804,7 @@ function renderDayWorkspace() {
     data.records.push(...personalCalendarUI.recurrences().filter(item=>plannerMatchesDay(item,date,true)));
     if (calendarPresentation('personal').includeWork) data.records.push(...personalCalendarUI.entries().filter(item=>plannerMatchesDay(item,date,true)));
   }
-  root.innerHTML = `<header class="day-workspace-heading"><div class="day-workspace-nav"><button type="button" class="secondary" data-day-back>${icon('arrowLeft')} Назад</button><div><button type="button" class="icon-button" data-day-shift="-1" aria-label="Предыдущий день">${icon('arrowLeft')}</button><input type="date" aria-label="Открытый день" value="${date}" data-day-date><button type="button" class="icon-button" data-day-shift="1" aria-label="Следующий день">${icon('chevronRight')}</button></div></div><div class="section-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Личное' : activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(dateFromKey(date).toLocaleDateString('ru-RU', {weekday:'long',day:'numeric',month:'long'}))}</h1></div><button type="button" class="icon-button" data-day-layout title="Настроить день" aria-label="Настроить день">${icon('sliders')}</button></div></header><section class="day-workspace-records"><header class="section-heading"><h2>${personal ? 'Планы' : 'Карточки'} <small>${data.records.length}</small></h2><div><button type="button" class="text-button" data-day-new>${icon('plus')} ${personal ? 'Дело или событие' : 'Карточка'}</button>${!personal ? `<button type="button" class="icon-button" data-day-assign aria-label="Назначить существующую карточку" title="Назначить существующую карточку">${icon('link')}</button>` : ''}</div></header>${data.records.map(item => dayRecordRow(item, personal)).join('') || '<p class="muted">На этот день ничего не запланировано.</p>'}</section><section class="day-workspace-notes"><header class="section-heading"><h2>Заметки <small>${data.notes.length}</small></h2><button type="button" class="text-button" data-day-note>${icon('plus')} Заметка</button></header>${data.notes.map(note => `<article class="day-note"><button type="button" class="day-note-title" data-day-kind="${personal ? 'note' : 'record'}" data-day-item="${note.id}">${icon('edit')}<strong>${escapeHTML(note.title)}</strong></button><div class="markdown-body">${renderMarkdown(personal ? note.body : note.description || '')}</div>${personal ? `<small class="muted">${noteCalendarDate(note) === date ? 'На этот день' : 'Связана с планом'}${note.createdAt ? ` · Создана ${escapeHTML(formatDate(note.createdAt))}` : ''}</small>` : ''}</article>`).join('') || '<p class="muted">Заметок на этот день пока нет.</p>'}</section>`;
+  root.innerHTML = `<header class="day-workspace-heading"><div class="day-workspace-nav"><button type="button" class="secondary" data-day-back>${icon('arrowLeft')} Назад</button><div><button type="button" class="icon-button" data-day-shift="-1" aria-label="Предыдущий день">${icon('arrowLeft')}</button><input type="date" aria-label="Открытый день" value="${date}" data-day-date><button type="button" class="icon-button" data-day-shift="1" aria-label="Следующий день">${icon('chevronRight')}</button></div></div><div class="section-heading"><div><p class="eyebrow">${escapeHTML(personal ? 'Личное' : activeWorkspace()?.name || 'Проект')}</p><h1>${escapeHTML(dateFromKey(date).toLocaleDateString('ru-RU', {weekday:'long',day:'numeric',month:'long'}))}</h1></div></div></header><section class="day-workspace-records"><header class="section-heading"><h2>${personal ? 'Планы' : 'Карточки'} <small>${data.records.length}</small></h2><div><button type="button" class="text-button" data-day-new>${icon('plus')} ${personal ? 'Дело или событие' : 'Карточка'}</button>${!personal ? `<button type="button" class="icon-button" data-day-assign aria-label="Назначить существующую карточку" title="Назначить существующую карточку">${icon('link')}</button>` : ''}</div></header>${data.records.map(item => dayRecordRow(item, personal)).join('') || '<p class="muted">На этот день ничего не запланировано.</p>'}</section><section class="day-workspace-notes"><header class="section-heading"><h2>Заметки <small>${data.notes.length}</small></h2><button type="button" class="text-button" data-day-note>${icon('plus')} Заметка</button></header>${data.notes.map(note => `<article class="day-note"><button type="button" class="day-note-title" data-day-kind="${personal ? 'note' : 'record'}" data-day-item="${note.id}">${icon('edit')}<strong>${escapeHTML(note.title)}</strong></button><div class="markdown-body">${renderMarkdown(personal ? note.body : note.description || '')}</div>${personal ? `<small class="muted">${noteCalendarDate(note) === date ? 'На этот день' : 'Связана с планом'}${note.createdAt ? ` · Создана ${escapeHTML(formatDate(note.createdAt))}` : ''}</small>` : ''}</article>`).join('') || '<p class="muted">Заметок на этот день пока нет.</p>'}</section>`;
   if (personal) bindPersonalCalendarControls($('.day-workspace-heading',root));
   $('[data-day-back]',root).addEventListener('click', () => { if (!leavePageLayoutEditor()) return; if ((history.state?.businessControlDepth || 0) > 0) history.back(); else openCalendar(state.calendarScope); });
   const changeDay = next => { if (!next || !leavePageLayoutEditor()) return; state.calendarDay = next; rememberView(); renderDayWorkspace(); };
@@ -9718,7 +9813,6 @@ function renderDayWorkspace() {
   $('[data-day-new]',root).addEventListener('click', createCalendarEntry);
   $('[data-day-note]',root).addEventListener('click', () => personal ? openPersonalEditor('note','',{date}) : openCreateDialog('document',{dueAt:date+'T18:00'}));
   $('[data-day-assign]',root)?.addEventListener('click', openCalendarCardPicker);
-  $('[data-day-layout]',root).addEventListener('click', () => startPageLayoutEditor());
   bindDayItems(root); applyPageLayout();
 }
 

@@ -1,0 +1,100 @@
+/* One settings entry point; editors keep the platform's existing visual style. */
+#settings-dialog.settings-hub {
+  width: min(920px, calc(100vw - 40px));
+  max-height: min(760px, calc(100dvh - 40px));
+  background: var(--surface);
+  color: var(--ink);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.settings-hub-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.settings-hub-header h2 { min-width: 0; font-size: 23px; overflow-wrap: anywhere; }
+.settings-hub-header .icon-button { flex: 0 0 40px; }
+.settings-hub-layout { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 370px; }
+.settings-hub-nav { display: flex; flex-direction: column; gap: 4px; align-items: stretch; padding: 16px 12px; border-right: 1px solid var(--line); }
+.settings-hub-nav button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.settings-hub-nav button > span:first-child { display: inline-flex; flex: 0 0 auto; }
+.settings-hub-nav button:hover { background: var(--surface-soft); color: var(--ink); }
+.settings-hub-nav button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-strong); }
+.settings-hub-panel { min-width: 0; padding: 24px; }
+.settings-hub-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.settings-hub-context { display: grid; gap: 8px; margin-bottom: 18px; }
+.settings-hub-context h3 { font-size: 18px; overflow-wrap: anywhere; }
+.settings-hub-context p { color: var(--muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.settings-hub-rows { border-top: 1px solid var(--line); }
+.settings-hub-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 76px;
+  padding: 16px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.settings-hub-row:hover:not(:disabled) { background: var(--surface-soft); }
+.settings-hub-row:disabled { opacity: 1; cursor: default; }
+.settings-hub-row:disabled .settings-hub-row-icon, .settings-hub-row:disabled strong { color: var(--muted); }
+.settings-hub-row:disabled .settings-hub-row-arrow { visibility: hidden; }
+.settings-hub-row-icon, .settings-hub-row-arrow { display: inline-flex; color: var(--accent); }
+.settings-hub-row-arrow .icon { width: 18px; height: 18px; }
+.settings-hub-row-copy { display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+.settings-hub-row-copy strong { font-size: 14px; line-height: 1.4; font-weight: 600; }
+.settings-hub-row-copy > span, .settings-hub-row-copy small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.settings-hub-row-copy small { font-style: italic; }
+.settings-hub-status, .settings-hub-error { margin-top: 16px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.settings-hub-status { color: var(--muted); }
+.settings-hub-error { color: var(--red); }
+@media (max-width: 640px) {
+  #settings-dialog.settings-hub { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .settings-hub-header { padding: 14px 16px; }
+  .settings-hub-header h2 { font-size: 21px; }
+  .settings-hub-layout { display: block; min-height: 0; }
+  .settings-hub-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 10px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .settings-hub-nav button { gap: 7px; padding: 10px 8px; font-size: 12px; }
+  .settings-hub-nav .icon { width: 17px; height: 17px; }
+  .settings-hub-panel { padding: 20px 16px; }
+  .settings-hub-context { margin-bottom: 14px; }
+  .settings-hub-row { grid-template-columns: 20px minmax(0, 1fr) 16px; gap: 9px; padding: 14px 2px; }
+  .settings-hub-row-copy strong { font-size: 13px; }
+}
+
+/* Shared editors keep the platform controls, with compact vertical rhythm here. */
+.appearance-settings-shell { align-content: start; }
+.appearance-settings-shell .interface-device-tabs { margin-block: 0; }
+.appearance-settings-shell .layout-options { margin-top: 0; }
+.appearance-settings-shell .layout-options-grid { align-items: start; }
+.appearance-settings-shell .layout-options-grid > label { align-content: start; }
+.appearance-settings-shell form > .muted { margin-block: 4px 16px; line-height: 1.5; }
+.appearance-settings-shell > header > .icon-button { flex: 0 0 44px; min-width: 44px; min-height: 44px; }

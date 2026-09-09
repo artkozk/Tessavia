@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const c=vm.createContext({});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-record-actions.js'),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
+const c=vm.createContext({});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-record-actions.js'),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
 vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-action-conditions.js'),'utf8').replaceAll('export ',''),c);
 const run=code=>vm.runInContext(code,c);
 test('action values preserve zero, false and all selected options',()=>{

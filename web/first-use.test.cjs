@@ -9,7 +9,7 @@ test('personal help stays private even when opened from a team workspace',()=>{
  assert.equal(ctx.helpContext('calendar','today',true).kind,'personal');
 });
 test('team help uses the current action and explains independent permissions',()=>{
- assert.match(ctx.helpContext('work','inbox',false).text,/Поля и этапы/);
+ assert.match(ctx.helpContext('work','inbox',false).text,/Настройки → Текущая страница.*поля и этапы/);
  assert.match(ctx.helpContext('overview','today',false).text,/выбранной команде/);
  assert.match(ctx.helpContext('personal','inbox',false).text,/Сделать делом/);
 });

@@ -1,4 +1,4 @@
-import { applyElementStyle } from './page-element-styles.js?v=20260910-calendar-layout-1';
+import { applyElementStyle } from './page-element-styles.js?v=20260910-settings-hub-2';
 
 // Translate the earlier field-wide presentation once when entering the editor.
 // A later reset can then return to the platform defaults, not a hidden legacy value.

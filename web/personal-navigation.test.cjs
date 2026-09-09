@@ -3,7 +3,7 @@ const source=fs.readFileSync(path.join(__dirname,'app.js'),'utf8');
 function harness() {
  const state={me:{id:1},view:'work',activeWorkspaceId:'team',calendarScope:'project',workspaces:[{id:'team',kind:'team'},{id:'private',kind:'personal'}]};
  const history=[],renders=[];
- const ctx=vm.createContext({state,personalCalendarUI:{invalidate(){}},leavePageLayoutEditor:()=>true,confirm:()=>true,rememberView:()=>history.push([state.activeWorkspaceId,state.view]),pushViewHistory:()=>history.push([state.activeWorkspaceId,state.view]),toast(){},setSidebarOpen(){},window:{scrollTo(){}},render:()=>renders.push([state.activeWorkspaceId,state.view])});
+ const ctx=vm.createContext({$:()=>null,state,personalCalendarUI:{invalidate(){}},leavePageLayoutEditor:()=>true,confirm:()=>true,rememberView:()=>history.push([state.activeWorkspaceId,state.view]),pushViewHistory:()=>history.push([state.activeWorkspaceId,state.view]),toast(){},setSidebarOpen(){},window:{scrollTo(){}},render:()=>renders.push([state.activeWorkspaceId,state.view])});
  vm.runInContext(fs.readFileSync(path.join(__dirname,'personal-navigation.js'),'utf8').replace('export function','function'),ctx);
  vm.runInContext(source.slice(source.indexOf('async function navigateToView('),source.indexOf('function metric(')),ctx);
  ctx.switchWorkspace=async id=>{state.activeWorkspaceId=id;state.view='dashboard';return true;};

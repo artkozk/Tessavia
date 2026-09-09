@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const c=vm.createContext({});for(const name of ['page-block-visibility.js','page-apps.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,name),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
+const c=vm.createContext({});for(const name of ['page-block-visibility.js','page-apps.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,name),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
 const run=s=>vm.runInContext(s,c),def=()=>({blocks:[{id:'steps',kind:'tracker',title:'Steps',items:[{id:'one',label:'One'},{id:'two',label:'Two'},{id:'hidden',hidden:true,label:'Removed'}]},{id:'next',kind:'text',title:'Next',text:'Continue here',visibility:{source:'steps',metric:'remaining',operator:'eq',value:0}}]});
 c.e=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 test('each user sees a step from their own marks; undo hides it without deleting data',()=>{

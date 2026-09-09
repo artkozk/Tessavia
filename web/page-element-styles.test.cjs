@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const c=vm.createContext({});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-element-styles.js'),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);const run=s=>vm.runInContext(s,c);
+const c=vm.createContext({});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-element-styles.js'),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);const run=s=>vm.runInContext(s,c);
 test('parent styling never resets nested child properties even when parent follows child in definition',()=>{
  const childNode={dataset:{appElement:'title'},style:{}},parentNode={dataset:{appElement:'title'},style:{}};
  const child={querySelectorAll:()=>[childNode]},parent={querySelectorAll:()=>[parentNode,childNode]};childNode.closest=()=>child;parentNode.closest=()=>parent;

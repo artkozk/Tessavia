@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const c=vm.createContext({structuredClone});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-forms.js'),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
+const c=vm.createContext({structuredClone});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-forms.js'),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
 const run=code=>vm.runInContext(code,c);
 c.escape=v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 test('form preview preserves custom ordering, excludes hidden fields and escapes labels/defaults',()=>{

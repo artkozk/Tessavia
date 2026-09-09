@@ -67,12 +67,9 @@ test('layout reparenting cannot reset a column scroll after more cards are rende
   node.scrollTop=0;frame();assert.equal(node.scrollTop,1800);
   ctx.state.activeWorkspaceId='other';ctx.currentWorkWindow();node.scrollTop=0;frame();assert.equal(node.scrollTop,0);
 });
-test('general board configures a personal view; custom schema stays scoped to the selected board', () => {
-  const code=source.slice(source.indexOf('function bindWorkBoardToolbar('),source.indexOf('function renderWorkCollectionBoard('));
-  let action,selected,view=0;
-  const ctx=vm.createContext({state:{collections:[{id:'other'},{id:'chosen'}],workCollection:''},
-    $:selector=>({addEventListener:(name,fn)=>{if(selector==='[data-work-board-settings]')action=fn;}}),
-    openCollectionCreateDialog:()=>{},openCollectionSettingsDialog:item=>selected=item.id,startPageLayoutEditor:()=>view++});
-  vm.runInContext(code,ctx);ctx.bindWorkBoardToolbar();action();assert.equal(view,1);assert.equal(selected,undefined);
-  ctx.state.workCollection='chosen';action();assert.equal(selected,'chosen');assert.equal(view,1);
+test('work toolbar contains daily filters but no second settings entry', () => {
+  const code=source.slice(source.indexOf('function renderWorkBoardToolbar('),source.indexOf('function renderWorkCollectionBoard('));
+  assert.doesNotMatch(code,/data-work-board-settings/);
+  assert.match(code,/data-work-collection/);
+  assert.match(code,/data-work-visible-status/);
 });
