@@ -1,26 +1,26 @@
-import { reviewFieldConflict } from './field-conflicts.js?v=20260908-record-card-composition-1';
-import { createPageAppUI } from './page-apps.js?v=20260908-record-card-composition-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260908-record-card-composition-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260908-record-card-composition-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260908-record-card-composition-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260910-calendar-layout-1';
+import { createPageAppUI } from './page-apps.js?v=20260910-calendar-layout-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260910-calendar-layout-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260910-calendar-layout-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260910-calendar-layout-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260908-record-card-composition-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260910-calendar-layout-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260908-record-card-composition-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260910-calendar-layout-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute } from './personal-navigation.js?v=20260908-record-card-composition-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260908-record-card-composition-1';
+import { personalRoute } from './personal-navigation.js?v=20260910-calendar-layout-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260910-calendar-layout-1';
 import { createFirstUseUI } from './first-use.js?v=20260904-first-use-4';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260908-record-card-composition-1';
+import { createLifeMapUI } from './life-map.js?v=20260910-calendar-layout-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260908-record-card-composition-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260910-calendar-layout-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1260,6 +1260,7 @@ function clearProjectClientState({ closeWindows = true } = {}) {
   state.qualityReport=null;state.teamCapacity=null;state.planningCycles=[];state.activePlanningCycle=null;
   state.activeCollectionId='';state.collectionSearch='';state.collectionOwnerFilter='';state.collectionFieldFilters={};
   state.calendarCollection='';state.calendarOwner='';state.calendarStatus='active';
+  state.calendarContextWorkspaceId='';
   state.syncRecordsSince='1970-01-01T00:00:00Z';state.syncActivitySince='1970-01-01T00:00:00Z';state.syncAppliedCheckpoint='';
   closeGlobalSearch({clear:true});
 }
@@ -3055,6 +3056,7 @@ async function navigateToView(view, options = {}) {
   const changedView = changedWorkspace || normalized !== state.view;
 	state.view = normalized;
   if (['personal', 'calendar', 'day'].includes(normalized)) state.calendarScope = route.calendarScope;
+  state.calendarContextWorkspaceId = '';
   if (['calendar','day'].includes(normalized) && state.calendarScope === 'personal') personalCalendarUI.invalidate();
   if (normalized === 'personal' && Object.hasOwn(options, 'personalTab')) {
 	state.personalTab = options.personalTab;
@@ -8490,6 +8492,7 @@ function finishOnboarding() { if ($('#onboarding-dialog').open) closeDialogImmed
 // Only view state goes into browser history, never record bodies or account data.
 const routeFields = ['view', 'search', 'statusFilter', 'ownerFilter', 'personalTab', 'workScope', 'workType', 'workStatus', 'workstreamFilter', 'workOrder', 'workViewMode', 'ideaViewMode', 'workCalendarMonth', 'calendarMode', 'calendarYear', 'activeCollectionId', 'collectionSearch', 'collectionOwnerFilter', 'collectionFieldFilters', 'historyMode', 'historyScope', 'historyActor', 'historyType', 'notificationStatus', 'notificationPeriod', 'pageSearch'];
 routeFields.push('workCollection', 'calendarScope', 'calendarDisplay', 'calendarMonth', 'calendarDay', 'calendarCollection', 'calendarOwner', 'calendarStatus', 'calendarColorBy');
+routeFields.push('calendarContextWorkspaceId');
 
 function viewSnapshot() {
   return { ...Object.fromEntries(routeFields.map((key) => [key, structuredClone(state[key])])), workspaceId: state.activeWorkspaceId, scrollY: window.scrollY };
@@ -8500,6 +8503,7 @@ function initializeViewHistory() {
   state.viewHistoryInitialized = true;
   const initialRoute=personalRoute(viewSnapshot(),state.workspaces);
   state.view=initialRoute.view;state.calendarScope=initialRoute.calendarScope;
+  state.calendarContextWorkspaceId=initialRoute.calendarContextWorkspaceId || '';
   if (history.state?.businessControlAccount === state.me?.id && history.state?.businessControlView) {
     const route = personalRoute(history.state.businessControlView, state.workspaces);
     if (route.workspaceId === state.activeWorkspaceId) routeFields.forEach((key) => { if (Object.hasOwn(route, key)) state[key] = structuredClone(route[key]); });
@@ -9130,7 +9134,12 @@ function savedPageLayout(profile) {
   const saved = profile?.layout?.pages?.[pageLayoutKey()];
   if (state.view === 'work') return defaultWorkBoardLayout(saved);
   if (saved) return saved;
-  if (state.view === 'calendar') return profile?.layout?.pages?.calendar || {};
+  if (state.view === 'calendar') {
+    const pages = profile?.layout?.pages || {};
+    // Both scopes display the same calendar surface. Inherit its existing layout
+    // until this scope has an explicit override, without crossing user/device/workspace profiles.
+    return pages.calendar || pages[`calendar:${state.calendarScope === 'personal' ? 'project' : 'personal'}`] || {};
+  }
   if (state.view === 'dashboard') {
     const keys = ['focus', 'capture', 'capacity', 'quality'];
     const visible = profile?.dashboardWidgets || keys;
@@ -9236,13 +9245,19 @@ function startPageLayoutEditor(device = interfaceDevice()) {
 
 function renderPageLayoutEditor(catalog) {
   const draft = state.pageLayoutDraft, value = draft.value;
-  const title = $('#page-title').textContent;
+  const title = $('#page-title').textContent + (state.view === 'calendar' ? ` · ${state.calendarScope === 'personal' ? 'Личное' : 'Проект'}` : '');
   const desktop = draft.device === 'desktop';
   return `<section class="page-layout-editor"><header><h2>Настроить: ${escapeHTML(title)}</h2><div><button type="button" class="primary" data-page-layout-save>${icon('check')} Сохранить</button><button type="button" class="secondary" data-page-layout-cancel>Отмена</button><button type="button" class="icon-button" data-page-layout-reset title="Сбросить только эту страницу" aria-label="Сбросить только эту страницу">${icon('rotate')}</button></div></header>${deviceSelector(draft.device)}<details class="page-layout-options"><summary>Размеры, поля и действия</summary><div class="page-layout-options-grid"><label>Плотность<select name="pageDensity"><option value="">Как во всём интерфейсе</option><option value="comfortable" ${value.density === 'comfortable' ? 'selected' : ''}>Обычная</option><option value="compact" ${value.density === 'compact' ? 'selected' : ''}>Компактная</option></select></label>${desktop && !['chat', 'graph'].includes(state.view) ? `<label>Ширина страницы<select name="pageWidth">${[[0,'Как во всём интерфейсе'],[1000,'Узкая'],[1500,'Обычная'],[2200,'Широкая']].map(([n,label]) => `<option value="${n}" ${Number(value.contentWidth || 0) === n ? 'selected' : ''}>${label}</option>`).join('')}</select></label>` : ''}${catalog.fields.length ? `<fieldset><legend>Поля и элементы</legend>${catalog.fields.map((field) => `<label class="check"><input type="checkbox" data-page-field-toggle="${escapeHTML(field.key)}" ${value.hiddenFields?.includes(field.key) ? '' : 'checked'}><span>${escapeHTML(field.label)}</span></label>`).join('')}</fieldset>` : ''}<fieldset><legend>Верхняя панель</legend><label class="check"><input type="checkbox" data-page-toolbar-inherit ${value.toolbarActions ? '' : 'checked'}><span>Как во всём интерфейсе</span></label><div class="page-toolbar-order">${[...(value.toolbarActions || interfaceLayout().toolbarActions), ...Object.keys(toolbarNames).filter((key) => !(value.toolbarActions || interfaceLayout().toolbarActions).includes(key))].map((key) => `<div data-page-toolbar="${key}"><button type="button" class="drag-handle" data-reorder-handle ${value.toolbarActions ? '' : 'disabled'} title="Переместить" aria-label="Переместить: ${toolbarNames[key]}">${icon('grip')}</button><label class="check"><input type="checkbox" ${(value.toolbarActions || interfaceLayout().toolbarActions).includes(key) ? 'checked' : ''} ${value.toolbarActions ? '' : 'disabled'}><span>${toolbarNames[key]}</span></label></div>`).join('')}</div></fieldset></div></details><div class="page-layout-restore">${catalog.blocks.filter((block) => !block.required && value.hiddenBlocks?.includes(block.key)).map((block) => `<button type="button" class="secondary" data-page-block-restore="${block.key}">${icon('plus')} ${escapeHTML(block.label)}</button>`).join('')}</div></section>`;
 }
 
 function bindPageLayoutEditor(editor, catalog) {
   const draft = state.pageLayoutDraft;
+  if (state.view === 'calendar') {
+    const pages = state.interfaceProfiles?.[draft.device]?.layout?.pages || {};
+    const other = state.calendarScope === 'personal' ? 'project' : 'personal';
+    const inherited = !pages[draft.key] && !pages.calendar && pages[`calendar:${other}`];
+    $('header', editor).insertAdjacentHTML('afterend', `<p class="muted">${inherited ? `Используется оформление вида «${other === 'personal' ? 'Личное' : 'Проект'}». После сохранения этот вид можно настраивать отдельно.` : 'Оформление используется и в другом виде календаря, пока для него не сохранены отдельные настройки.'}</p>`);
+  }
   $('header > div', editor).insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-layout-presets>${icon('copy')} Наборы</button>`);
   $('[data-layout-presets]', editor).addEventListener('click', openPresetsFromLayout);
   if (pageWidgetsSupported()) {
@@ -9534,6 +9549,20 @@ function bindPersonalCalendarControls(root) {
   personalCalendarUI.bind(root);
 }
 
+function changeCalendarScope(scope) {
+  if (!['personal', 'project'].includes(scope) || scope === state.calendarScope) return false;
+  // Switching the source also changes the page layout key. Guard it before
+  // changing any route state so cancelled navigation leaves the draft intact.
+  if (!leavePageLayoutEditor()) return false;
+  rememberView();
+  state.calendarScope = scope;
+  state.calendarContextWorkspaceId = state.activeWorkspaceId;
+  state.calendarExpanded = '';
+  pushViewHistory();
+  renderCalendarPage();
+  return true;
+}
+
 function renderCalendarPage() {
   const optionsOpen = Boolean($('.planner-view-options')?.open);
   const personal = state.calendarScope === 'personal';
@@ -9564,7 +9593,7 @@ function renderCalendarPage() {
     $('.planner-month', root).innerHTML = `${calendarTimeLegend()}<div class="planner-circle-grid">${monthDays.map((key) => calendarCircle(key, forDay(key), 'data-planner-day', state.calendarDay)).join('')}</div>`;
   }
   bindCalendarPresentation(calendarSurface, calendarBody, renderCalendarPage);
-  $$('[data-planner-scope]', root).forEach((button) => button.addEventListener('click', () => { state.calendarScope = button.dataset.plannerScope; renderCalendarPage(); }));
+  $$('[data-planner-scope]', root).forEach((button) => button.addEventListener('click', () => changeCalendarScope(button.dataset.plannerScope)));
   $$('[data-planner-display]', root).forEach((button) => button.addEventListener('click', () => { state.calendarDisplay = button.dataset.plannerDisplay; renderCalendarPage(); }));
   $$('[data-planner-filter]', root).forEach((select) => select.addEventListener('change', () => { state[select.dataset.plannerFilter] = select.value; renderCalendarPage(); }));
   $$('[data-planner-entry]', root).forEach((button) => button.addEventListener('click', () => button.dataset.plannerKind === 'recurrence' ? personalCalendarUI.openRecurrence(button.dataset.plannerEntry) : button.dataset.plannerKind === 'work' ? personalCalendarUI.openWork(button.dataset.plannerEntry.slice(5)) : personal ? button.dataset.plannerKind === 'note' ? openPersonalEditor('note', button.dataset.plannerEntry) : openPersonalPlanDetails(button.dataset.plannerEntry) : openRecord(button.dataset.plannerEntry)));

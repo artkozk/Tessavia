@@ -1,0 +1,14 @@
+[
+  {
+    "id": "7c700ef13dfb1d5d72f4bbcdddf14001",
+    "title": "P0 · Сохранять оформление календаря при переключениях",
+    "status": "in_progress",
+    "parentId": "b8a99823ccf3f3a9f39093fe3c1af2bf"
+  },
+  {
+    "id": "38bf4aee34d6faf2e31c1e99d848ec99",
+    "title": "P0 · Создать свой блок и вставить его из общей библиотеки",
+    "status": "planned",
+    "parentId": "66da4e412e714f4ea85c56ff85de03ec"
+  }
+]

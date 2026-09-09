@@ -91,6 +91,42 @@ test('Back repairs a legacy private route without changing its tab or scroll', a
   assert.equal(h.window.scrollY,110);assert.equal(h.history.state.businessControlView.workspaceId,'private');
 });
 
+test('reload and Back preserve an explicitly switched calendar workspace and layout profile', async () => {
+  const h = harness();
+  h.state.view = 'calendar'; h.state.calendarScope = 'personal';
+  h.state.calendarContextWorkspaceId = 'team'; h.state.calendarMonth = '2026-10';
+  h.state.interfacePreferences = { marker: 'team-calendar-layout' };
+  h.history.state = { businessControlAccount: 1, businessControlView: { view: 'calendar', workspaceId: 'team', calendarScope: 'personal', calendarContextWorkspaceId: 'team', calendarMonth: '2026-09', calendarDay: '2026-09-04', scrollY: 180 } };
+  h.run('initializeViewHistory()');
+  assert.equal(h.state.activeWorkspaceId, 'team');
+  assert.equal(h.state.calendarScope, 'personal');
+  assert.equal(h.state.calendarMonth, '2026-09');
+  assert.equal(h.history.state.businessControlView.workspaceId, 'team');
+  h.state.calendarScope = 'project';
+  h.context.switchWorkspace = async () => { throw new Error('Explicit calendar source must not switch workspace'); };
+  await h.run('restoreViewHistory(history.state)');
+  assert.equal(h.state.calendarScope, 'personal');
+  assert.equal(h.state.activeWorkspaceId, 'team');
+  assert.equal(h.state.interfacePreferences.marker, 'team-calendar-layout');
+  assert.equal(h.window.scrollY, 180);
+});
+
+test('restoring old history cannot borrow explicit calendar context from a later entry', async () => {
+  const h = harness();
+  h.state.view = 'calendar'; h.state.calendarScope = 'personal'; h.state.calendarContextWorkspaceId = 'team';
+  const oldEntry = { businessControlAccount: 1, businessControlView: { view: 'calendar', workspaceId: 'team', calendarScope: 'project' } };
+  h.history.state = oldEntry;
+  await h.run('restoreViewHistory(history.state)');
+  assert.equal(h.state.activeWorkspaceId, 'team');
+  assert.equal(h.state.calendarScope, 'project');
+  assert.equal(h.state.calendarContextWorkspaceId, '');
+  h.run('rememberView()');
+  assert.equal(h.history.state.businessControlView.calendarContextWorkspaceId, '');
+  h.state.viewHistoryInitialized = false; h.state.calendarContextWorkspaceId = 'stale-workspace';
+  h.run('initializeViewHistory()');
+  assert.equal(h.state.calendarContextWorkspaceId, '');
+});
+
 test('personal startup and legacy dashboard history open personal home while calendar dates survive',()=>{
  for(const entry of [null,{view:'dashboard',workspaceId:'private'},{view:'day',workspaceId:'private',calendarScope:'personal',calendarDay:'2026-09-21'}]){
   const h=harness();h.state.activeWorkspaceId='private';h.state.view='dashboard';

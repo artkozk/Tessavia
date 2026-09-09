@@ -44,6 +44,50 @@ test('draft previews only its own page and dashboard preview stays independent',
   h.state.view = 'idea'; assert.equal(h.run('currentPageLayout().hiddenFields[0]'), 'owner');
   h.state.layoutDraft = {}; assert.equal(h.run('Object.keys(currentPageLayout()).length'), 0);
 });
+
+test('calendar scopes inherit an existing layout until a separate override is saved', () => {
+  const h = harness();
+  const personal = { order: ['filters', 'month', 'heading'], blockSpans: { month: 4, heading: 8 }, blockSettings: { month: { height: 560 } }, texts: { heading: 'Мой календарь' }, hiddenBlocks: ['undated'] };
+  h.state.interfacePreferences.layout.pages = { 'calendar:personal': personal };
+  h.state.view = 'calendar'; h.state.calendarScope = 'project';
+  assert.equal(h.run('currentPageLayout()'), personal);
+  // The shared fallback is read-only: entering the other scope creates no saved override.
+  assert.deepEqual(Object.keys(h.state.interfacePreferences.layout.pages), ['calendar:personal']);
+  h.state.calendarMonth = '2026-10'; h.state.calendarDisplay = 'agenda';
+  assert.equal(h.run('currentPageLayout().blockSettings.month.height'), 560);
+  h.state.interfacePreferences.layout.pages['calendar:project'] = { texts: { heading: 'Командный календарь' } };
+  assert.equal(h.run('currentPageLayout().texts.heading'), 'Командный календарь');
+  h.state.calendarScope = 'personal';
+  assert.equal(h.run('currentPageLayout()'), personal);
+});
+
+test('explicit calendar reset and legacy layout win over the opposite scope', () => {
+  const h = harness(); h.state.view = 'calendar'; h.state.calendarScope = 'personal';
+  h.state.interfacePreferences.layout.pages = { 'calendar:project': { blockSpans: { month: 4 } }, 'calendar:personal': {} };
+  assert.equal(h.run('Object.keys(currentPageLayout()).length'), 0);
+  delete h.state.interfacePreferences.layout.pages['calendar:personal'];
+  h.state.interfacePreferences.layout.pages.calendar = { blockSpans: { month: 6 } };
+  assert.equal(h.run('currentPageLayout().blockSpans.month'), 6);
+  delete h.state.interfacePreferences.layout.pages.calendar;
+  assert.equal(h.run('currentPageLayout().blockSpans.month'), 4);
+  // No fallback is fetched from another user/workspace/device profile.
+  h.state.interfacePreferences = { layout: { pages: {} } };
+  assert.equal(h.run('Object.keys(currentPageLayout()).length'), 0);
+  h.state.view = 'day';
+  assert.equal(h.run('Object.keys(currentPageLayout()).length'), 0);
+});
+
+test('editing inherited calendar geometry makes an independent draft', () => {
+  const h = harness(); h.state.view = 'calendar'; h.state.calendarScope = 'project';
+  const personal = { blockSpans: { month: 4 }, blockSettings: { month: { height: 560 } } };
+  h.state.interfacePreferences.layout.pages = { 'calendar:personal': personal };
+  h.state.pageLayoutDraft = { key: 'calendar:project', value: structuredClone(h.run('savedPageLayout(state.interfacePreferences)')) };
+  h.state.pageLayoutDraft.value.blockSettings.month.height = 780;
+  assert.equal(h.run('currentPageLayout().blockSettings.month.height'), 780);
+  assert.equal(personal.blockSettings.month.height, 560);
+  h.state.pageLayoutDraft = null;
+  assert.equal(h.run('currentPageLayout().blockSettings.month.height'), 560);
+});
 test('all standard sections and custom pages expose an explicit catalog', () => {
   const h = harness();
   for (const view of ['work','personal','collections','principles','validation','outcomes','quality','history','notifications','chat','graph','structure','idea','research','goal','document']) {

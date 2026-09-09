@@ -35,5 +35,23 @@ test('sidebar calendar follows the current workspace even after visiting a perso
  assert.equal(h.state.activeWorkspaceId,'team');assert.equal(h.state.calendarScope,'project');assert.equal(h.state.view,'calendar');
  h.state.activeWorkspaceId='private';h.state.calendarScope='project';
  assert.equal(await h.run("navigateToView('calendar')"),true);
- assert.equal(h.state.activeWorkspaceId,'private');assert.equal(h.state.calendarScope,'personal');
+  assert.equal(h.state.activeWorkspaceId,'private');assert.equal(h.state.calendarScope,'personal');
+});
+
+test('only an explicit calendar source context preserves its allowed workspace', () => {
+ const h = harness();
+ assert.equal(h.run("personalRoute({view:'calendar',calendarScope:'personal',workspaceId:'team',calendarContextWorkspaceId:'team'},state.workspaces).workspaceId"),'team');
+ for (const context of ['', 'private', 'unknown']) assert.equal(h.run(`personalRoute({view:'calendar',calendarScope:'personal',workspaceId:'team',calendarContextWorkspaceId:'${context}'},state.workspaces).workspaceId`),'private');
+ assert.equal(h.run("personalRoute({view:'calendar',calendarScope:'personal',workspaceId:'unknown',calendarContextWorkspaceId:'unknown'},state.workspaces).workspaceId"),'private');
+ assert.equal(h.run("personalRoute({view:'personal',workspaceId:'team',calendarContextWorkspaceId:'team'},state.workspaces).workspaceId"),'private');
+ assert.equal(h.run("personalRoute({view:'day',calendarScope:'personal',workspaceId:'team',calendarContextWorkspaceId:'team'},state.workspaces).workspaceId"),'private');
+ for (const view of ['personal', 'day', 'work']) assert.equal(h.run(`personalRoute({view:'${view}',calendarScope:'personal',workspaceId:'team',calendarContextWorkspaceId:'team'},state.workspaces).calendarContextWorkspaceId`),'');
+ assert.equal(h.run("personalRoute({view:'calendar',calendarScope:'invalid',workspaceId:'team',calendarContextWorkspaceId:'team'},state.workspaces).calendarContextWorkspaceId"),'');
+});
+
+test('normal sidebar navigation clears the previous inline calendar source context', async () => {
+ const h = harness(); h.state.calendarContextWorkspaceId = 'team'; h.state.calendarScope = 'personal';
+ assert.equal(await h.run("navigateToView('calendar')"),true);
+ assert.equal(h.state.activeWorkspaceId,'team'); assert.equal(h.state.calendarScope,'project');
+ assert.equal(h.state.calendarContextWorkspaceId,'');
 });
