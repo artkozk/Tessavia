@@ -1,0 +1,31 @@
+{
+  "commit": "687aca786ae7075e4496fd204f549520480afe12",
+  "release": "/opt/business-control/releases/20260910-calendar-layout-687aca7",
+  "sha256": "15a615200f68e4a538231f9d77d3a755080c744849979422fecd48b061e49dbd",
+  "backup": "/var/lib/business-control/backups/pre-calendar-layout-20260909T212342Z",
+  "checkedAt": "2026-09-09T21:25:46.724841Z",
+  "oldTablesUnchanged": 117,
+  "schema": "065_record_create_requests.sql",
+  "nodeTests": 309,
+  "buildInputsVerified": 446,
+  "assets": "20260910-calendar-layout-1",
+  "physicalDevices": false,
+  "tasks": [
+    {
+      "id": "7c700ef13dfb1d5d72f4bbcdddf14001",
+      "status": "completed"
+    },
+    {
+      "id": "b8a99823ccf3f3a9f39093fe3c1af2bf",
+      "status": "planned"
+    },
+    {
+      "id": "66da4e412e714f4ea85c56ff85de03ec",
+      "status": "in_progress"
+    }
+  ],
+  "nextTask": {
+    "id": "38bf4aee34d6faf2e31c1e99d848ec99",
+    "status": "planned"
+  }
+}
