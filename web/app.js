@@ -1,27 +1,28 @@
-import { createSettingsHub } from './settings-hub.js?v=20260910-settings-hub-2';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260910-settings-hub-2';
-import { createPageAppUI } from './page-apps.js?v=20260910-settings-hub-2';
-import { createChatGroupUI } from './chat-groups.js?v=20260910-settings-hub-2';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260910-settings-hub-2';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260910-settings-hub-2';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260912-personal-finance-1';
+import { createSettingsHub } from './settings-hub.js?v=20260912-personal-finance-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260912-personal-finance-1';
+import { createPageAppUI } from './page-apps.js?v=20260912-personal-finance-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260912-personal-finance-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260912-personal-finance-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260912-personal-finance-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260910-settings-hub-2';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260912-personal-finance-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260910-settings-hub-2';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260912-personal-finance-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute } from './personal-navigation.js?v=20260910-settings-hub-2';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260910-settings-hub-2';
-import { createFirstUseUI } from './first-use.js?v=20260910-settings-hub-2';
+import { personalRoute } from './personal-navigation.js?v=20260912-personal-finance-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260912-personal-finance-1';
+import { createFirstUseUI } from './first-use.js?v=20260912-personal-finance-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260910-settings-hub-2';
+import { createLifeMapUI } from './life-map.js?v=20260912-personal-finance-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260910-settings-hub-2';
+import { createOutboxUI } from './outbox-ui.js?v=20260912-personal-finance-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1170,6 +1171,7 @@ function clearPrivateClientState() {
 	state.teamDetail = null;
 	state.activeCollectionId = '';
   state.personalTab = 'today';
+  personalFinanceUI.reset();
   ['personal-dialog', 'profile-dialog'].forEach((id) => {
     const dialog = document.getElementById(id);
     if (dialog?.open) closeDialogImmediately(dialog);
@@ -2408,6 +2410,7 @@ async function runSettingsAction(key, {context}) {
   if (key === 'profile') return openProfile(state.me.id);
   if (key === 'reminders') return reminderSettingsUI.open();
   if (key === 'day') return personalTodayUI.openSettings();
+  if (key === 'finance') return personalFinanceUI.openSettings();
   if (key === 'pages') return openNavigationSettings('pages');
   if (key === 'modules') return openNavigationSettings('modules');
   if (key === 'team' && workspace?.teamId) return openTeamSettings(workspace.teamId);
@@ -2605,17 +2608,18 @@ function renderPersonal() {
   const openPlans = data.plans.filter((plan) => plan.status === 'planned');
   const doneToday = data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.state === 'success')).length;
   const inboxCount = data.notes.filter(note => note.inInbox).length;
-  const tabs = [['today', 'Сегодня'], ['review', 'Обзор недели'], ['waiting', 'Ожидания'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['projects', 'Проекты'], ['goals', 'Цели'], ['notes', 'Заметки'], ['plans', 'Дела'], ['habits', 'Привычки'], ['life', 'Карта времени']];
+  const tabs = [['today', 'Сегодня'], ['review', 'Обзор недели'], ['waiting', 'Ожидания'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['projects', 'Проекты'], ['goals', 'Цели'], ['notes', 'Заметки'], ['plans', 'Дела'], ['habits', 'Привычки'], ['life', 'Карта времени'], ['finance', 'Финансы']];
   $('#main-content').innerHTML = `
     <div class="page-heading personal-heading">
       <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>Личное пространство</h1><p>${escapeHTML(state.me.displayName || state.me.username)}</p></div>
       ${renderPersonalCreateMenu()}
     </div>
-    ${emptyPersonal ? '' : `<section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.planned)).length}</strong><small>отмечено</small></article><article><span>Незавершённые дела</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate || plan.startsAt || plan.occurrenceDate).length} запланировано</small></article><article><span>Проекты и цели</span><strong>${data.projects.length}/${data.goals.length}</strong><small>открыто</small></article></section>`}
-    <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.filter(([key])=>['today','inbox','plans','notes'].includes(key)||key===state.personalTab).map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}<details class="personal-more-tabs"><summary class="segment">Ещё</summary><div>${tabs.filter(([key])=>!['today','inbox','plans','notes'].includes(key)&&key!==state.personalTab).map(([key,label])=>`<button type="button" data-personal-tab="${key}">${label}</button>`).join('')}</div></details></div>
+    ${emptyPersonal || state.personalTab === 'finance' ? '' : `<section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.planned)).length}</strong><small>отмечено</small></article><article><span>Незавершённые дела</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate || plan.startsAt || plan.occurrenceDate).length} запланировано</small></article><article><span>Проекты и цели</span><strong>${data.projects.length}/${data.goals.length}</strong><small>открыто</small></article></section>`}
+    <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.filter(([key])=>['today','inbox','plans','notes','finance'].includes(key)||key===state.personalTab).map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}<details class="personal-more-tabs"><summary class="segment">Ещё</summary><div>${tabs.filter(([key])=>!['today','inbox','plans','notes','finance'].includes(key)&&key!==state.personalTab).map(([key,label])=>`<button type="button" data-personal-tab="${key}">${label}</button>`).join('')}</div></details></div>
     <div class="personal-content">${renderPersonalTab(data)}</div>`;
-  $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; if(state.personalTab==='review')personalReviewUI.invalidate(); renderPersonal(); }));
+  $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; if(state.personalTab==='review')personalReviewUI.invalidate(); if(state.personalTab==='finance')personalFinanceUI.invalidate(); renderPersonal(); }));
   bindPersonalInteractions();
+  if (state.personalTab === 'finance') personalFinanceUI.bind();
   $('.personal-heading').insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-personal-calendar>${icon('calendar')} Календарь</button>`);
   $('[data-personal-calendar]').addEventListener('click', () => openCalendar('personal'));
 }
@@ -2625,6 +2629,7 @@ function renderPersonalCreateMenu() {
 }
 
 function renderPersonalTab(data) {
+  if (state.personalTab === 'finance') return personalFinanceUI.render();
   if(state.personalTab==='today' && !personalWaitingUI.hasAny() && !['notes','plans','habits','projects','goals'].some(key=>data[key]?.length) && personalTodayUI.hasNoProjectContext())return `<section class="personal-section first-use-start"><h2>С чего начнём?</h2><p>Сохраните мысль или создайте первое дело. Материалы можно связать между собой позже.</p><div class="first-use-actions"><button type="button" class="primary" data-personal-capture>${icon('edit')} Записать мысль</button><button type="button" class="secondary" data-personal-create="plan">${icon('checkSquare')} Создать дело</button></div><button type="button" class="text-button" data-first-use-teams>Начать работу с командой</button></section>`;
   if (state.personalTab === 'life') return lifeMapUI.render(data.settings);
   if (state.personalTab === 'inbox') return renderPersonalInbox(data);
@@ -2724,6 +2729,7 @@ function renderPlanRow(plan, links) {
 }
 
 const personalWaitingUI=createPersonalWaitingUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,renderPersonal,toast,openPlan:openPersonalPlanDetails});
+const personalFinanceUI=createPersonalFinanceUI({state,api,escapeHTML,icon,openModal,requestDialogClose,toast,enhanceSelects,bindComposerForm,renderPersonal});
 const personalRemindersUI=createPersonalRemindersUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,renderPersonal,openSource:openPersonalReminderSource,openHabit:openHabitReminderSource,openPlans:()=>navigateToView('personal',{personalTab:'plans'}),refreshNotifications:loadNotificationInbox});
 async function openPersonalReminderSource(id){const owner=state.me?.id;await navigateToView('personal',{personalTab:'today'});if(owner!==state.me?.id)return;await loadPersonal({force:true});if(owner===state.me?.id)openPersonalPlanDetails(id);}
 const settingsHub=createSettingsHub({getContext:settingsContext,escapeHTML,icon,openModal,requestDialogClose,runAction:runSettingsAction});

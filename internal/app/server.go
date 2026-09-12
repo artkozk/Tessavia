@@ -158,6 +158,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/collections/{id}/stages/{stageId}/restore", s.requireAuth(http.HandlerFunc(s.handleRestoreCollectionElement)))
 	s.mux.Handle("PUT /api/collections/{id}/schema-order", s.requireAuth(http.HandlerFunc(s.handleCollectionSchemaOrder)))
 	s.mux.Handle("PUT /api/personal/life/settings", s.requireAuth(http.HandlerFunc(s.handleLifeSettings)))
+	s.registerPersonalFinanceRoutes()
 	s.mux.Handle("GET /api/personal/day", s.requireAuth(http.HandlerFunc(s.handlePersonalDay)))
 	s.mux.Handle("POST /api/personal/series/{id}/occurrences", s.requireAuth(http.HandlerFunc(s.handleMaterializePersonalRecurrence)))
 	s.mux.Handle("GET /api/personal/calendar", s.requireAuth(http.HandlerFunc(s.handlePersonalCalendar)))
