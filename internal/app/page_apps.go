@@ -16,6 +16,7 @@ type PageAppItem struct {
 	Label  string `json:"label"`
 }
 type PageAppBlock struct {
+	Sheet          *PageSheetConfig            `json:"sheet,omitempty"`
 	RecordCard     *PageRecordCard             `json:"recordCard,omitempty"`
 	ParentID       string                      `json:"parentId,omitempty"`
 	GroupLayout    string                      `json:"groupLayout,omitempty"`
@@ -54,9 +55,10 @@ type PageAppDefinition struct {
 	Blocks      []PageAppBlock        `json:"blocks"`
 }
 type PageAppState struct {
-	Definition PageAppDefinition `json:"definition"`
-	Revision   int               `json:"revision"`
-	Marks      map[string]bool   `json:"marks"`
+	Definition PageAppDefinition         `json:"definition"`
+	Revision   int                       `json:"revision"`
+	Marks      map[string]bool           `json:"marks"`
+	Sheets     map[string]PageSheetState `json:"sheets"`
 }
 
 var pageAppID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
@@ -75,8 +77,11 @@ func validatePageApp(d *PageAppDefinition) error {
 		if !pageAppID.MatchString(b.ID) || ids[b.ID] != "" {
 			return errors.New("У блоков должны быть разные постоянные ключи")
 		}
-		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" && b.Kind != "data" && b.Kind != "group" {
+		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" && b.Kind != "data" && b.Kind != "group" && b.Kind != "sheet" {
 			return errors.New("Неизвестный тип блока")
+		}
+		if err := validatePageSheet(b); err != nil {
+			return err
 		}
 		if pageAppHasSource(*b) && (!pageAppID.MatchString(b.CollectionID) || len(b.Fields) > 40 || len([]rune(b.ActionLabel)) > 80) {
 			return errors.New("Для списка выберите доску и не более 40 полей")
@@ -144,7 +149,7 @@ func (s *Server) pageAppExists(r *http.Request) bool {
 	return err == nil && count == 1
 }
 func (s *Server) readPageApp(r *http.Request) (PageAppState, error) {
-	result := PageAppState{Definition: PageAppDefinition{Version: 1, Blocks: []PageAppBlock{}}, Marks: map[string]bool{}}
+	result := PageAppState{Definition: PageAppDefinition{Version: 1, Blocks: []PageAppBlock{}}, Marks: map[string]bool{}, Sheets: map[string]PageSheetState{}}
 	var raw string
 	err := s.store.db.QueryRowContext(r.Context(), `SELECT definition_json,revision FROM page_app_definitions WHERE page_id=?`, r.PathValue("id")).Scan(&raw, &result.Revision)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -169,9 +174,18 @@ func (s *Server) readPageApp(r *http.Request) (PageAppState, error) {
 		}
 		result.Marks[block+":"+item] = checked
 	}
-	return result, rows.Err()
+	if err = rows.Err(); err != nil {
+		return result, err
+	}
+	// Release the sole database connection before reading private sheet values.
+	if err = rows.Close(); err != nil {
+		return result, err
+	}
+	result.Sheets, err = s.readPageSheets(r, result.Definition)
+	return result, err
 }
 func (s *Server) handlePageApp(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	if !s.pageAppExists(r) {
 		writeError(w, 404, "Страница не найдена")
 		return

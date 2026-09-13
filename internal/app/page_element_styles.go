@@ -42,7 +42,7 @@ func validatePageElementStyles(b PageAppBlock) error {
 	for key, style := range b.ElementStyles {
 		valid := false
 		switch key {
-		case "title", "text", "item", "progressValue", "progressCount", "progressBar", "button", "row", "rowTitle", "rowSubtitle", "fieldLabel", "fieldValue", "createButton", "actionButton", "formLabel", "formControl", "formSubmit", "formResult":
+		case "title", "text", "item", "progressValue", "progressCount", "progressBar", "button", "row", "rowTitle", "rowSubtitle", "fieldLabel", "fieldValue", "createButton", "actionButton", "formLabel", "formControl", "formSubmit", "formResult", "sheetLabel", "sheetValue", "sheetUnit":
 			valid = true
 		}
 		for _, prefix := range []string{"formLabel:", "formControl:"} {
@@ -59,7 +59,7 @@ func validatePageElementStyles(b PageAppBlock) error {
 		if style.Hidden != nil && *style.Hidden && (key == "formControl" || strings.HasPrefix(key, "formControl:") || key == "formSubmit" || key == "formResult") {
 			return errors.New("Убирайте поле в структуре формы: там проверяются обязательные значения. Отправка и результат должны оставаться доступны")
 		}
-		for _, prefix := range []string{"item:", "fieldLabel:", "fieldValue:", "action:", "recordPart:"} {
+		for _, prefix := range []string{"item:", "fieldLabel:", "fieldValue:", "action:", "recordPart:", "sheetLabel:", "sheetValue:", "sheetUnit:"} {
 			if strings.HasPrefix(key, prefix) && pageAppID.MatchString(strings.TrimPrefix(key, prefix)) {
 				valid = true
 			}

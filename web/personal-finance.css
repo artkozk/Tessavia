@@ -5,6 +5,10 @@
 .finance-heading h2 { font-size: 23px; }
 .finance-toolbar { justify-content: flex-start; gap: 14px; }
 .finance-toolbar label { width: 190px; max-width: 100%; }
+.finance-toolbar .finance-payer-filter { width: 300px; min-width: 0; }
+.finance-report-scope { display: flex; align-items: center; justify-content: space-between; gap: 10px 18px; flex-wrap: wrap; margin-top: -8px; }
+.finance-report-scope p { color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.finance-report-scope .text-button { flex-shrink: 0; }
 .finance-toolbar .text-button { align-self: end; min-height: 42px; display: inline-flex; align-items: center; gap: 7px; }
 .finance-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-block: 1px solid var(--line); }
 .finance-totals > div { display: grid; align-content: start; gap: 9px; padding: 22px 20px; border-right: 1px solid var(--line); min-width: 0; }
@@ -36,6 +40,7 @@
 .finance-income > span:last-child { display: inline-flex; color: var(--accent); }
 .finance-income.is-voided { color: var(--muted); }
 .finance-income.is-voided > strong { text-decoration: line-through; }
+.finance-income-note { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .finance-empty { display: grid; gap: 12px; max-width: 680px; padding: 22px 0; }
 .finance-empty p { color: var(--muted); line-height: 1.6; }
 .finance-empty .secondary { justify-self: start; }
@@ -45,6 +50,18 @@
 .finance-sources-report summary { cursor: pointer; color: var(--accent); font-weight: 600; min-height: 40px; }
 .finance-sources-report > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 20px; }
 .finance-sources-report article { display: grid; gap: 14px; padding: 16px 0; border-top: 1px solid var(--line); }
+.finance-payers-report { border-top: 1px solid var(--line); padding-top: 18px; }
+.finance-payers-report > summary { cursor: pointer; color: var(--accent); font-weight: 600; min-height: 40px; }
+.finance-payers-report > div { display: grid; }
+.finance-payers-report button { display: grid; grid-template-columns: minmax(0, 1fr) minmax(110px, .5fr) minmax(130px, .5fr) 20px; width: 100%; gap: 16px; align-items: center; text-align: left; padding: 16px 2px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+.finance-payers-report button:hover { background: var(--surface-soft); }
+.finance-payer-report-name, .finance-payer-report-metric { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.finance-payers-report small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.finance-payers-report .icon { color: var(--accent); }
+.finance-payer-choice { display: grid; gap: 12px; min-width: 0; }
+.finance-inline-payer { border-block: 1px solid var(--line); padding-block: 8px; }
+.finance-inline-payer > summary { color: var(--accent); min-height: 40px; align-content: center; cursor: pointer; font-size: 13px; font-weight: 600; }
+.finance-inline-payer > div { display: grid; gap: 14px; padding: 10px 0 14px; }
 .finance-dialog { max-width: 900px; margin-inline: auto; }
 .finance-dialog > header > div { min-width: 0; }
 .finance-dialog .finance-back { display: inline-flex; align-items: center; gap: 4px; padding-left: 0; justify-self: start; }
@@ -74,6 +91,7 @@
 .finance-settings-list > button:hover { background: var(--surface-soft); }
 .finance-settings-list > button > span { display: grid; gap: 5px; min-width: 0; }
 .finance-settings-list small { color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.finance-settings-list [data-finance-payer] small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .finance-settings-list .icon { color: var(--accent); }
 .finance-dialog .finance-checkbox { display: flex; align-items: flex-start; gap: 10px; line-height: 1.6; }
 .finance-checkbox input { margin-top: 2px; }
@@ -97,6 +115,12 @@
   .finance-heading { align-items: flex-start; }
   .finance-heading h2 { font-size: 21px; }
   .finance-heading .primary { width: 100%; }
+  .finance-toolbar .finance-payer-filter { width: 100%; }
+  .finance-payers-report button { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 18px; gap: 9px 12px; }
+  .finance-payer-report-name { grid-column: 1 / 3; }
+  .finance-payer-report-metric:nth-child(2) { grid-column: 1; grid-row: 2; }
+  .finance-payer-report-metric:nth-child(3) { grid-column: 2; grid-row: 2; }
+  .finance-payers-report button > span:last-child { grid-column: 3; grid-row: 1 / 3; }
   .finance-totals > div { padding: 16px 10px; }
   .finance-totals span { font-size: 11px; }
   .finance-totals strong { font-size: 18px; }

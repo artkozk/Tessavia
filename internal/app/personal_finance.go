@@ -55,6 +55,7 @@ type financeEntry struct {
 	DeductWorkers bool                `json:"deductWorkers"`
 	Date          string              `json:"date"`
 	Payer         string              `json:"payer"`
+	PayerID       string              `json:"payerId"`
 	Note          string              `json:"note"`
 	GrossMinor    int64               `json:"grossMinor"`
 	WorkerMinor   int64               `json:"workerMinor"`
@@ -66,21 +67,24 @@ type financeEntry struct {
 	UpdatedAt     string              `json:"updatedAt"`
 }
 type financeOverview struct {
-	Currency string          `json:"currency"`
-	Buckets  []financeBucket `json:"buckets"`
-	Sources  []financeSource `json:"sources"`
-	Entries  []financeEntry  `json:"entries"`
+	Currency       string                `json:"currency"`
+	Buckets        []financeBucket       `json:"buckets"`
+	Sources        []financeSource       `json:"sources"`
+	Entries        []financeEntry        `json:"entries"`
+	Counterparties []financeCounterparty `json:"counterparties"`
 }
 type financeEntryInput struct {
-	ClientRequestID        string `json:"clientRequestId,omitempty"`
-	SourceID               string `json:"sourceId"`
-	ExpectedSourceRevision int64  `json:"expectedSourceRevision,omitempty"`
-	Date                   string `json:"date"`
-	Payer                  string `json:"payer"`
-	Note                   string `json:"note"`
-	GrossMinor             int64  `json:"grossMinor"`
-	WorkerMinor            int64  `json:"workerMinor"`
-	ExpectedRevision       int64  `json:"expectedRevision,omitempty"`
+	ClientRequestID        string  `json:"clientRequestId,omitempty"`
+	SourceID               string  `json:"sourceId"`
+	ExpectedSourceRevision int64   `json:"expectedSourceRevision,omitempty"`
+	Date                   string  `json:"date"`
+	Payer                  string  `json:"payer"`
+	Note                   string  `json:"note"`
+	GrossMinor             int64   `json:"grossMinor"`
+	WorkerMinor            int64   `json:"workerMinor"`
+	ExpectedRevision       int64   `json:"expectedRevision,omitempty"`
+	PayerID                *string `json:"payerId,omitempty"`
+	ExpectedPayerRevision  int64   `json:"expectedPayerRevision,omitempty"`
 }
 type financeError struct {
 	status  int
@@ -101,6 +105,8 @@ func (s *Server) registerPersonalFinanceRoutes() {
 		"PUT /api/personal/finance/buckets/{id}":             s.handleFinanceBucket,
 		"POST /api/personal/finance/sources":                 s.handleFinanceSource,
 		"PUT /api/personal/finance/sources/{id}":             s.handleFinanceSource,
+		"POST /api/personal/finance/counterparties":          s.handleFinanceCounterparty,
+		"PUT /api/personal/finance/counterparties/{id}":      s.handleFinanceCounterparty,
 		"POST /api/personal/finance/entries":                 s.handleFinanceEntry,
 		"PUT /api/personal/finance/entries/{id}":             s.handleFinanceEntry,
 		"PATCH /api/personal/finance/entries/{id}/transfers": s.handleFinanceTransfer,
@@ -157,14 +163,14 @@ func financePeriod(r *http.Request) (string, string, error) {
 	return from, to, nil
 }
 
-const financeEntryColumns = `id,source_id,source_name,deduct_workers,date,payer,note,gross_minor,worker_minor,base_minor,allocations_json,revision,voided,created_at,updated_at`
+const financeEntryColumns = `id,source_id,source_name,deduct_workers,date,payer,note,gross_minor,worker_minor,base_minor,allocations_json,revision,voided,created_at,updated_at,COALESCE(payer_id,'')`
 
 type financeScanner interface{ Scan(...any) error }
 
 func scanFinanceEntry(row financeScanner) (financeEntry, error) {
 	var e financeEntry
 	var allocations string
-	err := row.Scan(&e.ID, &e.SourceID, &e.SourceName, &e.DeductWorkers, &e.Date, &e.Payer, &e.Note, &e.GrossMinor, &e.WorkerMinor, &e.BaseMinor, &allocations, &e.Revision, &e.Voided, &e.CreatedAt, &e.UpdatedAt)
+	err := row.Scan(&e.ID, &e.SourceID, &e.SourceName, &e.DeductWorkers, &e.Date, &e.Payer, &e.Note, &e.GrossMinor, &e.WorkerMinor, &e.BaseMinor, &allocations, &e.Revision, &e.Voided, &e.CreatedAt, &e.UpdatedAt, &e.PayerID)
 	if err == nil {
 		err = json.Unmarshal([]byte(allocations), &e.Allocations)
 	}
@@ -192,6 +198,11 @@ func (s *Server) handlePersonalFinance(w http.ResponseWriter, r *http.Request) {
 	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
 		owner := currentUser(r).ID
 		result := financeOverview{Currency: "RUB", Buckets: []financeBucket{}, Sources: []financeSource{}, Entries: []financeEntry{}}
+		var err error
+		result.Counterparties, err = readFinanceCounterparties(tx, r)
+		if err != nil {
+			return nil, 0, err
+		}
 		rows, err := tx.QueryContext(r.Context(), `SELECT id,name,destination,archived,revision FROM personal_finance_buckets WHERE owner_id=? ORDER BY created_at,id`, owner)
 		if err != nil {
 			return nil, 0, err
@@ -502,13 +513,17 @@ func financePrepareEntry(tx *sql.Tx, r *http.Request, input financeEntryInput, p
 	if !entry.DeductWorkers && input.WorkerMinor != 0 {
 		return entry, financeInvalid("Этот источник не предусматривает расходы работникам")
 	}
+	payerID, payer, err := financeResolvePayer(tx, r, input, prior)
+	if err != nil {
+		return entry, err
+	}
 	entry.Date = input.Date
-	entry.Payer = input.Payer
+	entry.Payer = payer
+	entry.PayerID = payerID
 	entry.Note = input.Note
 	entry.GrossMinor = input.GrossMinor
 	entry.WorkerMinor = input.WorkerMinor
 	entry.BaseMinor = input.GrossMinor - input.WorkerMinor
-	var err error
 	entry.Allocations, err = financeAllocate(entry.BaseMinor, entry.Allocations)
 	return entry, err
 }
@@ -520,7 +535,7 @@ func updateFinanceEntry(tx *sql.Tx, r *http.Request, entry *financeEntry, expect
 	}
 	entry.UpdatedAt = nowText()
 	entry.Revision = expected + 1
-	result, err := tx.ExecContext(r.Context(), `UPDATE personal_finance_entries SET source_id=?,source_name=?,deduct_workers=?,date=?,payer=?,note=?,gross_minor=?,worker_minor=?,base_minor=?,allocations_json=?,revision=?,voided=?,updated_at=? WHERE owner_id=? AND id=? AND revision=?`, entry.SourceID, entry.SourceName, entry.DeductWorkers, entry.Date, entry.Payer, entry.Note, entry.GrossMinor, entry.WorkerMinor, entry.BaseMinor, string(data), entry.Revision, entry.Voided, entry.UpdatedAt, currentUser(r).ID, entry.ID, expected)
+	result, err := tx.ExecContext(r.Context(), `UPDATE personal_finance_entries SET source_id=?,source_name=?,deduct_workers=?,date=?,payer=?,note=?,gross_minor=?,worker_minor=?,base_minor=?,allocations_json=?,revision=?,voided=?,updated_at=?,payer_id=NULLIF(?,'') WHERE owner_id=? AND id=? AND revision=?`, entry.SourceID, entry.SourceName, entry.DeductWorkers, entry.Date, entry.Payer, entry.Note, entry.GrossMinor, entry.WorkerMinor, entry.BaseMinor, string(data), entry.Revision, entry.Voided, entry.UpdatedAt, entry.PayerID, currentUser(r).ID, entry.ID, expected)
 	if err != nil {
 		return err
 	}
@@ -595,7 +610,7 @@ func (s *Server) handleFinanceEntry(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, 0, err
 		}
-		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_finance_entries(id,owner_id,source_id,source_name,deduct_workers,date,payer,note,gross_minor,worker_minor,base_minor,allocations_json,revision,voided,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,0,?,?)`, entry.ID, owner, entry.SourceID, entry.SourceName, entry.DeductWorkers, entry.Date, entry.Payer, entry.Note, entry.GrossMinor, entry.WorkerMinor, entry.BaseMinor, string(data), entry.CreatedAt, entry.UpdatedAt)
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_finance_entries(id,owner_id,source_id,source_name,deduct_workers,date,payer,note,gross_minor,worker_minor,base_minor,allocations_json,revision,voided,created_at,updated_at,payer_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,0,?,?,NULLIF(?,''))`, entry.ID, owner, entry.SourceID, entry.SourceName, entry.DeductWorkers, entry.Date, entry.Payer, entry.Note, entry.GrossMinor, entry.WorkerMinor, entry.BaseMinor, string(data), entry.CreatedAt, entry.UpdatedAt, entry.PayerID)
 		if err != nil {
 			return nil, 0, err
 		}

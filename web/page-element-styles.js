@@ -1,19 +1,21 @@
-import { recordCardBody, recordPartLabel, applyRecordCardLayout } from './page-record-card.js?v=20260912-personal-finance-1';
-import { blockSubtree } from './page-composition.js?v=20260912-personal-finance-1';
-import { recordRowText } from './page-record-bindings.js?v=20260912-personal-finance-1';
-const styleNames={title:'Заголовок блока',text:'Текст блока',item:'Все пункты',progressValue:'Процент прогресса',progressCount:'Количество выполненного',progressBar:'Полоса прогресса',button:'Кнопка перехода',row:'Карточка целиком',rowTitle:'Заголовки карточек',rowSubtitle:'Подписи карточек',fieldLabel:'Все названия полей',fieldValue:'Все значения полей',createButton:'Кнопка добавления',actionButton:'Все кнопки действий',formLabel:'Все подписи формы',formControl:'Все поля ввода',formSubmit:'Кнопка отправки',formResult:'Сообщение результата'};
+import { recordCardBody, recordPartLabel, applyRecordCardLayout } from './page-record-card.js?v=20260913-finance-flexibility-2';
+import { blockSubtree } from './page-composition.js?v=20260913-finance-flexibility-2';
+import { recordRowText } from './page-record-bindings.js?v=20260913-finance-flexibility-2';
+const styleNames={sheetLabel:'Все подписи листа',sheetValue:'Все числа листа',sheetUnit:'Все единицы листа',title:'Заголовок блока',text:'Текст блока',item:'Все пункты',progressValue:'Процент прогресса',progressCount:'Количество выполненного',progressBar:'Полоса прогресса',button:'Кнопка перехода',row:'Карточка целиком',rowTitle:'Заголовки карточек',rowSubtitle:'Подписи карточек',fieldLabel:'Все названия полей',fieldValue:'Все значения полей',createButton:'Кнопка добавления',actionButton:'Все кнопки действий',formLabel:'Все подписи формы',formControl:'Все поля ввода',formSubmit:'Кнопка отправки',formResult:'Сообщение результата'};
 export function elementStyleTargets(b,collection){
  const keys=b.kind==='button'?['button']:['title'];
  if(b.kind==='text')keys.push('text');
  if(b.kind==='tracker')keys.push('item',...(b.items||[]).map(i=>'item:'+i.id));
  if(b.kind==='progress')keys.push('progressValue','progressCount','progressBar');
  if(b.kind==='records')keys.push('row','rowTitle','rowSubtitle','fieldLabel','fieldValue','createButton','actionButton',...(collection?.fields||[]).flatMap(f=>['fieldLabel:'+f.id,'fieldValue:'+f.id]),...(b.actions||[]).map(a=>'action:'+a.id),...(b.recordCard?.parts||[]).map(p=>'recordPart:'+p.id));
+ if(b.kind==='sheet')keys.push('sheetLabel','sheetValue','sheetUnit',...(b.sheet?.rows||[]).flatMap(row=>['sheetLabel:'+row.id,'sheetValue:'+row.id,'sheetUnit:'+row.id]));
  if(b.kind==='form')keys.push('formLabel','formControl','formSubmit','formResult',...(b.formFields||[]).flatMap(f=>['formLabel:'+f.key,'formControl:'+f.key]));
  for(const key of Object.keys(b.elementStyles||{}))if(!keys.includes(key))keys.push(key);
  return keys.map(key=>{const [prefix,...parts]=key.split(':'),id=parts.join(':');let item=prefix==='item'?b.items?.find(i=>i.id===id):prefix==='action'?b.actions?.find(a=>a.id===id):collection?.fields?.find(f=>f.id===id);
+  if(['sheetLabel','sheetValue','sheetUnit'].includes(prefix))item=b.sheet?.rows?.find(row=>row.id===id);
   if(prefix==='recordPart'){const part=b.recordCard?.parts?.find(p=>p.id===id);if(part)item={label:recordPartLabel(part,collection)};}
   if(prefix==='formLabel'||prefix==='formControl'){const f=b.formFields?.find(f=>f.key===id);if(f)item={label:f.label||({title:'Название',description:'Описание',dueAt:'Срок',ownerId:'Ответственный',stageId:'Этап',priority:'Приоритет'}[id])||collection?.fields?.find(c=>'custom:'+c.id===id)?.name||'Недоступное поле'};}
-  return{key,label:styleNames[key]||(item?`${{recordPart:'Часть карточки',item:'Пункт',action:'Действие',fieldLabel:'Название поля',fieldValue:'Значение поля',formLabel:'Подпись',formControl:'Ввод'}[prefix]}: ${item.label||item.name}`:'Недоступный элемент · '+(keys.indexOf(key)+1)),inactive:!styleNames[key]&&!item};});
+  return{key,label:styleNames[key]||(item?`${{sheetLabel:'Подпись строки',sheetValue:'Число строки',sheetUnit:'Единица строки',recordPart:'Часть карточки',item:'Пункт',action:'Действие',fieldLabel:'Название поля',fieldValue:'Значение поля',formLabel:'Подпись',formControl:'Ввод'}[prefix]}: ${item.label||item.name}`:'Недоступный элемент · '+(keys.indexOf(key)+1)),inactive:!styleNames[key]&&!item};});
 }
 export function resolvedElementStyle(block,keys){return Object.assign({},...keys.map(key=>block.elementStyles?.[key]||{}));}
 export function applyElementStyles(root,definition){

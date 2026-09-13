@@ -83,3 +83,72 @@ test('a known rejected request can review new source rules and retry with the sa
   const result = await draft.submit({ expectedSourceRevision: 2 }, body => body);
   assert.equal(result.expectedSourceRevision, 2); assert.equal(result.clientRequestId, 'stable-key');
 });
+
+test('payer report keeps identity across rename without rewriting income names', () => {
+  const data = fixture(); data.counterparties = [{ id: 'client', name: 'Renamed client', note: 'Long collaboration', revision: 2 }];
+  data.entries[0].payerId = 'client'; data.entries[0].payer = 'Original name'; data.entries[1].payerId = 'client'; data.entries[1].payer = 'Renamed client';
+  const report = c.summarizeFinance(data);
+  assert.equal(report.payers.length, 1); assert.equal(report.payers[0].name, 'Renamed client'); assert.equal(report.payers[0].count, 2); assert.equal(report.payers[0].grossMinor, 10102n);
+  assert.equal(data.entries[0].payer, 'Original name');
+});
+
+test('equal names do not merge two directory people or a historical free-text payer', () => {
+  const data = fixture(); data.counterparties = [{ id: 'one', name: 'Alex', note: 'Person A' }, { id: 'two', name: 'Alex', note: 'Person B', archived: true }];
+  data.entries = [
+    { ...data.entries[0], payerId: 'one', payer: 'Alex' },
+    { ...data.entries[1], payerId: 'two', payer: 'Alex' },
+    { ...data.entries[1], id: 'legacy', payerId: '', payer: 'Alex' },
+    { ...data.entries[1], id: 'none', payerId: '', payer: '' },
+  ];
+  const report = c.summarizeFinance(data);
+  assert.equal(report.payers.length, 4);
+  assert.deepEqual(Array.from(report.payers, payer => payer.key), ['payer:one', 'payer:two', 'legacy:Alex', 'none:']);
+  assert.equal(report.payers.find(payer => payer.key === 'payer:two').archived, true);
+  assert.equal(report.payers.find(payer => payer.key === 'legacy:Alex').legacy, true);
+});
+
+test('payer filter scopes totals, sources, buckets, journal and CSV to the same incomes', () => {
+  const data = fixture(); data.entries[0].payerId = 'first'; data.entries[1].payerId = 'second'; data.entries.push({ ...data.entries[0], id: 'void', voided: true });
+  const scoped = c.filterFinanceByPayer(data, 'payer:first'), report = c.summarizeFinance(scoped);
+  assert.equal(scoped.entries.length, 2); assert.equal(report.count, 1); assert.equal(report.grossMinor, 10001n);
+  assert.equal(report.sources[0].grossMinor, 10001n); assert.equal(report.buckets[0].allocatedMinor, 4001n);
+  assert.equal(c.financeCSV(scoped).split('\r\n').length, 2);
+  assert.equal(c.filterFinanceByPayer(data, ''), data);
+  assert.equal(c.summarizeFinance(c.filterFinanceByPayer(data, 'payer:missing')).grossMinor, 0n);
+});
+
+test('archived payer is retained for an existing income but unavailable as a new selection', () => {
+  const counterparties = [{ id: 'archived', name: 'New name', archived: true, revision: 9 }, { id: 'active', name: 'Active name', revision: 3 }];
+  const existing = { payerId: 'archived', payer: 'Saved name' };
+  const same = c.financeEntryPayerPayload(existing, 'archived', counterparties);
+  assert.equal(same.payerId, 'archived'); assert.equal(same.payer, 'Saved name'); assert.equal(same.expectedPayerRevision, 9);
+  assert.throws(() => c.financeEntryPayerPayload(null, 'archived', counterparties));
+  assert.throws(() => c.financeEntryPayerPayload(existing, 'missing', counterparties));
+  const changed = c.financeEntryPayerPayload(existing, 'active', counterparties);
+  assert.equal(changed.payer, 'Active name'); assert.equal(changed.expectedPayerRevision, 3);
+});
+
+test('explicit unlink and manual payer do not silently recreate or reuse a directory identity', () => {
+  const entry = { payerId: 'client', payer: 'Saved' };
+  const unlinked = c.financeEntryPayerPayload(entry, '__manual__', [], '  Free text  ');
+  assert.equal(unlinked.payerId, ''); assert.equal(unlinked.payer, 'Free text'); assert.equal(unlinked.expectedPayerRevision, 0);
+  const empty = c.financeEntryPayerPayload(entry, '', []);
+  assert.equal(empty.payerId, ''); assert.equal(empty.payer, '');
+});
+
+test('counterparty input accepts people or companies without a mandatory type and respects server limits', () => {
+  const input = c.financeCounterpartyPayload('  Company  ', '  My note  ');
+  assert.equal(input.name, 'Company'); assert.equal(input.note, 'My note'); assert.equal(input.kind, undefined);
+  assert.equal(c.financeCounterpartyPayload('Я'.repeat(160), '😀'.repeat(2000)).name.length, 160);
+  for (const [name, note] of [['', 'Note'], ['N'.repeat(161), ''], ['Name', 'N'.repeat(2001)]]) assert.throws(() => c.financeCounterpartyPayload(name, note));
+});
+
+test('income retry retains the newly created payer ID and revision without another directory write', async () => {
+  const draft = c.createFinanceRequestDraft('payer-income-draft'), payload = { payerId: 'created-once', payer: 'Client', expectedPayerRevision: 1, grossMinor: 10000 }, calls = [];
+  await assert.rejects(draft.submit(payload, body => { calls.push(body); throw new Error('Unknown result'); }));
+  await draft.submit(payload, body => { calls.push(body); return { id: 'income' }; });
+  assert.equal(calls.length, 2); assert.equal(JSON.stringify(calls[0]), JSON.stringify(calls[1])); assert.equal(calls[1].payerId, 'created-once');
+  const retry = c.createFinanceRequestDraft('payer-rule-draft');
+  await assert.rejects(retry.submit(payload, () => { throw Object.assign(new Error('Payer changed'), { status: 409 }); }));
+  assert.equal((await retry.submit({ ...payload, payer: 'Renamed', expectedPayerRevision: 2 }, body => body)).expectedPayerRevision, 2);
+});

@@ -112,11 +112,16 @@ func (s *Server) handleCreatePageAppTemplate(w http.ResponseWriter, r *http.Requ
 		writeError(w, 409, "Страница изменилась. Обновите предпросмотр набора")
 		return
 	}
+	if err := validatePageApp(&state.Definition); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
 	if err := s.snapshotPageAppCollections(r, &state.Definition); err != nil {
 		writeError(w, 400, err.Error())
 		return
 	}
-	// Only the declarative structure is portable. Personal marks and business records never enter the payload.
+	// Only the declarative structure is portable. Personal marks, sheet inputs
+	// and business records never enter the payload.
 	raw, _ := json.Marshal(state.Definition)
 	if len(raw) > 2*1024*1024 {
 		writeError(w, 400, "Структура набора больше 2 МБ. Разделите её на несколько страниц")
