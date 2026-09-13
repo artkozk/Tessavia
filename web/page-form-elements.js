@@ -1,4 +1,4 @@
-import { applyElementStyle } from './page-element-styles.js?v=20260913-finance-flexibility-2';
+import { applyElementStyle } from './page-element-styles.js?v=20260913-personal-navigation-1';
 
 // Translate the earlier field-wide presentation once when entering the editor.
 // A later reset can then return to the platform defaults, not a hidden legacy value.

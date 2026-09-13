@@ -13,8 +13,8 @@ function harness() {
     pushState(entry) { this.state = entry; entries.push(entry); },
   };
   const window = { scrollY: 240, scrollTo({top}) { this.scrollY = top; } };
-  const context = vm.createContext({$:()=>null, state, history, window, structuredClone, confirm: () => true, toast() {}, setSidebarOpen() {}, render() {}, requestAnimationFrame(fn) { fn(); }, async switchWorkspace(id) { state.activeWorkspaceId = id; return true; } });
-  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'personal-navigation.js'),'utf8').replace('export function','function'),context);
+  const context = vm.createContext({$:()=>null, state, history, window, structuredClone, personalReviewUI:{invalidate(){}}, personalFinanceUI:{invalidate(){}}, personalCalendarUI:{invalidate(){}}, confirm: () => true, toast() {}, setSidebarOpen() {}, render() {}, requestAnimationFrame(fn) { fn(); }, async switchWorkspace(id) { state.activeWorkspaceId = id; return true; } });
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'personal-navigation.js'),'utf8').replaceAll('export function','function'),context);
   vm.runInContext(source.slice(source.indexOf('const routeFields ='), source.indexOf('const widgetNames =')), context);
   vm.runInContext(source.slice(source.indexOf('async function navigateToView('), source.indexOf('function metric(')), context);
   vm.runInContext(source.slice(source.indexOf('function pageLayoutDirty('), source.indexOf('function startPageLayoutEditor(')), context);
@@ -134,4 +134,32 @@ test('personal startup and legacy dashboard history open personal home while cal
   h.run('initializeViewHistory()');assert.equal(h.state.view,entry?.view==='day'?'day':'personal');
   if(entry?.view==='day')assert.equal(h.state.calendarDay,'2026-09-21');else assert.equal(h.state.calendarScope,'personal');
  }
+});
+
+test('personal sections and own pages restore distinctly through Back, Forward and reload',async()=>{
+  const h=harness();h.state.activeWorkspaceId='private';h.state.view='personal';h.state.personalTab='today';h.run('initializeViewHistory()');
+  for(const view of ['personal:finance','personal:notes','page:custom'])await h.run(`navigateToView('${view}')`);
+  assert.equal(h.entries.length,4);
+  for(const index of [2,1,2,3]){
+    h.history.state=h.entries[index];await h.run('restoreViewHistory(history.state)');
+    assert.equal(h.state.view,index===3?'page:custom':'personal');
+    if(index!==3)assert.equal(h.state.personalTab,index===1?'finance':'notes');
+    const fresh=harness();fresh.state.activeWorkspaceId='private';fresh.history.state=structuredClone(h.history.state);fresh.run('initializeViewHistory()');
+    assert.equal(fresh.state.view,h.state.view);assert.equal(fresh.state.personalTab,h.state.personalTab);
+  }
+});
+
+test('dashboard fallback from personal notifications routes to Today, not the project overview',async()=>{
+  const h=harness();h.state.activeWorkspaceId='private';h.state.view='notifications';h.state.personalTab='finance';h.run('initializeViewHistory()');
+  await h.run("navigateToView('dashboard')");
+  assert.equal(h.state.view,'personal');assert.equal(h.state.personalTab,'today');assert.equal(h.state.calendarScope,'personal');
+  assert.equal(h.history.state.businessControlView.view,'personal');assert.equal(h.history.state.businessControlView.personalTab,'today');
+});
+
+test('a real dirty personal layout guard preserves tab, header data and history on cancelled navigation',async()=>{
+  const h=harness();h.state.activeWorkspaceId='private';h.state.view='personal';h.state.personalTab='finance';h.run('initializeViewHistory()');
+  const draft={key:'personal:finance',value:{texts:{heading:'My pending finance title'}},baseline:'{}'};
+  h.state.pageLayoutDraft=draft;h.context.confirm=()=>false;const before=JSON.stringify(h.history.state);
+  await h.run("navigateToView('personal:habits')");
+  assert.equal(h.state.personalTab,'finance');assert.equal(h.state.pageLayoutDraft,draft);assert.equal(JSON.stringify(h.history.state),before);assert.equal(h.entries.length,1);
 });

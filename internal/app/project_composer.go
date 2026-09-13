@@ -17,6 +17,14 @@ var projectViewKeys = map[string]bool{
 	"quality": true, "history": true, "structure": true,
 }
 
+// These keys address personal sections, not project modules or data permissions.
+var personalNavigationKeys = map[string]bool{
+	"personal:inbox": true, "personal:projects": true, "personal:goals": true,
+	"personal:notes": true, "personal:plans": true, "personal:habits": true,
+	"personal:life": true, "personal:finance": true, "personal:review": true,
+	"personal:waiting": true,
+}
+
 type ProjectNavigation struct {
 	EnabledViews []string `json:"enabledViews"`
 }
@@ -89,6 +97,15 @@ func (s *Server) navigationKeys(ctx context.Context, workspaceID string) (map[st
 	keys := map[string]bool{"personal": true}
 	for key := range projectViewKeys {
 		keys[key] = true
+	}
+	var kind string
+	if err := s.store.db.QueryRowContext(ctx, `SELECT kind FROM workspaces WHERE id=?`, workspaceID).Scan(&kind); err != nil {
+		return nil, err
+	}
+	if kind == "personal" {
+		for key := range personalNavigationKeys {
+			keys[key] = true
+		}
 	}
 	rows, err := s.store.db.QueryContext(ctx, `SELECT id FROM workspace_pages WHERE workspace_id = ?`, workspaceID)
 	if err != nil {

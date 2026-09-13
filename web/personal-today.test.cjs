@@ -20,11 +20,27 @@ test('configured time, completed day and future work are useful even without act
  assert.ok(hidden.includes('habits'));
 });
 
-test('saved layouts and their editor preserve explicit choices, including showing empty blocks',()=>{
+test('structural layouts and their editor preserve explicit choices, including showing empty blocks',()=>{
  assert.equal(context.useProgressiveToday({},false),true);
  assert.equal(context.useProgressiveToday({},true),false);
  assert.equal(context.useProgressiveToday({order:['life','plans'],hiddenBlocks:[]},false),false);
- assert.equal(context.useProgressiveToday({blockSpans:{life:6}},false),false);
+ assert.equal(context.useProgressiveToday({hiddenBlocks:['notes']},false),false);
+ assert.equal(context.useProgressiveToday({hiddenFields:['description']},false),false);
+ assert.equal(context.useProgressiveToday({widgets:['widget:calendar'],texts:{heading:'My day'}},false),false);
+ assert.equal(context.useProgressiveToday({futureBlockVisibility:{life:true}},false),false);
+ assert.equal(context.useProgressiveToday({order:'unexpected'},false),false);
+});
+test('cosmetic personal layout changes retain content-based visibility after server normalization',()=>{
+ const layout={texts:{heading:'My day'},blockSpans:{life:6},blockSettings:{life:{height:320,column:2,density:'compact'}},contentWidth:1000,density:'compact',toolbarActions:[],order:[],hiddenBlocks:[],hiddenFields:[],widgets:[]};
+ const before=JSON.stringify(layout);
+ assert.equal(context.useProgressiveToday(layout,false),true);
+ assert.equal(context.useProgressiveToday(layout,true),false);
+ assert.equal(JSON.stringify(layout),before);
+ for(const value of [{texts:{heading:'Renamed'}},{blockSpans:{life:6}},{blockSettings:{life:{height:320}}},{contentWidth:1000},{density:'compact'},{toolbarActions:['create']},{order:null,hiddenBlocks:[],hiddenFields:[],blockSpans:{}}])assert.equal(context.useProgressiveToday(value,false),true,JSON.stringify(value));
+ const data={plans:[],notes:[{id:'note'}],habits:[],settings:{}};
+ const hidden=context.useProgressiveToday(layout,false)?context.todayHiddenBlocks(data,{focus:{}},false,false):[];
+ for(const key of ['summary','habits','life','plans','day-waiting','day-reminders'])assert.ok(hidden.includes(key),key);
+ assert.ok(!hidden.includes('notes'));
 });
 test('day sections only resolve available personal entities and keep future work separate',()=>{
  const plans=[{id:'now',status:'planned'},{id:'later',status:'planned'},{id:'done',status:'done'}];
@@ -68,4 +84,14 @@ test('an occurrence materialized in another tab refreshes personal sources befor
  ui.bind();await new Promise(setImmediate);assert.equal(refreshes,1);
  ui.bind();await new Promise(setImmediate);assert.equal(refreshes,1);
  assert.match(ui.renderPlans({plans:state.personal.plans,links:[]}),/Created elsewhere/);
+});
+test('adaptive Today keeps empty blocks hidden after structural edits without changing legacy layouts', async () => {
+ const source=fs.readFileSync(__dirname+'/personal-today.js','utf8');
+ const {useProgressiveToday}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ const layout={adaptiveToday:true,hiddenBlocks:['notes'],order:['plans','day-focus'],widgets:['widget:calendar'],shownBlocks:['day-time']};
+ assert.equal(useProgressiveToday(layout,false),true);
+ assert.equal(useProgressiveToday(layout,true),false);
+ assert.equal(useProgressiveToday({...layout,adaptiveToday:false},false),false);
+ assert.equal(useProgressiveToday({hiddenBlocks:['notes'],order:['plans','day-focus']},false),false);
+ assert.deepEqual(layout.shownBlocks,['day-time']);
 });

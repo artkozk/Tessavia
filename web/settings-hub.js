@@ -18,6 +18,7 @@ export function settingsHubSections(context = {}) {
       row('page-edit', context.layoutEditing ? 'Продолжить редактирование' : customPage ? 'Конструктор страницы' : 'Оформление страницы', customPage
         ? `Блоки, текст, данные и действия ${context.personal ? 'на этой странице' : 'на общей странице'}.`
         : 'Порядок, размеры, цвета и видимость блоков. Изменения только для вас.', 'edit', customPage && !admin ? adminReason : ''),
+      ...(context.personal ? [row('pages', 'Мои страницы', 'Создавайте отдельные страницы из блоков, меняйте названия и убирайте лишнее в архив.', 'fileText', admin ? '' : adminReason)] : []),
       ...(context.pageId && !customPage ? [row('source-settings', 'Источник и поля страницы', 'Данные, выбранные поля и правила отображения страницы.', 'fileText', admin ? '' : adminReason)] : []),
       ...(context.collectionId && admin ? [row('board-settings', 'Настройки доски', 'Поля, колонки и правила работы с карточками.', 'network')] : []),
       ...(customPage && admin ? [row('page-share', 'Сохранить страницу как набор', 'Передать готовую структуру для независимой установки.', 'copy')] : []),
@@ -35,7 +36,7 @@ export function settingsHubSections(context = {}) {
       row('day', 'Границы дня', 'Начало и завершение дня для личного планирования.', 'clock'),
     ],
     workspace: [
-      row('pages', 'Свои страницы', 'Создание, названия и состав страниц пространства.', 'fileText', admin ? '' : adminReason),
+      ...(!context.personal ? [row('pages', 'Свои страницы', 'Создание, названия и состав страниц пространства.', 'fileText', admin ? '' : adminReason)] : []),
       row('modules', 'Разделы пространства', 'Функции, доступные в этом пространстве.', 'dashboard', admin ? '' : adminReason),
       row('card-templates', 'Содержимое карточек', 'Стандартные поля и блоки типов карточек.', 'checkSquare'),
       ...(context.teamId ? [row('team', 'Участники и доступы', admin ? 'Состав команды, роли и приглашения.' : 'Посмотреть состав команды и доступные роли.', 'users')] : []),

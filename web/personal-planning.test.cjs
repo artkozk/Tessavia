@@ -7,11 +7,12 @@ const fragment = (from, to) => source.slice(source.indexOf(from), source.indexOf
 
 test('personal navigation and create menu expose projects, goals, tasks and events', () => {
   const render = fragment('function renderPersonal()', 'function renderPersonalNotes(');
-  assert.match(render, /\['projects', 'Проекты'\]/);
-  assert.match(render, /\['goals', 'Цели'\]/);
-  assert.match(render, /data-personal-create="project"/);
-  assert.match(render, /data-personal-create="goal"/);
-  assert.match(render, /Дело или событие/);
+  const context=vm.createContext({icon:()=>'',state:{personalTab:'today'}});
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'personal-navigation.js'),'utf8').replaceAll('export function','function'),context);
+  vm.runInContext(fragment('function renderPersonalCreateMenu(', 'function renderPersonalTab('),context);
+  const pages=context.personalNavigationItems(),menu=context.renderPersonalCreateMenu();
+  assert.equal(pages.some(item=>item.key==='personal:projects'),true);assert.equal(pages.some(item=>item.key==='personal:goals'),true);
+  assert.match(menu, /data-personal-create="project"/);assert.match(menu, /data-personal-create="goal"/);assert.match(menu, /Дело или событие/);
   assert.match(render, /Незавершённые дела/);
 });
 

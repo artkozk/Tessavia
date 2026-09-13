@@ -40,6 +40,16 @@ test('personal space does not offer nonexistent team or boards and describes dev
   assert.doesNotMatch(rows({ ...personal, pageApp: true }, 'page')[0].description, /общей/);
 });
 
+test('personal page management is visible once beside the current-page constructor', () => {
+  const personal = { personal: true, canConfigure: true, pageApp: true };
+  const entry = rows(personal, 'page').find(item => item.key === 'pages');
+  assert.equal(entry.title, 'Мои страницы'); assert.equal(entry.disabledReason, '');
+  assert.equal(sections(personal).flatMap(section => section.rows).filter(item => item.key === 'pages').length, 1);
+  assert.equal(rows(personal, 'workspace').some(item => item.key === 'pages'), false);
+  assert.equal(rows(admin, 'page').some(item => item.key === 'pages'), false);
+  assert.equal(rows(admin, 'workspace').find(item => item.key === 'pages').title, 'Свои страницы');
+});
+
 test('record pages retain source settings and shared card templates remain reachable', () => {
   const recordPage = { ...admin, pageApp: false, pageId: 'records' };
   assert.equal(rows(recordPage, 'page').find(item => item.key === 'source-settings').disabledReason, '');

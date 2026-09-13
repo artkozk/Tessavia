@@ -1,6 +1,11 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const c=vm.createContext({});vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-block-visibility.js'),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'page-apps.js'),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
 const run=code=>vm.runInContext(code,c);
+test('page privacy follows workspace kind even when a custom route is open',()=>{
+ c.scopeState={activeWorkspaceId:'private-id',view:'page:own-page',workspaces:[{id:'private-id',kind:'personal',name:'Personal'},{id:'team-id',kind:'team',name:'Team'}]};
+ assert.equal(run('pageAppScope(scopeState).personal'),true);assert.equal(run('pageAppScope(scopeState).name'),'Личное пространство');
+ c.scopeState.activeWorkspaceId='team-id';c.scopeState.view='personal';assert.equal(run('pageAppScope(scopeState).personal'),false);assert.equal(run('pageAppScope(scopeState).name'),'Team');
+});
 test('user-authored tracker progress follows stable item IDs and excludes removed items',()=>{
  c.def={version:1,blocks:[{id:'chapters',kind:'tracker',items:[{id:'one',label:'Renamed chapter'},{id:'two',label:'Hidden chapter',hidden:true}]}]};c.marks={'chapters:one':true,'chapters:two':true};
  let value=run("appProgress({source:'chapters'},def,marks)");assert.equal(value.total,1);assert.equal(value.done,1);assert.equal(value.percent,100);

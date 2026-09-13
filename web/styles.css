@@ -5477,3 +5477,13 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .app-card-span-1{grid-column:span 1}.app-card-span-2{grid-column:span 2}.app-card-span-3{grid-column:span 3}.app-card-span-4{grid-column:span 4}.app-card-span-5{grid-column:span 5}.app-card-span-6{grid-column:span 6}.app-card-span-7{grid-column:span 7}.app-card-span-8{grid-column:span 8}.app-card-span-9{grid-column:span 9}.app-card-span-10{grid-column:span 10}.app-card-span-11{grid-column:span 11}.app-card-span-12{grid-column:span 12}
 .app-record-grid-1{grid-template-columns:repeat(1,minmax(0,1fr))}.app-record-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}.app-record-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}.app-record-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
 @container(max-width:540px){.app-record-grid{grid-template-columns:1fr}.app-record-part{grid-column:1/-1}}@media(max-width:600px){.app-record-grid{grid-template-columns:1fr}.app-record-part{grid-column:1/-1}}
+.personal-menu-add { margin-top: .65rem; color: var(--sidebar-muted, #b9c7c1); }
+.personal-menu-add span { font-size: .88rem; }
+.menu-settings-help { max-width: 64ch; color: var(--muted); line-height: 1.5; }
+.menu-page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; margin-block: 1rem; }
+.navigation-settings-shell .composer-menu-row label { min-width: 0; }
+.navigation-settings-shell .composer-menu-row label span { overflow-wrap: anywhere; }
+.navigation-settings-shell .form-actions { flex-wrap: wrap; }
+.personal-heading { gap: 1rem; }
+/* Today is a glance at notes; the full text remains on its own page. */
+.personal-notes-preview .markdown-body { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; max-height: 4.8em; overflow: hidden; }

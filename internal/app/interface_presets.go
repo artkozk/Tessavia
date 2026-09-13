@@ -16,12 +16,18 @@ var portableInterfacePageKeys = func() map[string]bool {
 	for key := range projectViewKeys {
 		keys[key] = true
 	}
+	for key := range personalNavigationKeys {
+		keys[key] = true
+	}
 	return keys
 }()
 
 var portableInterfaceNavigationKeys = func() map[string]bool {
 	keys := map[string]bool{"personal": true}
 	for key := range projectViewKeys {
+		keys[key] = true
+	}
+	for key := range personalNavigationKeys {
 		keys[key] = true
 	}
 	return keys
@@ -31,7 +37,8 @@ var portableInterfaceBlockKeys = map[string]bool{
 	"heading": true, "filters": true, "summary": true, "records": true,
 	"tabs": true, "habits": true, "plans": true, "life": true, "notes": true,
 	"first-use": true, "day-focus": true, "day-time": true, "day-attention": true, "day-reminders": true, "day-waiting": true,
-	"search": true, "preference": true, "limitation": true, "rule": true,
+	"day-project-work": true,
+	"search":           true, "preference": true, "limitation": true, "rule": true,
 	"digest": true, "legend": true, "hidden": true,
 	"month": true, "undated": true, "boards": true,
 	"focus": true, "capture": true, "capacity": true, "quality": true,
@@ -157,6 +164,7 @@ func portableInterfacePreferences(input InterfacePreferences, device string) Int
 		page.Texts = nil // Personal wording is not part of a published layout.
 		page.Order = uniqueAllowedStrings(page.Order, portableInterfaceBlockKeys)
 		page.HiddenBlocks = uniqueAllowedStrings(page.HiddenBlocks, portableInterfaceBlockKeys)
+		page.ShownBlocks = uniqueAllowedStrings(page.ShownBlocks, portableInterfaceBlockKeys)
 		page.HiddenFields = uniqueAllowedStrings(page.HiddenFields, portableInterfaceFieldKeys)
 		spans := make(map[string]int)
 		for block, span := range page.BlockSpans {

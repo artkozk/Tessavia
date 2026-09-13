@@ -16,10 +16,16 @@ test('personal search uses the private endpoint and opens its own entity',async(
   assert.equal(requested,'/api/personal/search?q=%D1%81%D0%B5%D0%BA%D1%80%D0%B5%D1%82');assert.equal(opened,'note:note-1');assert.match(results.innerHTML,/Только для вас/);
 });
 
-test('workspace switcher always exposes personal separately and personal navigation is fixed',()=>{
+test('workspace switcher exposes personal separately and its menu includes only personal sections and own pages',()=>{
   assert.match(source,/data-switch-personal/);
   assert.match(source,/Только вы · независимо от команд/);
-  assert.match(fragment('function navigationCatalog(', 'function navCount('),/state\.workspaces\?\.find/);
-  assert.match(fragment('function navigationCatalog(', 'function navCount('),/\['personal','Сегодня'/);
-  assert.match(fragment('function navigationCatalog(', 'function navCount('),/\['calendar','Календарь'/);
+  const state={activeWorkspaceId:'private',workspaces:[{id:'private',kind:'personal'},{id:'team',kind:'team'}],projectNavigation:{enabledViews:['work','chat']},workspacePages:[{id:'own',name:'My page'},{id:'archived',name:'Old page',archived:true}],interfacePreferences:{navOrder:['page:own','personal:notes']}};
+  const context=vm.createContext({state,navItems:[['personal','Personal'],['work','Work'],['chat','Chat']]});
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'personal-navigation.js'),'utf8').replaceAll('export function','function'),context);
+  vm.runInContext(fragment('function navigationCatalog(', 'function navCount('),context);
+  const catalog=context.navigationCatalog(),keys=Array.from(catalog,item=>item.key);
+  assert.deepEqual(keys.slice(0,2),['page:own','personal:notes']);assert.equal(keys.includes('personal'),true);assert.equal(keys.includes('calendar'),true);assert.equal(keys.includes('personal:finance'),true);
+  assert.equal(keys.includes('work'),false);assert.equal(keys.includes('chat'),false);assert.equal(keys.includes('page:archived'),false);
+  state.activeWorkspaceId='team';state.workspacePages=[];state.interfacePreferences={navOrder:[]};
+  assert.deepEqual(Array.from(context.navigationCatalog(),item=>item.key),['personal','work','chat']);
 });

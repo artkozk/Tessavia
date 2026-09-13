@@ -14,7 +14,18 @@ export function todayHiddenBlocks(data, day, waitingHasContent, remindersHaveCon
 }
 
 export function useProgressiveToday(layout, editing) {
-  return !editing && !Object.keys(layout || {}).length;
+  if (editing) return false;
+  if (typeof layout?.adaptiveToday === 'boolean') return layout.adaptiveToday;
+  // Cosmetic edits do not opt into every empty tool. Server normalization adds
+  // empty arrays/maps, so their presence alone is not a structural choice.
+  const cosmetic = new Set(['texts', 'blockSpans', 'blockSettings', 'contentWidth', 'density', 'toolbarActions']);
+  const structure = new Set(['order', 'hiddenBlocks', 'hiddenFields', 'widgets']);
+  return Object.entries(layout || {}).every(([key, value]) => {
+    if (cosmetic.has(key)) return true;
+    if (structure.has(key)) return value == null || Array.isArray(value) && value.length === 0;
+    // Preserve unfamiliar saved settings instead of guessing their intent.
+    return false;
+  });
 }
 
 export function todayPlanGroups(plans,summary){

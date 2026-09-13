@@ -44,6 +44,8 @@ type InterfaceLayout struct {
 }
 
 type PageLayout struct {
+	AdaptiveToday              *bool                        `json:"adaptiveToday,omitempty"`
+	ShownBlocks                []string                     `json:"shownBlocks,omitempty"`
 	Texts                      map[string]string            `json:"texts,omitempty"`
 	Widgets                    []string                     `json:"widgets,omitempty"`
 	BlockSettings              map[string]PageBlockSettings `json:"blockSettings,omitempty"`
@@ -106,6 +108,7 @@ func normalizePageLayouts(pages map[string]PageLayout) map[string]PageLayout {
 		page.Texts = texts
 		page.Order = clean(page.Order)
 		page.HiddenBlocks = clean(page.HiddenBlocks)
+		page.ShownBlocks = clean(page.ShownBlocks)
 		page.HiddenFields = clean(page.HiddenFields)
 		page.Widgets = uniqueAllowedStrings(page.Widgets, pageWidgetKeys)
 		settings := make(map[string]PageBlockSettings)

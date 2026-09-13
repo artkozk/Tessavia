@@ -4,9 +4,20 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 
 // Exercise the actual async editor with a small dialog surface. Browser layout and
 // native form validation belong to the UI acceptance pass, not this harness.
-function surface(){return{firstElementChild:null,nodes:new Map(),_html:'',set innerHTML(value){this._html=value;this.firstElementChild={inert:false};this.nodes=new Map();for(const attr of value.match(/data-builder-[a-z-]+/g)||[])this.nodes.set(`[${attr}]`,{disabled:false,value:'',reportValidity:()=>true,addEventListener(){}});},get innerHTML(){return this._html;},querySelector(selector){return this.nodes.get(selector)||null;},querySelectorAll(){return[];}};}
+function surface(){return{firstElementChild:null,nodes:new Map(),_html:'',set innerHTML(value){
+ this._html=value;this.firstElementChild={inert:false};this.nodes=new Map();const elements={};
+ for(const tag of value.match(/<(?:input|textarea|select)\b[^>]*>/g)||[]){const name=tag.match(/\bname="([^"]+)"/)?.[1];if(name)elements[name]={value:tag.match(/\bvalue="([^"]*)"/)?.[1]||''};}
+ for(const tag of value.match(/<(?:button|form|input)\b[^>]*>/g)||[]){
+  const attrs=[...tag.matchAll(/\b(data-(?:builder|app|template)-[a-z-]+)(?:="([^"]*)")?/g)];
+  if(!attrs.length&&!/type="submit"/.test(tag))continue;
+  const node={disabled:false,value:'',dataset:{},elements,reportValidity:()=>true,addEventListener(type,handler){this[`on${type}`]=handler;},querySelector:selector=>this.querySelector(selector),querySelectorAll:selector=>this.querySelectorAll(selector)};
+  const add=key=>{if(!this.nodes.has(key))this.nodes.set(key,[]);this.nodes.get(key).push(node);};
+  for(const [,attr,content] of attrs){node.dataset[attr.slice(5).replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase())]=content||'';add(`[${attr}]`);}
+  if(/type="submit"/.test(tag))add('[type=submit]');
+ }
+},get innerHTML(){return this._html;},querySelector(selector){return this.nodes.get(selector)?.[0]||null;},querySelectorAll(selector){return this.nodes.get(selector)||[];}};}
 function harness(){
- const box={open:false,dataset:{}},host=surface(),main=surface(),state={me:{id:'owner'},activeWorkspaceId:'personal',view:'page:page',collections:[],records:[]};
+ const box={open:false,dataset:{}},host=surface(),main=surface(),state={me:{id:'owner'},activeWorkspaceId:'personal',view:'page:page',workspaces:[{id:'personal',kind:'personal'}],collections:[],records:[]};
  const calls=[],toasts=[],storage=new Map(),reads=[],stats={opened:0,closed:0,reloads:0},page={id:'page',name:'Page'};
  let reload=()=>Promise.resolve();
  const $=(selector,root)=>root?root.querySelector(selector):({'#workspace-dialog':box,'#workspace-dialog-content':host,'#main-content':main}[selector]||null);
@@ -14,8 +25,8 @@ function harness(){
   createPageDataUI:()=>({mount(){}}),mountPageForms(){},applyElementStyles(){},migrateFormElementStyles(){},blockVisible:()=>true,blockOutline:def=>def.blocks.map(block=>({block,depth:0})),groupChoices:()=>[],elementStyleConfig:()=>'',visibilityConfig:()=>''});
  for(const file of ['page-sheets.js','page-apps.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),context);
  context.createPageSheetUI=()=>({mount(){},reset(){}});
- context.options={state,api:(url,options)=>{const pending=deferred();calls.push({url,options,...pending});return pending.promise;},escapeHTML:String,icon:()=>'', $, $$:()=>[],
-  openModal(){box.open=true;box.dataset.openOrder=String(++stats.opened);},requestDialogClose:async()=>{if(box.dataset.settingsSaving==='true')return false;stats.closed++;box.open=false;return true;},toast:(message,error)=>toasts.push({message,error}),canConfigureWorkspace:()=>true,reloadPages:()=>{stats.reloads++;return reload();},navigate(){},formDependencies:{},dataDependencies:{}};
+ context.options={state,api:(url,options)=>{const pending=deferred();calls.push({url,options,...pending});return pending.promise;},escapeHTML:String,icon:()=>'', $, $$:(selector,root)=>root?.querySelectorAll(selector)||[],
+  openModal(){if(box.open)return;box.open=true;box.dataset.openOrder=String(++stats.opened);},requestDialogClose:async()=>{if(box.dataset.settingsSaving==='true')return false;stats.closed++;box.open=false;return true;},toast:(message,error)=>toasts.push({message,error}),canConfigureWorkspace:()=>true,reloadPages:()=>{stats.reloads++;return reload();},navigate:view=>state.view=view,formDependencies:{},dataDependencies:{}};
  const ui=vm.runInContext('createPageAppUI(options)',context);
  return{box,host,main,state,calls,toasts,storage,reads,stats,page,ui,setReload:fn=>reload=fn};
 }
@@ -54,6 +65,23 @@ test('a pending reopen cannot replace an editor whose Save began after that GET'
  h.state.me={id:'other'};h.calls[2].resolve(loaded());await saving;
 });
 
+test('closing an untouched editor preserves the offered unsaved draft',async()=>{
+ const h=harness(),key='tessavie:app-draft:owner:personal:page',draft=JSON.stringify({revision:1,definition:{version:1,blocks:[]},pageName:'Unsaved title',pendingItems:{}});
+ h.storage.set(key,draft);await openEditor(h);assert.match(h.host.innerHTML,/Есть несохранённый черновик/);
+ assert.equal(h.host.querySelector('[data-builder-save]').disabled,true);assert.equal(h.host.querySelector('[data-builder-page-name]').disabled,true);
+ await h.host.querySelector('[data-builder-save]').onclick();await h.host.querySelector('[data-builder-cancel]').onclick();assert.equal(h.calls.length,1);assert.equal(h.storage.get(key),draft);
+ await h.host.querySelector('[data-builder-close]').onclick();assert.equal(h.storage.get(key),draft);assert.equal(h.stats.closed,1);
+});
+
+test('restoring or discarding a draft explicitly unlocks the chosen editing version',async()=>{
+ for(const choice of ['restore','discard']){
+  const h=harness(),key='tessavie:app-draft:owner:personal:page';h.storage.set(key,JSON.stringify({revision:1,definition:{version:1,blocks:[]},pageName:'Restored title',pendingItems:{}}));await openEditor(h);
+  h.host.querySelector(`[data-builder-${choice}]`).onclick();assert.equal(h.host.querySelector('[data-builder-save]').disabled,false);
+  if(choice==='restore'){await h.host.querySelector('[data-builder-close]').onclick();assert.equal(JSON.parse(h.storage.get(key)).pageName,'Restored title');}
+  else{assert.equal(h.storage.has(key),false);h.host.querySelector('[data-builder-page-name]').oninput({target:{value:'New draft'}});assert.equal(JSON.parse(h.storage.get(key)).pageName,'New draft');}
+ }
+});
+
 test('pending Save protects close and ignores completion after another dialog takes over',async()=>{
  const h=harness();await openEditor(h);const savedRoot=h.host.firstElementChild,save=h.host.querySelector('[data-builder-save]').onclick();
  assert.equal(savedRoot.inert,true);assert.equal(h.box.dataset.settingsSaving,'true');
@@ -77,4 +105,45 @@ test('normal Save canonicalizes schema-only numbers, closes once and refreshes t
  assert.equal(h.calls[1].options.headers['X-Outbox-Owner'],'owner');assert.equal(h.calls[1].options.headers['X-Workspace-ID'],'personal');
  h.calls[1].resolve(loaded(blocks));await tick();assert.equal(h.stats.closed,1);assert.equal(h.calls.length,3);
  h.calls[2].resolve(loaded(blocks));await save;assert.equal(h.storage.size,0);assert.equal(h.page.name,'Renamed');assert.equal(h.box.dataset.settingsSaving,'false');assert.equal(h.toasts.at(-1).message,'Страница сохранена');
+});
+
+test('a personal page is created in the active private workspace and opens its own constructor',async()=>{
+ const h=harness();assert.equal(await h.ui.create(),true);assert.match(h.host.innerHTML,/Новая личная страница/);assert.match(h.host.innerHTML,/доступна только вам/);
+ const form=h.host.querySelector('[data-app-create-form]');form.elements.name.value='My pages';const saving=form.onsubmit({preventDefault(){},currentTarget:form});
+ assert.equal(h.calls[0].url,'/api/workspace/pages');assert.equal(h.calls[0].options.headers['X-Workspace-ID'],'personal');assert.equal(h.calls[0].options.headers['X-Outbox-Owner'],'owner');
+ h.calls[0].resolve({id:'created',name:'My pages'});await tick();assert.equal(h.calls[1].url,'/api/workspace/pages/created/app');assert.deepEqual(JSON.parse(h.calls[1].options.body).definition,{version:1,blocks:[]});
+ h.calls[1].resolve(loaded());await tick();assert.equal(h.calls[2].url,'/api/workspace/pages/created/app');assert.equal(h.state.view,'page:created');
+ h.calls[2].resolve(loaded());await saving;assert.equal(h.box.open,true);assert.match(h.host.innerHTML,/Конструктор · личная страница/);assert.doesNotMatch(h.host.innerHTML,/общая страница/);
+});
+
+test('creation stops between requests when the account or workspace changes',async()=>{
+ for(const change of [h=>h.state.me={id:'other'},h=>h.state.activeWorkspaceId='other']){
+  const h=harness();await h.ui.create();const form=h.host.querySelector('[data-app-create-form]');form.elements.name.value='Draft';const saving=form.onsubmit({preventDefault(){},currentTarget:form});
+  change(h);h.calls[0].resolve({id:'created',name:'Draft'});await saving;
+  assert.equal(h.calls.length,1);assert.equal(h.stats.reloads,0);assert.equal(h.stats.closed,0);assert.equal(h.state.view,'page:page');
+ }
+});
+
+test('a delayed library cannot overwrite a closed or replaced dialog or another account',async()=>{
+ for(const change of [h=>h.state.me={id:'other'},h=>h.box.open=false,h=>{h.host.innerHTML='<p>Another dialog</p>';}]){
+  const h=harness();await h.ui.create();const pending=h.ui.library();change(h);h.calls[0].resolve([]);assert.equal(await pending,false);assert.doesNotMatch(h.host.innerHTML,/class="app-template-list"/);
+ }
+});
+
+async function openKit(h){
+ const listing=h.ui.library();h.calls[0].resolve([{id:'kit',name:'Kit',description:'',visibility:'public'}]);await listing;
+ const preview=h.host.querySelector('[data-app-template]').onclick();h.calls[1].resolve({id:'kit',name:'Kit',definition:{version:1,blocks:[]}});await preview;
+}
+
+test('kit installation makes an independent personal page and states the destination',async()=>{
+ const h=harness();await openKit(h);assert.match(h.host.innerHTML,/Личная копия · Личное пространство/);assert.match(h.host.innerHTML,/Добавить в мои страницы/);
+ const installing=h.host.querySelector('[data-app-install]').onclick();assert.equal(h.calls[2].url,'/api/page-app/templates/kit/install');assert.equal(h.calls[2].options.headers['X-Workspace-ID'],'personal');
+ h.calls[2].resolve({id:'copy',name:'Kit'});await installing;assert.equal(h.state.view,'page:copy');assert.equal(h.stats.closed,1);assert.equal(h.stats.reloads,1);
+});
+
+test('installation completion cannot close a replacement dialog or navigate another workspace',async()=>{
+ for(const change of [h=>h.state.activeWorkspaceId='team',h=>{h.host.innerHTML='<p>Other form</p>';}]){
+  const h=harness();await openKit(h);const installing=h.host.querySelector('[data-app-install]').onclick();change(h);h.calls[2].resolve({id:'copy',name:'Kit'});await installing;
+  assert.equal(h.state.view,'page:page');assert.equal(h.stats.closed,0);assert.equal(h.stats.reloads,0);
+ }
 });

@@ -45,6 +45,23 @@ test('draft previews only its own page and dashboard preview stays independent',
   h.state.layoutDraft = {}; assert.equal(h.run('Object.keys(currentPageLayout()).length'), 0);
 });
 
+test('personal sections inherit legacy layouts without sharing future edits', () => {
+  const h=harness();h.state.view='personal';h.state.personalTab='today';
+  const legacy={texts:{heading:'Моя страница'},blockSpans:{records:6},hiddenBlocks:['life']};
+  h.state.interfacePreferences.layout.pages={personal:legacy};
+  assert.equal(h.run('pageLayoutKey()'),'personal');
+  for(const tab of ['notes','habits','finance']) {
+    h.state.personalTab=tab;assert.equal(h.run('pageLayoutKey()'),`personal:${tab}`);
+    assert.equal(h.run('currentPageLayout()'),legacy);
+  }
+  h.state.interfacePreferences.layout.pages['personal:finance']={texts:{heading:'Мой доход'}};
+  assert.equal(h.run('currentPageLayout().texts.heading'),'Мой доход');
+  h.state.personalTab='habits';assert.equal(h.run('currentPageLayout().texts.heading'),'Моя страница');
+  h.state.interfacePreferences.layout.pages['personal:habits']={};
+  assert.equal(h.run('Object.keys(currentPageLayout()).length'),0);
+  assert.deepEqual(legacy,{texts:{heading:'Моя страница'},blockSpans:{records:6},hiddenBlocks:['life']});
+});
+
 test('calendar scopes inherit an existing layout until a separate override is saved', () => {
   const h = harness();
   const personal = { order: ['filters', 'month', 'heading'], blockSpans: { month: 4, heading: 8 }, blockSettings: { month: { height: 560 } }, texts: { heading: 'Мой календарь' }, hiddenBlocks: ['undated'] };

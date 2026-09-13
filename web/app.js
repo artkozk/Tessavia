@@ -1,28 +1,28 @@
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260913-finance-flexibility-2';
-import { createSettingsHub } from './settings-hub.js?v=20260913-finance-flexibility-2';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260913-finance-flexibility-2';
-import { createPageAppUI } from './page-apps.js?v=20260913-finance-flexibility-2';
-import { createChatGroupUI } from './chat-groups.js?v=20260913-finance-flexibility-2';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260913-finance-flexibility-2';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260913-finance-flexibility-2';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260913-personal-navigation-1';
+import { createSettingsHub } from './settings-hub.js?v=20260913-personal-navigation-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260913-personal-navigation-1';
+import { createPageAppUI } from './page-apps.js?v=20260913-personal-navigation-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260913-personal-navigation-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260913-personal-navigation-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260913-personal-navigation-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260913-finance-flexibility-2';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260913-personal-navigation-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260913-finance-flexibility-2';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260913-personal-navigation-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute } from './personal-navigation.js?v=20260913-finance-flexibility-2';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260913-finance-flexibility-2';
-import { createFirstUseUI } from './first-use.js?v=20260913-finance-flexibility-2';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260913-personal-navigation-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260913-personal-navigation-1';
+import { createFirstUseUI } from './first-use.js?v=20260913-personal-navigation-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260913-finance-flexibility-2';
+import { createLifeMapUI } from './life-map.js?v=20260913-personal-navigation-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260913-finance-flexibility-2';
+import { createOutboxUI } from './outbox-ui.js?v=20260913-personal-navigation-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1507,7 +1507,7 @@ function bindGlobalEvents() {
   $('#new-record-button').addEventListener('click', (event) => {
     event.stopPropagation();
     if (activeWorkspace()?.readingEnabled && ['dashboard', 'reading'].includes(state.view)) readingUI.open();
-    else if (personalWorkspacePage() && state.view !== 'day' && state.view !== 'calendar') openPersonalCapture();
+    else if ((personalWorkspacePage() || activeWorkspace()?.kind === 'personal' && state.view.startsWith('page:')) && state.view !== 'day' && state.view !== 'calendar') openPersonalCapture();
     else if (personalWorkspacePage()) openPersonalEditor('note', '', state.view === 'day' ? { date: state.calendarDay } : {});
     else if (state.view === 'calendar') createCalendarEntry();
     else toggleCreateMenu();
@@ -2301,11 +2301,11 @@ function deviceSelector(device) {
 }
 
 function navigationCatalog(preferences = state.interfacePreferences) {
-  if (state.workspaces?.find(workspace=>workspace.id===state.activeWorkspaceId)?.kind === 'personal') return [['personal','Сегодня','lock','Личное'],['calendar','Календарь','calendar','Личное']].map(([key,label,iconName,group])=>({key,label,iconName,group}));
+  const personal = state.workspaces?.find(workspace => workspace.id === state.activeWorkspaceId)?.kind === 'personal';
   const enabled = new Set(state.projectNavigation.enabledViews || []);
   if (state.workspaces?.find(workspace => workspace.id === state.activeWorkspaceId)?.readingEnabled) enabled.add('reading');
-  const builtin = navItems.filter(([key]) => key === 'personal' || enabled.has(key)).map(([key, label, iconName, group]) => ({ key, label, iconName, group }));
-  const pages = state.workspacePages.filter((page) => !page.archived).map((page) => ({ key: `page:${page.id}`, label: page.name, iconName: page.viewMode === 'board' ? 'network' : 'fileText', group: 'Свои страницы' }));
+  const builtin = personal ? personalNavigationItems() : navItems.filter(([key]) => key === 'personal' || enabled.has(key)).map(([key, label, iconName, group]) => ({ key, label, iconName, group }));
+  const pages = state.workspacePages.filter((page) => !page.archived).map((page) => ({ key: `page:${page.id}`, label: page.name, iconName: page.viewMode === 'board' ? 'network' : 'fileText', group: personal ? 'Личное' : 'Свои страницы' }));
   const items = [...builtin, ...pages];
   const order = preferences.navOrder || [];
   const positions = new Map(items.map((item, index) => [item.key, order.includes(item.key) ? order.indexOf(item.key) : order.length + index]));
@@ -2326,10 +2326,23 @@ function renderNav() {
   const preferences = state.interfacePreferences || {};
   const hidden = new Set(preferences.hiddenNavItems || []);
   const groups = new Set(preferences.hiddenNavGroups || []);
-  const items = navigationCatalog().filter((item) => !hidden.has(item.key) && !groups.has(item.group));
+  const items = navigationCatalog().filter(item => navigationItemVisible(item, preferences));
+  const selectedKey = state.view === 'personal' ? personalNavigationKey(state.personalTab) : state.view;
   const personal = activeWorkspace()?.kind === 'personal';
-  $('#main-nav').innerHTML = `<div class="project-nav-items">${items.map((item) => { const count = navCount(item.key); return `<button type="button" class="nav-item ${state.view === item.key ? 'active' : ''}" data-view="${escapeHTML(item.key)}" title="${escapeHTML(item.label)}">${icon(item.iconName)}<span>${escapeHTML(item.label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`; }).join('')}</div>`;
+  $('#main-nav').innerHTML = `<div class="project-nav-items">${items.map((item) => { const count = navCount(item.key); return `<button type="button" class="nav-item ${selectedKey === item.key ? 'active' : ''}" ${selectedKey === item.key ? 'aria-current="page"' : ''} data-view="${escapeHTML(item.key)}" title="${escapeHTML(item.label)}">${icon(item.iconName)}<span>${escapeHTML(item.label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`; }).join('')}</div>`;
   $$('[data-view]', $('#main-nav')).forEach((button) => button.addEventListener('click', () => navigateToView(button.dataset.view)));
+  // Keep the selected page visible when a long, customized menu is redrawn.
+  const list = $('.project-nav-items', $('#main-nav')), selected = $('.nav-item.active', list);
+  if (selected) requestAnimationFrame(() => {
+    if (!selected.isConnected) return;
+    const itemRect = selected.getBoundingClientRect(), listRect = list.getBoundingClientRect();
+    if (itemRect.bottom > listRect.bottom) list.scrollTop += itemRect.bottom - listRect.bottom;
+    else if (itemRect.top < listRect.top) list.scrollTop -= listRect.top - itemRect.top;
+  });
+  if (personal) {
+    $('#main-nav').insertAdjacentHTML('beforeend', `<button type="button" class="nav-item personal-menu-add" data-personal-menu-add>${icon('plus')}<span>Добавить в меню</span></button>`);
+    $('[data-personal-menu-add]').addEventListener('click', () => { setSidebarOpen(false); openNavigationSettings('menu'); });
+  }
   $('#main-nav').insertAdjacentHTML('beforeend', `<button type="button" class="nav-item" data-teams-directory>${icon('users')}<span>Команды</span></button>`);
   $('[data-teams-directory]').addEventListener('click', () => { setSidebarOpen(false); openTeamsDirectory(); });
 }
@@ -2337,8 +2350,9 @@ function renderNav() {
 async function saveInterfacePreferences(preferences = state.interfacePreferences) {
   const device = preferences.device || interfaceDevice();
   const workspace = state.activeWorkspaceId;
+  const owner = state.me?.id;
   const saved = await api(`/api/interface/preferences?device=${device}`, { method: 'PUT', body: JSON.stringify(preferences) });
-  if (workspace === state.activeWorkspaceId) {
+  if (workspace === state.activeWorkspaceId && owner === state.me?.id) {
     state.interfaceProfiles[device] = saved;
     state.interfacePreferences = state.interfaceProfiles[interfaceDevice()];
   }
@@ -2488,13 +2502,13 @@ function renderContent() {
   $('#notification-button').setAttribute('aria-label',$('#notification-button').title);
   $('#page-title').textContent = titles[state.view] || (state.view === 'notifications' ? 'Уведомления' : state.view === 'quality' ? 'Качество базы' : 'Обзор');
   const createButton = $('#new-record-button');
-  const personalCreate = personalWorkspacePage();
+  const personalCreate = personalWorkspacePage() || activeWorkspace()?.kind === 'personal' && state.view.startsWith('page:');
   const quickCapture = personalCreate && state.view !== 'day' && state.view !== 'calendar';
   createButton.innerHTML = `${icon('plus')} ${quickCapture ? 'Записать' : personalCreate ? 'Заметка' : 'Создать'}`;
   createButton.setAttribute('aria-label', quickCapture ? 'Записать во входящие' : personalCreate ? 'Новая личная заметка' : 'Создать');
   createButton.title = createButton.getAttribute('aria-label');
   if (state.view.startsWith('page:')) { $('#page-title').textContent = state.workspacePages.find((page) => `page:${page.id}` === state.view)?.name || 'Страница'; return renderWorkspacePage(); }
-  if (state.view === 'personal') return renderPersonal();
+  if (state.view === 'personal') { $('#page-title').textContent = personalNavigationItems().find(item => item.key === personalNavigationKey(state.personalTab))?.label || 'Сегодня'; return renderPersonal(); }
   if (state.view === 'reading' || (state.view === 'dashboard' && activeWorkspace()?.readingEnabled)) {
     $('#page-title').textContent = 'Чтение';
     createButton.innerHTML = `${icon('plus')} Чтение`;
@@ -2608,21 +2622,17 @@ function renderPersonal() {
   const emptyPersonal = !['notes','plans','habits','projects','goals'].some(key=>data[key]?.length);
   const openPlans = data.plans.filter((plan) => plan.status === 'planned');
   const doneToday = data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.state === 'success')).length;
-  const inboxCount = data.notes.filter(note => note.inInbox).length;
-  const tabs = [['today', 'Сегодня'], ['review', 'Обзор недели'], ['waiting', 'Ожидания'], ['inbox', `Входящие${inboxCount ? ` ${inboxCount}` : ''}`], ['projects', 'Проекты'], ['goals', 'Цели'], ['notes', 'Заметки'], ['plans', 'Дела'], ['habits', 'Привычки'], ['life', 'Карта времени'], ['finance', 'Финансы']];
+  const title = personalNavigationItems().find(item => item.key === personalNavigationKey(state.personalTab))?.label || 'Сегодня';
   $('#main-content').innerHTML = `
     <div class="page-heading personal-heading">
-      <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>Личное пространство</h1><p>${escapeHTML(state.me.displayName || state.me.username)}</p></div>
+      <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>${escapeHTML(title)}</h1></div>
       ${renderPersonalCreateMenu()}
     </div>
-    ${emptyPersonal || state.personalTab === 'finance' ? '' : `<section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.planned)).length}</strong><small>отмечено</small></article><article><span>Незавершённые дела</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate || plan.startsAt || plan.occurrenceDate).length} запланировано</small></article><article><span>Проекты и цели</span><strong>${data.projects.length}/${data.goals.length}</strong><small>открыто</small></article></section>`}
-    <div class="segmented personal-tabs" role="tablist" aria-label="Личные разделы">${tabs.filter(([key])=>['today','inbox','plans','notes','finance'].includes(key)||key===state.personalTab).map(([key, label]) => `<button type="button" class="segment ${state.personalTab === key ? 'active' : ''}" data-personal-tab="${key}">${label}</button>`).join('')}<details class="personal-more-tabs"><summary class="segment">Ещё</summary><div>${tabs.filter(([key])=>!['today','inbox','plans','notes','finance'].includes(key)&&key!==state.personalTab).map(([key,label])=>`<button type="button" data-personal-tab="${key}">${label}</button>`).join('')}</div></details></div>
+    ${emptyPersonal || state.personalTab !== 'today' ? '' : `<section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.planned)).length}</strong><small>отмечено</small></article><article><span>Незавершённые дела</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate || plan.startsAt || plan.occurrenceDate).length} запланировано</small></article><article><span>Проекты и цели</span><strong>${data.projects.length}/${data.goals.length}</strong><small>открыто</small></article></section>`}
     <div class="personal-content">${renderPersonalTab(data)}</div>`;
-  $$('[data-personal-tab]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTab; if(state.personalTab==='review')personalReviewUI.invalidate(); if(state.personalTab==='finance')personalFinanceUI.invalidate(); renderPersonal(); }));
   bindPersonalInteractions();
   if (state.personalTab === 'finance') personalFinanceUI.bind();
-  $('.personal-heading').insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-personal-calendar>${icon('calendar')} Календарь</button>`);
-  $('[data-personal-calendar]').addEventListener('click', () => openCalendar('personal'));
+
 }
 
 function renderPersonalCreateMenu() {
@@ -2685,9 +2695,7 @@ function renderPersonalInbox(data) {
 }
 
 function openPersonalInbox() {
-  if (!leavePageLayoutEditor()) return;
-  state.personalTab = 'inbox';
-  navigateToView('personal');
+  return navigateToView('personal:inbox');
 }
 
 async function setPersonalInboxState(id, inInbox, button) {
@@ -2729,7 +2737,7 @@ function renderPlanRow(plan, links) {
   return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
-const personalWaitingUI=createPersonalWaitingUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,renderPersonal,toast,openPlan:openPersonalPlanDetails});
+const personalWaitingUI=createPersonalWaitingUI({state,api,navigate:navigateToView,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,renderPersonal,toast,openPlan:openPersonalPlanDetails});
 const personalFinanceUI=createPersonalFinanceUI({state,api,escapeHTML,icon,openModal,requestDialogClose,toast,enhanceSelects,bindComposerForm,renderPersonal});
 const personalRemindersUI=createPersonalRemindersUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,renderPersonal,openSource:openPersonalReminderSource,openHabit:openHabitReminderSource,openPlans:()=>navigateToView('personal',{personalTab:'plans'}),refreshNotifications:loadNotificationInbox});
 async function openPersonalReminderSource(id){const owner=state.me?.id;await navigateToView('personal',{personalTab:'today'});if(owner!==state.me?.id)return;await loadPersonal({force:true});if(owner===state.me?.id)openPersonalPlanDetails(id);}
@@ -2819,7 +2827,7 @@ function bindPersonalInteractions() {
   $$('[data-personal-capture]').forEach(button => button.addEventListener('click', openPersonalCapture));
   $$('[data-inbox-keep-note]').forEach(button => button.addEventListener('click', () => setPersonalInboxState(button.dataset.inboxKeepNote, false, button)));
   $$('[data-personal-waiting-new]').forEach(button=>button.addEventListener('click',()=>personalWaitingUI.open()));
-  $$('[data-personal-tab-jump]').forEach((button) => button.addEventListener('click', () => { state.personalTab = button.dataset.personalTabJump; renderPersonal(); }));
+  $$('[data-personal-tab-jump]').forEach((button) => button.addEventListener('click', () => navigateToView(`personal:${button.dataset.personalTabJump}`)));
   $$('[data-personal-edit]').forEach((button) => button.addEventListener('click', () => openPersonalTarget(button.dataset.personalEdit, button.dataset.personalId)));
   $$('[data-personal-create]').forEach((button) => button.addEventListener('click', () => {
     button.closest('details')?.removeAttribute('open');
@@ -3159,7 +3167,8 @@ function renderQuality() {
 
 async function navigateToView(view, options = {}) {
   if ($('#settings-dialog')?.open) return leaveSettingsFor(() => navigateToView(view, options));
-	const normalized = ({ goals: 'goal', tasks: 'work', ideas: 'idea' })[view] || view;
+  const target = personalNavigationTarget(({ goals: 'goal', tasks: 'work', ideas: 'idea' })[view] || view, options);
+  let normalized = target.view;
   if (!leavePageLayoutEditor()) return;
   if (state.layoutDraft && !confirm('Выйти без сохранения раскладки?')) return;
   const request = state.viewRestoreRequest = (state.viewRestoreRequest || 0) + 1;
@@ -3167,7 +3176,9 @@ async function navigateToView(view, options = {}) {
   state.layoutDraft = null;
   rememberView();
   const calendarScope = options.calendarScope || (state.workspaces.find(workspace => workspace.id === state.activeWorkspaceId)?.kind === 'personal' ? 'personal' : 'project');
-  const route = personalRoute({ view: normalized, calendarScope, workspaceId: state.activeWorkspaceId }, state.workspaces);
+  const route = personalRoute({ ...target, calendarScope, workspaceId: state.activeWorkspaceId }, state.workspaces);
+  normalized = route.view;
+  target.personalTab = route.personalTab;
   if (!route.workspaceId) { toast('Личное пространство недоступно. Обновите список пространств.', true); return false; }
   const changedWorkspace = route.workspaceId !== state.activeWorkspaceId;
   if (changedWorkspace) {
@@ -3175,14 +3186,15 @@ async function navigateToView(view, options = {}) {
     catch (error) { toast(error.message, true); return false; }
     if (request !== state.viewRestoreRequest || account !== state.me?.id) return false;
   }
-  const changedView = changedWorkspace || normalized !== state.view;
+  const changedView = changedWorkspace || normalized !== state.view || normalized === 'personal' && target.personalTab !== state.personalTab;
 	state.view = normalized;
   if (['personal', 'calendar', 'day'].includes(normalized)) state.calendarScope = route.calendarScope;
   state.calendarContextWorkspaceId = '';
   if (['calendar','day'].includes(normalized) && state.calendarScope === 'personal') personalCalendarUI.invalidate();
-  if (normalized === 'personal' && Object.hasOwn(options, 'personalTab')) {
-	state.personalTab = options.personalTab;
-	if (state.personalTab === 'review') personalReviewUI.invalidate();
+  if (normalized === 'personal') {
+    state.personalTab = target.personalTab;
+    if (state.personalTab === 'review') personalReviewUI.invalidate();
+    if (state.personalTab === 'finance') personalFinanceUI.invalidate();
   }
   for (const key of ['calendarDay', 'calendarCollection', 'calendarOwner', 'calendarStatus', 'calendarExpanded']) {
     if (Object.hasOwn(options, key)) state[key] = options[key];
@@ -7705,9 +7717,9 @@ function askText({ title, label, defaultValue = '', required = false, eyebrow = 
   });
 }
 
-function askChoice({ title, label, choices }) {
+function askChoice({ title, label, choices, eyebrow = 'Рабочий процесс' }) {
 	const dialog = $('#reason-dialog');
-	$('#reason-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">Рабочий процесс</span><h2>${escapeHTML(title)}</h2></div><button type="button" class="close-button" data-cancel-choice aria-label="Закрыть">×</button></div><div class="choice-dialog"><p>${escapeHTML(label)}</p><div>${choices.map((choice) => `<button type="button" class="choice-row" data-choice="${escapeHTML(choice.value)}"><span>${escapeHTML(choice.label)}</span>${icon('chevronRight')}</button>`).join('')}</div><button type="button" class="secondary" data-cancel-choice>Отмена</button></div>`;
+	$('#reason-dialog-content').innerHTML = `<div class="dialog-header"><div><span class="record-kind">${escapeHTML(eyebrow)}</span><h2>${escapeHTML(title)}</h2></div><button type="button" class="close-button" data-cancel-choice aria-label="Закрыть">×</button></div><div class="choice-dialog"><p>${escapeHTML(label)}</p><div>${choices.map((choice) => `<button type="button" class="choice-row" data-choice="${escapeHTML(choice.value)}"><span>${escapeHTML(choice.label)}</span>${icon('chevronRight')}</button>`).join('')}</div><button type="button" class="secondary" data-cancel-choice>Отмена</button></div>`;
 	return new Promise((resolve) => {
 		let closing = false;
 		let result = null;
@@ -8921,18 +8933,19 @@ async function openInterfacePresetDetail(id, backScope = state.interfacePresetSc
 
 function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
   const dialog = $('#workspace-dialog');
-  if (!discardComposerChanges(dialog)) return;
+  if (dialog.dataset.settingsSaving === 'true' || !discardComposerChanges(dialog)) return;
   const admin = canConfigureWorkspace();
   const preferences = state.interfaceProfiles[device] || state.interfacePreferences;
   const items = navigationCatalog(preferences);
   const hidden = new Set(preferences.hiddenNavItems || []);
   const hiddenGroups = new Set(preferences.hiddenNavGroups || []);
-  const settingsTitle = {menu:'Моё меню', modules:'Разделы пространства', pages:'Свои страницы'}[tab];
+  const personal = activeWorkspace()?.kind === 'personal';
+  const settingsTitle = {menu:'Моё меню', modules:'Разделы пространства', pages:personal ? 'Мои страницы' : 'Свои страницы'}[tab];
   let body = '';
-  if (tab === 'menu') body = `${deviceSelector(device)}<form id="navigation-personal-form"><div class="composer-rows">${items.map((item) => `<div class="composer-menu-row" data-menu-key="${escapeHTML(item.key)}"><button type="button" class="drag-handle" data-reorder-handle aria-label="Переместить: ${escapeHTML(item.label)}" title="Переместить">${icon('grip')}</button><label class="check"><input type="checkbox" name="visibleItem" value="${escapeHTML(item.key)}" ${!hidden.has(item.key) && !hiddenGroups.has(item.group) ? 'checked' : ''}><span>${escapeHTML(item.label)}</span></label></div>`).join('')}</div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить меню ${device === 'mobile' ? 'телефона' : 'ПК'}</button><button type="button" class="secondary" data-reset-nav>По умолчанию</button></div></form>`;
+  if (tab === 'menu') body = `${deviceSelector(device)}<p class="menu-settings-help">Отметьте нужные разделы и перетащите их в удобном порядке. Своя страница позволяет собрать блоки и расчёты для отдельной задачи.</p>${admin ? `<div class="menu-page-actions"><button type="button" class="secondary" data-new-page>${icon('plus')} Добавить страницу</button><button type="button" class="text-button" data-manage-pages>Управлять страницами</button></div>` : ''}<form id="navigation-personal-form"><div class="composer-rows">${items.map((item) => `<div class="composer-menu-row" data-menu-key="${escapeHTML(item.key)}"><button type="button" class="drag-handle" data-reorder-handle aria-label="Переместить: ${escapeHTML(item.label)}" title="Переместить">${icon('grip')}</button><label class="check"><input type="checkbox" name="visibleItem" value="${escapeHTML(item.key)}" ${navigationItemVisible(item, preferences) ? 'checked' : ''}><span>${escapeHTML(item.label)}</span></label></div>`).join('')}</div><div class="form-actions"><button type="submit" class="primary">${icon('check')} Сохранить меню ${device === 'mobile' ? 'телефона' : 'ПК'}</button><button type="button" class="secondary" data-reset-nav>По умолчанию</button></div></form>`;
   if (tab === 'modules') body = `<form id="project-modules-form"><div class="composer-module-grid">${navItems.filter(([key]) => key !== 'personal').map(([key, label, iconName]) => `<label class="check module-option"><input type="checkbox" name="module" value="${key}" ${state.projectNavigation.enabledViews.includes(key) ? 'checked' : ''} ${admin ? '' : 'disabled'}><span>${icon(iconName)} ${escapeHTML(label)}</span></label>`).join('')}</div>${admin ? '<div class="form-actions"><button type="submit" class="primary">Сохранить разделы проекта</button></div>' : '<p class="composer-access-note">Состав разделов настраивает администратор проекта.</p>'}</form>`;
   if (tab === 'pages') body = `${admin ? `<button type="button" class="primary" data-new-page>${icon('plus')} Создать страницу</button>` : ''}<div class="composer-page-list">${state.workspacePages.map((page) => `<article><div><strong>${escapeHTML(page.name)}</strong><small>${page.archived ? 'В архиве' : page.app ? 'Пользовательский сценарий' : page.collectionId ? escapeHTML(state.collections.find((collection) => collection.id === page.collectionId)?.name || 'Доска недоступна') : 'Карточки проекта'} · ${page.app ? 'Своя страница' : page.viewMode === 'board' ? 'Доска' : 'Список'}</small></div>${admin ? `<button type="button" class="icon-button" data-configure-page="${page.id}" aria-label="Настроить страницу ${escapeHTML(page.name)}" title="Настроить">${icon('edit')}</button><button type="button" class="icon-button" data-archive-page="${page.id}" aria-label="${page.archived ? 'Восстановить' : 'Архивировать'} страницу ${escapeHTML(page.name)}" title="${page.archived ? 'Восстановить' : 'Архивировать'}">${icon(page.archived ? 'rotate' : 'archive')}</button>` : ''}</article>`).join('') || '<p class="composer-access-note">Своих страниц пока нет.</p>'}</div>`;
-  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>${settingsTitle}</h2><p>${tab === 'menu' ? 'Ваше меню, только для вас' : 'Общие настройки этого проекта'}</p></div><button type="button" class="icon-button" data-close-composer aria-label="Закрыть">${icon('x')}</button></header>${body}</div>`;
+  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>${settingsTitle}</h2><p>${tab === 'menu' ? 'Ваше меню, только для вас' : personal ? 'Личные страницы, только для вас' : 'Общие настройки этого проекта'}</p></div><button type="button" class="icon-button" data-close-composer aria-label="Закрыть">${icon('x')}</button></header>${body}</div>`;
   $('[data-close-composer]', dialog).addEventListener('click', closeWorkspaceDialog);
   $$('[data-interface-device]', dialog).forEach((button) => button.addEventListener('click', () => openNavigationSettings('menu', button.dataset.interfaceDevice)));
   const personalForm = $('#navigation-personal-form', dialog);
@@ -8942,8 +8955,17 @@ function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
     personalForm.addEventListener('submit', async (event) => {
       event.preventDefault(); const button = $('button[type="submit"]', personalForm); button.disabled = true;
       const visible = new Set(new FormData(personalForm).getAll('visibleItem'));
-      const next = { ...preferences, device, hiddenNavGroups: [], hiddenNavItems: [...(preferences.hiddenNavItems || []).filter((key) => !items.some((item) => item.key === key)), ...items.filter((item) => !visible.has(item.key)).map((item) => item.key)], navOrder: $$('[data-menu-key]', personalForm).map((row) => row.dataset.menuKey) };
-      try { await saveInterfacePreferences(next); dialog.dataset.composerDirty = 'false'; closeWorkspaceDialog(); renderNav(); toast('Ваше меню сохранено'); } catch (error) { button.disabled = false; toast(error.message, true); }
+      const next = { ...preferences, device, hiddenNavGroups: [], hiddenNavItems: [...(preferences.hiddenNavItems || []).filter((key) => !items.some((item) => item.key === key)), ...items.filter((item) => !visible.has(item.key)).map((item) => item.key)], navOrder: navigationOrderWithInactive(preferences.navOrder, $$('[data-menu-key]', personalForm).map((row) => row.dataset.menuKey)) };
+      const owner = state.me?.id, workspace = state.activeWorkspaceId;
+      dialog.dataset.settingsSaving = 'true'; personalForm.inert = true;
+      try {
+        await saveInterfacePreferences(next);
+        if (owner !== state.me?.id || workspace !== state.activeWorkspaceId || !personalForm.isConnected) return;
+        dialog.dataset.settingsSaving = 'false'; dialog.dataset.composerDirty = 'false';
+        closeWorkspaceDialog(); renderNav(); toast('Ваше меню сохранено');
+      } catch (error) { if (personalForm.isConnected) toast(error.message, true); }
+      finally { if (personalForm.isConnected) { dialog.dataset.settingsSaving = 'false'; personalForm.inert = false; button.disabled = false; } }
+
     });
     $('[data-reset-nav]', personalForm).addEventListener('click', async () => {
       try { await saveInterfacePreferences({ ...preferences, device, hiddenNavGroups: [], collapsedNavGroups: [], hiddenNavItems: [], navOrder: [] }); dialog.dataset.composerDirty = 'false'; openNavigationSettings('menu', device); renderNav(); } catch (error) { toast(error.message, true); }
@@ -8960,11 +8982,14 @@ function openNavigationSettings(tab = 'menu', device = interfaceDevice()) {
       } catch (error) { button.disabled = false; toast(error.message, true); }
     });
   }
-  const newPage=$('[data-new-page]',dialog);if(newPage){newPage.addEventListener('click',()=>pageAppUI.create());newPage.insertAdjacentHTML('afterend','<button type="button" class="secondary" data-page-app-library>Наборы страниц</button>');$('[data-page-app-library]',dialog).onclick=()=>pageAppUI.library();}
+  const newPage=$('[data-new-page]',dialog);if(newPage){newPage.addEventListener('click',()=>{if(dialog.dataset.settingsSaving !== 'true' && discardComposerChanges(dialog))pageAppUI.create();});newPage.insertAdjacentHTML('afterend','<button type="button" class="secondary" data-page-app-library>Наборы страниц</button>');$('[data-page-app-library]',dialog).onclick=()=>{if(dialog.dataset.settingsSaving !== 'true' && discardComposerChanges(dialog))pageAppUI.library();};}
+  $('[data-manage-pages]', dialog)?.addEventListener('click', () => openNavigationSettings('pages'));
   $$('[data-configure-page]', dialog).forEach((button) => button.addEventListener('click', () => openWorkspacePageEditor(state.workspacePages.find((page) => page.id === button.dataset.configurePage))));
   $$('[data-archive-page]', dialog).forEach((button) => button.addEventListener('click', async () => {
     const page = state.workspacePages.find((item) => item.id === button.dataset.archivePage);
-    if (!page.archived && !confirm(`Архивировать страницу «${page.name}»? Карточки и данные сохранятся.`)) return;
+    const owner = state.me?.id, workspace = state.activeWorkspaceId;
+    if (!page.archived && await askChoice({ title: 'Перенести страницу в архив?', eyebrow: 'Мои страницы', label: `«${page.name}» исчезнет из меню. Данные сохранятся; страницу можно восстановить здесь.`, choices: [{ value: 'archive', label: 'Перенести в архив' }] }) !== 'archive') return;
+    if (owner !== state.me?.id || workspace !== state.activeWorkspaceId || !button.isConnected) return;
     button.disabled = true;
     try { await api(`/api/workspace/pages/${page.id}`, { method: 'PATCH', body: JSON.stringify({ ...page, archived: !page.archived }) }); state.workspacePages = await api('/api/workspace/pages?includeArchived=true'); renderNav(); if (state.view === `page:${page.id}`) renderContent(); openNavigationSettings('pages'); } catch (error) { button.disabled = false; toast(error.message, true); }
   }));
@@ -8975,8 +9000,9 @@ function openWorkspacePageEditor(page = null) {
   if(page?.app)return pageAppUI.edit(page);
   const dialog = $('#workspace-dialog');
   if (!discardComposerChanges(dialog)) return;
+  const personal = activeWorkspace()?.kind === 'personal';
   const value = page || { name: '', collectionId: '', recordType: '', statusFilter: 'active', ownerFilter: 'all', viewMode: 'list', fields: ['description', 'owner', 'status', 'due'] };
-  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>${page ? 'Настройка страницы' : 'Новая страница'}</h2></div><button type="button" class="icon-button" data-page-editor-close aria-label="Закрыть">${icon('x')}</button></header><form id="workspace-page-form" class="card-form"><label>Название в меню<input name="name" value="${escapeHTML(value.name)}" required maxlength="80" placeholder="Например: Мои задачи"></label><div class="composer-field-grid"><label>Источник<select name="collectionId"><option value="">Все карточки проекта</option>${state.collections.map((collection) => `<option value="${collection.id}" ${value.collectionId === collection.id ? 'selected' : ''}>${escapeHTML(collection.name)}</option>`).join('')}</select></label><label>Состояние<select name="statusFilter">${[['active','В работе'],['completed','Завершённые'],['all','Все, кроме архива']].map(([key,label]) => `<option value="${key}" ${value.statusFilter === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Ответственный<select name="ownerFilter"><option value="all">Все участники проекта</option><option value="me" ${value.ownerFilter === 'me' ? 'selected' : ''}>Назначено мне</option></select></label><label>Вид<select name="viewMode"><option value="list">Список</option><option value="board" ${value.viewMode === 'board' ? 'selected' : ''}>Доска по этапам</option></select></label></div><fieldset class="composer-fields page-type-picker"><legend>Типы карточек</legend><label class="check"><input type="checkbox" name="allTypes" ${workspacePageTypes(value).length ? '' : 'checked'}><span>Все типы</span></label><div data-page-types>${Object.entries(typeMeta).map(([key, meta]) => `<label class="check"><input type="checkbox" name="recordTypes" value="${key}" ${workspacePageTypes(value).includes(key) ? 'checked' : ''}><span>${icon(meta.icon)} ${escapeHTML(meta.label)}</span></label>`).join('')}</div></fieldset><output class="page-source-preview" data-page-preview aria-live="polite"></output><fieldset class="composer-fields"><legend>Отображаемые поля</legend><div data-page-fields></div></fieldset><div class="form-actions"><button type="submit" class="primary">${icon('check')} ${page ? 'Сохранить страницу' : 'Создать страницу'}</button><button type="button" class="secondary" data-page-editor-back>Назад</button></div></form></div>`;
+  $('#workspace-dialog-content').innerHTML = `<div class="workspace-editor-shell navigation-settings-shell"><header><div><p class="eyebrow">${escapeHTML(activeWorkspace()?.name || 'Проект')}</p><h2>${page ? 'Настройка страницы' : 'Новая страница'}</h2></div><button type="button" class="icon-button" data-page-editor-close aria-label="Закрыть">${icon('x')}</button></header><form id="workspace-page-form" class="card-form"><label>Название в меню<input name="name" value="${escapeHTML(value.name)}" required maxlength="80" placeholder="Например: Мои задачи"></label><div class="composer-field-grid"><label>Источник<select name="collectionId"><option value="">${personal ? 'Все мои карточки' : 'Все карточки проекта'}</option>${state.collections.map((collection) => `<option value="${collection.id}" ${value.collectionId === collection.id ? 'selected' : ''}>${escapeHTML(collection.name)}</option>`).join('')}</select></label><label>Состояние<select name="statusFilter">${[['active','В работе'],['completed','Завершённые'],['all','Все, кроме архива']].map(([key,label]) => `<option value="${key}" ${value.statusFilter === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Ответственный<select name="ownerFilter"><option value="all">${personal ? 'Все мои записи' : 'Все участники проекта'}</option><option value="me" ${value.ownerFilter === 'me' ? 'selected' : ''}>Назначено мне</option></select></label><label>Вид<select name="viewMode"><option value="list">Список</option><option value="board" ${value.viewMode === 'board' ? 'selected' : ''}>Доска по этапам</option></select></label></div><fieldset class="composer-fields page-type-picker"><legend>Типы карточек</legend><label class="check"><input type="checkbox" name="allTypes" ${workspacePageTypes(value).length ? '' : 'checked'}><span>Все типы</span></label><div data-page-types>${Object.entries(typeMeta).map(([key, meta]) => `<label class="check"><input type="checkbox" name="recordTypes" value="${key}" ${workspacePageTypes(value).includes(key) ? 'checked' : ''}><span>${icon(meta.icon)} ${escapeHTML(meta.label)}</span></label>`).join('')}</div></fieldset><output class="page-source-preview" data-page-preview aria-live="polite"></output><fieldset class="composer-fields"><legend>Отображаемые поля</legend><div data-page-fields></div></fieldset><div class="form-actions"><button type="submit" class="primary">${icon('check')} ${page ? 'Сохранить страницу' : 'Создать страницу'}</button><button type="button" class="secondary" data-page-editor-back>Назад</button></div></form></div>`;
   const form = $('#workspace-page-form', dialog);
   void firstUseUI.tip('constructor',form);
   let fields = new Set(value.fields);
@@ -9221,6 +9247,7 @@ function bindLayoutEditor() {
 }
 
 function pageLayoutKey() {
+  if (state.view === 'personal' && state.personalTab && state.personalTab !== 'today') return `personal:${state.personalTab}`;
   if (state.view === 'day' || state.view === 'calendar') return `${state.view}:${state.calendarScope === 'personal' ? 'personal' : 'project'}`;
   return state.view === 'collections' && state.activeCollectionId ? `collection:${state.activeCollectionId}` : state.view;
 }
@@ -9236,6 +9263,7 @@ function savedPageLayout(profile) {
   const saved = profile?.layout?.pages?.[pageLayoutKey()];
   if (state.view === 'work') return defaultWorkBoardLayout(saved);
   if (saved) return saved;
+  if (state.view === 'personal') return profile?.layout?.pages?.personal || {};
   if (state.view === 'calendar') {
     const pages = profile?.layout?.pages || {};
     // Both scopes display the same calendar surface. Inherit its existing layout
@@ -9275,7 +9303,7 @@ function pageLayoutCatalog() {
     day: [block('heading','Дата и действия','.day-workspace-heading',true), block('records','Планы и карточки','.day-workspace-records',true,6), block('notes','Заметки дня','.day-workspace-notes',false,6)],
     calendar: [heading, block('filters', 'Вид и фильтры', '.planner-controls', true), block('month', 'Календарь и расписание', '.planner-body', true), block('undated', 'Без даты', '.planner-undated')],
     work: [heading, block('filters', 'Поиск и фильтры', ':scope > .work-controls', true), block('summary', 'Сводка и представления', ':scope > .work-view-summary'), block('boards', 'Доска и её настройки', '.work-board-toolbar'), workRecords],
-    personal: [heading, block('first-use','Первый шаг','.first-use-start'), block('summary', 'Личная сводка', '.personal-summary'), block('tabs', 'Разделы', '.personal-tabs', true), block('day-focus','Главное дело','.today-focus',false,6), block('day-time','События и свободное время','.today-schedule',false,6), block('day-attention','Требует внимания','.today-attention',false,6), block('day-waiting','Ожидания','.today-waiting',false,6), block('day-reminders','Личные напоминания','.today-reminders',false,6), block('habits', 'Привычки', '.personal-today-grid .personal-section:has(> .habit-list)', false, 6), block('plans', 'Дела на сегодня', '.today-plans', false, 6), block('day-project-work','Моя работа в проектах','.today-project-work',false,6), block('life', 'Карта времени', '.personal-today-grid .life-section', false, 6), block('notes', 'Последние заметки', '.personal-today-grid .personal-section:has(> .personal-notes-preview)', false, 6)],
+    personal: [heading, block('first-use','Первый шаг','.first-use-start'), block('summary', 'Личная сводка', '.personal-summary'), block('day-focus','Главное дело','.today-focus',false,6), block('day-time','События и свободное время','.today-schedule',false,6), block('day-attention','Требует внимания','.today-attention',false,6), block('day-waiting','Ожидания','.today-waiting',false,6), block('day-reminders','Личные напоминания','.today-reminders',false,6), block('habits', 'Привычки', '.personal-today-grid .personal-section:has(> .habit-list)', false, 6), block('plans', 'Дела на сегодня', '.today-plans', false, 6), block('day-project-work','Моя работа в проектах','.today-project-work',false,6), block('life', 'Карта времени', '.personal-today-grid .life-section', false, 6), block('notes', 'Последние заметки', '.personal-today-grid .personal-section:has(> .personal-notes-preview)', false, 6)],
     collections: [heading, block('search', 'Доски и поиск', '.collection-toolbar', true), block('filters', 'Фильтры', '.collection-filters', true), block('records', 'Доска', ':scope > .collection-board, :scope > .collection-empty', true)],
     principles: [heading, ...[['preference', 'Критерии'], ['limitation', 'Ограничения'], ['rule', 'Правила']].map(([key, label]) => block(key, label, `.principle-column:has([data-create-principle="${key}"])`, false, 4))],
     validation: [heading, block('summary', 'Сводка проверок', '.validation-summary'), block('filters', 'Фильтры', '.validation-filter', true), block('records', 'Риски и проверки', '.validation-list', true)],
@@ -9293,7 +9321,7 @@ function pageLayoutCatalog() {
   if (state.view === 'reading') fields = [field('reading-description','Пояснение под заголовком','.reading-hero > div > p:not(.eyebrow)'),field('reading-context','Группа и дата','.reading-hero .eyebrow'),...['today','plans','journal','ranking','groups'].map(key=>field(`reading-tab:${key}`,({today:'Серия',plans:'Ко вторнику',journal:'Мой дневник',ranking:'Рейтинг',groups:'Группы'})[key],`[data-reading-tab="${key}"]`))];
   if (state.view === 'chat') fields = [field('voice', 'Запись голосового', '[data-chat-voice]'), field('ai', 'AI-выжимка в меню', '[data-chat-ai-digest]')];
   if (state.view === 'graph') fields = [field('count', 'Количество объектов', '.graph-count'), field('zoom', 'Кнопки масштаба', '#graph-zoom-in, #graph-zoom-out')];
-  if (state.view === 'personal' && state.personalTab && state.personalTab !== 'today') blocks = [heading, block('summary', 'Личная сводка', '.personal-summary'), block('tabs','Разделы','.personal-tabs',true), block('records','Записи','.personal-content',true)];
+  if (state.view === 'personal' && state.personalTab && state.personalTab !== 'today') blocks = [heading, block('records','Записи','.personal-content',true)];
   if (state.view === 'personal') fields = [field('noteDates', 'Дата заметки', '.personal-note footer time'), field('notePreview', 'Текст в списке заметок', '.personal-note .markdown-body')];
   const customPage = state.workspacePages.find((item) => `page:${item.id}` === state.view);
   const collection = state.view === 'collections' ? activeCollection() : state.view === 'work' ? state.collections.find(item => item.id === state.workCollection) : customPage ? state.collections.find((item) => item.id === customPage.collectionId) : null;
@@ -9333,6 +9361,7 @@ function startPageLayoutEditor(device = interfaceDevice()) {
   $$('[data-page-block]').forEach((node) => node.parentElement.pageReorderCleanup?.());
   const key = pageLayoutKey();
   const value = structuredClone(savedPageLayout(state.interfaceProfiles[device]));
+  if (state.view === 'personal' && state.personalTab === 'today' && useProgressiveToday(value, false)) value.adaptiveToday = true;
   for (const widget of value.widgets || []) {
     try {
       const zoom = Number(localStorage.getItem(widgetScaleKey(widget, device)));
@@ -9354,6 +9383,10 @@ function renderPageLayoutEditor(catalog) {
 
 function bindPageLayoutEditor(editor, catalog) {
   const draft = state.pageLayoutDraft;
+  if (state.view === 'personal' && state.personalTab === 'today') {
+    $('header', editor).insertAdjacentHTML('afterend', `<label class="check today-adaptive-option"><input type="checkbox" data-today-adaptive ${useProgressiveToday(draft.value, false) ? 'checked' : ''}><span>Скрывать пустые блоки автоматически</span></label>`);
+    $('[data-today-adaptive]', editor).addEventListener('change', event => { draft.value.adaptiveToday = event.target.checked; applyPageLayout(); });
+  }
   if (state.view === 'calendar') {
     const pages = state.interfaceProfiles?.[draft.device]?.layout?.pages || {};
     const other = state.calendarScope === 'personal' ? 'project' : 'personal';
@@ -9368,7 +9401,7 @@ function bindPageLayoutEditor(editor, catalog) {
   }
   const refresh = () => { editor.remove(); applyInterfaceLayout(); applyPageLayout(); };
   $('[data-page-layout-cancel]', editor).addEventListener('click', () => { state.pageLayoutDraft = null; editor.remove(); applyInterfaceLayout(); applyPageLayout(); });
-  $('[data-page-layout-reset]', editor).addEventListener('click', () => { draft.value = state.view === 'work' ? defaultWorkBoardLayout() : {}; refresh(); });
+  $('[data-page-layout-reset]', editor).addEventListener('click', () => { draft.value = state.view === 'work' ? defaultWorkBoardLayout() : state.view === 'personal' && state.personalTab === 'today' ? {adaptiveToday:true} : {}; refresh(); });
   $$('[data-interface-device]', editor).forEach((button) => button.addEventListener('click', () => { if (button.dataset.interfaceDevice !== draft.device) startPageLayoutEditor(button.dataset.interfaceDevice); }));
   $('[name="pageDensity"]', editor).addEventListener('change', (event) => { draft.value.density = event.target.value; applyInterfaceLayout(); });
   $('[name="pageWidth"]', editor)?.addEventListener('change', (event) => { draft.value.contentWidth = Number(event.target.value); applyInterfaceLayout(); });
@@ -9378,7 +9411,7 @@ function bindPageLayoutEditor(editor, catalog) {
   $('[data-page-toolbar-inherit]', editor).addEventListener('change', (event) => { if (event.target.checked) delete draft.value.toolbarActions; else draft.value.toolbarActions = [...interfaceLayout().toolbarActions]; refresh(); });
   $$('input', toolbar).forEach((input) => input.addEventListener('change', updateToolbar));
   bindReorderList(toolbar, '[data-page-toolbar]', () => { if (draft.value.toolbarActions) updateToolbar(); });
-  $$('[data-page-block-restore]', editor).forEach((button) => button.addEventListener('click', () => { draft.value.hiddenBlocks = (draft.value.hiddenBlocks || []).filter((key) => key !== button.dataset.pageBlockRestore); refresh(); }));
+  $$('[data-page-block-restore]', editor).forEach((button) => button.addEventListener('click', () => { draft.value.hiddenBlocks = (draft.value.hiddenBlocks || []).filter((key) => key !== button.dataset.pageBlockRestore); if (draft.value.adaptiveToday) draft.value.shownBlocks = [...new Set([...(draft.value.shownBlocks || []), button.dataset.pageBlockRestore])]; refresh(); }));
   $('[data-page-layout-save]', editor).addEventListener('click', async () => {
     if (state.pageLayoutSaving) return;
     state.pageLayoutSaving = true;
@@ -9432,7 +9465,7 @@ function applyPageLayout() {
   applyInterfaceLayout();
   const draft = state.pageLayoutDraft, editing = Boolean(draft), value = currentPageLayout(), catalog = pageLayoutCatalog();
   const progressiveToday = state.view === 'personal' && state.personalTab === 'today' && useProgressiveToday(value, editing);
-  const emptyTodayBlocks = progressiveToday && state.personal ? personalTodayUI.hiddenBlocks(state.personal, personalWaitingUI.hasContent(), personalRemindersUI.hasContent()) : [];
+  const emptyTodayBlocks = progressiveToday && state.personal ? personalTodayUI.hiddenBlocks(state.personal, personalWaitingUI.hasContent(), personalRemindersUI.hasContent()).filter(key => !value.shownBlocks?.includes(key)) : [];
   if (state.view === 'personal' && state.personalTab !== 'today' && useProgressiveToday(value, editing)) emptyTodayBlocks.push('summary');
   mountWorkspaceWidgets(root, catalog, value);
   const items = catalog.blocks.map(block => ({ block, node: $(`[data-page-block="${block.key}"]`,root) || $(block.selector,root) })).filter(item => item.node);
@@ -9476,7 +9509,7 @@ function applyPageLayout() {
       if(!editing || $('.page-block-tools',node))return;
       toolsChanged=true;
       node.insertAdjacentHTML('beforeend',`<div class="page-block-tools"><button type="button" class="drag-handle" data-reorder-handle aria-label="Переместить: ${escapeHTML(block.label)}" title="Переместить">${icon('grip')}</button><strong>${escapeHTML(block.label)}</strong><button type="button" class="icon-button" data-page-block-settings title="Настройки блока" aria-label="Настройки: ${escapeHTML(block.label)}">${icon('sliders')}</button>${pageBlockTitleNode(node,block)?`<button type="button" class="icon-button" data-page-block-title aria-label="Изменить заголовок: ${escapeHTML(block.label)}" title="Изменить заголовок">${icon('edit')}</button>`:''}${!block.required?`<button type="button" class="icon-button" data-page-block-hide title="Скрыть блок" aria-label="Скрыть: ${escapeHTML(block.label)}">${icon('minus')}</button>`:''}</div>${parent.classList.contains('page-block-grid')?`<button type="button" class="block-resize-handle" data-block-resize aria-label="Изменить размер: ${escapeHTML(block.label)}" title="Изменить размер" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown">${icon('maximize')}</button>`:''}`);
-      $('[data-page-block-hide]',node)?.addEventListener('click',()=>{ if(state.pageLayoutSaving)return;value.hiddenBlocks=[...new Set([...(value.hiddenBlocks||[]),block.key])];$('.page-layout-editor',root)?.remove();applyPageLayout(); });
+      $('[data-page-block-hide]',node)?.addEventListener('click',()=>{ if(state.pageLayoutSaving)return;value.hiddenBlocks=[...new Set([...(value.hiddenBlocks||[]),block.key])];value.shownBlocks=(value.shownBlocks||[]).filter(key=>key!==block.key);$('.page-layout-editor',root)?.remove();applyPageLayout(); });
       $('[data-page-block-title]',node)?.addEventListener('click',()=>editPageBlockTitle(block,node));
       $('[data-page-block-settings]',node).addEventListener('click',()=>openBlockSettings(block));
       bindBlockResize(node,block);
@@ -9882,7 +9915,7 @@ function renderWorkspaceWidget(block, settings) {
 function bindWorkspaceWidget(node, block, settings) {
   bindDayItems(node);
   $$('[data-widget-day]',node).forEach(button=>button.addEventListener('click',()=>openDayWorkspace(button.dataset.widgetDay,personalWorkspacePage()?'personal':'project')));
-  $$('[data-widget-personal-tab]',node).forEach(button=>button.addEventListener('click',()=>{ if (!leavePageLayoutEditor()) return; state.personalTab=button.dataset.widgetPersonalTab; navigateToView('personal'); }));
+  $$('[data-widget-personal-tab]',node).forEach(button=>button.addEventListener('click',() => navigateToView(`personal:${button.dataset.widgetPersonalTab}`)));
   $$('[data-widget-record-type]',node).forEach(button=>button.addEventListener('click',()=>navigateToView(button.dataset.widgetRecordType==='task'?'work':button.dataset.widgetRecordType)));
   const redraw=()=> { node.dataset.widgetSignature=''; applyPageLayout(); };
   const key=pageLayoutKey()+':'+block.key;
@@ -9967,12 +10000,16 @@ function openBlockSettings(block) {
   const dialog=$('#workspace-dialog'),content=$('#workspace-dialog-content');
   content.innerHTML=`<form class="workspace-editor-shell block-settings-form"><header><h2>${escapeHTML(block.label)}</h2><button type="button" class="icon-button" data-block-settings-close aria-label="Закрыть">${icon('x')}</button></header><div class="form-grid two">${desktop?`<label>Ширина в колонках<input type="number" name="span" min="2" max="12" value="${geometry.span}"></label><label>Начальная колонка<input type="number" name="column" min="0" max="${13-geometry.span}" value="${geometry.column}"></label>`:''}<label>Высота<input type="number" name="height" min="160" max="1600" step="10" placeholder="По содержимому" value="${geometry.height||''}"></label><label>Плотность<select name="density"><option value="">По умолчанию</option><option value="compact" ${settings.density==='compact'?'selected':''}>Компактная</option><option value="comfortable" ${settings.density==='comfortable'?'selected':''}>Обычная</option></select></label>${block.key.startsWith('widget:')&&block.key!=='widget:calendar'?`<label>Количество записей<input type="number" name="limit" min="1" max="50" value="${settings.limit||6}"></label>`:''}${block.key==='widget:calendar'?`<label>Вид<select name="format"><option value="grid">Сетка</option><option value="circles" ${settings.format==='circles'?'selected':''}>Круги</option></select></label><label>Размер<select name="scale">${[40,50,60,70,80,90,100].map(n=>`<option value="${n}" ${widgetScale(block,settings)===n?'selected':''}>${n}%</option>`).join('')}</select></label>`:''}</div><footer class="form-actions"><button type="submit" class="primary">${icon('check')} Применить</button><button type="button" class="text-button" data-block-size-reset>По умолчанию</button></footer></form>`;
   const form=$('form',content);
+  if (state.view === 'personal' && state.personalTab === 'today' && value.adaptiveToday) {
+    $('header', form).insertAdjacentHTML('afterend', `<label class="check"><input type="checkbox" name="showEmpty" ${value.shownBlocks?.includes(block.key) ? 'checked' : ''}><span>Показывать этот блок, даже если нет записей</span></label>`);
+  }
   $('[data-block-settings-close]',content).addEventListener('click',()=>requestDialogClose(dialog));
   $('[name=span]',form)?.addEventListener('input',event=>{const column=$('[name=column]',form);column.max=String(13-Number(event.target.value));column.value=String(Math.max(0,Math.min(Number(column.max),Number(column.value))));});
   const finish=async()=> { await requestDialogClose(dialog);applyPageLayout(); };
   form.addEventListener('submit',async event=>{
     event.preventDefault();if(state.pageLayoutDraft!==draft||!form.reportValidity())return;
     const data=new FormData(form);
+    if (form.elements.showEmpty) value.shownBlocks = [...new Set([...(value.shownBlocks || []).filter(key => key !== block.key), ...(data.has('showEmpty') ? [block.key] : [])])];
     if(desktop)value.blockSpans={...value.blockSpans,[block.key]:Number(data.get('span'))};
     value.blockSettings={...value.blockSettings,[block.key]:{...settings,column:desktop?Number(data.get('column')):settings.column||0,height:Number(data.get('height'))||0,density:data.get('density'),limit:Number(data.get('limit'))||settings.limit||0,format:data.get('format')||settings.format||'',scale:Number(data.get('scale'))||settings.scale||0}};
     if (data.has('scale')) { try { localStorage.removeItem(widgetScaleKey(block.key)); } catch (_) {} }
