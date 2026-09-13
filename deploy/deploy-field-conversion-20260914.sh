@@ -299,7 +299,7 @@ for attempt in $(seq 1 30); do
   sleep 1
 done
 curl --max-time 15 -fsS http://127.0.0.1:18639/ > "$dry/rollback-index.html"
-grep -qF 'app.js?v=20260914-finance-expenses-1' "$dry/rollback-index.html"
+grep -qF 'app.js?v=20260914-mobile-habits-1' "$dry/rollback-index.html"
 python3 /tmp/verify-field-conversion-database.py "$backup/business-control.db" "$dry/check.db"
 kill "$dry_pid"
 wait "$dry_pid" 2>/dev/null || true
