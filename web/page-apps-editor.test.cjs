@@ -8,7 +8,7 @@ function surface(){return{firstElementChild:null,nodes:new Map(),_html:'',set in
  this._html=value;this.firstElementChild={inert:false};this.nodes=new Map();const elements={};
  for(const tag of value.match(/<(?:input|textarea|select)\b[^>]*>/g)||[]){const name=tag.match(/\bname="([^"]+)"/)?.[1];if(name)elements[name]={value:tag.match(/\bvalue="([^"]*)"/)?.[1]||''};}
  for(const tag of value.match(/<(?:button|form|input)\b[^>]*>/g)||[]){
-  const attrs=[...tag.matchAll(/\b(data-(?:builder|app|template)-[a-z-]+)(?:="([^"]*)")?/g)];
+  const attrs=[...tag.matchAll(/\b(data-(?:builder|app|template|component)-[a-z-]+)(?:="([^"]*)")?/g)];
   if(!attrs.length&&!/type="submit"/.test(tag))continue;
   const node={disabled:false,value:'',dataset:{},elements,reportValidity:()=>true,addEventListener(type,handler){this[`on${type}`]=handler;},querySelector:selector=>this.querySelector(selector),querySelectorAll:selector=>this.querySelectorAll(selector)};
   const add=key=>{if(!this.nodes.has(key))this.nodes.set(key,[]);this.nodes.get(key).push(node);};
@@ -23,7 +23,7 @@ function harness(){
  const $=(selector,root)=>root?root.querySelector(selector):({'#workspace-dialog':box,'#workspace-dialog-content':host,'#main-content':main}[selector]||null);
  const context=vm.createContext({structuredClone,crypto:{randomUUID:()=> 'new-id'},localStorage:{getItem(key){reads.push(key);return storage.get(key)||null;},setItem(key,value){storage.set(key,value);},removeItem(key){storage.delete(key);}},
   createPageDataUI:()=>({mount(){}}),mountPageForms(){},applyElementStyles(){},migrateFormElementStyles(){},blockVisible:()=>true,blockOutline:def=>def.blocks.map(block=>({block,depth:0})),groupChoices:()=>[],elementStyleConfig:()=>'',visibilityConfig:()=>''});
- for(const file of ['page-sheets.js','page-apps.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),context);
+ for(const file of ['page-sheets.js','page-components.js','page-apps.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),context);
  context.createPageSheetUI=()=>({mount(){},reset(){}});
  context.options={state,api:(url,options)=>{const pending=deferred();calls.push({url,options,...pending});return pending.promise;},escapeHTML:String,icon:()=>'', $, $$:(selector,root)=>root?.querySelectorAll(selector)||[],
   openModal(){if(box.open)return;box.open=true;box.dataset.openOrder=String(++stats.opened);},requestDialogClose:async()=>{if(box.dataset.settingsSaving==='true')return false;stats.closed++;box.open=false;return true;},toast:(message,error)=>toasts.push({message,error}),canConfigureWorkspace:()=>true,reloadPages:()=>{stats.reloads++;return reload();},navigate:view=>state.view=view,formDependencies:{},dataDependencies:{}};
@@ -146,4 +146,43 @@ test('installation completion cannot close a replacement dialog or navigate anot
   const h=harness();await openKit(h);const installing=h.host.querySelector('[data-app-install]').onclick();change(h);h.calls[2].resolve({id:'copy',name:'Kit'});await installing;
   assert.equal(h.state.view,'page:page');assert.equal(h.stats.closed,0);assert.equal(h.stats.reloads,0);
  }
+});
+
+async function openComponentPreview(h){
+ const library=h.host.querySelector('[data-builder-components]').onclick();h.calls.at(-1).resolve([{id:'component',name:'Own block',description:''}]);await library;
+ const preview=h.host.querySelector('[data-component-preview]').onclick();h.calls.at(-1).resolve({id:'component',name:'Own block',definition:{version:1,blocks:[{id:'root',kind:'group',title:'Group'}]}});await preview;
+}
+
+test('component library cannot take over after account, route or dialog changes',async()=>{
+ for(const change of [h=>h.state.me={id:'other'},h=>h.state.view='personal',h=>h.host.innerHTML='<p>New dialog</p>']){
+  const h=harness();await openEditor(h);const listing=h.host.querySelector('[data-builder-components]').onclick();change(h);const before=h.host.innerHTML;h.calls[1].resolve([{id:'private',name:'PRIVATE COMPONENT'}]);await listing;
+  assert.equal(h.host.innerHTML,before);assert.ok(!h.host.innerHTML.includes('PRIVATE COMPONENT'));
+ }
+});
+
+test('component insertion explicitly saves the host draft, locks close and uses the new revision',async()=>{
+ const h=harness();await openEditor(h);h.host.querySelector('[data-builder-page-name]').oninput({target:{value:'Draft name'}});await openComponentPreview(h);
+ assert.match(h.host.innerHTML,/Вставить и сохранить страницу/);assert.match(h.host.innerHTML,/Вставка сохранит текущие изменения/);
+ const insert=h.host.querySelector('[data-component-insert]').onclick,first=insert();await insert();assert.equal(h.calls.length,4);const request=JSON.parse(h.calls[3].options.body);assert.equal(request.pageName,'Draft name');assert.equal(request.expectedRevision,1);assert.equal(request.componentId,'component');assert.equal(request.sheets,undefined);assert.ok(!h.calls[3].options.body.includes('999'));
+ assert.equal(h.box.dataset.settingsSaving,'true');await h.host.querySelector('[data-builder-close]').onclick();assert.equal(h.stats.closed,0);
+ h.calls[3].resolve({...loaded(),revision:2,rootBlockId:'copy',pageName:'Draft name'});await tick();h.calls[4].resolve({...loaded(),revision:2});await first;
+ assert.equal(h.storage.size,0);assert.equal(h.box.dataset.settingsSaving,'false');assert.match(h.host.innerHTML,/data-builder-components/);
+ const save=h.host.querySelector('[data-builder-save]').onclick();assert.equal(JSON.parse(h.calls[5].options.body).expectedRevision,2);h.state.me={id:'other'};h.calls[5].resolve(loaded());await save;
+});
+
+test('unknown insertion outcome survives closing, reload and a newer server revision without duplication',async()=>{
+ const h=harness();await openEditor(h);await openComponentPreview(h);const inserting=h.host.querySelector('[data-component-insert]').onclick();const exact=h.calls[3].options.body;
+ h.calls[3].reject(new TypeError('Connection interrupted'));await inserting;assert.match(h.host.innerHTML,/Проверить и продолжить/);const stored=JSON.parse([...h.storage.values()][0]);assert.equal(stored.componentRequest.kind,'insert');assert.equal(JSON.stringify(stored.componentRequest.body),exact);
+ await h.host.querySelector('[data-builder-close]').onclick();const reopening=h.ui.edit(h.page);h.calls[4].resolve({...loaded(),revision:2});await reopening;
+ assert.match(h.host.innerHTML,/data-builder-restore/);h.host.querySelector('[data-builder-restore]').onclick();assert.match(h.host.innerHTML,/Проверить и продолжить/);assert.equal(h.host.querySelector('[data-builder-save]').disabled,true);
+ const retry=h.host.querySelector('[data-component-retry]').onclick();assert.equal(h.calls[5].options.body,exact);h.calls[5].resolve({...loaded(),revision:2,alreadyInserted:true,rootBlockId:'copy',pageName:'Page'});await tick();h.calls[6].resolve({...loaded(),revision:2});await retry;
+ assert.equal(h.storage.size,0);assert.match(h.host.innerHTML,/data-builder-components/);
+});
+
+test('an uncommitted insertion recovered after a conflict cannot save an old draft under a newer revision',async()=>{
+ const h=harness();await openEditor(h);h.host.querySelector('[data-builder-page-name]').oninput({target:{value:'Keep my unsaved changes'}});await openComponentPreview(h);const inserting=h.host.querySelector('[data-component-insert]').onclick();h.calls[3].reject(new TypeError('No response'));await inserting;
+ await h.host.querySelector('[data-builder-close]').onclick();const opening=h.ui.edit(h.page);h.calls[4].resolve({...loaded(),revision:3});await opening;h.host.querySelector('[data-builder-restore]').onclick();
+ const retry=h.host.querySelector('[data-component-retry]').onclick();h.calls[5].reject(Object.assign(new Error('Revision conflict'),{status:409}));await retry;h.host.querySelector('[data-component-back]').onclick();
+ const save=h.host.querySelector('[data-builder-save]').onclick();assert.equal(JSON.parse(h.calls[6].options.body).expectedRevision,1);h.calls[6].reject(Object.assign(new Error('Revision conflict'),{status:409}));await save;
+ const draft=JSON.parse([...h.storage.values()][0]);assert.equal(draft.revision,1);assert.equal(draft.componentRequest,null);assert.equal(h.box.open,true);
 });

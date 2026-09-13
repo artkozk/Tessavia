@@ -31,7 +31,9 @@ test('cancelled layout navigation leaves the active personal tab and history unt
 
 test('personal menu defaults are compact while explicit choices and private pages remain visible', () => {
  const h=harness();
- assert.equal(h.run('personalNavigationItems().filter(item=>navigationItemVisible(item,{})).length'),5);
+ assert.equal(h.run('personalNavigationItems().filter(item=>navigationItemVisible(item,{})).length'),4);
+ assert.equal(h.run("navigationItemVisible(personalNavigationItems().find(item=>item.key==='personal:finance'),{})"),false);
+ assert.equal(h.run("navigationItemVisible(personalNavigationItems().find(item=>item.key==='personal:finance'),{navOrder:['personal:finance']})"),true);
  assert.equal(h.run("navigationItemVisible(personalNavigationItems().find(item=>item.key==='personal:notes'),{})"),false);
  assert.equal(h.run("navigationItemVisible(personalNavigationItems().find(item=>item.key==='personal:notes'),{navOrder:['personal:notes']})"),true);
  assert.equal(h.run("navigationItemVisible({key:'page:private',group:'Личное'},{})"),true);

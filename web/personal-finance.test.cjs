@@ -152,3 +152,167 @@ test('income retry retains the newly created payer ID and revision without anoth
   await assert.rejects(retry.submit(payload, () => { throw Object.assign(new Error('Payer changed'), { status: 409 }); }));
   assert.equal((await retry.submit({ ...payload, payer: 'Renamed', expectedPayerRevision: 2 }, body => body)).expectedPayerRevision, 2);
 });
+
+test('today and Monday-based week presets retain real calendar boundaries across months and years', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(c.financeReportRange('2026-09', 'today', '2026-09-14'))), { from: '2026-09-14', to: '2026-09-14' });
+  assert.deepEqual(JSON.parse(JSON.stringify(c.financeReportRange('2026-09', 'week', '2026-09-13'))), { from: '2026-09-07', to: '2026-09-13' });
+  assert.deepEqual(JSON.parse(JSON.stringify(c.financeReportRange('2027-01', 'week', '2027-01-01'))), { from: '2026-12-28', to: '2027-01-03' });
+  assert.equal(c.financeReportRange('2024-02', 'month', '2026-09-14').to, '2024-02-29');
+  assert.equal(c.financeReportRange('9998-12', 'week', '9998-12-31').to, '9998-12-31');
+  assert.throws(() => c.financeReportRange('2026-09', 'week', '2026-02-30'));
+});
+
+test('account balances use full history and never subtract transfer marks or apply payer filters twice', () => {
+  const data = fixture();
+  data.balances = [{ bucketId: 'a', allocatedMinor: 204052, spentMinor: 60000, balanceMinor: 144052, periodAllocatedMinor: 4052, periodSpentMinor: 10000, openingMinor: 150000 }];
+  const full = c.financeAccountBalances(data), filtered = c.financeAccountBalances(c.filterFinanceByPayer(data, 'legacy:Client'));
+  assert.equal(full[0].balanceMinor, 144052n); assert.equal(full[0].paidMinor, undefined);
+  assert.equal(full[0].openingMinor + full[0].periodAllocatedMinor - full[0].periodSpentMinor, full[0].balanceMinor);
+  assert.equal(filtered[0].balanceMinor, full[0].balanceMinor);
+  assert.equal(c.summarizeFinance(data).paidMinor, 1052n);
+  assert.equal(full[1].balanceMinor, 0n);
+});
+
+test('accounts preserve negative and archived balances even when the selected month has no income', () => {
+  const data = { entries: [], buckets: [{ id: 'car', name: 'Машина', archived: true }, { id: 'tithe', name: 'Десятина' }], balances: [{ bucketId: 'car', allocatedMinor: 10000, spentMinor: 15000, balanceMinor: -5000, openingMinor: -3000, periodAllocatedMinor: 0, periodSpentMinor: 2000 }, { bucketId: 'tithe', allocatedMinor: 100000, spentMinor: 75000, balanceMinor: 25000, openingMinor: 30000, periodAllocatedMinor: 0, periodSpentMinor: 5000 }] };
+  const result = c.financeAccountBalances(data);
+  assert.equal(result[0].archived, true); assert.equal(result[0].balanceMinor, -5000n);
+  assert.equal(result[1].balanceMinor, 25000n);
+  assert.equal(c.financeMoney(result[0].balanceMinor).replace(/\s/g, ''), '−50₽');
+});
+
+test('expense input records a refuel or weekly tithe payment against an explicit account with exact cents', () => {
+  const buckets = [{ id: 'car', revision: 3 }, { id: 'tithe', revision: 7 }];
+  const refuel = c.financeExpensePayload({ bucketId: 'car', amount: '1 500,25', date: '2026-09-14', note: '  Заправка  ', payee: ' АЗС ' }, buckets);
+  assert.equal(refuel.amountMinor, 150025); assert.equal(refuel.bucketId, 'car'); assert.equal(refuel.expectedBucketRevision, 3);
+  assert.equal(refuel.note, 'Заправка'); assert.equal(refuel.payee, 'АЗС'); assert.equal(refuel.expectedRevision, undefined);
+  const tithe = c.financeExpensePayload({ bucketId: 'tithe', amount: '800', date: '2026-09-13', note: 'Десятина за неделю' }, buckets, { id: 'e', bucketId: 'tithe', revision: 4 });
+  assert.equal(tithe.amountMinor, 80000); assert.equal(tithe.expectedRevision, 4); assert.equal(tithe.payee, '');
+  assert.equal(tithe.grossMinor, undefined); assert.equal(tithe.paidMinor, undefined);
+});
+
+test('expense validation rejects invalid money/date, unknown accounts and archived new choices while allowing same-account repair', () => {
+  const buckets = [{ id: 'old', archived: true, revision: 2 }, { id: 'active', revision: 1 }], values = { bucketId: 'active', amount: '10.25', date: '2026-09-14' };
+  for (const change of [{ amount: '0' }, { amount: '-1' }, { amount: '1.001' }, { date: '2026-02-29' }, { bucketId: 'missing' }, { bucketId: 'old' }, { payee: 'я'.repeat(121) }, { note: '😀'.repeat(2001) }]) assert.throws(() => c.financeExpensePayload({ ...values, ...change }, buckets));
+  const edited = c.financeExpensePayload({ ...values, bucketId: 'old' }, buckets, { bucketId: 'old', revision: 6 });
+  assert.equal(edited.expectedRevision, 6); assert.equal(edited.bucketId, 'old');
+  assert.throws(() => c.financeExpensePayload({ ...values, bucketId: 'old' }, buckets, { bucketId: 'active', revision: 6 }));
+});
+
+test('mixed history sorts by day and creation time, retains cancelled audit rows and supports expense-only view', () => {
+  const data = fixture(); data.expenses = [{ id: 'fuel', bucketId: 'b', bucketName: 'Daily', date: '2026-09-02', createdAt: '2026-09-02T13:00:00Z', amountMinor: 2500, note: 'Fuel' }, { id: 'void', bucketId: 'a', date: '2026-09-03', amountMinor: 100, voided: true }];
+  const rows = c.financeJournal(data);
+  assert.deepEqual(Array.from(rows, row => row.id), ['void', 'fuel', 'two', 'one']);
+  assert.equal(rows[0].voided, true); assert.equal(rows[1].kind, 'expense'); assert.equal(rows[1].journalAmountMinor, 2500n);
+  assert.equal(c.financeJournal(data, { kind: 'expense' }).length, 2);
+  assert.equal(c.financeJournal(data, { kind: 'income' }).length, 2);
+});
+
+test('per-account history shows the allocated income share and does not charge full income to every account', () => {
+  const data = fixture(); data.expenses = [{ id: 'expense-a', bucketId: 'a', date: '2026-09-03', amountMinor: 2000 }, { id: 'expense-b', bucketId: 'b', date: '2026-09-03', amountMinor: 1000 }];
+  const rows = c.financeJournal(data, { bucketId: 'a' });
+  assert.equal(rows.length, 3); assert.equal(rows.find(row => row.id === 'one').journalAmountMinor, 4001n);
+  assert.equal(rows.filter(row => row.kind === 'income').reduce((sum, row) => sum + row.journalAmountMinor, 0n), 4052n);
+  assert.equal(rows.some(row => row.id === 'expense-b'), false);
+  const scoped = c.financeJournal(data, { kind: 'income', payerKey: 'legacy:Client', bucketId: 'a' });
+  assert.equal(scoped.length, 1); assert.equal(scoped[0].id, 'one');
+  assert.equal(c.financeJournal(data, { payerKey: 'legacy:Client' }).filter(row => row.kind === 'expense').length, 2);
+});
+
+test('operation export keeps income and expense columns separate and excludes cancelled entries', () => {
+  const data = fixture(); data.expenses = [{ id: 'fuel', bucketId: 'b', bucketName: '=bad', date: '2026-09-03', amountMinor: 1234, payee: '@payee', note: '"Refuel"\nToday' }, { id: 'void', bucketId: 'b', date: '2026-09-03', amountMinor: 80000, voided: true }];
+  const csv = c.financeLedgerCSV(c.financeJournal(data));
+  assert.ok(csv.includes('"Приход, RUB";"Расход, RUB"'));
+  assert.ok(csv.includes('"0.00";"12.34"'));
+  assert.ok(csv.includes('"100.01";"0.00"'));
+  assert.ok(csv.includes('"\'=bad"')); assert.ok(csv.includes('"\'@payee"'));
+  assert.ok(csv.includes('"""Refuel""\nToday"')); assert.equal(csv.includes('800.00'), false);
+  const accountCSV = c.financeLedgerCSV(c.financeJournal(data, { bucketId: 'a' }));
+  assert.ok(accountCSV.includes('"40.01";"0.00"')); assert.equal(accountCSV.includes('"100.01"'), false);
+});
+
+test('expense uncertain retry keeps original account and exact amount; known bucket revision conflict can be corrected', async () => {
+  const draft = c.createFinanceRequestDraft('expense-stable-key'), sent = [];
+  const payload = c.financeExpensePayload({ bucketId: 'car', amount: '10,25', date: '2026-09-14', note: 'Fuel' }, [{ id: 'car', revision: 1 }]);
+  await assert.rejects(draft.submit(payload, value => { sent.push(value); throw new Error('Connection lost'); }));
+  await assert.rejects(draft.submit({ ...payload, bucketId: 'tithe' }, () => assert.fail('Changed account must not be sent')));
+  await draft.submit(payload, value => { sent.push(value); return { id: 'saved-expense' }; });
+  assert.equal(JSON.stringify(sent[0]), JSON.stringify(sent[1])); assert.equal(sent[1].amountMinor, 1025);
+  await assert.rejects(draft.submit(payload, () => { throw Object.assign(new Error('Bucket changed'), { status: 409 }); }));
+  const result = await draft.submit({ ...payload, expectedBucketRevision: 2 }, value => value);
+  assert.equal(result.clientRequestId, 'expense-stable-key'); assert.equal(result.expectedBucketRevision, 2);
+});
+
+function financeUIHarness() {
+  const buttons = new Map(), calls = [], html = [];
+  const makeButton = (dataset = {}) => ({ dataset, addEventListener(name, action) { this[name] = action; } });
+  const periodButtons = ['today', 'week', 'month'].map(financePeriod => makeButton({ financePeriod }));
+  const viewButtons = ['accounts', 'history'].map(financeView => makeButton({ financeView }));
+  const root = {
+    querySelector(selector) { if (!buttons.has(selector)) buttons.set(selector, makeButton()); return buttons.get(selector); },
+    querySelectorAll(selector) { return selector === '[data-finance-period]' ? periodButtons : selector === '[data-finance-view]' ? viewButtons : []; },
+  };
+  class Clock extends Date { constructor(...args) { super(...(args.length ? args : ['2026-09-14T12:00:00Z'])); } }
+  const state = { me: { id: 'first-owner' }, activeWorkspaceId: 'private', view: 'personal', personalTab: 'finance' };
+  const context = vm.createContext({ Date: Clock, document: { querySelector(selector) { return selector === '[data-personal-finance]' ? root : null; } } });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'personal-finance.js'), 'utf8').replaceAll('export ', ''), context);
+  let ui;
+  ui = context.createPersonalFinanceUI({ state, api(url, options) { return new Promise((resolve, reject) => calls.push({ url, options, resolve, reject })); }, escapeHTML: value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;'), icon: () => '', toast: () => {}, renderPersonal() { html.push(ui.render()); } });
+  return { state, ui, calls, html, buttons, periodButtons, viewButtons, tick: () => new Promise(resolve => setImmediate(resolve)) };
+}
+
+test('finance screen moves between full-history account balances and dated expense history without mixing totals', async () => {
+  const h = financeUIHarness(), data = fixture(); data.sources = [{ id: 's', name: 'Service' }];
+  data.balances = [{ bucketId: 'a', allocatedMinor: 204052, spentMinor: 60000, balanceMinor: 144052, periodAllocatedMinor: 4052, periodSpentMinor: 10000, openingMinor: 150000 }];
+  data.expenses = [{ id: 'fuel', bucketId: 'a', bucketName: 'Car', amountMinor: 10000, date: '2026-09-14', note: 'Refuel', revision: 1 }];
+  h.ui.render(); h.ui.bind(); assert.match(h.calls[0].url, /from=2026-09-01&to=2026-09-30$/);
+  h.calls[0].resolve(data); await h.tick();
+  const accounts = h.ui.render(); assert.match(accounts, /1[\s\u00a0\u202f]440,52 ₽/); assert.ok(accounts.includes('data-finance-accounts-block')); assert.ok(accounts.includes('Refuel'));
+  h.viewButtons[1].onclick(); const history = h.ui.render();
+  assert.ok(history.includes('data-finance-history-block')); assert.equal(history.includes('data-finance-accounts-block'), false); assert.ok(history.includes('пн, 14 сентября 2026 г.'));
+  assert.ok(history.includes('data-finance-expense="fuel"')); assert.ok(history.includes('−100 ₽'));
+  h.viewButtons[0].onclick(); assert.ok(h.ui.render().includes('data-finance-accounts-block'));
+});
+
+test('late prior-period and prior-owner responses cannot overwrite the selected finance view', async () => {
+  const h = financeUIHarness(); h.ui.render(); h.ui.bind();
+  h.periodButtons[0].onclick(); assert.match(h.calls[1].url, /from=2026-09-14&to=2026-09-14$/);
+  h.calls[1].resolve({ buckets: [], sources: [], entries: [], expenses: [], balances: [] }); await h.tick();
+  h.calls[0].resolve({ buckets: [], sources: [], entries: [{ id: 'old', sourceName: 'STALE MONTH', allocations: [] }], expenses: [] }); await h.tick();
+  assert.equal(h.ui.render().includes('STALE MONTH'), false);
+  h.ui.invalidate(); h.ui.bind(); const previousOwner = h.calls[2];
+  h.state.me = { id: 'second-owner' }; h.ui.reset(); h.ui.render(); h.ui.bind(); const nextOwner = h.calls[3];
+  assert.equal(previousOwner.options.headers['X-Outbox-Owner'], 'first-owner'); assert.equal(nextOwner.options.headers['X-Outbox-Owner'], 'second-owner');
+  previousOwner.resolve({ buckets: [{ id: 'private', name: 'OTHER ACCOUNT SECRET' }], sources: [], entries: [], expenses: [], balances: [] }); await h.tick();
+  assert.equal(h.ui.render().includes('OTHER ACCOUNT SECRET'), false);
+  nextOwner.resolve({ buckets: [{ id: 'own', name: 'OWN ACCOUNT' }], sources: [], entries: [], expenses: [], balances: [] }); await h.tick();
+  assert.ok(h.ui.render().includes('OWN ACCOUNT')); assert.equal(h.ui.render().includes('OTHER ACCOUNT SECRET'), false);
+});
+
+test('dirty finance back waits for one confirmation and ignores an answer after account changes', async () => {
+  const state = { me: { id: 'owner' }, activeWorkspaceId: 'private' }, confirmations = [];
+  const box = { open: true, dataset: { financeOwner: 'owner', composerDirty: 'true' }, addEventListener() {} };
+  const close = { focus() {} }, root = { isConnected: true, querySelector: selector => selector === '[data-finance-close]' ? close : null };
+  const content = { innerHTML: 'UNCHANGED DRAFT', querySelector: () => root };
+  const ctx = vm.createContext({ document: { querySelector: selector => selector === '#workspace-dialog' ? box : selector === '#workspace-dialog-content' ? content : null } });
+  const source = fs.readFileSync(path.join(__dirname, 'personal-finance.js'), 'utf8').replaceAll('export ', '').replace('return { render, bind, openSettings, reset, invalidate };', 'return { render, bind, openSettings, reset, invalidate, replaceDialog };');
+  vm.runInContext(source, ctx);
+  const ui = ctx.createPersonalFinanceUI({ state, api: () => {}, escapeHTML: value => value, icon: () => '', openModal: () => {}, requestDialogClose: () => {}, toast: () => {}, renderPersonal: () => {}, confirmDiscard: () => new Promise(resolve => confirmations.push(resolve)) });
+  const first = ui.replaceDialog('Next', 'NEW');
+  assert.equal(confirmations.length, 1); assert.equal(content.innerHTML, 'UNCHANGED DRAFT');
+  assert.equal(await ui.replaceDialog('Another', 'OTHER'), null); assert.equal(confirmations.length, 1);
+  confirmations[0](false); assert.equal(await first, null); assert.equal(box.dataset.composerDirty, 'true');
+  const changedOwner = ui.replaceDialog('Next', 'NEW'); state.me = { id: 'another' }; confirmations[1](true);
+  assert.equal(await changedOwner, null); assert.equal(content.innerHTML, 'UNCHANGED DRAFT');
+  state.me = { id: 'owner' };
+  const accepted = ui.replaceDialog('Next', 'NEW'); confirmations[2](true);
+  const view = await accepted; assert.equal(view.alive(), true); assert.equal(box.dataset.composerDirty, 'false'); assert.ok(content.innerHTML.includes('NEW'));
+});
+
+test('income preview explains the selected worker rule and never subtracts hidden worker values', () => {
+  assert.equal(c.financeIncomeBasePreview('', '500', false), 'Доли считаются от всей суммы дохода.');
+  assert.equal(c.financeIncomeBasePreview('', '500', true), 'Распределение рассчитывается после выплат исполнителям.');
+  assert.equal(c.financeIncomeBasePreview('100', '500', false), 'К распределению: 100 ₽');
+  assert.equal(c.financeIncomeBasePreview('100', '25,50', true), 'К распределению: 74,50 ₽');
+  assert.equal(c.financeIncomeBasePreview('100', '101', true), 'Выплаты исполнителям не могут превышать доход.');
+});

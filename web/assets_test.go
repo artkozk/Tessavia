@@ -249,7 +249,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260913-personal-navigation-1")) != 5 {
+	if bytes.Count(index, []byte("20260914-finance-expenses-1")) != 6 {
 		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
 	}
 	styles, err := Files.ReadFile("styles.css")

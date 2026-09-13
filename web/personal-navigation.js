@@ -5,7 +5,7 @@ export function personalNavigationItems() {
     ['calendar', 'Календарь', 'calendar', true],
     ['personal:plans', 'Дела', 'checkSquare', true],
     ['personal:habits', 'Привычки', 'rotate', true],
-    ['personal:finance', 'Финансы', 'scale', true],
+    ['personal:finance', 'Финансы', 'scale', false],
     ['personal:inbox', 'Входящие', 'inbox', false],
     ['personal:notes', 'Заметки', 'edit', false],
     ['personal:projects', 'Личные проекты', 'folder', false],

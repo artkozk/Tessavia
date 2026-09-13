@@ -1,28 +1,29 @@
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260913-personal-navigation-1';
-import { createSettingsHub } from './settings-hub.js?v=20260913-personal-navigation-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260913-personal-navigation-1';
-import { createPageAppUI } from './page-apps.js?v=20260913-personal-navigation-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260913-personal-navigation-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260913-personal-navigation-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260913-personal-navigation-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-finance-expenses-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-finance-expenses-1';
+import { createSettingsHub } from './settings-hub.js?v=20260914-finance-expenses-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260914-finance-expenses-1';
+import { createPageAppUI } from './page-apps.js?v=20260914-finance-expenses-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260914-finance-expenses-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-finance-expenses-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-finance-expenses-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260913-personal-navigation-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-finance-expenses-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260913-personal-navigation-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-finance-expenses-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260913-personal-navigation-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260913-personal-navigation-1';
-import { createFirstUseUI } from './first-use.js?v=20260913-personal-navigation-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-finance-expenses-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-finance-expenses-1';
+import { createFirstUseUI } from './first-use.js?v=20260914-finance-expenses-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260913-personal-navigation-1';
+import { createLifeMapUI } from './life-map.js?v=20260914-finance-expenses-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
 import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260913-personal-navigation-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260914-finance-expenses-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1757,9 +1758,22 @@ function signalProtectedDialog(dialog, message = 'Рабочее окно зак
 async function confirmDialogTransition(dialog) {
   if (dialog.dataset.settingsSaving === 'true') { toast('Дождитесь сохранения настроек'); return false; }
   if (dialog.dataset.profileBusy === 'true') { toast('Дождитесь завершения сохранения профиля'); return false; }
+  if (dialog.dataset.composerDirty === 'true' && $('.finance-dialog, .page-text-editor', dialog)) return confirmEditedPanelClose(dialog);
   if (dialog.dataset.composerDirty === 'true') return discardComposerChanges(dialog);
   if (!flushDialogDrafts(dialog)) { toast('Не удалось сохранить черновик на устройстве. Окно оставлено открытым', true); return false; }
   return true;
+}
+
+async function confirmEditedPanelClose(dialog) {
+  if (dialog.pendingDiscard) return false;
+  const panel = $('.finance-dialog, .page-text-editor', dialog), owner = state.me?.id, workspace = state.activeWorkspaceId;
+  dialog.pendingDiscard = true;
+  try {
+    const answer = await askChoice({eyebrow:'Несохранённые изменения',title:'Закрыть без сохранения?',label:'Введённые изменения ещё не сохранены. Можно вернуться к редактированию или закрыть это окно.',choices:[{value:'discard',label:'Закрыть без сохранения'}]});
+    if (answer !== 'discard' || owner !== state.me?.id || workspace !== state.activeWorkspaceId || !dialog.open || !panel.isConnected || $('.finance-dialog, .page-text-editor', dialog) !== panel || dialog.dataset.settingsSaving === 'true') return false;
+    dialog.dataset.composerDirty = 'false';
+    return true;
+  } finally { dialog.pendingDiscard = false; }
 }
 
 function closeDialogImmediately(dialog, returnValue = '') {
@@ -2624,10 +2638,10 @@ function renderPersonal() {
   const doneToday = data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.state === 'success')).length;
   const title = personalNavigationItems().find(item => item.key === personalNavigationKey(state.personalTab))?.label || 'Сегодня';
   $('#main-content').innerHTML = `
-    <div class="page-heading personal-heading">
+    ${state.personalTab === 'finance' ? '' : `<div class="page-heading personal-heading">
       <div><p class="eyebrow">${icon('lock')} Только для вас</p><h1>${escapeHTML(title)}</h1></div>
       ${renderPersonalCreateMenu()}
-    </div>
+    </div>`}
     ${emptyPersonal || state.personalTab !== 'today' ? '' : `<section class="personal-summary" aria-label="Личная сводка"><article><span>Привычки сегодня</span><strong>${doneToday}/${data.habits.filter(h => !h.archivedAt && h.days?.some(d => d.date === h.today && d.planned)).length}</strong><small>отмечено</small></article><article><span>Незавершённые дела</span><strong>${openPlans.length}</strong><small>${openPlans.filter((plan) => plan.dueAt || plan.startDate || plan.startsAt || plan.occurrenceDate).length} запланировано</small></article><article><span>Проекты и цели</span><strong>${data.projects.length}/${data.goals.length}</strong><small>открыто</small></article></section>`}
     <div class="personal-content">${renderPersonalTab(data)}</div>`;
   bindPersonalInteractions();
@@ -2738,7 +2752,7 @@ function renderPlanRow(plan, links) {
 }
 
 const personalWaitingUI=createPersonalWaitingUI({state,api,navigate:navigateToView,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,renderPersonal,toast,openPlan:openPersonalPlanDetails});
-const personalFinanceUI=createPersonalFinanceUI({state,api,escapeHTML,icon,openModal,requestDialogClose,toast,enhanceSelects,bindComposerForm,renderPersonal});
+const personalFinanceUI=createPersonalFinanceUI({state,api,escapeHTML,icon,openModal,requestDialogClose,toast,enhanceSelects,bindComposerForm,renderPersonal,confirmDiscard:async()=> (await askChoice({eyebrow:'Финансы',title:'Несохранённая запись',label:'Вернуться без сохранения введённых изменений?',choices:[{value:'discard',label:'Вернуться без сохранения'}]}))==='discard'});
 const personalRemindersUI=createPersonalRemindersUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,renderPersonal,openSource:openPersonalReminderSource,openHabit:openHabitReminderSource,openPlans:()=>navigateToView('personal',{personalTab:'plans'}),refreshNotifications:loadNotificationInbox});
 async function openPersonalReminderSource(id){const owner=state.me?.id;await navigateToView('personal',{personalTab:'today'});if(owner!==state.me?.id)return;await loadPersonal({force:true});if(owner===state.me?.id)openPersonalPlanDetails(id);}
 const settingsHub=createSettingsHub({getContext:settingsContext,escapeHTML,icon,openModal,requestDialogClose,runAction:runSettingsAction});
@@ -9383,6 +9397,8 @@ function renderPageLayoutEditor(catalog) {
 
 function bindPageLayoutEditor(editor, catalog) {
   const draft = state.pageLayoutDraft;
+  $('header > div', editor).insertAdjacentHTML('beforeend', `<button type="button" class="secondary" data-page-texts>${icon('edit')} Тексты и подписи</button>`);
+  $('[data-page-texts]', editor).addEventListener('click', () => openPageTextEditor());
   if (state.view === 'personal' && state.personalTab === 'today') {
     $('header', editor).insertAdjacentHTML('afterend', `<label class="check today-adaptive-option"><input type="checkbox" data-today-adaptive ${useProgressiveToday(draft.value, false) ? 'checked' : ''}><span>Скрывать пустые блоки автоматически</span></label>`);
     $('[data-today-adaptive]', editor).addEventListener('change', event => { draft.value.adaptiveToday = event.target.checked; applyPageLayout(); });
@@ -9447,14 +9463,62 @@ function applyPageBlockTitle(node,block,value,editing) {
   else {title.removeAttribute('tabindex');title.removeAttribute('title');}
 }
 async function editPageBlockTitle(block,node) {
-  const draft=state.pageLayoutDraft,title=pageBlockTitleNode(node,block);if(!draft||!title)return;
-  const save=$('[data-page-layout-save]');if(save)save.disabled=true;
-  const text=await askText({eyebrow:'Личная настройка страницы',title:'Заголовок на вашей странице',label:'Введите свой текст. Пустое поле вернёт исходный заголовок.',defaultValue:draft.value.texts?.[block.key]||title.pageOriginalTitle,required:false});
-  if(save?.isConnected)save.disabled=false;
-  if(text===null||state.pageLayoutDraft!==draft)return;
-  draft.value.texts={...draft.value.texts};
-  if(text.trim())draft.value.texts[block.key]=[...text.trim()].slice(0,160).join('');else delete draft.value.texts[block.key];
-  applyPageLayout();
+  if (!state.pageLayoutDraft || !pageBlockTitleNode(node, block)) return;
+  openPageTextEditor(block.key);
+}
+
+function pageTextValues(layout) {
+  const texts = { ...layout.texts };
+  if (state.view === 'personal' && state.personalTab === 'finance' && !texts['label:finance-title'] && texts.heading) texts['label:finance-title'] = texts.heading;
+  return texts;
+}
+
+function openPageTextEditor(selectedKey = '') {
+  const draft = state.pageLayoutDraft;
+  if (!draft || state.pageLayoutSaving) return;
+  const root = $('#main-content'), dialog = $('#workspace-dialog'), content = $('#workspace-dialog-content');
+  if (!discardComposerChanges(dialog)) return;
+  const visibleTexts = pageTextValues(draft.value);
+  const targets = new Map(pageLabelTargets(root).map(target => [target.key, target]));
+  for (const block of pageLayoutCatalog().blocks) {
+    const node = $(`[data-page-block="${block.key}"]`, root) || $(block.selector, root);
+    const title = pageBlockTitleNode(node, block);
+    if (title) targets.set(block.key, { key: block.key, original: title.pageOriginalTitle ?? title.textContent, nodes: [title] });
+  }
+  const items = [...targets.values()];
+  content.innerHTML = `<form class="workspace-editor-shell page-text-editor"><header><div><p class="eyebrow">Оформление этой страницы · ${draft.device === 'mobile' ? 'телефон' : 'ПК'}</p><h2>Тексты и подписи</h2></div><button type="button" class="icon-button" data-text-close aria-label="Закрыть">${icon('x')}</button></header><p class="muted">Переименуйте подписи в одном месте. Даты, суммы и ваши записи останутся без изменений.</p><label class="page-text-search">Найти подпись<input type="search" data-text-search placeholder="Например, доход"></label><div class="page-text-list">${items.map(item => `<div class="page-text-row" data-text-row="${escapeHTML(item.key)}"><label><span>${escapeHTML(item.original)}</span><input type="text" data-text-key="${escapeHTML(item.key)}" aria-label="Своя подпись: ${escapeHTML(item.original)}" maxlength="320" value="${escapeHTML(visibleTexts[item.key] || item.original)}" placeholder="${escapeHTML(item.original)}"></label><button type="button" class="icon-button" data-text-reset="${escapeHTML(item.key)}" aria-label="Вернуть исходную подпись: ${escapeHTML(item.original)}" title="Вернуть исходную подпись">${icon('rotate')}</button></div>`).join('')}</div><p class="muted" data-text-empty ${items.length ? 'hidden' : ''}>На этой странице нет подходящих подписей.</p><footer class="form-actions"><button type="submit" class="primary">${icon('check')} Применить подписи</button><button type="button" class="secondary" data-text-close>Отмена</button></footer><p class="muted">После применения можно проверить вид страницы. Затем сохраните оформление.</p></form>`;
+  const form = $('form', content);
+  $$('[data-text-close]', form).forEach(button => button.addEventListener('click', () => requestDialogClose(dialog)));
+  const inputs = $$('[data-text-key]', form);
+  inputs.forEach(input => input.addEventListener('input', () => {
+    const length = [...input.value.trim()].length;
+    input.setCustomValidity(length > 160 ? 'Подпись может содержать не больше 160 символов.' : '');
+  }));
+  $$('[data-text-reset]', form).forEach(button => button.addEventListener('click', () => {
+    const item = targets.get(button.dataset.textReset), input = inputs.find(input => input.dataset.textKey === item.key);
+    input.value = item.original; input.setCustomValidity(''); dialog.dataset.composerDirty = 'true'; input.focus();
+  }));
+  $('[data-text-search]', form).addEventListener('input', event => {
+    const query = event.target.value.trim().toLocaleLowerCase(); let shown = 0;
+    for (const input of inputs) {
+      const item = targets.get(input.dataset.textKey), row = input.closest('[data-text-row]');
+      row.hidden = !`${item.original} ${input.value}`.toLocaleLowerCase().includes(query);
+      if (!row.hidden) shown++;
+    }
+    $('[data-text-empty]', form).hidden = shown > 0;
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (state.pageLayoutDraft !== draft || !form.reportValidity()) return;
+    draft.value.texts = updatePageTexts(visibleTexts, inputs.map(input => ({ ...targets.get(input.dataset.textKey), value: input.value })));
+    if (state.view === 'personal' && state.personalTab === 'finance' && targets.has('label:finance-title')) delete draft.value.texts.heading;
+    dialog.dataset.composerDirty = 'false';
+    await requestDialogClose(dialog); applyPageLayout();
+  });
+  // Search is navigation within the editor, not a changed caption.
+  inputs.forEach(input => input.addEventListener('input', () => { dialog.dataset.composerDirty = 'true'; }));
+  openModal(dialog);
+  (inputs.find(input => input.dataset.textKey === selectedKey) || $('[data-text-search]', form))?.focus();
 }
 
 function applyPageLayout() {
@@ -9525,6 +9589,16 @@ function applyPageLayout() {
     }
   });
   catalog.fields.forEach(field=>$$(field.selector,root).forEach(node=>node.classList.toggle('page-field-hidden',value.hiddenFields?.includes(field.key)||false)));
+  applyPageLabels(root, pageTextValues(value), editing);
+  if (!root.pageLabelClickHandler) {
+    root.pageLabelClickHandler = event => {
+      const target = event.target.closest('[data-page-label]');
+      if (!state.pageLayoutDraft || !target || !root.contains(target)) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      openPageTextEditor(`label:${target.dataset.pageLabel}`);
+    };
+    root.addEventListener('click', root.pageLabelClickHandler, true);
+  }
   $$('.work-kanban[data-work-scroll="board"]', root).forEach(board => board.classList.toggle('work-kanban-five', $$(':scope > .kanban-column:not(.page-field-hidden)', board).length === 5));
   if(state.view==='work'||typeMeta[state.view]) {
     const columns=['minmax(180px, 2.2fr)',...['owner','status','due'].filter(key=>!value.hiddenFields?.includes(key)).map(()=>'minmax(100px, 1fr)')];

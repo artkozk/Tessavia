@@ -1,0 +1,21 @@
+.app-component-panel { min-width:0; margin-top:24px; border-top:1px solid var(--line); padding-top:16px; }
+.app-component-panel h3,.app-component-panel h4,.app-component-panel p { overflow-wrap:anywhere; }
+.app-component-panel h3 { margin-block:16px; }
+.app-component-panel form { display:grid; gap:16px; min-width:0; }
+.app-component-panel label { display:grid; gap:8px; min-width:0; }
+.app-component-panel input,.app-component-panel textarea,.app-component-panel select { min-width:0; max-width:100%; }
+.app-component-panel button { white-space:normal; overflow-wrap:anywhere; }
+.app-component-preview { padding:16px; border:1px solid var(--line); border-radius:var(--radius); max-height:420px; overflow:auto; }
+.app-component-preview .app-items button:disabled { opacity:1; }
+.app-component-list { display:grid; gap:12px; }
+.app-component-list article { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-block:16px; border-bottom:1px solid var(--line); min-width:0; }
+.app-component-list article > div { min-width:0; }
+.app-component-list h4,.app-component-list p { margin:0; }
+.app-component-list p { margin-top:8px; }
+.app-component-list article > button { flex-shrink:0; }
+.app-builder-layout > aside > [data-builder-components] { margin-top:12px; width:100%; }
+@media(max-width:540px) {
+ .app-component-list article { align-items:stretch; flex-direction:column; }
+ .app-component-panel > button.primary,.app-component-panel form > button { width:100%; }
+ .app-component-preview { padding:10px; }
+}

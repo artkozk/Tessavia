@@ -72,6 +72,9 @@ type financeOverview struct {
 	Sources        []financeSource       `json:"sources"`
 	Entries        []financeEntry        `json:"entries"`
 	Counterparties []financeCounterparty `json:"counterparties"`
+	Expenses       []financeExpense      `json:"expenses"`
+	Balances       []financeBalance      `json:"balances"`
+	BalanceThrough string                `json:"balanceThrough"`
 }
 type financeEntryInput struct {
 	ClientRequestID        string  `json:"clientRequestId,omitempty"`
@@ -111,6 +114,10 @@ func (s *Server) registerPersonalFinanceRoutes() {
 		"PUT /api/personal/finance/entries/{id}":             s.handleFinanceEntry,
 		"PATCH /api/personal/finance/entries/{id}/transfers": s.handleFinanceTransfer,
 		"PATCH /api/personal/finance/entries/{id}/void":      s.handleFinanceVoid,
+		"POST /api/personal/finance/expenses":                s.handleFinanceExpense,
+		"GET /api/personal/finance/expenses/{id}":            s.handleReadFinanceExpense,
+		"PUT /api/personal/finance/expenses/{id}":            s.handleFinanceExpense,
+		"PATCH /api/personal/finance/expenses/{id}/void":     s.handleFinanceExpenseVoid,
 	} {
 		s.mux.Handle(pattern, s.requireAuth(handler))
 	}
@@ -261,6 +268,15 @@ func (s *Server) handlePersonalFinance(w http.ResponseWriter, r *http.Request) {
 		if len(result.Entries) > personalFinanceMaxEntries {
 			return nil, 0, financeError{422, "В периоде больше 5000 доходов. Выберите меньший период — данные не обрезаны"}
 		}
+		result.Expenses, err = readFinanceExpenses(tx, r, from, to)
+		if err != nil {
+			return nil, 0, err
+		}
+		result.Balances, err = readFinanceBalances(tx, r, result.Buckets, from, to)
+		if err != nil {
+			return nil, 0, err
+		}
+		result.BalanceThrough = to
 		return result, 200, nil
 	})
 }
