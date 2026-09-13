@@ -1,0 +1,116 @@
+{
+  "completed_utc": "2026-09-13T21:03:19.219223+00:00",
+  "host": "159.194.231.150",
+  "current_preserved": "/opt/business-control/releases/20260913-personal-navigation-2ae5847",
+  "deletion": {
+    "release": {
+      "count": 107,
+      "allocated_bytes": 2311446528
+    },
+    "tmp_elf": {
+      "count": 14,
+      "allocated_bytes": 256684032
+    }
+  },
+  "root_free_before_artifact_cleanup_bytes": 262598656,
+  "root_free_after_artifact_cleanup_bytes": 2573991936,
+  "apt_cache_before_bytes": 286597120,
+  "apt_cache_after_bytes": 65536,
+  "preservation": {
+    "backups": {
+      "unchanged": true,
+      "entries": 1644,
+      "metadata_sha256": "2cd5ff3e0fe41347ce1bba999ebc42132c6884a7b34e6bedeb5f6ef10c2fb78a"
+    },
+    "daily": {
+      "unchanged": true,
+      "entries": 46,
+      "metadata_sha256": "7b095274cf1e9e45ada0dc6550eab1ccbbc031fa4119a60a86cd73ca25fcaf82"
+    },
+    "uploads": {
+      "unchanged": true,
+      "entries": 10,
+      "metadata_sha256": "bfecd6eaf3ea5e36093e96b5a7ccb554391b54812c9077aa2e19f135528e767e"
+    },
+    "utc": "2026-09-13T20:59:53.557873+00:00",
+    "service_after": "ActiveState=active\nMainPID=862053\nNRestarts=0",
+    "service_identity_unchanged": true,
+    "root_available_bytes": 2860523520,
+    "root_total_bytes": 9181077504,
+    "releases_remaining": 47,
+    "mem_available_bytes": 692641792,
+    "shmem_bytes": 14974976,
+    "tmp_allocated_bytes": 11128832
+  },
+  "restore": {
+    "utc": "2026-09-13T20:56:06.413470+00:00",
+    "current": "/opt/business-control/releases/20260913-personal-navigation-2ae5847",
+    "bundles_verified": [
+      {
+        "bundle": "pre-personal-navigation-20260913T205002Z",
+        "manifest_files": 6,
+        "sqlite_integrity_and_fk": true,
+        "gzip_integrity": true
+      },
+      {
+        "bundle": "pre-finance-flexibility-20260913T194159Z",
+        "manifest_files": 6,
+        "sqlite_integrity_and_fk": true,
+        "gzip_integrity": true
+      },
+      {
+        "bundle": "pre-personal-finance-20260912T204519Z",
+        "manifest_files": 6,
+        "sqlite_integrity_and_fk": true,
+        "gzip_integrity": true
+      },
+      {
+        "bundle": "pre-settings-hub-20260909T215842Z",
+        "manifest_files": 6,
+        "sqlite_integrity_and_fk": true,
+        "gzip_integrity": true
+      },
+      {
+        "bundle": "pre-calendar-layout-20260909T212342Z",
+        "manifest_files": 6,
+        "sqlite_integrity_and_fk": true,
+        "gzip_integrity": true
+      },
+      {
+        "bundle": "pre-record-card-composition-20260908T143043Z",
+        "manifest_files": 6,
+        "sqlite_integrity_and_fk": true,
+        "gzip_integrity": true
+      },
+      {
+        "bundle": "pre-record-calculations-20260908T132837Z",
+        "manifest_files": 6,
+        "sqlite_integrity_and_fk": true,
+        "gzip_integrity": true
+      }
+    ],
+    "restored_bundle": "pre-personal-navigation-20260913T205002Z",
+    "restore_binary": "/opt/business-control/releases/20260913-finance-flexibility-889d34d/business-control",
+    "health": 200,
+    "all_tables_and_schema_unchanged": true,
+    "tables_checked": 124,
+    "isolated_files_removed": true
+  },
+  "protected_release_count": 37,
+  "unknown_release_count": 10,
+  "unavailable_source_commit_pins": 21,
+  "source_commits_verified_locally": 107,
+  "tests_passed": 9,
+  "installed_helper": "/usr/local/sbin/business-control-cleanup-artifacts",
+  "installed_helper_sha256": "cdf5ea78dda6a9e03025c79985b10d495ba402f9bac2d1087887a6f7b8093bdf",
+  "executed_cleanup_source_sha256": "e271fb3244e030b1e512583b7ad56311b0573620d756b7bae6442db20af881e4",
+  "http_verification": {
+    "local_health": 200,
+    "public_health": 200,
+    "public_home": 200
+  },
+  "all_backups_preserved": true,
+  "external_storage_connected": false,
+  "swap_or_reboot_changed": false,
+  "automatic_cleanup_schedule_created": false
+}
