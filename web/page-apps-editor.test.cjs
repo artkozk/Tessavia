@@ -7,6 +7,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function surface(){return{firstElementChild:null,nodes:new Map(),_html:'',set innerHTML(value){
  this._html=value;this.firstElementChild={inert:false};this.nodes=new Map();const elements={};
  for(const tag of value.match(/<(?:input|textarea|select)\b[^>]*>/g)||[]){const name=tag.match(/\bname="([^"]+)"/)?.[1];if(name)elements[name]={value:tag.match(/\bvalue="([^"]*)"/)?.[1]||''};}
+ for(const [,name,text] of value.matchAll(/<textarea\b[^>]*name="([^"]+)"[^>]*>([\s\S]*?)<\/textarea>/g))if(elements[name])elements[name].value=text;
  for(const tag of value.match(/<(?:button|form|input)\b[^>]*>/g)||[]){
   const attrs=[...tag.matchAll(/\b(data-(?:builder|app|template|component)-[a-z-]+)(?:="([^"]*)")?/g)];
   if(!attrs.length&&!/type="submit"/.test(tag))continue;
@@ -18,17 +19,18 @@ function surface(){return{firstElementChild:null,nodes:new Map(),_html:'',set in
 },get innerHTML(){return this._html;},querySelector(selector){return this.nodes.get(selector)?.[0]||null;},querySelectorAll(selector){return this.nodes.get(selector)||[];}};}
 function harness(){
  const box={open:false,dataset:{}},host=surface(),main=surface(),state={me:{id:'owner'},activeWorkspaceId:'personal',view:'page:page',workspaces:[{id:'personal',kind:'personal'}],collections:[],records:[]};
- const calls=[],toasts=[],storage=new Map(),reads=[],stats={opened:0,closed:0,reloads:0},page={id:'page',name:'Page'};
+ const calls=[],toasts=[],storage=new Map(),reads=[],components=[],stats={opened:0,closed:0,reloads:0},page={id:'page',name:'Page'};let nextID=0;
  let reload=()=>Promise.resolve();
  const $=(selector,root)=>root?root.querySelector(selector):({'#workspace-dialog':box,'#workspace-dialog-content':host,'#main-content':main}[selector]||null);
- const context=vm.createContext({structuredClone,crypto:{randomUUID:()=> 'new-id'},localStorage:{getItem(key){reads.push(key);return storage.get(key)||null;},setItem(key,value){storage.set(key,value);},removeItem(key){storage.delete(key);}},
+ const context=vm.createContext({structuredClone,crypto:{randomUUID:()=> `00000000-0000-4000-8000-${String(++nextID).padStart(12,'0')}`},localStorage:{getItem(key){reads.push(key);return storage.get(key)||null;},setItem(key,value){storage.set(key,value);},removeItem(key){storage.delete(key);}},
   createPageDataUI:()=>({mount(){}}),mountPageForms(){},applyElementStyles(){},migrateFormElementStyles(){},blockVisible:()=>true,blockOutline:def=>def.blocks.map(block=>({block,depth:0})),groupChoices:()=>[],elementStyleConfig:()=>'',visibilityConfig:()=>''});
- for(const file of ['page-sheets.js','page-components.js','page-apps.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),context);
+ for(const file of ['page-sheets.js','page-components.js','page-block-kind.js','page-apps.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),context);
+ const createComponents=context.createPageComponentEditor;context.createPageComponentEditor=options=>{const editor=createComponents(options);components.push(editor);return editor;};
  context.createPageSheetUI=()=>({mount(){},reset(){}});
  context.options={state,api:(url,options)=>{const pending=deferred();calls.push({url,options,...pending});return pending.promise;},escapeHTML:String,icon:()=>'', $, $$:(selector,root)=>root?.querySelectorAll(selector)||[],
   openModal(){if(box.open)return;box.open=true;box.dataset.openOrder=String(++stats.opened);},requestDialogClose:async()=>{if(box.dataset.settingsSaving==='true')return false;stats.closed++;box.open=false;return true;},toast:(message,error)=>toasts.push({message,error}),canConfigureWorkspace:()=>true,reloadPages:()=>{stats.reloads++;return reload();},navigate:view=>state.view=view,formDependencies:{},dataDependencies:{}};
  const ui=vm.runInContext('createPageAppUI(options)',context);
- return{box,host,main,state,calls,toasts,storage,reads,stats,page,ui,setReload:fn=>reload=fn};
+ return{box,host,main,state,calls,toasts,storage,reads,stats,page,ui,components,setReload:fn=>reload=fn};
 }
 const loaded=(blocks=[])=>({revision:1,definition:{version:1,blocks},marks:{},sheets:{secret:{values:{private:'999'},revision:1}}});
 async function openEditor(h,blocks=[]){const pending=h.ui.edit(h.page);h.calls[0].resolve(loaded(blocks));await pending;assert.equal(h.box.open,true);}
@@ -185,4 +187,61 @@ test('an uncommitted insertion recovered after a conflict cannot save an old dra
  const retry=h.host.querySelector('[data-component-retry]').onclick();h.calls[5].reject(Object.assign(new Error('Revision conflict'),{status:409}));await retry;h.host.querySelector('[data-component-back]').onclick();
  const save=h.host.querySelector('[data-builder-save]').onclick();assert.equal(JSON.parse(h.calls[6].options.body).expectedRevision,1);h.calls[6].reject(Object.assign(new Error('Revision conflict'),{status:409}));await save;
  const draft=JSON.parse([...h.storage.values()][0]);assert.equal(draft.revision,1);assert.equal(draft.componentRequest,null);assert.equal(h.box.open,true);
+});
+
+function writeComponentMetadata(h,name,description){
+ const form=h.host.querySelector('[data-component-save-form]');assert.ok(form,'component form remains editable');form.elements.name.value=name;form.elements.description.value=description;form.oninput();return form;
+}
+async function reopenEditor(h,blocks,revision=1){const opening=h.ui.edit(h.page);h.calls.at(-1).resolve({...loaded(blocks),revision});await opening;}
+const componentDraftKey='tessavie:app-draft:owner:personal:page';
+
+test('component names and descriptions survive Back, close and a newer page load without blocking the editor',async()=>{
+ const h=harness(),blocks=[{id:'root',kind:'text',title:'Original block'}];await openEditor(h,blocks);h.components.at(-1).save();writeComponentMetadata(h,'My reusable block','Description entered on a phone');
+ assert.equal(JSON.parse(h.storage.get(componentDraftKey)).pageDirty,false);h.host.querySelector('[data-component-back]').onclick();h.components.at(-1).save();assert.match(h.host.innerHTML,/My reusable block/);assert.match(h.host.innerHTML,/Description entered on a phone/);
+ await h.host.querySelector('[data-builder-close]').onclick();await reopenEditor(h,[{...blocks[0],title:'Server renamed the block'}],3);assert.doesNotMatch(h.host.innerHTML,/Есть несохранённый черновик/);assert.equal(h.host.querySelector('[data-builder-save]').disabled,false);
+ h.components.at(-1).save();assert.match(h.host.innerHTML,/My reusable block/);assert.match(h.host.innerHTML,/Description entered on a phone/);
+});
+
+test('successful creation clears only the selected root metadata and preserves other component drafts',async()=>{
+ const h=harness(),blocks=[{id:'first',kind:'text',title:'First'},{id:'second',kind:'text',title:'Second'}];await openEditor(h,blocks);h.components.at(-1).save();writeComponentMetadata(h,'First metadata','First notes');h.host.querySelector('[data-component-back]').onclick();h.host.querySelectorAll('[data-builder-select]').find(b=>b.dataset.builderSelect==='second').onclick();h.components.at(-1).save();writeComponentMetadata(h,'Second metadata','Second notes');
+ h.host.querySelector('[data-component-back]').onclick();h.host.querySelectorAll('[data-builder-select]').find(b=>b.dataset.builderSelect==='first').onclick();h.components.at(-1).save();const form=h.host.querySelector('[data-component-save-form]'),saving=form.onsubmit({preventDefault(){}});
+ h.calls.at(-1).resolve({id:'saved',name:'First metadata'});await saving;const draft=JSON.parse(h.storage.get(componentDraftKey));assert.equal(draft.componentDrafts.first,undefined);assert.deepEqual(draft.componentDrafts.second,{name:'Second metadata',description:'Second notes'});assert.equal(draft.componentRequest,null);
+});
+
+test('400 and 409 keep component metadata in the editable form and a corrected attempt uses a fresh key',async()=>{
+ for(const status of [400,409]){
+  const h=harness();await openEditor(h,[{id:'root',kind:'text',title:'Original'}]);h.components.at(-1).save();let form=writeComponentMetadata(h,'Typed name','Do not lose this description');const attempt=form.onsubmit({preventDefault(){}}),first=JSON.parse(h.calls.at(-1).options.body);
+  h.calls.at(-1).reject(Object.assign(new Error('Correct the component name'),{status}));await attempt;assert.match(h.host.innerHTML,/role="alert"/);form=h.host.querySelector('[data-component-save-form]');assert.equal(form.elements.name.value,'Typed name');assert.equal(form.elements.description.value,'Do not lose this description');assert.equal(JSON.parse(h.storage.get(componentDraftKey)).componentRequest,null);
+  form=writeComponentMetadata(h,'Corrected name','Do not lose this description');const corrected=form.onsubmit({preventDefault(){}}),body=JSON.parse(h.calls.at(-1).options.body);assert.notEqual(body.clientRequestId,first.clientRequestId);assert.equal(body.name,'Corrected name');h.calls.at(-1).resolve({id:'saved',name:'Corrected name'});await corrected;assert.equal(h.storage.has(componentDraftKey),false);
+ }
+});
+
+test('unknown component creation outcome retains exact retry body and metadata through close and reload',async()=>{
+ const h=harness(),blocks=[{id:'root',kind:'text',title:'Original'}];await openEditor(h,blocks);h.components.at(-1).save();const form=writeComponentMetadata(h,'Pending name','Pending description'),saving=form.onsubmit({preventDefault(){}}),exact=h.calls.at(-1).options.body;
+ h.calls.at(-1).reject(new TypeError('Connection interrupted'));await saving;assert.match(h.host.innerHTML,/Проверить и продолжить/);assert.equal(JSON.parse(h.storage.get(componentDraftKey)).componentDrafts.root.description,'Pending description');await h.host.querySelector('[data-builder-close]').onclick();await reopenEditor(h,blocks);h.host.querySelector('[data-builder-restore]').onclick();const retry=h.host.querySelector('[data-component-retry]').onclick();assert.equal(h.calls.at(-1).options.body,exact);h.calls.at(-1).resolve({id:'saved-once',name:'Pending name'});await retry;assert.equal(h.storage.has(componentDraftKey),false);
+});
+
+test('component drafts survive page Save, page Cancel and discarding the offered page draft',async()=>{
+ for(const action of ['save','cancel','discard']){
+  const h=harness(),blocks=[{id:'root',kind:'text',title:'Block'}];await openEditor(h,blocks);h.components.at(-1).save();writeComponentMetadata(h,'Still composing','Local metadata');h.host.querySelector('[data-component-back]').onclick();h.host.querySelector('[data-builder-page-name]').oninput({target:{value:'Unsaved page name'}});
+  if(action==='save'){const saving=h.host.querySelector('[data-builder-save]').onclick();h.calls.at(-1).resolve({...loaded(blocks),revision:2});await tick();h.calls.at(-1).resolve({...loaded(blocks),revision:2});await saving;}
+  if(action==='cancel')await h.host.querySelector('[data-builder-cancel]').onclick();
+  if(action==='discard'){await h.host.querySelector('[data-builder-close]').onclick();await reopenEditor(h,blocks);h.host.querySelector('[data-builder-discard]').onclick();}
+  const draft=JSON.parse(h.storage.get(componentDraftKey));assert.deepEqual(draft.componentDrafts.root,{name:'Still composing',description:'Local metadata'});assert.equal(draft.pageDirty,false);assert.equal(draft.pageName,action==='save'?'Unsaved page name':'Page');if(action==='save')assert.equal(draft.revision,2);
+ }
+});
+
+test('inserting another component preserves existing metadata with the accepted page revision',async()=>{
+ const h=harness(),blocks=[{id:'root',kind:'text',title:'My existing block'}];await openEditor(h,blocks);h.components.at(-1).save();writeComponentMetadata(h,'Keep composing this block','Independent from the inserted copy');h.host.querySelector('[data-component-back]').onclick();await openComponentPreview(h);
+ const inserting=h.host.querySelector('[data-component-insert]').onclick(),updated=[...blocks,{id:'copy',kind:'group',title:'Inserted copy'}];h.calls.at(-1).resolve({...loaded(updated),revision:2,rootBlockId:'copy',pageName:'Page'});await tick();h.calls.at(-1).resolve({...loaded(updated),revision:2});await inserting;
+ const draft=JSON.parse(h.storage.get(componentDraftKey));assert.deepEqual(draft.componentDrafts.root,{name:'Keep composing this block',description:'Independent from the inserted copy'});assert.equal(draft.revision,2);assert.equal(draft.pageDirty,false);assert.equal(draft.componentRequest,null);
+ await h.host.querySelector('[data-builder-close]').onclick();await reopenEditor(h,updated,2);assert.doesNotMatch(h.host.innerHTML,/Есть несохранённый черновик/);h.components.at(-1).save();assert.match(h.host.innerHTML,/Keep composing this block/);
+});
+
+test('component metadata is scoped by account, workspace and page, and a stale input cannot change storage',async()=>{
+ for(const scope of ['account','workspace','page']){
+  const h=harness(),blocks=[{id:'root',kind:'text',title:'Original'}];await openEditor(h,blocks);h.components.at(-1).save();const form=writeComponentMetadata(h,'PRIVATE NAME','PRIVATE DESCRIPTION'),before=h.storage.get(componentDraftKey);
+  await h.host.querySelector('[data-builder-close]').onclick();if(scope==='account')h.state.me={id:'other'};if(scope==='workspace')h.state.activeWorkspaceId='other';if(scope==='page'){h.page.id='other-page';h.state.view='page:other-page';}
+  form.elements.name.value='Stale overwrite';form.oninput();assert.equal(h.storage.get(componentDraftKey),before);await reopenEditor(h,blocks);h.components.at(-1).save();assert.doesNotMatch(h.host.innerHTML,/PRIVATE NAME|PRIVATE DESCRIPTION/);assert.equal(h.storage.get(componentDraftKey),before);
+ }
 });

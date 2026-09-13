@@ -15,7 +15,14 @@ export function componentInsertTargets(host, component) {
  return host.blocks.filter(b=>b.kind==='group'&&depth(b,groups)+1+height<=4);
 }
 
-export function createPageComponentEditor({escapeHTML:e,uid,request,owns,collect,getDefinition,getName,getSelection,getRevision,pageId,persist,draw,setBusy,getPending,setPending,onInserted,toast,normalize,markup,stylePreview}) {
+export function normalizeComponentDrafts(value) {
+ const drafts=Object.create(null);
+ if(!value||typeof value!=='object'||Array.isArray(value))return drafts;
+ for(const [id,draft] of Object.entries(value))if(/^[a-zA-Z0-9_-]{1,64}$/.test(id)&&draft&&typeof draft==='object'&&!Array.isArray(draft)&&typeof draft.name==='string'&&typeof draft.description==='string')drafts[id]={name:draft.name,description:draft.description};
+ return drafts;
+}
+
+export function createPageComponentEditor({escapeHTML:e,uid,request,owns,collect,getDefinition,getName,getSelection,getRevision,pageId,persist,draw,setBusy,getPending,setPending,onInserted,toast,normalize,markup,stylePreview,getDraft=()=>null,setDraft=()=>{},clearDraft=()=>{}}) {
  let panel=null,serial=0,busy=false;
  const pending=()=>getPending();
  const active=()=>Boolean(panel||pending());
@@ -31,23 +38,30 @@ export function createPageComponentEditor({escapeHTML:e,uid,request,owns,collect
  }
  function save(){
   if(!owns()||pending()||!collect())return;
-  try{const definition=componentSubtree(normalize(getDefinition()),getSelection()),root=definition.blocks.find(b=>!b.parentId);show({mode:'save',definition,rootId:root.id,name:Array.from(root.title||'Мой блок').slice(0,80).join(''),description:''});}catch(error){toast(error.message,true);}
+  try{const definition=componentSubtree(normalize(getDefinition()),getSelection()),root=definition.blocks.find(b=>!b.parentId),draft=getDraft(root.id);show({mode:'save',definition,rootId:root.id,name:draft?.name??Array.from(root.title||'Мой блок').slice(0,80).join(''),description:draft?.description??''});}catch(error){toast(error.message,true);}
  }
  async function submit(body,kind){
   if(!owns()||busy)return;
   if(!pending()){setPending({kind,body});persist();}
-  const operation=pending();busy=true;setBusy(true);
+  const operation=pending(),originPanel=panel;busy=true;setBusy(true);
   try{
    const result=await request(operation.kind==='insert'?`/api/workspace/pages/${pageId}/app/component`:'/api/page-app/components',{method:'POST',body:JSON.stringify(operation.body)});
    if(!owns())return;setPending(null);setBusy(false);
    if(operation.kind==='insert'){panel=null;await onInserted(result,operation.body.pageName);if(owns())toast('Свой блок вставлен. Страница сохранена; копию можно менять независимо.');}
-   else{persist();show({mode:'saved',item:result});toast('Свой блок сохранён в личной библиотеке');}
+   else{clearDraft(operation.body.rootBlockId);persist();show({mode:'saved',item:result});toast('Свой блок сохранён в личной библиотеке');}
   }catch(error){
    if(owns()){
     // A definite validation/permission response has not committed a mutation.
     // Unknown network outcomes retain the exact body and id for a safe retry.
-    if([400,401,403,404,409,413,422].includes(error.status)){setPending(null);persist();}
-    setBusy(false);panel={mode:'error',message:error.message};draw();toast(error.message,true);
+    const definite=[400,401,403,404,409,413,422].includes(error.status);
+    if(definite){setPending(null);persist();}
+    setBusy(false);
+    if(definite&&operation.kind==='create'){
+     const draft=getDraft(operation.body.rootBlockId)||operation.body;
+     panel={mode:'save',definition:operation.body.definition,rootId:operation.body.rootBlockId,name:draft.name,description:draft.description,error:error.message};
+    }else if(definite&&originPanel?.mode==='preview')panel={...originPanel,error:error.message};
+    else panel={mode:'error',message:error.message};
+    draw();toast(error.message,true);
    }
   }finally{busy=false;setBusy(false);}
  }
@@ -61,7 +75,7 @@ export function createPageComponentEditor({escapeHTML:e,uid,request,owns,collect
   if(panel.mode==='preview'){const d=panel.item.definition,count=getDefinition().blocks.length+d.blocks.length;body=`<h3>${e(panel.item.name)}</h3>${panel.item.description?`<p>${e(panel.item.description)}</p>`:''}<div class="app-canvas app-component-preview">${markup(d,{},e,true)}</div><label>Разместить внутри<select data-component-parent><option value="">На странице</option>${componentInsertTargets(getDefinition(),d).map(b=>`<option value="${e(b.id)}" ${panel.parentId===b.id?'selected':''}>${e(b.title||'Группа')}</option>`).join('')}</select></label><p>Вставка сохранит текущие изменения страницы «${e(getName())}». ${d.collections?.length?'Для списков и форм будут созданы отдельные пустые доски. ':''}Отметки и введённые числа начнутся с пустого состояния.</p>${count>40?'<p role="alert">Вместе с копией получится больше 40 блоков. Освободите место или выберите другую страницу.</p>':''}<button type="button" class="primary" data-component-insert ${count>40?'disabled':''}>Вставить и сохранить страницу</button>`;}
   if(panel.mode==='saved')body=`<h3>Блок «${e(panel.item.name)}» сохранён</h3><p>Откройте другую свою страницу → Конструктор → Мои блоки, чтобы вставить независимую копию. Изменения исходной страницы пока остаются в черновике.</p><button type="button" class="secondary" data-component-library>Открыть мои блоки</button>`;
   if(panel.mode==='error')body=`<h3>Не удалось завершить</h3><p role="alert">${e(panel.message)}</p><button type="button" class="secondary" data-component-library>Открыть мои блоки</button>`;
-  return `<section class="app-component-panel" tabindex="-1" aria-label="Свои блоки"><button type="button" class="text-button" data-component-back>← К редактированию страницы</button>${body}</section>`;
+  return `<section class="app-component-panel" tabindex="-1" aria-label="Свои блоки"><button type="button" class="text-button" data-component-back>← К редактированию страницы</button>${panel.error?`<p role="alert">${e(panel.error)}</p>`:''}${body}</section>`;
  }
  function bind(host){
   const one=selector=>host.querySelector(selector);
@@ -69,7 +83,7 @@ export function createPageComponentEditor({escapeHTML:e,uid,request,owns,collect
   one('[data-component-library]')?.addEventListener('click',library);
   host.querySelectorAll('[data-component-preview]').forEach(b=>b.onclick=()=>preview(b.dataset.componentPreview));
   one('[data-component-retry]')?.addEventListener('click',()=>{if(pending())return submit(pending().body,pending().kind);});
-  const form=one('[data-component-save-form]');if(form){form.oninput=()=>{panel.name=form.elements.name.value;panel.description=form.elements.description.value;};form.onsubmit=event=>{event.preventDefault();if(!owns()||!form.reportValidity())return;return submit({name:form.elements.name.value,description:form.elements.description.value,definition:panel.definition,rootBlockId:panel.rootId,clientRequestId:uid()},'create');};}
+  const form=one('[data-component-save-form]');if(form){const remember=()=>{if(!owns()||busy||pending())return;panel.name=form.elements.name.value;panel.description=form.elements.description.value;setDraft(panel.rootId,{name:panel.name,description:panel.description});persist();};form.oninput=remember;form.onchange=remember;form.onsubmit=event=>{event.preventDefault();if(!owns()||busy||!form.reportValidity())return;remember();return submit({name:panel.name,description:panel.description,definition:panel.definition,rootBlockId:panel.rootId,clientRequestId:uid()},'create');};}
   const parent=one('[data-component-parent]');if(parent)parent.onchange=()=>panel.parentId=parent.value;
   one('[data-component-insert]')?.addEventListener('click',()=>{if(!owns()||!collect()||!getName().trim())return toast('Укажите название страницы',true);let definition;try{definition=normalize(getDefinition());}catch(error){return toast(error.message,true);}return submit({componentId:panel.item.id,clientRequestId:uid(),parentId:panel.parentId,pageName:getName(),expectedRevision:getRevision(),definition},'insert');});
   if(panel?.mode==='preview')stylePreview(host,panel.item.definition);if(panel?.mode==='save')stylePreview(host,panel.definition);

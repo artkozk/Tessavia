@@ -17,3 +17,9 @@ test('insertion destinations respect the complete component depth and exclude no
  const host={blocks:[{id:'a',kind:'group'},{id:'b',kind:'group',parentId:'a'},{id:'c',kind:'group',parentId:'b'},{id:'d',kind:'group',parentId:'c'},{id:'text',kind:'text'}]},component={blocks:[{id:'x',kind:'group'},{id:'y',kind:'group',parentId:'x'},{id:'z',kind:'text',parentId:'y'}]};
  assert.deepEqual(Array.from(targets(host,component),b=>b.id),['a','b']);
 });
+
+test('component metadata normalization preserves empty and long drafts without accepting foreign fields or inheriting keys',()=>{
+ const value=JSON.parse('{"root":{"name":"","description":"Kept","definition":"ignored"},"__proto__":{"name":"Prototype block","description":"Plain ID"},"bad id":{"name":"bad","description":"bad"},"missing":{"name":"No description"},"array":[]}');value.long={name:'Название '.repeat(20),description:'Описание '.repeat(100)};
+ const before=JSON.stringify(value),drafts=context.normalizeComponentDrafts(value);assert.equal(Object.getPrototypeOf(drafts),null);assert.deepEqual(Object.keys(drafts),['root','__proto__','long']);assert.equal(drafts.root.name,'');assert.equal(drafts.root.definition,undefined);assert.equal(drafts.__proto__.name,'Prototype block');assert.equal(drafts.long.description,value.long.description);drafts.root.description='Changed';assert.equal(JSON.stringify(value),before);
+ for(const invalid of [null,[],1,'draft'])assert.equal(Object.keys(context.normalizeComponentDrafts(invalid)).length,0);
+});

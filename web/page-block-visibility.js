@@ -1,4 +1,4 @@
-import { blockSubtree } from './page-composition.js?v=20260914-field-conversion-1';
+import { blockSubtree } from './page-composition.js?v=20260914-constructor-safety-1';
 const visibilityMetrics={checked:'Выполнено пунктов',remaining:'Осталось пунктов',percent:'Выполнено, %'};
 const visibilityOperators={eq:'Равно',ne:'Не равно',gt:'Больше',gte:'Не меньше',lt:'Меньше',lte:'Не больше'};
 export const visibilityLeaves=c=>!c?[]:c.mode?c.conditions||[]:[c];
