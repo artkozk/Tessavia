@@ -155,6 +155,7 @@ func (s *Server) routes() {
 	s.mux.Handle("PATCH /api/collections/{id}/stages/{stageId}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollectionStage)))
 	s.mux.Handle("PUT /api/records/{id}/collection", s.requireAuth(http.HandlerFunc(s.handleAssignRecordCollection)))
 	s.mux.Handle("POST /api/collections/{id}/fields", s.requireAuth(http.HandlerFunc(s.handleCreateCollectionField)))
+	s.mux.Handle("POST /api/collections/{id}/fields/{fieldId}/conversion-preview", s.requireAuth(http.HandlerFunc(s.handlePreviewCollectionFieldConversion)))
 	s.mux.Handle("PATCH /api/collections/{id}/fields/{fieldId}", s.requireAuth(http.HandlerFunc(s.handleUpdateCollectionField)))
 	s.mux.Handle("GET /api/collections/{id}/schema", s.requireAuth(http.HandlerFunc(s.handleCollectionSchema)))
 	s.mux.Handle("DELETE /api/collections/{id}/fields/{fieldId}", s.requireAuth(http.HandlerFunc(s.handleArchiveCollectionElement)))
@@ -1202,6 +1203,10 @@ func (s *Server) handleCreateRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	if !collectionFieldSnapshotMatches(r.Context(), tx, input.CollectionID, collectionFields) {
+		writeError(w, http.StatusConflict, "Схема полей изменилась. Обновите форму и проверьте значения перед созданием карточки")
+		return
+	}
 	now := nowText()
 	if s.claimRecordCreate(w, r, tx, intent, id) {
 		return

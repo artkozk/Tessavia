@@ -646,6 +646,35 @@ func (s *Server) handleCreateCollectionField(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusCreated, CollectionField{ID: id, Key: input.Key, Name: input.Name, FieldType: input.FieldType, Required: input.Required, ShowOnCard: input.ShowOnCard, SortOrder: sortOrder, Options: options})
 }
 
+func (s *Server) handlePreviewCollectionFieldConversion(w http.ResponseWriter, r *http.Request) {
+	if !s.requireWorkspaceAdmin(w, r) {
+		return
+	}
+	collectionID, fieldID := r.PathValue("id"), r.PathValue("fieldId")
+	if !s.collectionBelongsToWorkspace(r.Context(), collectionID, currentWorkspace(r).ID) {
+		writeError(w, 404, "Доска не найдена")
+		return
+	}
+	var input struct {
+		FieldType string `json:"fieldType"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	tx, err := s.store.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, 500, "Не удалось прочитать данные для предпросмотра")
+		return
+	}
+	defer tx.Rollback()
+	preview, _, err := readFieldConversion(r.Context(), tx, currentWorkspace(r).ID, collectionID, fieldID, input.FieldType)
+	if err != nil {
+		writeFieldConversionError(w, err)
+		return
+	}
+	writeJSON(w, 200, preview)
+}
+
 func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Request) {
 	if !s.requireWorkspaceAdmin(w, r) {
 		return
@@ -657,12 +686,14 @@ func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var input struct {
-		DefaultValue json.RawMessage          `json:"defaultValue"`
-		ExpectedAt   string                   `json:"expectedUpdatedAt"`
-		Name         string                   `json:"name"`
-		Required     bool                     `json:"required"`
-		ShowOnCard   bool                     `json:"showOnCard"`
-		Options      *[]CollectionFieldOption `json:"options"`
+		DefaultValue   json.RawMessage          `json:"defaultValue"`
+		ExpectedAt     string                   `json:"expectedUpdatedAt"`
+		Name           string                   `json:"name"`
+		Required       bool                     `json:"required"`
+		ShowOnCard     bool                     `json:"showOnCard"`
+		Options        *[]CollectionFieldOption `json:"options"`
+		FieldType      *string                  `json:"fieldType"`
+		ConversionHash string                   `json:"conversionHash"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -670,6 +701,14 @@ func (s *Server) handleUpdateCollectionField(w http.ResponseWriter, r *http.Requ
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Name == "" || len([]rune(input.Name)) > 80 {
 		writeError(w, http.StatusBadRequest, "Некорректное название поля")
+		return
+	}
+	if input.FieldType != nil {
+		if input.Options != nil || len(input.DefaultValue) > 0 {
+			writeError(w, 400, "Сначала смените тип поля, затем отдельно измените варианты или начальное значение")
+			return
+		}
+		s.applyCollectionFieldConversion(w, r, collectionID, fieldID, input.Name, *input.FieldType, input.ExpectedAt, input.ConversionHash, input.Required, input.ShowOnCard)
 		return
 	}
 	var defaultValue string
@@ -899,6 +938,10 @@ func (s *Server) handleUpdateRecordFields(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer tx.Rollback()
+	if !collectionFieldSnapshotMatches(r.Context(), tx, record.CollectionID, fields) {
+		writeError(w, http.StatusConflict, "Схема полей изменилась. Обновите карточку и проверьте значения перед сохранением")
+		return
+	}
 	now := nowText()
 	for fieldID, raw := range input.Values {
 		field, ok := fieldByID[fieldID]

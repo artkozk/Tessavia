@@ -1,29 +1,30 @@
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-mobile-habits-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-mobile-habits-1';
-import { createSettingsHub } from './settings-hub.js?v=20260914-mobile-habits-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260914-mobile-habits-1';
-import { createPageAppUI } from './page-apps.js?v=20260914-mobile-habits-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260914-mobile-habits-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-mobile-habits-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-mobile-habits-1';
+import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-field-conversion-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-field-conversion-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-field-conversion-1';
+import { createSettingsHub } from './settings-hub.js?v=20260914-field-conversion-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260914-field-conversion-1';
+import { createPageAppUI } from './page-apps.js?v=20260914-field-conversion-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260914-field-conversion-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-field-conversion-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-field-conversion-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-mobile-habits-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-field-conversion-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-mobile-habits-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-field-conversion-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-mobile-habits-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-mobile-habits-1';
-import { createFirstUseUI } from './first-use.js?v=20260914-mobile-habits-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-field-conversion-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-field-conversion-1';
+import { createFirstUseUI } from './first-use.js?v=20260914-field-conversion-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260914-mobile-habits-1';
+import { createLifeMapUI } from './life-map.js?v=20260914-field-conversion-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI } from './habit-tracker.js?v=20260914-mobile-habits-1';
+import { createHabitUI } from './habit-tracker.js?v=20260914-field-conversion-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260914-mobile-habits-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260914-field-conversion-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -894,6 +895,7 @@ function workingDraftValues(root) {
     else if (field.multiple) values[field.name] = [...field.selectedOptions].map((option) => option.value);
     else values[field.name] = String(field.value || '');
   });
+  for(const [name,original] of Object.entries(root.fieldDraftConflicts||{})) values[name]=original;
   return values;
 }
 
@@ -921,7 +923,15 @@ function applyWorkingDraft(root, values = {}) {
     if (!field || field.type === 'file') return;
     if (field.type === 'checkbox' || field.type === 'radio') field.checked = Array.isArray(value) ? value.includes(String(field.value || 'on')) : String(field.value || 'on') === String(value);
     else if (field.multiple && Array.isArray(value)) [...field.options].forEach((option) => { option.selected = value.includes(option.value); });
-    else field.value = String(value ?? '');
+    else if(name.startsWith('custom:') && field.tagName==='SELECT' && !field.multiple && incompatibleChoiceDraft(value,[...field.options].map(option=>option.value))){
+      root.fieldDraftConflicts ||= {};root.fieldDraftConflicts[name]=value;
+      field.setCustomValidity('Проверьте черновик: тип поля или варианты изменились');
+      const panel=document.createElement('section');panel.className='field-conflict-review';
+      const original=(Array.isArray(value)?value:[value]).map(item=>[...field.options].find(option=>option.value===String(item))?.textContent||'Недоступный вариант').join(', ');
+      panel.innerHTML=`<h3>Проверьте черновик поля</h3><p>В черновике: ${escapeHTML(original)}.</p><p>Поле теперь принимает один доступный вариант. Выберите подходящее значение в форме и подтвердите его. Исходный выбор сохранён в черновике до подтверждения.</p><button type="button" class="secondary">Подтвердить выбранное значение</button>`;
+      field.closest('label').before(panel);
+      $('button',panel).onclick=()=>{if(field.required&&!field.value){toast('Выберите значение поля',true);field.focus();return;}delete root.fieldDraftConflicts[name];field.setCustomValidity('');panel.remove();root.dispatchEvent(new Event('input',{bubbles:true}));};
+    }else field.value = String(value ?? '');
     field.dataset.userChanged = 'true';
     if (field.classList.contains('markdown-source')) setMarkdownEditorValue(field.closest('.markdown-editor'), field.value, false);
     if (field.tagName === 'SELECT') syncCustomSelect(field);
@@ -4446,29 +4456,72 @@ function askCollectionStageConfiguration(stage) {
 	});
 }
 
-function askCollectionFieldConfiguration(field) {
-	const dialog = $('#reason-dialog');
-	$('#reason-dialog-content').innerHTML = `<div class="dialog-header constructor-form-header"><div><span class="record-kind">Пользовательское поле</span><h2>Настроить поле</h2></div><button type="button" class="icon-button" data-cancel-field-config aria-label="Закрыть">${icon('x')}</button></div><form id="field-config-form" class="card-form dialog-form"><label>Название<input name="name" required maxlength="80" value="${escapeHTML(field.name)}"></label><p class="muted">Тип поля не меняется после создания, чтобы уже заполненные данные оставались корректными.</p><label class="check"><input type="checkbox" name="required" ${field.required ? 'checked' : ''}> Обязательное поле</label><label class="check"><input type="checkbox" name="showOnCard" ${field.showOnCard ? 'checked' : ''}> Показывать значение на карточке</label><div class="form-actions"><button type="submit" class="primary">Сохранить</button><button type="button" class="secondary" data-cancel-field-config>Отмена</button></div></form>`;
-  const configForm=$('#field-config-form',dialog),choice=['select','multi_select'].includes(field.fieldType);
-  if(choice)$('.form-actions',configForm).insertAdjacentHTML('beforebegin',`<section class="collection-option-editor"><h3>Варианты ответа</h3><p class="muted">Переименование обновит подпись в существующих карточках. Выбранные значения сохранятся.</p>${field.options.map(option=>`<label>Вариант<input name="option:${option.id}" data-option-id="${option.id}" value="${escapeHTML(option.name)}" required maxlength="80"></label>`).join('')}<label>Новые варианты<textarea name="newOptions" rows="3" placeholder="Каждый вариант с новой строки"></textarea></label></section>`);
-  const supportsDefault=!['user','relation'].includes(field.fieldType);
+function askCollectionFieldConfiguration(field, conversion = {}) {
+  const dialog = $('#reason-dialog'), typeChoices = fieldConversionChoices(field.fieldType);
+  $('#reason-dialog-content').innerHTML = `<div class="dialog-header constructor-form-header"><div><span class="record-kind">Пользовательское поле</span><h2>Настроить поле</h2></div><button type="button" class="icon-button" data-cancel-field-config aria-label="Закрыть">${icon('x')}</button></div>
+    <form id="field-config-form" class="card-form dialog-form"><label>Название<input name="name" required maxlength="80" value="${escapeHTML(field.name)}"></label>
+    <label>Тип поля<select name="fieldType" ${typeChoices.length===1?'disabled':''}>${typeChoices.map(type=>`<option value="${type}" ${type===field.fieldType?'selected':''}>${escapeHTML(collectionFieldTypeNames[type]||type)}</option>`).join('')}</select></label>
+    <p class="muted">${typeChoices.length>1?'Смена типа доступна с предпросмотром сохранённых значений.':'Для этого типа пока нет преобразования, сохраняющего все значения.'}</p>
+    <label class="check"><input type="checkbox" name="required" ${field.required?'checked':''}> Обязательное поле</label>
+    <label class="check"><input type="checkbox" name="showOnCard" ${field.showOnCard?'checked':''}> Показывать значение на карточке</label>
+    <p class="muted" data-conversion-notice hidden>При смене типа начальное значение преобразуется вместе с карточками. Варианты и начальное значение можно изменить отдельно после сохранения типа.</p>
+    <section data-conversion-preview class="field-conversion-preview" aria-live="polite" hidden></section><p data-config-error class="danger-text" role="alert" hidden></p>
+    <div class="form-actions"><button type="submit" class="primary">Сохранить</button><button type="button" class="secondary" data-cancel-field-config>Отмена</button></div></form>`;
+  const form=$('#field-config-form',dialog), choice=['select','multi_select'].includes(field.fieldType), supportsDefault=!['user','relation'].includes(field.fieldType);
+  const notice=$('[data-conversion-notice]',form), panel=$('[data-conversion-preview]',form), errorNode=$('[data-config-error]',form), submit=$('[type="submit"]',form);
+  if(choice) notice.insertAdjacentHTML('beforebegin',`<fieldset class="collection-option-editor field-config-options"><legend>Варианты ответа</legend><p class="muted">Переименование обновит подпись в существующих карточках. Выбранные значения сохранятся.</p>${field.options.map(option=>`<label>Вариант<input name="option:${option.id}" data-option-id="${option.id}" value="${escapeHTML(option.name)}" required maxlength="80"></label>`).join('')}<label>Новые варианты<textarea name="newOptions" rows="3" placeholder="Каждый вариант с новой строки"></textarea></label></fieldset>`);
   if(supportsDefault){
     const enabled=field.defaultValue!==undefined&&field.defaultValue!==null;
-    $('.form-actions',configForm).insertAdjacentHTML('beforebegin',`<details class="collection-default-config" ${enabled?'open':''}><summary>Начальное значение</summary><p class="muted">Подставляется в новые карточки. Старые значения сохраняются; при заполнении можно заменить или очистить.</p><label class="check"><input type="checkbox" name="useDefault" ${enabled?'checked':''}> Подставлять при создании</label><fieldset data-default-value>${collectionFieldInput({...field,name:'Значение',required:false},field.defaultValue)}</fieldset>${choice?'<p class="muted">Новые варианты появятся здесь после сохранения справочника.</p>':''}</details>`);
+    notice.insertAdjacentHTML('beforebegin',`<fieldset class="field-config-defaults"><details class="collection-default-config" ${enabled?'open':''}><summary>Начальное значение</summary><p class="muted">Подставляется в новые карточки. Старые значения сохраняются; при заполнении можно заменить или очистить.</p><label class="check"><input type="checkbox" name="useDefault" ${enabled?'checked':''}> Подставлять при создании</label><fieldset data-default-value>${collectionFieldInput({...field,name:'Значение',required:false},field.defaultValue)}</fieldset>${choice?'<p class="muted">Новые варианты появятся здесь после сохранения справочника.</p>':''}</details></fieldset>`);
   }
-  bindWorkingDraft(configForm,`collection-field-config:${state.activeWorkspaceId}:${field.id}`);
-  if(supportsDefault){
-    const syncDefault=()=>{$('[data-default-value]',configForm).disabled=!configForm.elements.useDefault.checked;};
-    configForm.elements.useDefault.addEventListener('change',syncDefault);syncDefault();bindCollectionMultiFields(configForm);
-  }
-	return new Promise((resolve) => {
-		let closing = false; let result = null;
-		const finish = (value) => { if (closing||!flushDialogDrafts(dialog)) return; closing = true; result = value; dialog.close(); };
-		$$('[data-cancel-field-config]', dialog).forEach((button) => button.addEventListener('click', () => finish(null)));
-		$('#field-config-form', dialog).addEventListener('submit', (event) => { event.preventDefault(); const form = event.currentTarget;const value={ name: String(new FormData(form).get('name')).trim(), required: form.elements.required.checked, showOnCard: form.elements.showOnCard.checked };if(supportsDefault)value.defaultValue=form.elements.useDefault.checked?customFieldsFromForm(form,[field])[field.id]:null;if(choice)value.options=[...form.querySelectorAll('[data-option-id]')].map(input=>({id:input.dataset.optionId,name:input.value.trim()})).concat(form.elements.newOptions.value.split(/\r?\n/).map(name=>name.trim()).filter(Boolean).map(name=>({name})));finish(value); });
-		dialog.addEventListener('close', () => resolve(result), { once: true });
-		openModal(dialog);
-	});
+  const extras=()=>JSON.stringify(['.field-config-options','.field-config-defaults'].map(selector=>{const node=$(selector,form);return node?workingDraftValues(node):null;}));
+  const originalExtras=extras();
+  bindWorkingDraft(form,`collection-field-config:${state.activeWorkspaceId}:${field.id}`);
+  bindCollectionMultiFields(form);
+  let preview=null, busy=false, closing=false, result=null;
+  const isConversion=()=>form.elements.fieldType.value!==field.fieldType;
+  const current=()=>form.isConnected&&dialog.open&&(!conversion.isCurrent||conversion.isCurrent());
+  const sync=()=>{
+    const changing=isConversion(); notice.hidden=!changing;
+    for(const selector of ['.field-config-options','.field-config-defaults']) {const node=$(selector,form);if(node)node.disabled=changing;}
+    if(supportsDefault)$('[data-default-value]',form).disabled=changing||!form.elements.useDefault.checked;
+    submit.textContent=changing?(preview?'Применить смену типа':'Проверить смену типа'):'Сохранить';
+  };
+  const invalidate=()=>{preview=null;panel.hidden=true;panel.replaceChildren();errorNode.hidden=true;sync();};
+  form.addEventListener('input',invalidate);form.addEventListener('change',invalidate);sync();
+  return new Promise(resolve=>{
+    const finish=value=>{if(closing||!flushDialogDrafts(dialog))return;closing=true;result=value;dialog.close();};
+    $$('[data-cancel-field-config]',dialog).forEach(button=>button.addEventListener('click',()=>finish(null)));
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();if(busy||!current())return;
+      if(Object.keys(form.fieldDraftConflicts||{}).length){errorNode.textContent='Сначала проверьте сохранённый черновик значения поля и подтвердите выбранное значение.';errorNode.hidden=false;return;}
+      const value={name:form.elements.name.value.trim(),required:form.elements.required.checked,showOnCard:form.elements.showOnCard.checked};
+      if(!isConversion()){
+        if(supportsDefault)value.defaultValue=form.elements.useDefault.checked?customFieldsFromForm(form,[field])[field.id]:null;
+        if(choice)value.options=[...form.querySelectorAll('[data-option-id]')].map(input=>({id:input.dataset.optionId,name:input.value.trim()})).concat(form.elements.newOptions.value.split(/\r?\n/).map(name=>name.trim()).filter(Boolean).map(name=>({name})));
+        finish(value);return;
+      }
+      if(!conversion.preview||!conversion.apply)return;
+      if(extras()!==originalExtras){errorNode.textContent='Вы изменили варианты или начальное значение. Сначала сохраните эти настройки с прежним типом, затем меняйте тип поля.';errorNode.hidden=false;return;}
+      const target=form.elements.fieldType.value, accepted=preview;
+      busy=true;errorNode.hidden=true;form.setAttribute('aria-busy','true');
+      form.inert=true;submit.disabled=true;
+      submit.textContent=accepted?'Сохраняем…':'Проверяем…';
+      try{
+        if(!accepted){
+          const next=await conversion.preview(target);if(!current())return;
+          if(next.from!==field.fieldType||next.to!==target||!next.conversionHash)throw new Error('Схема поля изменилась. Закройте настройку и откройте поле заново; черновик сохранён.');
+          preview=next;panel.innerHTML=fieldConversionPreviewHTML(next,field);panel.hidden=false;
+        }else{
+          const saved=await conversion.apply({...value,fieldType:target,conversionHash:accepted.conversionHash});
+          if(saved&&form.isConnected&&dialog.open){finish({saved:true});clearWorkingDraft(`collection-field-config:${conversion.workspace}:${field.id}`);}
+        }
+      }catch(error){
+        if(current()){preview=null;panel.hidden=true;errorNode.textContent=error.message||'Не удалось сохранить изменение. Повторите предпросмотр.';errorNode.hidden=false;}
+      }finally{busy=false;form.inert=false;submit.disabled=false;form.removeAttribute('aria-busy');sync();}
+    });
+    dialog.addEventListener('close',()=>resolve(result),{once:true});openModal(dialog);
+  });
 }
 
 async function refreshCollectionSettingsDialog() {
@@ -4513,7 +4566,7 @@ async function openCollectionSettingsDialog(collection, tab = 'fields') {
     $$('[data-schema-panel]',shell).forEach(panel => panel.hidden = panel.dataset.schemaPanel !== tab);
   }));
   let busy = false;
-  const mutate = async (path,method,body,message) => {
+  const mutate = async (path,method,body,message,throwErrors=false) => {
     if (busy || !isProjectContextCurrent(context) || !shell.isConnected) return;
     if (!flushDialogDrafts(dialog)) return toast('Не удалось сохранить черновик на устройстве', true);
     busy = true;
@@ -4527,8 +4580,8 @@ async function openCollectionSettingsDialog(collection, tab = 'fields') {
       if (isProjectContextCurrent(context) && $('#record-dialog').open && state.activeDetail && !state.recordEditMode && !dialogHasUnsavedChanges($('#record-dialog'))) renderRecordDialog();
       if (!isProjectContextCurrent(context) || !shell.isConnected || !dialog.open) return;
       if (state.view === 'work') renderWorkList(); else if (state.view === 'collections') renderCollections();
-      await openCollectionSettingsDialog(state.collections.find(item => item.id === collection.id),tab); toast(message);
-    } catch(error) { if (isProjectContextCurrent(context)) toast(error.message,true); }
+      await openCollectionSettingsDialog(state.collections.find(item => item.id === collection.id),tab); toast(message); return true;
+    } catch(error) { if(throwErrors)throw error; if (isProjectContextCurrent(context)) toast(error.message,true); }
     finally {busy = false;}
   };
   const base = `/api/collections/${collection.id}`;
@@ -4548,8 +4601,13 @@ async function openCollectionSettingsDialog(collection, tab = 'fields') {
   $('[data-edit-collection]',shell).addEventListener('click',async () => {const value = await askCollectionConfiguration(collection);if(value) await mutate(base,'PATCH',value,'Доска сохранена');});
   $$('[data-schema-edit]',shell).forEach(button => button.addEventListener('click',async () => {
     const kind = button.dataset.schemaEdit, item = schema[kind].find(item => item.id === button.dataset.schemaId);
-    const value = await (kind === 'fields' ? askCollectionFieldConfiguration(item) : askCollectionStageConfiguration(item));
-    if (value) await mutate(`${base}/${kind}/${item.id}`,'PATCH',{...value,expectedUpdatedAt:item.updatedAt},'Настройки сохранены');
+    const value = await (kind === 'fields' ? askCollectionFieldConfiguration(item, {
+      workspace:context.workspace,
+      isCurrent:()=>isProjectContextCurrent(context)&&shell.isConnected,
+      preview:type=>api(`${base}/fields/${item.id}/conversion-preview`,{method:'POST',headers:{'X-Workspace-ID':context.workspace},body:JSON.stringify({fieldType:type})}),
+      apply:value=>mutate(`${base}/fields/${item.id}`,'PATCH',{...value,expectedUpdatedAt:item.updatedAt},'Тип поля изменён',true),
+    }) : askCollectionStageConfiguration(item));
+    if (value&&!value.saved) await mutate(`${base}/${kind}/${item.id}`,'PATCH',{...value,expectedUpdatedAt:item.updatedAt},'Настройки сохранены');
   }));
   $$('[data-schema-delete]',shell).forEach(button => button.addEventListener('click',async () => {
     const kind = button.dataset.schemaDelete, item = schema[kind].find(item => item.id === button.dataset.schemaId);

@@ -118,6 +118,10 @@ func (s *Server) handleAssignRecordCollection(w http.ResponseWriter, r *http.Req
 		return
 	}
 	defer tx.Rollback()
+	if !collectionFieldSnapshotMatches(r.Context(), tx, input.CollectionID, fields) {
+		writeError(w, http.StatusConflict, "Схема полей изменилась. Обновите форму и проверьте значения перед добавлением на доску")
+		return
+	}
 	now := nowText()
 	result, err := tx.ExecContext(r.Context(), `UPDATE records SET collection_id = ?, stage_id = ?, updated_at = ? WHERE id = ? AND updated_at = ? AND collection_id IS NULL`, input.CollectionID, stageID, now, record.ID, record.UpdatedAt)
 	if err != nil {
