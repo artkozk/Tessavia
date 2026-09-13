@@ -43,3 +43,156 @@ test('snooze labels keep elapsed-hour and midnight semantics in the habit timezo
  assert.match(habitSnoozeLabel({state:'snoozed',updatedAt:'2026-09-04T20:30:00Z'},'2026-09-04','Europe/Moscow'),/до конца дня/);
  assert.match(habitSnoozeLabel(null,'2026-09-04','UTC'),/не меняет результат/);
 });
+
+function uiHarness(habit, options = {}) {
+ const calls = [], toasts = [], queued = [], loads = [];
+ const state = { me: { id: 'owner' }, personal: { habits: [] } };
+ const context = vm.createContext({
+  setInterval() {}, navigator: { onLine: options.online !== false }, Event,
+  document: Object.defineProperties({ visibilityState: 'visible', addEventListener() {}, querySelectorAll() { return []; } }, Object.getOwnPropertyDescriptors(options.document || {})),
+  window: { addEventListener() {}, ...options.window },
+ });
+ vm.runInContext(source.replace(/^export /gm, ''), context);
+ const ui = context.createHabitUI({
+  escapeHTML: text => String(text).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;'),
+  icon: () => '', state, toast: (...args) => toasts.push(args), findHabit: id => habit.id === id ? habit : null,
+  api: async (...args) => { calls.push(args);if (options.api) return options.api(...args); },
+  loadPersonal: async () => { loads.push(true);await options.loadPersonal?.(); }, outbox: () => ({
+   pendingHabits: async () => options.pending || [], addHabit: async (...args) => queued.push(args), pump() {},
+  }),
+ });
+ const button = date => ({ dataset: { habitQuick: habit.id, ...(date ? { habitDate: date } : {}) }, isConnected: true, disabled: false, addEventListener(_, handler) { this.click = handler; } });
+ const bind = buttons => ui.bind({ querySelectorAll: selector => selector === '[data-habit-quick]' ? buttons : [] });
+ return { ui, state, calls, toasts, queued, loads, button, bind };
+}
+const quickHabit = (mode = 'quit') => ({ id: 'h1', title: 'Не смотреть YouTube Shorts', today: '2026-09-14', startDate: '2026-09-08', revision: 3, rule: { mode, target: mode === 'quit' ? 0 : 1, cadence: 'daily', unit: 'раз' }, days: [{ date: '2026-09-13', state: 'pending', editable: true, rule: { mode } }, { date: '2026-09-14', state: 'pending', editable: true, rule: { mode } }] });
+
+test('empty binary days offer a direct action while recorded days open correction', () => {
+ const habit = quickHabit();habit.days[0].state = 'success';habit.days[0].checkin = { state: 'measured', value: 0 };
+ const { ui } = uiHarness(habit);
+ const html = ui.renderRow(habit);
+ assert.match(html, /data-habit-date="2026-09-14" data-habit-quick="h1"/);
+ assert.match(html, /data-habit-date="2026-09-13" data-habit-day="h1"/);
+ assert.match(html, /Отметить день без действия/);
+ assert.doesNotMatch(html, /data-habit-date="2026-09-14" data-habit-open/);
+ assert.doesNotMatch(html, /<form|<textarea|<input/);
+});
+
+test('direct check-ins use historical rules, preserve notes and never overwrite saved outcomes', async () => {
+ const { habitQuickPayload } = await load();
+ const habit = quickHabit('quantity');
+ const day = { date: '2026-09-13', rule: { mode: 'quit' }, state: 'snoozed', editable: true, checkin: { note: 'Оставить заметку', updatedAt: 'v2' } };
+ assert.deepEqual(habitQuickPayload(habit, day), { state: 'measured', value: 0, note: 'Оставить заметку', expectedUpdatedAt: 'v2', revision: 3 });
+ for (const state of ['success', 'failed', 'skipped', 'rest', 'future', 'paused', 'partial']) assert.equal(habitQuickPayload(habit, { ...day, state }), null);
+ assert.equal(habitQuickPayload(habit, { ...day, editable: false }), null);
+ assert.equal(habitQuickPayload(habit, { ...day, rule: { mode: 'reduce' } }), null);
+ assert.equal(habitQuickPayload(habit, { ...day, rule: { mode: 'duration' } }), null);
+});
+
+test('one click saves a clean anti-habit day or ordinary completion without prompting for text', async () => {
+ for (const [mode, value] of [['quit', 0], ['build', 1]]) {
+  const h = uiHarness(quickHabit(mode)), button = h.button('2026-09-13');h.bind([button]);
+  await button.click();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0][0], '/api/personal/habits/h1/checkins/2026-09-13');
+  assert.deepEqual(JSON.parse(h.calls[0][1].body), { state: 'measured', value, note: '', expectedUpdatedAt: '', revision: 3 });
+  assert.equal(h.calls[0][1].headers['X-Outbox-Owner'], 'owner');
+  assert.equal(h.loads.length, 1);
+  assert.equal(button.disabled, false);
+ }
+});
+
+test('two controls for the same day share one in-flight save and recover after an error', async () => {
+ let finish;
+ const h = uiHarness(quickHabit(), { api: () => new Promise((resolve, reject) => { finish = reject; }) });
+ const a = h.button(), b = h.button('2026-09-14');h.bind([a, b]);
+ const saving = a.click();await new Promise(setImmediate);await b.click();
+ assert.equal(h.calls.length, 1);
+ finish(new Error('Проверка ошибки'));await saving;
+ assert.equal(a.disabled, false);assert.equal(h.loads.length, 0);assert.equal(h.toasts.at(-1)[0], 'Проверка ошибки');
+ const retry = b.click();await new Promise(setImmediate);assert.equal(h.calls.length, 2);finish(new Error('Повтор'));await retry;
+});
+
+test('offline check-in retains measured zero and an already queued day is not duplicated', async () => {
+ const h = uiHarness(quickHabit(), { online: false }), button = h.button();h.bind([button]);await button.click();
+ assert.equal(h.calls.length, 0);assert.equal(h.queued.length, 1);assert.equal(h.queued[0][2].value, 0);assert.equal(h.queued[0][2].note, '');
+ const waiting = uiHarness(quickHabit(), { pending: [{ habit: 'h1', date: '2026-09-14' }] }), retry = waiting.button();waiting.bind([retry]);await retry.click();
+ assert.equal(waiting.calls.length, 0);assert.equal(waiting.queued.length, 0);assert.match(waiting.toasts[0][0], /уже ждёт отправки/);
+});
+
+test('late success after an account change does not refresh or notify another account', async () => {
+ let finish;
+ const h = uiHarness(quickHabit(), { api: () => new Promise(resolve => { finish = resolve; }) }), button = h.button();h.bind([button]);
+ const saving = button.click();await new Promise(setImmediate);h.state.me = { id: 'other' };finish();await saving;
+ assert.equal(h.loads.length, 0);assert.equal(h.toasts.length, 0);
+});
+
+test('quantity and time prompts describe the value rather than asking for a fact', async () => {
+ const { habitMeasureLabel } = await load();
+ assert.equal(habitMeasureLabel({ mode: 'duration', unit: 'мин' }), 'Сколько минут за день?');
+ assert.equal(habitMeasureLabel({ mode: 'reduce', unit: 'мин' }), 'Сколько за день, мин?');
+ assert.equal(habitMeasureLabel({ mode: 'quantity', unit: 'л' }), 'Количество за день, л');
+});
+
+test('unknown failure or skip does not invent zero in the measurement editor', async () => {
+ const { habitMeasuredValue } = await load();
+ for (const state of ['failed', 'skipped', 'snoozed']) assert.equal(habitMeasuredValue({ state, value: 0 }), '');
+ assert.equal(habitMeasuredValue(null), '');
+ assert.equal(habitMeasuredValue({ state: 'measured', value: 0 }), 0);
+ assert.equal(habitMeasuredValue({ state: 'measured', value: 2.5 }), 2.5);
+ assert.equal(habitMeasuredValue({ state: 'measured', value: NaN }), '');
+});
+
+test('the time habit list action asks for time rather than quantity', () => {
+ const habit = quickHabit('duration');habit.rule.unit = 'мин';
+ const { ui } = uiHarness(habit), html = ui.renderRow(habit);
+ assert.match(html, />Указать время<\/button>/);
+ assert.doesNotMatch(html, /Указать количество/);
+});
+
+function positionHarness({ rowShift = 0, delay = false } = {}) {
+ const oldLedger = { scrollTop: 240 }, nextLedger = { scrollTop: 0 }, scrolls = [], focus = [], listeners = new Map();
+ let rendered = false, finish;
+ const nextButton = { dataset: { habitDate: '2026-09-14' }, focus: value => focus.push(value) };
+ const oldRow = { dataset: { habitRow: 'h1' }, getBoundingClientRect: () => ({ top: 1000 - oldLedger.scrollTop - 600 }), closest: () => oldLedger };
+ const nextRow = { dataset: { habitRow: 'h1' }, getBoundingClientRect: () => ({ top: 1000 + rowShift - nextLedger.scrollTop - 600 }), closest: () => nextLedger, querySelectorAll: () => [nextButton] };
+ const document = { get activeElement() { return button; }, querySelectorAll: selector => selector === '[data-habit-row]' ? [rendered ? nextRow : oldRow] : [] };
+ const h = uiHarness(quickHabit(), {
+  document, window: {
+   addEventListener: (type, listener) => listeners.set(type, listener),
+   removeEventListener: (type, listener) => { if (listeners.get(type) === listener) listeners.delete(type); },
+   scrollBy: value => scrolls.push(value),
+  },
+  api: delay ? () => new Promise(resolve => { finish = resolve; }) : undefined,
+  loadPersonal: () => { rendered = true; },
+ });
+ const button = h.button('2026-09-14');button.closest = () => oldRow;h.bind([button]);
+ return { ...h, button, oldLedger, nextLedger, scrolls, focus, listeners, finish: () => finish() };
+}
+
+test('a desktop check-in restores its replaced ledger before applying any page reflow', async () => {
+ const h = positionHarness();await h.button.click();
+ assert.equal(h.loads.length, 1);
+ assert.equal(h.nextLedger.scrollTop, 240, 'the replacement must reveal the original row');
+ assert.equal(h.scrolls.length, 0, 'the list scroll must not be incorrectly applied to the window');
+ assert.equal(h.focus.length, 1);assert.equal(h.focus[0].preventScroll, true);
+ for (const event of ['wheel', 'touchmove', 'keydown', 'resize']) assert.equal(h.listeners.has(event), false, 'temporary listeners must be removed');
+});
+
+test('page anchoring handles residual reflow after the desktop ledger position is restored', async () => {
+ const h = positionHarness({ rowShift: 32 });await h.button.click();
+ assert.equal(h.nextLedger.scrollTop, 240);
+ assert.equal(h.scrolls.length, 1);assert.equal(h.scrolls[0].top, 32);assert.equal(h.scrolls[0].behavior, 'instant');
+});
+
+test('deliberate scrolling or navigation cancels both ledger and window restoration', async () => {
+ for (const interruption of ['wheel', 'touchmove', 'keydown', 'resize', 'navigation']) {
+  const h = positionHarness({ delay: true }), saving = h.button.click();await new Promise(setImmediate);
+  if (interruption === 'navigation') h.state.personalTab = 'notes';
+  else h.listeners.get(interruption)({ type: interruption, key: 'PageDown' });
+  h.finish();await saving;
+  assert.equal(h.nextLedger.scrollTop, 0, interruption);
+  assert.equal(h.scrolls.length, 0, interruption);assert.equal(h.focus.length, 0, interruption);
+  for (const event of ['wheel', 'touchmove', 'keydown', 'resize']) assert.equal(h.listeners.has(event), false);
+ }
+});

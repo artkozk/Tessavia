@@ -569,8 +569,8 @@ dialog.dismiss-attention { animation: dialog-dismiss-attention .3s ease; }
   .auth-panel { min-height: 620px; padding: 44px; }
   .auth-panel-brand { display: flex; align-items: center; gap: 10px; }
   .app-shell { grid-template-columns: 1fr; }
-  .sidebar { position: fixed; left: -270px; width: 252px; box-shadow: var(--shadow); transition: left .2s ease; }
-  .sidebar.open { left: 0; }
+  .sidebar { position: fixed; left: 0; width: min(252px, calc(100vw - 48px)); box-shadow: var(--shadow); visibility: hidden; transform: translate3d(calc(-100% - 24px), 0, 0); transition: transform .22s cubic-bezier(.2, .7, .2, 1), visibility 0s linear .22s; }
+  .sidebar.open { visibility: visible; transform: translate3d(0, 0, 0); transition-delay: 0s; }
   .menu-button { display: grid; }
   .topbar { padding: 0 16px; }
   .main-content { padding: 20px 16px 40px; }
@@ -1316,11 +1316,12 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 }
 
 @media (max-width: 820px) {
-  .sidebar { z-index: 101; touch-action: pan-y; will-change: transform; }
+  .sidebar { z-index: 101; touch-action: pan-y pinch-zoom; overscroll-behavior: contain; will-change: transform; }
   .sidebar.dragging { transition: none !important; }
-  .sidebar-backdrop { position: fixed; inset: 0 0 0 252px; z-index: 100; display: block; border: 0; background: rgba(21,29,25,.34); opacity: 0; pointer-events: none; backdrop-filter: blur(3px); transition: opacity .2s ease; }
+  .sidebar-backdrop { position: fixed; inset: 0; z-index: 100; display: block; border: 0; border-radius: 0; padding: 0; background: rgba(21,29,25,.34); opacity: 0; pointer-events: none; touch-action: none; backdrop-filter: blur(3px); transition: opacity .22s cubic-bezier(.2, .7, .2, 1); }
   .sidebar-backdrop.visible { opacity: 1; pointer-events: auto; }
-  body.mobile-nav-open { overflow: hidden; }
+  html:has(body.mobile-nav-open) { overflow: hidden; overscroll-behavior: none; }
+  body.mobile-nav-open { overscroll-behavior: none; }
   .global-search { width: 40px; height: 40px; margin-left: auto; }
   .global-search input { width: 40px; padding: 0; border-color: transparent; background: transparent; color: transparent; cursor: pointer; }
   .global-search kbd { display: none; }
@@ -1347,7 +1348,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 }
 
 @media (max-width: 560px) {
-  body, .workspace, .main-content { max-width: 100%; overflow-x: hidden; }
+  body, .workspace, .main-content { max-width: 100%; }
   .topbar > div:nth-child(2) { min-width: 0; }
   .topbar h2 { overflow: hidden; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
   .work-create { width: 100%; }
@@ -4427,6 +4428,14 @@ body:has(.calendar-expanded) { overflow: hidden; }
 .habit-day-editor h3, .habit-day-editor p { margin: 0; }
 .habit-day-editor p { font-size: 13px; }
 .habit-day-editor input, .habit-day-editor select, .habit-day-editor textarea, .habit-settings input, .habit-settings select, .habit-settings textarea { min-width: 0; width: 100%; }
+.habit-day-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.habit-day-editor button { min-height: 44px; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.habit-day-state { color: var(--muted); line-height: 1.55; overflow-wrap: anywhere; }
+.habit-measure-input { display: grid; gap: 8px; min-width: 0; }
+.habit-measure-input input { min-height: 44px; font-variant-numeric: tabular-nums; }
+.habit-note-details, .habit-extra-actions { min-width: 0; border-top: 1px solid var(--line); padding-top: 4px; }
+.habit-note-details > summary, .habit-extra-actions > summary { min-height: 44px; padding-block: 12px; cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.habit-note-details > label, .habit-extra-actions > label { margin-block: 10px; }
 .habit-increments span { font-size: 11px; }
 .habit-details { border-top: 1px solid var(--line); padding: 16px 0; font-size: 13px; }
 .habit-details summary { cursor: pointer; font-weight: 600; }
@@ -4455,6 +4464,14 @@ body:has(.calendar-expanded) { overflow: hidden; }
   .habit-tracker-controls { align-items: stretch; }
   .habit-period-navigation { flex: 1 0 100%; order: 3; }
   .habit-weekday-stats { gap: 2px; }
+}
+@media (max-width: 820px) {
+  .habit-ledger, .habit-list:has(.habit-entry) { max-height: none; overflow: visible; }
+  .habit-entry-action button { min-height: 44px; }
+  .habit-day-editor input, .habit-day-editor select, .habit-day-editor textarea { font-size: 16px; }
+}
+@media (max-width: 380px) {
+  .habit-day-choices { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 560px) {
@@ -5195,6 +5212,24 @@ body:has(.calendar-expanded) { overflow: hidden; }
 @supports selector(::-webkit-scrollbar) {
   /* Standard properties would override Chromium's arrowless pseudo-elements. */
   * { scrollbar-width: auto !important; scrollbar-color: auto !important; }
+}
+/* Phone scrolling stays native; only its rails are hidden. Keep this after the
+   Chromium compatibility rule, which otherwise restores visible scrollbars. */
+@media (max-width: 820px) {
+  *, *::before, *::after { scrollbar-width: none !important; scrollbar-gutter: auto !important; }
+  *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+  html, body, .app-shell { min-height: 100svh; }
+  /* hidden on just one axis turns the other into auto and traps sticky inside
+     a non-scrolling ancestor. clip contains wide content without doing that. */
+  body, .app-shell, .workspace { overflow-x: clip; overflow-y: visible; }
+  .main-content:not(.graph-main-content):not(:has(.chat-shell)) { overflow-x: clip; overflow-y: visible; }
+  /* html already locks modal backgrounds; keep body out of the sticky chain. */
+  body:has(dialog[open]) { overflow-x: clip; overflow-y: visible; }
+  .sidebar { padding-top: max(22px, env(safe-area-inset-top)); }
+  .brand > .sidebar-close { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+}
+@media (max-width: 820px) and (prefers-reduced-motion: reduce) {
+  .sidebar, .sidebar-backdrop { transition: none !important; }
 }
 .collection-settings-shell > header {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start;}
 .collection-settings-shell > header > div {min-width:0;}

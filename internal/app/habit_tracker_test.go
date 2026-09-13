@@ -185,3 +185,57 @@ func TestHabitTrackerAPILifecycleConflictAndPrivacy(t *testing.T) {
 	}
 	requestJSON(t, owner, http.MethodGet, base+"/tracker?from=2000-01-01&to="+today, nil, 400, nil)
 }
+
+// A simple tick is an absolute measurement, not a business-task completion
+// requiring evidence. Exercise the exact empty-note payload sent by the UI.
+func TestHabitSimpleCheckinWithoutRequiredTextAndReversibleCorrection(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "simple-habits.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	server := httptest.NewServer(NewServer(store, Config{SessionLifetime: 24 * time.Hour}))
+	defer server.Close()
+	owner := testClient(t)
+	register(t, owner, server.URL, "simple-habits@example.test", "simple_habits")
+	today := time.Now().In(personalLocation()).Format("2006-01-02")
+	for _, mode := range []string{"build", "quit"} {
+		t.Run(mode, func(t *testing.T) {
+			var h PersonalHabit
+			rule := trackerFixture(mode, "daily", today).Rule
+			requestJSON(t, owner, "POST", server.URL+"/api/personal/habits", map[string]any{"title": "Simple tick " + mode, "startDate": today, "rule": rule}, 201, &h)
+			base := server.URL + "/api/personal/habits/" + h.ID
+			path := base + "/checkins/" + today
+			var c HabitCheckin
+			payload := map[string]any{"state": "measured", "value": rule.Target, "note": "", "expectedUpdatedAt": "", "revision": h.Revision}
+			requestJSON(t, owner, "PUT", path, payload, 200, &c)
+			if c.Value != rule.Target || c.Note != "" || c.State != "measured" {
+				t.Fatalf("simple tick changed: %+v", c)
+			}
+			firstVersion := c.UpdatedAt
+			requestJSON(t, owner, "PUT", path, payload, 200, &c)
+			if c.UpdatedAt != firstVersion {
+				t.Fatal("replayed simple tick was saved twice")
+			}
+			var tracker HabitTracker
+			requestJSON(t, owner, "GET", base+"/tracker?from="+today+"&to="+today, nil, 200, &tracker)
+			if len(tracker.Days) != 1 || tracker.Days[0].State != "success" {
+				t.Fatalf("tick is not a success: %+v", tracker.Days)
+			}
+			// The explicit alternative can record a lapse/non-completion without text.
+			requestJSON(t, owner, "PUT", path, map[string]any{"state": "failed", "value": 0, "note": "", "expectedUpdatedAt": c.UpdatedAt, "revision": h.Revision}, 200, &c)
+			requestJSON(t, owner, "GET", base+"/tracker?from="+today+"&to="+today, nil, 200, &tracker)
+			if tracker.Days[0].State != "failed" {
+				t.Fatal("explicit failure became missing or successful")
+			}
+			// A stale empty-day click cannot overwrite the subsequent correction.
+			requestJSON(t, owner, "PUT", path, payload, 409, nil)
+			requestJSON(t, owner, "DELETE", path, map[string]any{"expectedUpdatedAt": c.UpdatedAt, "revision": h.Revision}, 204, nil)
+			tracker = HabitTracker{} // An omitted checkin must not retain a prior decode target.
+			requestJSON(t, owner, "GET", base+"/tracker?from="+today+"&to="+today, nil, 200, &tracker)
+			if tracker.Days[0].State != "pending" || tracker.Days[0].Checkin != nil {
+				t.Fatal("removing a tick must return an unmarked day")
+			}
+		})
+	}
+}

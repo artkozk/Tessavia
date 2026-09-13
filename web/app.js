@@ -1,29 +1,29 @@
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-finance-expenses-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-finance-expenses-1';
-import { createSettingsHub } from './settings-hub.js?v=20260914-finance-expenses-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260914-finance-expenses-1';
-import { createPageAppUI } from './page-apps.js?v=20260914-finance-expenses-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260914-finance-expenses-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-finance-expenses-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-finance-expenses-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-mobile-habits-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-mobile-habits-1';
+import { createSettingsHub } from './settings-hub.js?v=20260914-mobile-habits-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260914-mobile-habits-1';
+import { createPageAppUI } from './page-apps.js?v=20260914-mobile-habits-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260914-mobile-habits-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-mobile-habits-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-mobile-habits-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-finance-expenses-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-mobile-habits-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-finance-expenses-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-mobile-habits-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-finance-expenses-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-finance-expenses-1';
-import { createFirstUseUI } from './first-use.js?v=20260914-finance-expenses-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-mobile-habits-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-mobile-habits-1';
+import { createFirstUseUI } from './first-use.js?v=20260914-mobile-habits-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260914-finance-expenses-1';
+import { createLifeMapUI } from './life-map.js?v=20260914-mobile-habits-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI } from './habit-tracker.js?v=20260904-personal-waiting-4';
+import { createHabitUI } from './habit-tracker.js?v=20260914-mobile-habits-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260914-finance-expenses-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260914-mobile-habits-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1669,12 +1669,21 @@ function setSidebarOpen(open) {
   const workspace = $('.workspace');
   const mobile = window.matchMedia('(max-width: 820px)').matches;
   const shouldOpen = mobile && open;
-  if (shouldOpen && !sidebar.classList.contains('open')) state.sidebarReturnFocus = document.activeElement;
+  const wasOpen = sidebar.classList.contains('open');
+  const opening = shouldOpen && !wasOpen;
+  // Mobile browser chrome/keyboard resize must not restart a gesture or move focus.
+  if (state.sidebarMobile === mobile && wasOpen === shouldOpen) return;
+  state.sidebarMobile = mobile;
+  if (opening) state.sidebarReturnFocus = document.activeElement;
+  sidebar.cancelSwipe?.();
   sidebar.style.removeProperty('transform');
   sidebar.classList.remove('dragging');
+  $('#sidebar-backdrop').style.removeProperty('opacity');
   sidebar.classList.toggle('open', shouldOpen);
   $('#sidebar-backdrop').classList.toggle('visible', shouldOpen);
   $('#sidebar-backdrop').tabIndex = shouldOpen ? 0 : -1;
+  $('#sidebar-backdrop').inert = !shouldOpen;
+  $('#sidebar-backdrop').setAttribute('aria-hidden', shouldOpen ? 'false' : 'true');
   $('#menu-button').setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
   document.body.classList.toggle('mobile-nav-open', shouldOpen);
   workspace.inert = shouldOpen;
@@ -1682,7 +1691,9 @@ function setSidebarOpen(open) {
   if (shouldOpen) {
     sidebar.inert = false;
     sidebar.setAttribute('aria-hidden', 'false');
-    requestAnimationFrame(() => ($('.nav-item.active', sidebar) || $('.nav-item', sidebar) || $('#sidebar-close')).focus({ preventScroll: true }));
+    if (opening) requestAnimationFrame(() => {
+      if (sidebar.classList.contains('open') && window.matchMedia('(max-width: 820px)').matches) ($('.nav-item.active', sidebar) || $('.nav-item', sidebar) || $('#sidebar-close')).focus({ preventScroll: true });
+    });
   } else if (state.sidebarReturnFocus?.isConnected) {
     state.sidebarReturnFocus.focus({ preventScroll: true });
     state.sidebarReturnFocus = null;
@@ -1822,44 +1833,58 @@ function bindSidebarSwipe() {
   let startY = 0;
   let deltaX = 0;
   let horizontal = false;
+  let abandoned = false;
+  let width = 252;
   let suppressClick = false;
-  const finish = (event) => {
-    if (pointerId === null || event.pointerId !== pointerId) return;
-    const shouldClose = event.type !== 'pointercancel' && horizontal && deltaX < -64;
-    if (sidebar.hasPointerCapture?.(pointerId)) sidebar.releasePointerCapture(pointerId);
+  const reset = () => {
+    const captured = pointerId;
     pointerId = null;
+    if (captured !== null && sidebar.hasPointerCapture?.(captured)) sidebar.releasePointerCapture(captured);
     sidebar.classList.remove('dragging');
     sidebar.style.removeProperty('transform');
     backdrop.style.removeProperty('opacity');
+  };
+  sidebar.cancelSwipe = reset;
+  const finish = (event) => {
+    if (pointerId === null || event.pointerId !== pointerId) return;
+    const shouldClose = event.type === 'pointerup' && horizontal && !abandoned && -deltaX >= Math.max(48, width * .24);
+    reset();
     if (shouldClose) setSidebarOpen(false);
   };
   sidebar.addEventListener('pointerdown', (event) => {
+    if (pointerId !== null) { reset(); return; }
     if (!event.isPrimary || event.button !== 0 || !sidebar.classList.contains('open') || !window.matchMedia('(max-width: 820px)').matches) return;
+    if (event.target?.closest('input, textarea, select, [contenteditable="true"], [role="slider"]')) return;
     pointerId = event.pointerId;
     startX = event.clientX;
     startY = event.clientY;
     deltaX = 0;
     horizontal = false;
+    abandoned = false;
+    width = sidebar.getBoundingClientRect().width || 252;
     suppressClick = false;
   });
   sidebar.addEventListener('pointermove', (event) => {
-    if (event.pointerId !== pointerId) return;
+    if (event.pointerId !== pointerId || abandoned) return;
     const moveX = event.clientX - startX;
     const moveY = event.clientY - startY;
-    if (!horizontal && Math.abs(moveX) > 10 && Math.abs(moveX) > Math.abs(moveY)) {
+    if (!horizontal && Math.max(Math.abs(moveX), Math.abs(moveY)) >= 10) {
+      if (moveX >= 0 || Math.abs(moveY) >= Math.abs(moveX)) { abandoned = true; return; }
+      if (-moveX < Math.abs(moveY) * 1.25) return;
       horizontal = true;
       suppressClick = true;
       sidebar.setPointerCapture?.(pointerId);
     }
     if (!horizontal) return;
     event.preventDefault();
-    deltaX = Math.min(0, moveX);
+    deltaX = Math.max(-width, Math.min(0, moveX));
     sidebar.classList.add('dragging');
-    sidebar.style.transform = `translateX(${Math.max(-252, deltaX)}px)`;
-    backdrop.style.opacity = String(Math.max(0, 1 + deltaX / 252));
+    sidebar.style.transform = `translate3d(${deltaX}px, 0, 0)`;
+    backdrop.style.opacity = String(Math.max(0, 1 + deltaX / width));
   });
   sidebar.addEventListener('pointerup', finish);
   sidebar.addEventListener('pointercancel', finish);
+  sidebar.addEventListener('lostpointercapture', finish);
   sidebar.addEventListener('click', (event) => {
     if (!suppressClick || event.detail === 0) return;
     suppressClick = false;

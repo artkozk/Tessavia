@@ -1,4 +1,4 @@
-import { prepareFormElements, styleFormElements } from './page-form-elements.js?v=20260914-finance-expenses-1';
+import { prepareFormElements, styleFormElements } from './page-form-elements.js?v=20260914-mobile-habits-1';
 const formResults=new Map();
 const builtinLabels={title:'Название',description:'Описание',dueAt:'Срок',ownerId:'Ответственный',stageId:'Этап',priority:'Приоритет'};
 export function formFieldChoices(collection){return [...Object.entries(builtinLabels).map(([key,label])=>({key,label})),...(collection?.fields||[]).map(f=>({key:'custom:'+f.id,label:f.name}))];}
