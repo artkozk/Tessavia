@@ -1,0 +1,67 @@
+{
+  "observed_utc": {"from": "2026-09-13T20:25:00Z", "to": "2026-09-13T20:33:00Z"},
+  "host": "159.194.231.150",
+  "domain": "control.e-rd.ru",
+  "release_observed": "/opt/business-control/releases/20260913-finance-flexibility-889d34d",
+  "scope": "Read-only production audit. Aggregate metadata only. No deletion, restart, checkpoint, load test, account purchase or user-data transfer.",
+  "hardware": {"vcpu": 1, "ram_bytes": 1002778624, "virtual_disk_bytes": 10737418240, "swap_bytes": 0},
+  "root_filesystem": {"type": "ext4", "total_bytes": 9181077504, "used_bytes": 8854589440, "available_bytes": 309710848, "df_use_percent": 97, "inode_use_percent": 17, "reserved_blocks": 0},
+  "allocated_directory_bytes": {
+    "releases": 3064840192,
+    "pre_deploy_backups": 1325477888,
+    "daily_backups": 52551680,
+    "uploads": 4141056,
+    "system_journal": 499998720,
+    "apt_cache_total": 286597120,
+    "apt_archives_subset": 172126208,
+    "tmpfs_tmp": 267669504,
+    "tmpfs_old_elf_subset": 256684032
+  },
+  "directory_counts": {"releases": 153, "pre_deploy_elements": 178, "daily_backup_elements": 40, "old_tmp_elf_files": 14, "old_tmp_elf_executing_at_check": 0},
+  "database_file_bytes_at_stat": {"db": 6434816, "wal": 1639792, "shm": 32768},
+  "database_readonly_pragmas_later": {"journal_mode": "wal", "page_count": 1593, "page_size": 4096, "freelist_count": 0},
+  "database_counts": {"users": 8, "teams": 5, "records": 260, "chat_messages": 19, "notifications": 124},
+  "memory_observations": {"mem_available_bytes_first": 445964288, "mem_available_bytes_later": 443879424, "app_rss_kib_sample": 24320, "app_cgroup_bytes_first": 25280512, "app_cgroup_bytes_final": 45268992, "app_cgroup_peak_bytes_final": 49766400},
+  "backup": {
+    "timer_active": true,
+    "retention_days": 30,
+    "last_start_utc": "2026-09-13T02:16:17Z",
+    "last_end_utc": "2026-09-13T02:16:18Z",
+    "last_result": "success",
+    "last_archive_allocated_bytes": 4780032,
+    "last_process_memory_peak_bytes": 59654144,
+    "installed_script_sha256_matches_repository": true,
+    "sha256": "0e47ee91666ad3fd7501772328e70daaeb883722487bfebe797f8ca4b4915545",
+    "new_restore_test_performed": false
+  },
+  "sysstat_daily": [
+    {"date": "2026-09-05", "intervals": 144, "idle_weighted_avg_percent": 99.600, "idle_min_interval_percent": 96.25, "iowait_weighted_avg_percent": 0.007, "mem_available_min_kib": 228900, "mem_available_median_kib": 274750},
+    {"date": "2026-09-06", "intervals": 144, "idle_weighted_avg_percent": 99.519, "idle_min_interval_percent": 80.30, "iowait_weighted_avg_percent": 0.022, "mem_available_min_kib": 237744, "mem_available_median_kib": 271288},
+    {"date": "2026-09-07", "intervals": 144, "idle_weighted_avg_percent": 99.569, "idle_min_interval_percent": 97.30, "iowait_weighted_avg_percent": 0.009, "mem_available_min_kib": 115852, "mem_available_median_kib": 269042},
+    {"date": "2026-09-08", "intervals": 144, "idle_weighted_avg_percent": 99.601, "idle_min_interval_percent": 97.36, "iowait_weighted_avg_percent": 0.007, "mem_available_min_kib": 246412, "mem_available_median_kib": 264410},
+    {"date": "2026-09-09", "intervals": 144, "idle_weighted_avg_percent": 99.614, "idle_min_interval_percent": 94.80, "iowait_weighted_avg_percent": 0.005, "mem_available_min_kib": 248716, "mem_available_median_kib": 266460},
+    {"date": "2026-09-10", "intervals": 144, "idle_weighted_avg_percent": 99.131, "idle_min_interval_percent": 85.26, "iowait_weighted_avg_percent": 0.016, "mem_available_min_kib": 248000, "mem_available_median_kib": 281370},
+    {"date": "2026-09-11", "intervals": 144, "idle_weighted_avg_percent": 99.247, "idle_min_interval_percent": 96.87, "iowait_weighted_avg_percent": 0.012, "mem_available_min_kib": 257924, "mem_available_median_kib": 281420},
+    {"date": "2026-09-12", "intervals": 144, "idle_weighted_avg_percent": 99.401, "idle_min_interval_percent": 97.23, "iowait_weighted_avg_percent": 0.009, "mem_available_min_kib": 273292, "mem_available_median_kib": 294090},
+    {"date": "2026-09-13", "intervals": 122, "idle_weighted_avg_percent": 99.453, "idle_min_interval_percent": 97.27, "iowait_weighted_avg_percent": 0.007, "mem_available_min_kib": 423380, "mem_available_median_kib": 448406}
+  ],
+  "oom_killed_processes_since_sep05": [
+    {"utc": "2026-09-06T06:55:28Z", "process": "zstd", "unit": "apt-daily-upgrade.service"},
+    {"utc": "2026-09-06T06:55:47Z", "process": "depmod", "unit": "apt-daily-upgrade.service"},
+    {"utc": "2026-09-10T06:21:28Z", "process": "localedef", "unit": "apt-daily-upgrade.service"}
+  ],
+  "maintenance": {"dpkg_audit_empty": true, "failed_units_at_check": 0, "reboot_required": true, "running_kernel": "7.0.0-29-generic"},
+  "public_health": {"http_statuses": [200,200,200,200,200,200,200,200], "total_seconds": [0.290662,0.112415,0.204042,0.131468,0.257459,0.122381,0.126895,0.124733], "scope": "Eight unauthenticated health requests from desktop, not an application load test."},
+  "shared_nginx_log_aggregate": {"period_from": "2026-09-05", "parsed_requests": 46658, "parsed_api_requests": 11880, "parsed_api_5xx": 0, "unparsed_lines_in_files": 574, "api_nonhealth_peak_minute_requests": 192, "api_nonhealth_peak_second_requests": 36, "scope": "Shared logs of multiple websites, not Tessavie-only usage. No request duration fields."},
+  "hypothetical_retention_candidates": {
+    "kept_cutover_bundles": 7,
+    "kept_current_and_linked_releases": 8,
+    "candidate_release_count": 145,
+    "candidate_release_bytes": 2811219968,
+    "candidate_backup_elements": 171,
+    "candidate_backup_bytes": 1182220288,
+    "total_candidate_bytes": 3993440256,
+    "hypothetical_free_bytes_after": 4303151104,
+    "status": "Arithmetic inventory only. No deletion. Requires restore checks, historical migration pins, path and active-deploy revalidation. Additional pins reduce reclaim."
+  }
+}
