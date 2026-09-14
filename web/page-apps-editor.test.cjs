@@ -176,14 +176,14 @@ test('unknown insertion outcome survives closing, reload and a newer server revi
  const h=harness();await openEditor(h);await openComponentPreview(h);const inserting=h.host.querySelector('[data-component-insert]').onclick();const exact=h.calls[3].options.body;
  h.calls[3].reject(new TypeError('Connection interrupted'));await inserting;assert.match(h.host.innerHTML,/Проверить и продолжить/);const stored=JSON.parse([...h.storage.values()][0]);assert.equal(stored.componentRequest.kind,'insert');assert.equal(JSON.stringify(stored.componentRequest.body),exact);
  await h.host.querySelector('[data-builder-close]').onclick();const reopening=h.ui.edit(h.page);h.calls[4].resolve({...loaded(),revision:2});await reopening;
- assert.match(h.host.innerHTML,/data-builder-restore/);h.host.querySelector('[data-builder-restore]').onclick();assert.match(h.host.innerHTML,/Проверить и продолжить/);assert.equal(h.host.querySelector('[data-builder-save]').disabled,true);
+ assert.equal(h.host.querySelector('[data-builder-restore]'),null);assert.equal(h.host.querySelector('[data-builder-discard]'),null);assert.match(h.host.innerHTML,/Проверить и продолжить/);assert.equal(h.host.querySelector('[data-builder-save]').disabled,true);
  const retry=h.host.querySelector('[data-component-retry]').onclick();assert.equal(h.calls[5].options.body,exact);h.calls[5].resolve({...loaded(),revision:2,alreadyInserted:true,rootBlockId:'copy',pageName:'Page'});await tick();h.calls[6].resolve({...loaded(),revision:2});await retry;
  assert.equal(h.storage.size,0);assert.match(h.host.innerHTML,/data-builder-components/);
 });
 
 test('an uncommitted insertion recovered after a conflict cannot save an old draft under a newer revision',async()=>{
  const h=harness();await openEditor(h);h.host.querySelector('[data-builder-page-name]').oninput({target:{value:'Keep my unsaved changes'}});await openComponentPreview(h);const inserting=h.host.querySelector('[data-component-insert]').onclick();h.calls[3].reject(new TypeError('No response'));await inserting;
- await h.host.querySelector('[data-builder-close]').onclick();const opening=h.ui.edit(h.page);h.calls[4].resolve({...loaded(),revision:3});await opening;h.host.querySelector('[data-builder-restore]').onclick();
+ await h.host.querySelector('[data-builder-close]').onclick();const opening=h.ui.edit(h.page);h.calls[4].resolve({...loaded(),revision:3});await opening;
  const retry=h.host.querySelector('[data-component-retry]').onclick();h.calls[5].reject(Object.assign(new Error('Revision conflict'),{status:409}));await retry;h.host.querySelector('[data-component-back]').onclick();
  const save=h.host.querySelector('[data-builder-save]').onclick();assert.equal(JSON.parse(h.calls[6].options.body).expectedRevision,1);h.calls[6].reject(Object.assign(new Error('Revision conflict'),{status:409}));await save;
  const draft=JSON.parse([...h.storage.values()][0]);assert.equal(draft.revision,1);assert.equal(draft.componentRequest,null);assert.equal(h.box.open,true);
@@ -218,7 +218,7 @@ test('400 and 409 keep component metadata in the editable form and a corrected a
 
 test('unknown component creation outcome retains exact retry body and metadata through close and reload',async()=>{
  const h=harness(),blocks=[{id:'root',kind:'text',title:'Original'}];await openEditor(h,blocks);h.components.at(-1).save();const form=writeComponentMetadata(h,'Pending name','Pending description'),saving=form.onsubmit({preventDefault(){}}),exact=h.calls.at(-1).options.body;
- h.calls.at(-1).reject(new TypeError('Connection interrupted'));await saving;assert.match(h.host.innerHTML,/Проверить и продолжить/);assert.equal(JSON.parse(h.storage.get(componentDraftKey)).componentDrafts.root.description,'Pending description');await h.host.querySelector('[data-builder-close]').onclick();await reopenEditor(h,blocks);h.host.querySelector('[data-builder-restore]').onclick();const retry=h.host.querySelector('[data-component-retry]').onclick();assert.equal(h.calls.at(-1).options.body,exact);h.calls.at(-1).resolve({id:'saved-once',name:'Pending name'});await retry;assert.equal(h.storage.has(componentDraftKey),false);
+ h.calls.at(-1).reject(new TypeError('Connection interrupted'));await saving;assert.match(h.host.innerHTML,/Проверить и продолжить/);assert.equal(JSON.parse(h.storage.get(componentDraftKey)).componentDrafts.root.description,'Pending description');await h.host.querySelector('[data-builder-close]').onclick();await reopenEditor(h,blocks);assert.equal(h.host.querySelector('[data-builder-restore]'),null);assert.equal(h.host.querySelector('[data-builder-discard]'),null);const retry=h.host.querySelector('[data-component-retry]').onclick();assert.equal(h.calls.at(-1).options.body,exact);h.calls.at(-1).resolve({id:'saved-once',name:'Pending name'});await retry;assert.equal(h.storage.has(componentDraftKey),false);
 });
 
 test('component drafts survive page Save, page Cancel and discarding the offered page draft',async()=>{
@@ -288,4 +288,95 @@ test('opening a dependency or an outline item focuses and reveals its properties
  h.host.querySelector('[data-builder-manage]').onclick();h.host.querySelector('[data-trash-remove]').onclick();h.host.querySelector('[data-trash-select]').onclick();
  let properties=h.host.querySelector('[data-builder-properties]');assert.equal(properties.tabIndex,-1);assert.equal(properties.focusOptions.preventScroll,true);assert.equal(properties.scrollOptions.block,'start');assert.equal(properties.scrollOptions.behavior,'instant');assert.match(h.host.innerHTML,/value="Next step"/);
  h.host.querySelector('[data-builder-select]').onclick();properties=h.host.querySelector('[data-builder-properties]');assert.equal(properties.tabIndex,-1);assert.equal(properties.scrollOptions.behavior,'instant');assert.match(h.host.innerHTML,/value="Reading"/);
+});
+
+async function prepareComponentOperation(h,kind){
+ if(kind==='insert'){await openComponentPreview(h);return()=>h.host.querySelector('[data-component-insert]').onclick();}
+ h.components.at(-1).save();writeComponentMetadata(h,'Reusable title','Description kept through recovery');
+ return()=>h.host.querySelector('[data-component-save-form]').onsubmit({preventDefault(){}});
+}
+async function acknowledgeComponent(h,kind,attempt){
+ if(kind==='create')h.calls.at(-1).resolve({id:'saved-once',name:'Reusable title'});
+ else{
+  const blocks=[{id:'root',kind:'text',title:'Original'},{id:'copy',kind:'group',title:'Inserted'}];
+  h.calls.at(-1).resolve({...loaded(blocks),revision:2,rootBlockId:'copy',pageName:'Page',alreadyInserted:true});
+  await tick();h.calls.at(-1).resolve({...loaded(blocks),revision:2});
+ }
+ await attempt;
+}
+
+test('component create and insert never POST without a durable retry receipt and can recover after storage is repaired',async()=>{
+ for(const kind of ['create','insert']){
+  const h=harness();await openEditor(h,[{id:'root',kind:'text',title:'Original'}]);const submit=await prepareComponentOperation(h,kind),before=h.calls.length,set=h.storage.set.bind(h.storage);
+  h.storage.set=()=>{throw new Error('QuotaExceededError');};await submit();
+  assert.equal(h.calls.length,before,'storage failure still dispatched a mutation');assert.notEqual(h.box.dataset.settingsSaving,'true');assert.match(h.host.innerHTML,/запрос не отправлен/);assert.doesNotMatch(h.host.innerHTML,/Проверим результат/);
+  assert.ok(!JSON.parse(h.storage.get(componentDraftKey)||'null')?.componentRequest);
+  if(kind==='create'){const form=h.host.querySelector('[data-component-save-form]');assert.equal(form.elements.name.value,'Reusable title');assert.equal(form.elements.description.value,'Description kept through recovery');}
+  else assert.ok(h.host.querySelector('[data-component-insert]'));
+  h.storage.set=set;const sending=submit(),body=h.calls.at(-1).options.body;
+  assert.equal(h.calls.length,before+1);assert.equal(JSON.stringify(JSON.parse(h.storage.get(componentDraftKey)).componentRequest.body),body,'the exact receipt must exist before POST');
+  await acknowledgeComponent(h,kind,sending);assert.equal(h.storage.size,0);
+ }
+});
+
+test('unknown component outcomes lock actual and stale editor controls until the same operation is checked',async()=>{
+ for(const kind of ['create','insert']){
+  const h=harness();await openEditor(h,[{id:'root',kind:'text',title:'Original'}]);
+  const staleSave=h.host.querySelector('[data-builder-save]').onclick,staleCancel=h.host.querySelector('[data-builder-cancel]').onclick,staleAdd=h.host.querySelector('[data-builder-add]').onclick,staleName=h.host.querySelector('[data-builder-page-name]').oninput,staleManage=h.host.querySelector('[data-builder-manage]').onclick;
+  const submit=await prepareComponentOperation(h,kind),sending=submit();h.calls.at(-1).reject(new TypeError('Response lost'));await sending;
+  const saved=h.storage.get(componentDraftKey),calls=h.calls.length;
+  for(const selector of ['save','cancel','page-name','preview','manage'])assert.equal(h.host.querySelector(`[data-builder-${selector}]`).disabled,true);
+  await staleSave();await staleCancel();staleAdd();staleName({target:{value:'Must not replace draft'}});staleManage();await h.components.at(-1).library();h.components.at(-1).save();
+  assert.equal(h.calls.length,calls);assert.equal(h.storage.get(componentDraftKey),saved);assert.equal(h.stats.closed,0);
+  await h.host.querySelector('[data-builder-close]').onclick();await reopenEditor(h,[{id:'fresh',kind:'text',title:'Newer server page'}],9);
+  assert.equal(h.host.querySelector('[data-builder-discard]'),null);assert.equal(h.host.querySelector('[data-builder-restore]'),null);assert.equal(h.host.querySelector('[data-builder-save]').disabled,true);
+  const stored=JSON.parse(h.storage.get(componentDraftKey));assert.equal(stored.revision,1);assert.equal(stored.componentRequest.body.clientRequestId,JSON.parse(saved).componentRequest.body.clientRequestId);
+ }
+});
+
+test('retry permission and availability failures preserve both component operations and their exact request',async()=>{
+ for(const kind of ['create','insert'])for(const status of [401,403,404]){
+  const h=harness();await openEditor(h,[{id:'root',kind:'text',title:'Original'}]);const submit=await prepareComponentOperation(h,kind),sending=submit(),exact=h.calls.at(-1).options.body;
+  h.calls.at(-1).reject(new TypeError('Response lost after commit'));await sending;
+  await h.host.querySelector('[data-builder-close]').onclick();await reopenEditor(h,[{id:'server',kind:'text',title:'Current'}],8);
+  const checking=h.host.querySelector('[data-component-retry]').onclick();assert.equal(h.calls.at(-1).options.body,exact);h.calls.at(-1).reject(Object.assign(new Error('Access temporarily unavailable'),{status}));await checking;
+  assert.equal(JSON.stringify(JSON.parse(h.storage.get(componentDraftKey)).componentRequest.body),exact);assert.match(h.host.innerHTML,/Проверим результат/);assert.match(h.host.innerHTML,/role="alert">Access temporarily unavailable/);assert.equal(h.host.querySelector('[data-component-back]'),null);
+  const retry=h.host.querySelector('[data-component-retry]').onclick();assert.equal(h.calls.at(-1).options.body,exact);await acknowledgeComponent(h,kind,retry);
+  if(kind==='insert')assert.equal(h.storage.size,0);
+  else{const retained=JSON.parse(h.storage.get(componentDraftKey));assert.equal(retained.componentRequest,null);assert.equal(retained.componentDrafts.root,undefined);assert.equal(retained.revision,1);assert.equal(retained.definition.blocks[0].id,'root','library creation must not erase the older unsaved page draft');}
+ }
+});
+
+test('a first definite permission rejection still returns an editable component form or insertion preview',async()=>{
+ for(const kind of ['create','insert'])for(const status of [401,403,404]){
+  const h=harness();await openEditor(h,[{id:'root',kind:'text',title:'Original'}]);const submit=await prepareComponentOperation(h,kind),sending=submit();
+  h.calls.at(-1).reject(Object.assign(new Error('Not submitted'),{status}));await sending;
+  assert.ok(!JSON.parse(h.storage.get(componentDraftKey)||'null')?.componentRequest);assert.doesNotMatch(h.host.innerHTML,/Проверим результат/);
+  assert.ok(h.host.querySelector(kind==='create'?'[data-component-save-form]':'[data-component-insert]'));assert.match(h.host.innerHTML,/Not submitted/);
+ }
+});
+
+test('an old offered-draft action cannot discard or restore over a later unknown component operation',async()=>{
+ const h=harness(),blocks=[{id:'root',kind:'text',title:'Original'}];h.storage.set(componentDraftKey,JSON.stringify({revision:1,definition:{version:1,blocks},pageName:'Unsaved name',pendingItems:{}}));await openEditor(h,blocks);
+ const restore=h.host.querySelector('[data-builder-restore]').onclick,discard=h.host.querySelector('[data-builder-discard]').onclick;restore();
+ const submit=await prepareComponentOperation(h,'insert'),sending=submit();h.calls.at(-1).reject(new TypeError('Response lost'));await sending;const saved=h.storage.get(componentDraftKey);
+ assert.doesNotThrow(()=>{discard();restore();});assert.equal(h.storage.get(componentDraftKey),saved);assert.match(h.host.innerHTML,/Проверим результат/);assert.equal(h.host.querySelector('[data-builder-save]').disabled,true);
+});
+
+test('stored unknown component operations stay in their account workspace and page',async()=>{
+ for(const kind of ['create','insert'])for(const scope of ['account','workspace','page']){
+  const h=harness();await openEditor(h,[{id:'root',kind:'text',title:'PRIVATE BLOCK'}]);const submit=await prepareComponentOperation(h,kind),sending=submit();h.calls.at(-1).reject(new TypeError('Network'));await sending;const saved=h.storage.get(componentDraftKey);
+  await h.host.querySelector('[data-builder-close]').onclick();if(scope==='account')h.state.me={id:'other'};if(scope==='workspace')h.state.activeWorkspaceId='other';if(scope==='page'){h.page.id='other';h.state.view='page:other';}await reopenEditor(h,[]);
+  assert.doesNotMatch(h.host.innerHTML,/Проверим результат|PRIVATE BLOCK/);assert.equal(h.host.querySelector('[data-builder-save]').disabled,false);assert.equal(h.storage.get(componentDraftKey),saved);
+ }
+});
+
+test('late component success or failure cannot modify another account route workspace or dialog',async()=>{
+ for(const kind of ['create','insert'])for(const outcome of ['success','failure'])for(const scope of ['account','workspace','page','dialog']){
+  const h=harness();await openEditor(h,[{id:'root',kind:'text',title:'Original'}]);const submit=await prepareComponentOperation(h,kind),sending=submit(),saved=h.storage.get(componentDraftKey);
+  if(scope==='account')h.state.me={id:'other'};if(scope==='workspace')h.state.activeWorkspaceId='other';if(scope==='page')h.state.view='page:other';if(scope==='dialog'){h.host.innerHTML='<p>Replacement dialog</p>';h.box.dataset.settingsSaving='true';}
+  const html=h.host.innerHTML,calls=h.calls.length,toasts=h.toasts.length;
+  if(outcome==='success')h.calls.at(-1).resolve({...loaded(),revision:2,rootBlockId:'copy',pageName:'PRIVATE TITLE',id:'private',name:'PRIVATE TITLE'});else h.calls.at(-1).reject(Object.assign(new Error('Late validation error'),{status:400}));
+  await sending;assert.equal(h.host.innerHTML,html);assert.equal(h.storage.get(componentDraftKey),saved);assert.equal(h.calls.length,calls);assert.equal(h.toasts.length,toasts);assert.equal(h.stats.closed,0);if(scope==='dialog')assert.equal(h.box.dataset.settingsSaving,'true');
+ }
 });

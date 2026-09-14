@@ -42,7 +42,12 @@ export function createPageComponentEditor({escapeHTML:e,uid,request,owns,collect
  }
  async function submit(body,kind){
   if(!owns()||busy)return;
-  if(!pending()){setPending({kind,body});persist();}
+  const resuming=Boolean(pending());
+  if(!pending()){
+   setPending(structuredClone({kind,body}));
+   // A retry key must survive closing or reloading before the mutation is sent.
+   if(persist()===false){setPending(null);show({...panel,error:'Не удалось сохранить запрос на устройстве. Освободите место в браузере и повторите; запрос не отправлен.'});return;}
+  }
   const operation=pending(),originPanel=panel;busy=true;setBusy(true);
   try{
    const result=await request(operation.kind==='insert'?`/api/workspace/pages/${pageId}/app/component`:'/api/page-app/components',{method:'POST',body:JSON.stringify(operation.body)});
@@ -51,9 +56,9 @@ export function createPageComponentEditor({escapeHTML:e,uid,request,owns,collect
    else{clearDraft(operation.body.rootBlockId);persist();show({mode:'saved',item:result});toast('Свой блок сохранён в личной библиотеке');}
   }catch(error){
    if(owns()){
-    // A definite validation/permission response has not committed a mutation.
-    // Unknown network outcomes retain the exact body and id for a safe retry.
-    const definite=[400,401,403,404,409,413,422].includes(error.status);
+    // Permission or availability may change after a previous request committed.
+    // Such a retry response cannot disprove that earlier unknown result.
+    const definite=[400,401,403,404,409,413,422].includes(error.status)&&!(resuming&&[401,403,404].includes(error.status));
     if(definite){setPending(null);persist();}
     setBusy(false);
     if(definite&&operation.kind==='create'){
@@ -67,7 +72,7 @@ export function createPageComponentEditor({escapeHTML:e,uid,request,owns,collect
  }
  function render(){
   if(!active())return '';
-  const op=pending();if(op)return `<section class="app-component-panel" aria-label="Результат операции со своим блоком"><h3>Проверим результат ${op.kind==='insert'?'вставки':'сохранения'}</h3><p>Ответ ещё не подтверждён. Повторная проверка использует тот же запрос и не создаст вторую копию. Черновик сохранён на этом устройстве.</p><button type="button" class="primary" data-component-retry>Проверить и продолжить</button></section>`;
+  const op=pending();if(op)return `<section class="app-component-panel" tabindex="-1" aria-label="Результат операции со своим блоком"><h3>Проверим результат ${op.kind==='insert'?'вставки':'сохранения'}</h3><p role="status">Ответ ещё не подтверждён. Повторная проверка использует тот же запрос и не создаст вторую копию. Черновик сохранён на этом устройстве.</p>${panel?.message?`<p role="alert">${e(panel.message)}</p>`:''}<button type="button" class="primary" data-component-retry>Проверить и продолжить</button></section>`;
   let body='';
   if(panel.mode==='loading')body='<p role="status">Загружаем свои блоки…</p>';
   if(panel.mode==='library')body=`<h3>Мои блоки</h3><p class="muted">Сохранённые вами части страниц. Каждая вставка — отдельная редактируемая копия.</p><div class="app-component-list">${panel.items.map(item=>`<article><div><h4>${e(item.name)}</h4>${item.description?`<p>${e(item.description)}</p>`:''}</div><button type="button" class="secondary" data-component-preview="${e(item.id)}">Посмотреть</button></article>`).join('')||'<p>Пока нет своих блоков. Вернитесь в редактор, соберите группу и выберите «Сохранить как свой блок» в её свойствах.</p>'}</div>`;
