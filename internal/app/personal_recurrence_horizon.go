@@ -197,7 +197,7 @@ func (s *Server) handleMaterializePersonalRecurrence(w http.ResponseWriter, r *h
 		return
 	}
 	plan.SeriesID = series
-	if err = validatePersonalPlanReferences(r.Context(), tx, owner, &plan, plan.ID); err != nil {
+	if err = validatePersonalPlanReferences(r.Context(), tx, owner, &plan, rule.Template); err != nil {
 		writeError(w, 400, err.Error())
 		return
 	}

@@ -165,16 +165,17 @@ type PersonalLink struct {
 }
 
 type PersonalOverview struct {
-	NoteFolders   []PersonalNoteFolder   `json:"noteFolders"`
-	NoteTemplates []PersonalNoteTemplate `json:"noteTemplates"`
-	Workspace     Workspace              `json:"workspace"`
-	Settings      PersonalSettings       `json:"settings"`
-	Projects      []PersonalProject      `json:"projects"`
-	Goals         []PersonalGoal         `json:"goals"`
-	Notes         []PersonalNote         `json:"notes"`
-	Plans         []PersonalPlan         `json:"plans"`
-	Habits        []PersonalHabit        `json:"habits"`
-	Links         []PersonalLink         `json:"links"`
+	HistoricalReferences PersonalHistoricalReferences `json:"historicalReferences"`
+	NoteFolders          []PersonalNoteFolder         `json:"noteFolders"`
+	NoteTemplates        []PersonalNoteTemplate       `json:"noteTemplates"`
+	Workspace            Workspace                    `json:"workspace"`
+	Settings             PersonalSettings             `json:"settings"`
+	Projects             []PersonalProject            `json:"projects"`
+	Goals                []PersonalGoal               `json:"goals"`
+	Notes                []PersonalNote               `json:"notes"`
+	Plans                []PersonalPlan               `json:"plans"`
+	Habits               []PersonalHabit              `json:"habits"`
+	Links                []PersonalLink               `json:"links"`
 }
 
 type PersonalSuggestion struct {
@@ -287,6 +288,7 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePersonalOverview(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	user := currentUser(r)
 	var overview PersonalOverview
 	err := s.store.db.QueryRowContext(r.Context(), `
@@ -321,6 +323,10 @@ func (s *Server) handlePersonalOverview(w http.ResponseWriter, r *http.Request) 
 	}
 	if overview.Plans, err = s.listPersonalPlans(r, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось загрузить планы")
+		return
+	}
+	if overview.HistoricalReferences, err = s.listPersonalHistoricalReferences(r, user.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось загрузить прежние связи личных дел")
 		return
 	}
 	if overview.Habits, err = s.listPersonalHabits(r, user.ID); err != nil {
@@ -729,7 +735,7 @@ func (s *Server) handleCreatePersonalPlan(w http.ResponseWriter, r *http.Request
 		writePersonalCreateReplay(w, r, tx, "plan", existing)
 		return
 	}
-	if err := validatePersonalPlanReferences(r.Context(), tx, user.ID, &plan, ""); err != nil {
+	if err := validatePersonalPlanReferences(r.Context(), tx, user.ID, &plan, nil); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -812,7 +818,7 @@ func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request
 		plan.StartDate, plan.EndDate = moved.StartDate, moved.EndDate
 	}
 
-	if err := validatePersonalPlanReferences(r.Context(), tx, user.ID, &plan, current.ID); err != nil {
+	if err := validatePersonalPlanReferences(r.Context(), tx, user.ID, &plan, &current); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -833,7 +839,7 @@ func (s *Server) handleUpdatePersonalPlan(w http.ResponseWriter, r *http.Request
 	plan.TitleGenerated = titleGenerated
 	if input.Status == "done" && current.Status != "done" {
 		if err := s.spawnNextPersonalOccurrence(r.Context(), tx, user.ID, plan, now); err != nil {
-			writeError(w, http.StatusInternalServerError, "Не удалось создать следующий экземпляр")
+			writePersonalReferenceMutationError(w, err, "Не удалось создать следующий экземпляр")
 			return
 		}
 	}

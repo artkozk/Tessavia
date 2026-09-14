@@ -5546,3 +5546,16 @@ body:has([data-personal-finance]) .topbar-actions .create-control { display: non
 .personal-heading { gap: 1rem; }
 /* Today is a glance at notes; the full text remains on its own page. */
 .personal-notes-preview .markdown-body { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; max-height: 4.8em; overflow: hidden; }
+
+/* SC-103: historical relationships retain their place without pretending to open an archived editor. */
+.personal-plan-references { display:grid; gap:8px; min-width:0; }
+.personal-plan-references .personal-context-link { max-width:100%; min-width:0; text-align:left; white-space:normal; overflow-wrap:anywhere; align-items:flex-start; }
+.personal-plan-references .personal-context-link > span { min-width:0; }
+.personal-plan-references .personal-context-link small { display:block; margin-top:4px; color:var(--muted); }
+.personal-plan-references [data-personal-reference-state="archived"], .personal-plan-references [data-personal-reference-state="unavailable"] { color:var(--muted); }
+.personal-plan-context [data-personal-reference-notice] { line-height:1.5; overflow-wrap:anywhere; }
+.personal-plan-context .form-grid.two { align-items:start; }
+.personal-plan-draft-review { padding:14px; border:1px solid var(--line); border-radius:8px; background:var(--surface-soft); overflow-wrap:anywhere; }
+.personal-plan-draft-review details { margin-block:12px; }
+.personal-plan-draft-review button { max-width:100%; white-space:normal; }
+.personal-plan-draft-review .personal-plan-saved-notes { white-space:pre-wrap; }

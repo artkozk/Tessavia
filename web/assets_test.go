@@ -250,7 +250,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 		t.Fatalf("read index.html: %v", err)
 	}
 	for _, asset := range []string{"app.js", "styles.css", "settings-hub.css", "personal-finance.css", "page-sheets.css", "page-components.css", "page-block-trash.css"} {
-		if !bytes.Contains(index, []byte("/"+asset+"?v=20260914-component-recovery-1")) {
+		if !bytes.Contains(index, []byte("/"+asset+"?v=20260914-personal-references-1")) {
 			t.Fatalf("current release must bump %s so production browsers do not keep a stale resource", asset)
 		}
 	}

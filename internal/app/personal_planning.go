@@ -384,52 +384,6 @@ type personalReferenceQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-func validatePersonalPlanReferences(ctx context.Context, queryer personalReferenceQueryer, ownerID int64, plan *PersonalPlan, selfID string) error {
-	if plan.ProjectID != "" {
-		var found int
-		if err := queryer.QueryRowContext(ctx, `SELECT 1 FROM personal_projects WHERE id=? AND owner_id=? AND status<>'archived'`, plan.ProjectID, ownerID).Scan(&found); err != nil {
-			return errors.New("Личный проект не найден")
-		}
-	}
-	if plan.GoalID != "" {
-		var projectID string
-		if err := queryer.QueryRowContext(ctx, `SELECT COALESCE(project_id,'') FROM personal_goals WHERE id=? AND owner_id=? AND status<>'archived'`, plan.GoalID, ownerID).Scan(&projectID); err != nil {
-			return errors.New("Личная цель не найдена")
-		}
-		if plan.ProjectID == "" {
-			plan.ProjectID = projectID
-		} else if projectID != "" && projectID != plan.ProjectID {
-			return errors.New("Цель относится к другому личному проекту")
-		}
-	}
-	if plan.ParentID == "" {
-		return nil
-	}
-	if plan.ParentID == selfID {
-		return errors.New("Дело не может быть собственной подзадачей")
-	}
-	var cycle int
-	err := queryer.QueryRowContext(ctx, `WITH RECURSIVE chain(id,parent_id) AS (
-		SELECT id,parent_id FROM personal_plans WHERE id=? AND owner_id=? AND status<>'archived'
-		UNION ALL
-		SELECT p.id,p.parent_id FROM personal_plans p JOIN chain c ON p.id=c.parent_id
-		WHERE p.owner_id=? AND p.status<>'archived'
-	) SELECT COUNT(*) FROM chain WHERE id=?`, plan.ParentID, ownerID, ownerID, selfID).Scan(&cycle)
-	if err != nil {
-		return errors.New("Родительское дело не найдено")
-	}
-	if selfID == "" {
-		var found int
-		if err := queryer.QueryRowContext(ctx, `SELECT 1 FROM personal_plans WHERE id=? AND owner_id=? AND status<>'archived'`, plan.ParentID, ownerID).Scan(&found); err != nil {
-			return errors.New("Родительское дело не найдено")
-		}
-	}
-	if cycle > 0 {
-		return errors.New("Подзадачи не могут образовывать цикл")
-	}
-	return nil
-}
-
 func recurrenceForCreate(input *personalRecurrenceInput, plan PersonalPlan) (*PersonalRecurrenceRule, error) {
 	if input == nil || input.Cadence == "" || input.Cadence == "none" {
 		return nil, nil
@@ -603,6 +557,11 @@ func (s *Server) handleSkipPersonalPlan(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusConflict, "Экземпляр изменён в другом окне")
 		return
 	}
+	previous := plan
+	if err = validatePersonalPlanReferences(r.Context(), tx, ownerID, &plan, &previous); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	now := nowText()
 	result, err := tx.ExecContext(r.Context(), `UPDATE personal_plans SET status='done',completed_at=?,occurrence_state='skipped',updated_at=? WHERE id=? AND owner_id=? AND status='planned' AND updated_at=?`, now, now, plan.ID, ownerID, plan.UpdatedAt)
 	if err != nil || affectedRows(result) == 0 {
@@ -611,7 +570,7 @@ func (s *Server) handleSkipPersonalPlan(w http.ResponseWriter, r *http.Request) 
 	}
 	plan.Status, plan.CompletedAt, plan.OccurrenceState, plan.UpdatedAt = "done", &now, "skipped", now
 	if err := s.spawnNextPersonalOccurrence(r.Context(), tx, ownerID, plan, now); err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось сохранить пропуск")
+		writePersonalReferenceMutationError(w, err, "Не удалось сохранить пропуск")
 		return
 	}
 	if err := tx.Commit(); err != nil {
@@ -671,7 +630,7 @@ func (s *Server) handleUpdatePersonalSeries(w http.ResponseWriter, r *http.Reque
 	if !validatePersonalText(w, &updated.Title, updated.Notes) {
 		return
 	}
-	if err := validatePersonalPlanReferences(r.Context(), tx, ownerID, &updated, plan.ID); err != nil {
+	if err := validatePersonalPlanReferences(r.Context(), tx, ownerID, &updated, &plan); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -705,7 +664,7 @@ func (s *Server) handleUpdatePersonalSeries(w http.ResponseWriter, r *http.Reque
 		err = updatePlannedPersonalSeries(r.Context(), tx, ownerID, plan.SeriesID, updated, rule.Timezone, now)
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось изменить серию")
+		writePersonalReferenceMutationError(w, err, "Не удалось изменить серию")
 		return
 	}
 	actual, err := loadPersonalPlan(r.Context(), tx, ownerID, plan.ID)

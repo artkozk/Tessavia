@@ -27,6 +27,13 @@ func samePersonalCalendarFields(a, b PersonalPlan) bool {
 }
 
 func savePersonalRecurrenceTemplate(ctx context.Context, tx *sql.Tx, owner int64, series string, plan PersonalPlan, now string) error {
+	previous, err := loadPersonalRecurrenceTemplate(ctx, tx, owner, series)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err = validatePersonalPlanReferences(ctx, tx, owner, &plan, &previous); err != nil {
+		return err
+	}
 	body, err := json.Marshal(recurrenceTemplate(plan))
 	if err != nil {
 		return err
@@ -144,7 +151,14 @@ func projectPersonalRecurrence(template PersonalPlan, date, zone string) (Person
 }
 
 func insertPersonalRecurrenceInstance(ctx context.Context, tx *sql.Tx, owner int64, plan PersonalPlan, scheduled, now string) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO personal_plans(id,owner_id,title,notes,due_at,status,completed_at,created_at,updated_at,start_date,end_date,color_key,title_generated,item_kind,project_id,goal_id,parent_id,planned_minutes,actual_minutes,starts_at,ends_at,series_id,occurrence_date,occurrence_state) VALUES(?,?,?,?,?,'planned',NULL,?,?,?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),NULLIF(?,''),?,0,?,?,?,?,'scheduled')`, plan.ID, owner, plan.Title, plan.Notes, plan.DueAt, now, now, plan.StartDate, plan.EndDate, plan.ColorKey, plan.TitleGenerated, plan.ItemKind, plan.ProjectID, plan.GoalID, plan.ParentID, plan.PlannedMinutes, plan.StartsAt, plan.EndsAt, plan.SeriesID, plan.OccurrenceDate)
+	previous, err := loadPersonalRecurrenceTemplate(ctx, tx, owner, plan.SeriesID)
+	if err != nil {
+		return err
+	}
+	if err = validatePersonalPlanReferences(ctx, tx, owner, &plan, &previous); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO personal_plans(id,owner_id,title,notes,due_at,status,completed_at,created_at,updated_at,start_date,end_date,color_key,title_generated,item_kind,project_id,goal_id,parent_id,planned_minutes,actual_minutes,starts_at,ends_at,series_id,occurrence_date,occurrence_state) VALUES(?,?,?,?,?,'planned',NULL,?,?,?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),NULLIF(?,''),?,0,?,?,?,?,'scheduled')`, plan.ID, owner, plan.Title, plan.Notes, plan.DueAt, now, now, plan.StartDate, plan.EndDate, plan.ColorKey, plan.TitleGenerated, plan.ItemKind, plan.ProjectID, plan.GoalID, plan.ParentID, plan.PlannedMinutes, plan.StartsAt, plan.EndsAt, plan.SeriesID, plan.OccurrenceDate)
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO personal_recurrence_instances(plan_id,series_id,owner_id,scheduled_date) VALUES(?,?,?,?)`, plan.ID, plan.SeriesID, owner, scheduled)
 	}
@@ -176,7 +190,7 @@ func updatePlannedPersonalSeries(ctx context.Context, tx *sql.Tx, owner int64, s
 		if err != nil {
 			return err
 		}
-		if err = validatePersonalPlanReferences(ctx, tx, owner, &plan, existing.ID); err != nil {
+		if err = validatePersonalPlanReferences(ctx, tx, owner, &plan, &existing); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE personal_plans SET title=?,notes=?,due_at=?,start_date=?,end_date=?,color_key=?,title_generated=?,item_kind=?,project_id=NULLIF(?,''),goal_id=NULLIF(?,''),parent_id=NULLIF(?,''),planned_minutes=?,starts_at=?,ends_at=?,updated_at=? WHERE id=? AND owner_id=?`, plan.Title, plan.Notes, plan.DueAt, plan.StartDate, plan.EndDate, plan.ColorKey, plan.TitleGenerated, plan.ItemKind, plan.ProjectID, plan.GoalID, plan.ParentID, plan.PlannedMinutes, plan.StartsAt, plan.EndsAt, now, existing.ID, owner)

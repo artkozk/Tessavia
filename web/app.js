@@ -1,30 +1,31 @@
-import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-component-recovery-1';
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-component-recovery-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-component-recovery-1';
-import { createSettingsHub } from './settings-hub.js?v=20260914-component-recovery-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260914-component-recovery-1';
-import { createPageAppUI } from './page-apps.js?v=20260914-component-recovery-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260914-component-recovery-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-component-recovery-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-component-recovery-1';
+import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260914-personal-references-1';
+import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-personal-references-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-personal-references-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-personal-references-1';
+import { createSettingsHub } from './settings-hub.js?v=20260914-personal-references-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260914-personal-references-1';
+import { createPageAppUI } from './page-apps.js?v=20260914-personal-references-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260914-personal-references-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-personal-references-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-personal-references-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-component-recovery-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-personal-references-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-component-recovery-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-personal-references-1';
 import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-component-recovery-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-component-recovery-1';
-import { createFirstUseUI } from './first-use.js?v=20260914-component-recovery-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-personal-references-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-personal-references-1';
+import { createFirstUseUI } from './first-use.js?v=20260914-personal-references-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260914-component-recovery-1';
+import { createLifeMapUI } from './life-map.js?v=20260914-personal-references-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI } from './habit-tracker.js?v=20260914-component-recovery-1';
+import { createHabitUI } from './habit-tracker.js?v=20260914-personal-references-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260914-component-recovery-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260914-personal-references-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -931,7 +932,7 @@ function applyWorkingDraft(root, values = {}) {
       panel.innerHTML=`<h3>Проверьте черновик поля</h3><p>В черновике: ${escapeHTML(original)}.</p><p>Поле теперь принимает один доступный вариант. Выберите подходящее значение в форме и подтвердите его. Исходный выбор сохранён в черновике до подтверждения.</p><button type="button" class="secondary">Подтвердить выбранное значение</button>`;
       field.closest('label').before(panel);
       $('button',panel).onclick=()=>{if(field.required&&!field.value){toast('Выберите значение поля',true);field.focus();return;}delete root.fieldDraftConflicts[name];field.setCustomValidity('');panel.remove();root.dispatchEvent(new Event('input',{bubbles:true}));};
-    }else field.value = String(value ?? '');
+    }else {if(field.hasAttribute('data-personal-plan-reference'))restorePersonalPlanReferenceChoice(field,value);field.value = String(value ?? '');}
     field.dataset.userChanged = 'true';
     if (field.classList.contains('markdown-source')) setMarkdownEditorValue(field.closest('.markdown-editor'), field.value, false);
     if (field.tagName === 'SELECT') syncCustomSelect(field);
@@ -2781,8 +2782,8 @@ function renderPlanRow(plan, links) {
   const ownLinks = personalLinksFor(links, 'plan', plan.id);
   const done = plan.status === 'done';
   const notes = markdownPlain(plan.notes).trim();
-  const project = state.personal?.projects.find((item) => item.id === plan.projectId), goal = state.personal?.goals.find((item) => item.id === plan.goalId);
-  const summary = [plan.itemKind === 'event' ? 'Событие' : 'Дело', project?.title, goal?.title, personalPlanDateLabel(plan), plan.occurrenceState === 'skipped' ? 'Пропущено' : '', plan.plannedMinutes || plan.actualMinutes ? `${formatMinutes(plan.actualMinutes)} факт / ${formatMinutes(plan.plannedMinutes)} план` : '', notes && notes !== plan.title ? notes.slice(0, 90) : ''].filter(Boolean).join(' · ');
+  const project = personalPlanReferenceSummary(state.personal,'project',plan.projectId), goal = personalPlanReferenceSummary(state.personal,'goal',plan.goalId);
+  const summary = [plan.itemKind === 'event' ? 'Событие' : 'Дело', project, goal, personalPlanDateLabel(plan), plan.occurrenceState === 'skipped' ? 'Пропущено' : '', plan.plannedMinutes || plan.actualMinutes ? `${formatMinutes(plan.actualMinutes)} факт / ${formatMinutes(plan.plannedMinutes)} план` : '', notes && notes !== plan.title ? notes.slice(0, 90) : ''].filter(Boolean).join(' · ');
   return `<article class="personal-plan ${done ? 'done' : ''}"><button type="button" class="personal-check-button ${done ? 'checked' : ''}" data-plan-toggle="${plan.id}" aria-label="${done ? 'Вернуть план в работу' : 'Отметить план выполненным'}">${icon('check')}</button><button type="button" class="personal-row-main" data-personal-edit="plan" data-personal-id="${plan.id}"><strong>${escapeHTML(plan.title)}</strong>${summary ? `<span>${escapeHTML(summary)}</span>` : ''}</button><button type="button" class="icon-button personal-link-button" data-personal-link="plan" data-personal-id="${plan.id}" data-personal-title="${escapeHTML(plan.title)}" title="Связать" aria-label="Связать план">${icon('link')}</button>${renderPersonalLinkChips(ownLinks)}</article>`;
 }
 
@@ -2898,10 +2899,15 @@ function findPersonalItem(kind, id) {
 async function togglePersonalPlan(id) {
   const plan = findPersonalItem('plan', id);
   if (!plan) return;
+  const referenceError=personalPlanReferenceError(state.personal,plan,plan);
+  if(referenceError){toast(referenceError.message,true);openPersonalEditor('plan',id);return;}
+  const owner=state.me?.id,workspace=state.activeWorkspaceId,view=state.view;
+  const current=()=>owner===state.me?.id&&workspace===state.activeWorkspaceId&&view===state.view;
   try {
-    await api(`/api/personal/plans/${id}`, { method: 'PATCH', body: JSON.stringify({ title: plan.titleGenerated ? '' : plan.title, notes: plan.notes || '', expectedUpdatedAt: plan.updatedAt, status: plan.status === 'done' ? 'planned' : 'done' }) });
+    await api(`/api/personal/plans/${id}`, { method: 'PATCH', headers:{'X-Outbox-Owner':String(owner)}, body: JSON.stringify({ title: plan.titleGenerated ? '' : plan.title, notes: plan.notes || '', expectedUpdatedAt: plan.updatedAt, status: plan.status === 'done' ? 'planned' : 'done' }) });
+    if(!current())return;
     await loadPersonal({ force: true });
-  } catch (error) { toast(error.message, true); }
+  } catch (error) { if(current())toast(error.message, true); }
 }
 
 async function toggleHabitCheckin(id, date) {
@@ -2988,9 +2994,7 @@ function bindPersonalRecurrenceScope(form) {
 }
 
 function personalPlanContextFields(plan) {
-  const projects = state.personal?.projects || [], goals = state.personal?.goals || [], parents = (state.personal?.plans || []).filter((item) => item.id !== plan.id && item.status === 'planned');
-  const recurrence = plan.recurrence || {};
-  return `<section class="personal-plan-context"><div class="form-grid two"><label>Тип<select name="itemKind"><option value="task" ${(plan.itemKind || 'task') === 'task' ? 'selected' : ''}>Дело</option><option value="event" ${plan.itemKind === 'event' ? 'selected' : ''}>Событие</option></select></label><label>Личный проект<select name="projectId"><option value="">Без проекта</option>${projects.map((project) => `<option value="${project.id}" ${plan.projectId === project.id ? 'selected' : ''}>${escapeHTML(project.title)}</option>`).join('')}</select></label></div><div class="form-grid two"><label>Цель<select name="goalId"><option value="">Без цели</option>${goals.map((goal) => `<option value="${goal.id}" ${plan.goalId === goal.id ? 'selected' : ''}>${escapeHTML(goal.title)}</option>`).join('')}</select></label><label>Родительское дело<select name="parentId"><option value="">Нет</option>${parents.map((parent) => `<option value="${parent.id}" ${plan.parentId === parent.id ? 'selected' : ''}>${escapeHTML(parent.title)}</option>`).join('')}</select></label></div><div class="form-grid two"><label>План, минут<input type="number" name="plannedMinutes" min="0" max="525600" value="${plan.plannedMinutes || 0}"></label><label>Факт, минут<input type="number" name="actualMinutes" min="0" max="525600" value="${plan.actualMinutes || 0}"></label></div>${personalRecurrenceFields(plan)}</section>`;
+  return `<section class="personal-plan-context"><div class="form-grid two"><label>Тип<select name="itemKind"><option value="task" ${(plan.itemKind || 'task') === 'task' ? 'selected' : ''}>Дело</option><option value="event" ${plan.itemKind === 'event' ? 'selected' : ''}>Событие</option></select></label><label>Личный проект<select name="projectId" data-personal-plan-reference="project" aria-describedby="personal-plan-project-reference-note"><option value="">Без проекта</option>${personalPlanReferenceOptions(state.personal,plan,'project',escapeHTML)}</select><small id="personal-plan-project-reference-note" data-personal-reference-notice="project" class="muted" hidden></small></label></div><div class="form-grid two"><label>Цель<select name="goalId" data-personal-plan-reference="goal" aria-describedby="personal-plan-goal-reference-note"><option value="">Без цели</option>${personalPlanReferenceOptions(state.personal,plan,'goal',escapeHTML)}</select><small id="personal-plan-goal-reference-note" data-personal-reference-notice="goal" class="muted" hidden></small></label><label>Родительское дело<select name="parentId" data-personal-plan-reference="parent" aria-describedby="personal-plan-parent-reference-note"><option value="">Нет</option>${personalPlanReferenceOptions(state.personal,plan,'parent',escapeHTML)}</select><small id="personal-plan-parent-reference-note" data-personal-reference-notice="parent" class="muted" hidden></small></label></div><div class="form-grid two"><label>План, минут<input type="number" name="plannedMinutes" min="0" max="525600" value="${plan.plannedMinutes || 0}"></label><label>Факт, минут<input type="number" name="actualMinutes" min="0" max="525600" value="${plan.actualMinutes || 0}"></label></div>${personalRecurrenceFields(plan)}</section>`;
 }
 
 function personalPlanDateError(form) {
@@ -3013,6 +3017,7 @@ function personalPlanDateError(form) {
 function openPersonalEditor(kind, id = '', context = {}) {
   if (kind === 'habit') return id ? habitUI.open(id) : habitUI.settings();
   const item = id ? findPersonalItem(kind, id) : null;
+  if(id&&!item){toast('Запись недоступна',true);return;}
   const dialog = $('#personal-dialog');
   const content = $('#personal-dialog-content');
   const labels = { note: 'Заметка', plan: 'Дело', habit: 'Привычка', project: 'Личный проект', goal: 'Цель' };
@@ -3028,11 +3033,21 @@ function openPersonalEditor(kind, id = '', context = {}) {
   const titleField = ['habit', 'project', 'goal'].includes(kind)
     ? `<label>Название<input name="title" maxlength="240" required autofocus value="${escapeHTML(item?.title || '')}" placeholder="${kind === 'project' ? 'Например: ремонт квартиры' : kind === 'goal' ? 'Например: закончить курс к декабрю' : 'Например: читать 20 минут'}"></label>`
     : '';
-  content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind !== 'habit' ? 'personal-note-form' : ''}" novalidate>${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="secondary" data-publish-personal>Опубликовать в проект</button><button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
+  content.innerHTML = `<div class="dialog-header personal-editor-header"><div><span class="record-kind">${icon(kind === 'habit' ? 'checkSquare' : kind === 'plan' ? 'calendar' : 'edit')} Только для вас</span><h2>${kind === 'note' ? title : item ? escapeHTML(item.title) : newHeading}</h2></div><button type="button" class="close-button icon-button" data-close-personal aria-label="Закрыть">${icon('x')}</button></div><form id="personal-editor-form" class="card-form dialog-form personal-editor-form ${kind !== 'habit' ? 'personal-note-form' : ''}" novalidate>${kind==='plan'&&item?`<input type="hidden" name="expectedUpdatedAt" value="${escapeHTML(item.updatedAt)}">`:''}${titleField}${body}<div class="form-actions personal-editor-actions"><button type="submit" class="primary">${icon('check')} Сохранить</button>${item ? `<button type="button" class="secondary" data-publish-personal>Опубликовать в проект</button><button type="button" class="danger-text" data-archive-personal>В архив</button>` : ''}</div></form>`;
   $$('[data-close-personal]', dialog).forEach((button) => button.addEventListener('click', async () => { if (await requestDialogClose(dialog) && context.planId) openPersonalPlanDetails(context.planId); }));
   const editorForm = $('#personal-editor-form', dialog);
-  const editorOwner = state.me.id;
+  const editorOwner = state.me.id, editorWorkspace=state.activeWorkspaceId, editorView=state.view;
+  const editorContextCurrent=()=>editorOwner===state.me?.id&&(kind!=='plan'||editorWorkspace===state.activeWorkspaceId&&editorView===state.view);
+  const ownsEditor=()=>editorContextCurrent()&&editorForm.isConnected&&dialog.open;
+  const planDraftReviewOptions={escapeHTML,schedule:item?personalPlanDateLabel(item):'',owns:ownsEditor,onDiscard:()=>{if(!ownsEditor())return;clearWorkingDraftFor(editorForm);openPersonalEditor('plan',id,context);},onRefresh:async()=>{
+    if(!ownsEditor()||preparing||saving)return;
+    if(!flushDialogDrafts(dialog)){toast('Не удалось сохранить черновик на устройстве. Скопируйте важный текст перед продолжением',true);return;}
+    preparing=true;editorForm.inert=true;
+    try{await loadPersonal({force:true});if(!ownsEditor()||state.personalError)return;if(!findPersonalItem('plan',id)){toast('Сохранённое дело недоступно. Ваш черновик остаётся в форме',true);return;}openPersonalEditor('plan',id,context);}
+    finally{preparing=false;editorForm.inert=false;}
+  }};
   const draftScope = `personal:${state.me.id}:${kind}:${item?.id || context.planId || (context.date ? `day:${context.date}` : 'new')}`;
+  if(kind==='plan'&&item){const restored=loadWorkingDraft(draftScope);if(restored?.values&&!restored.values.expectedUpdatedAt)editorForm.elements.expectedUpdatedAt.value='';}
   bindWorkingDraft(editorForm, draftScope);
   if (kind === 'note') {
     const editor = $('.markdown-editor', editorForm);
@@ -3041,7 +3056,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
   bindMarkdownEditors(dialog);
   const resizeNoteTitle = ['note', 'plan'].includes(kind) ? bindPersonalNoteSheet(editorForm, kind === 'plan' ? 'Дело' : 'Заметка') : null;
   if (kind === 'note') noteLibraryUI.bindEditor(editorForm, () => { syncNotebook($('.markdown-editor', editorForm)); const values = new FormData(editorForm); return {title: values.get('title'), body: values.get('body'), sourceID: item?.id || 'new'}; });
-  if (kind === 'plan') {bindPersonalPlanDates(editorForm);bindPersonalRecurrenceScope(editorForm);}
+  if (kind === 'plan') {bindPersonalPlanDates(editorForm);bindPersonalRecurrenceScope(editorForm);bindPersonalPlanReferenceFields(editorForm,state.personal,item||{});if(item)bindPersonalPlanDraftReview(editorForm,state.personal,item,planDraftReviewOptions);}
   if(kind==='plan'&&!item){const options=$('.first-plan-options',editorForm);if(context.date||['startDate','endDate','startsAt','dueAt','projectId','goalId','parentId'].some(key=>editorForm.elements[key]?.value)||editorForm.elements.recurrenceCadence?.value!=='none')options.open=true;}
   if (item && kind === 'note') {
     $('.personal-note-sheet', editorForm).insertAdjacentHTML('afterend', renderPersonalLinkChips(personalLinksFor(state.personal.links, kind, id)));
@@ -3052,21 +3067,24 @@ function openPersonalEditor(kind, id = '', context = {}) {
   let saving = false, preparing = false;
   editorForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (saving || preparing) return;
+    if (saving || preparing || !ownsEditor()) return;
     preparing = true;
     let mediaCreation = {};
     try { if (noteMedia && !item) mediaCreation = await noteMedia.creation(); } catch (error) { toast(error.message,true); return; } finally { preparing = false; }
-    if (editorOwner !== state.me?.id || !editorForm.isConnected || !dialog.open) return;
+    if (!ownsEditor()) return;
     const form = new FormData(editorForm);
     let payload;
     if (kind === 'note') payload = { folderId: form.get('folderId') || '', tags: parseNoteTags(form.get('noteTags')), title: form.get('title'), ...(item ? { expectedUpdatedAt: item.updatedAt } : {}), body: form.get('body'), scheduledDate: form.get('scheduledDate') || '', pinned: form.get('pinned') === 'on', ...(!item && context.planId ? { linkPlanId: context.planId } : {}) };
     else if (kind === 'plan') {
+      if(item&&(!form.get('expectedUpdatedAt')||editorForm.personalPlanReviewRequired)){toast('Сравните восстановленный черновик с сохранённым делом',true);(editorForm.querySelector('[data-personal-plan-review-draft]')||editorForm.querySelector('[data-personal-plan-refresh-draft]'))?.focus();return;}
+      const referenceError=personalPlanReferenceError(state.personal,item||{},form);
+      if(referenceError){toast(referenceError.message,true);const field=editorForm.elements[referenceError.field];(field?.closest('.custom-select')?.querySelector('.custom-select-trigger')||field)?.focus();return;}
       const dateError = personalPlanDateError(form);
       if (dateError) { toast(dateError.message, true); editorForm.elements[dateError.field]?.focus(); return; }
       const mode = form.get('dateMode');
       if (mode === 'days' && !form.get('startDate') || mode === 'time' && !form.get('dueAt') || mode === 'block' && (!form.get('startsAt') || !form.get('endsAt'))) { toast('Заполните выбранные даты или выберите «Без даты»', true); return; }
       const cadence = form.get('recurrenceCadence');
-      payload = { title: form.get('title'), notes: form.get('notes'), itemKind: form.get('itemKind'), projectId: form.get('projectId'), goalId: form.get('goalId'), parentId: form.get('parentId'), plannedMinutes: Number(form.get('plannedMinutes')), actualMinutes: Number(form.get('actualMinutes')), dueAt: mode === 'time' ? new Date(form.get('dueAt')).toISOString() : '', startDate: mode === 'days' ? form.get('startDate') : '', endDate: mode === 'days' ? form.get('endDate') : '', startsAt: mode === 'block' ? new Date(form.get('startsAt')).toISOString() : '', endsAt: mode === 'block' ? new Date(form.get('endsAt')).toISOString() : '', colorKey: form.get('colorKey'), ...(item?.seriesId ? { occurrenceDate: form.get('occurrenceDate'), expectedSeriesUpdatedAt:item.recurrence?.updatedAt||'' } : {}), ...(cadence && cadence !== 'none' ? { recurrence: { cadence, interval: Number(form.get('recurrenceInterval')) || 1, timezone: item?.recurrence?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow', startDate: form.get('recurrenceStartDate'), untilDate: form.get('recurrenceUntilDate'), active: item?.seriesId ? form.get('recurrenceActive') === 'on' : true } } : {}), ...(item ? { status: item.status, expectedUpdatedAt: item.updatedAt } : {}) };
+      payload = { title: form.get('title'), notes: form.get('notes'), itemKind: form.get('itemKind'), projectId: form.get('projectId'), goalId: form.get('goalId'), parentId: form.get('parentId'), plannedMinutes: Number(form.get('plannedMinutes')), actualMinutes: Number(form.get('actualMinutes')), dueAt: mode === 'time' ? new Date(form.get('dueAt')).toISOString() : '', startDate: mode === 'days' ? form.get('startDate') : '', endDate: mode === 'days' ? form.get('endDate') : '', startsAt: mode === 'block' ? new Date(form.get('startsAt')).toISOString() : '', endsAt: mode === 'block' ? new Date(form.get('endsAt')).toISOString() : '', colorKey: form.get('colorKey'), ...(item?.seriesId ? { occurrenceDate: form.get('occurrenceDate'), expectedSeriesUpdatedAt:item.recurrence?.updatedAt||'' } : {}), ...(cadence && cadence !== 'none' ? { recurrence: { cadence, interval: Number(form.get('recurrenceInterval')) || 1, timezone: item?.recurrence?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow', startDate: form.get('recurrenceStartDate'), untilDate: form.get('recurrenceUntilDate'), active: item?.seriesId ? form.get('recurrenceActive') === 'on' : true } } : {}), ...(item ? { status: item.status, expectedUpdatedAt: form.get('expectedUpdatedAt') } : {}) };
     }
     else if (kind === 'project') payload = { title: form.get('title'), notes: form.get('notes'), colorKey: form.get('colorKey'), ...(item ? { status: form.get('status'), expectedUpdatedAt: item.updatedAt } : {}) };
     else if (kind === 'goal') payload = { title: form.get('title'), notes: form.get('notes'), projectId: form.get('projectId'), horizon: form.get('horizon'), startDate: form.get('startDate'), endDate: form.get('endDate'), progress: Number(form.get('progress')), plannedMinutes: Number(form.get('plannedMinutes')), actualMinutes: Number(form.get('actualMinutes')), ...(item ? { status: form.get('status'), expectedUpdatedAt: item.updatedAt } : {}) };
@@ -3080,6 +3098,7 @@ function openPersonalEditor(kind, id = '', context = {}) {
     const submit = $('button[type="submit"]', editorForm);
     saving = true;
     submit.disabled = true;
+    if(kind==='plan')editorForm.inert=true;
     try {
       if (!item && (kind === 'note' || kind === 'plan')) {
         editorForm.inert = true;
@@ -3095,15 +3114,17 @@ function openPersonalEditor(kind, id = '', context = {}) {
       const seriesUpdate = kind === 'plan' && item?.seriesId && form.get('applyToSeries') === 'on';
       if (seriesUpdate && !payload.recurrence) { toast('Для изменения серии выберите ритм повторения', true); return; }
       const endpoint = seriesUpdate ? `/api/personal/plans/${item.id}/series` : `/api/personal/${kind === 'habit' ? 'habits' : `${kind}s`}${item ? `/${item.id}` : ''}`;
-      const saved = await api(endpoint, { method: seriesUpdate ? 'PUT' : item ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
-      if (editorOwner !== state.me?.id || !editorForm.isConnected) return;
+      const saved = await api(endpoint, { method: seriesUpdate ? 'PUT' : item ? 'PATCH' : 'POST', headers:{'X-Outbox-Owner':String(editorOwner)}, body: JSON.stringify(payload) });
+      if (!ownsEditor()) return;
       clearWorkingDraftFor(editorForm);
       const stillHere = editorForm.isConnected && dialog.open;
       if (stillHere) await requestDialogClose(dialog);
+      if(!editorContextCurrent())return;
       await loadPersonal({ force: true });
+      if(!editorContextCurrent())return;
       if (stillHere && !dialog.open && (context.planId || kind === 'plan')) openPersonalPlanDetails(context.planId || saved.id);
       toast(`${title} ${kind === 'plan' ? 'сохранено' : kind === 'project' ? 'сохранён' : 'сохранена'}`);
-    } catch (error) { toast(error.message, true); }
+    } catch (error) { if(ownsEditor()){toast(error.message, true);if(kind==='plan'&&item&&error.status===409)bindPersonalPlanDraftReview(editorForm,state.personal,item,{...planDraftReviewOptions,conflicted:true});} }
     finally { saving = false; submit.disabled = false; editorForm.inert = false; }
   });
   $('[data-archive-personal]', dialog)?.addEventListener('click', async () => {
@@ -9722,12 +9743,13 @@ function openPersonalPlanDetails(id) {
   const dialog = $('#personal-dialog'), content = $('#personal-dialog-content');
   const links = personalLinksFor(state.personal.links, 'plan', id);
   const notes = links.filter((link) => link.targetType === 'note').map((link) => ({ link, note: findPersonalItem('note', link.targetId) })).filter((item) => item.note);
-  const project = state.personal.projects.find((item) => item.id === plan.projectId), goal = state.personal.goals.find((item) => item.id === plan.goalId), children = state.personal.plans.filter((item) => item.parentId === plan.id && item.status === 'planned');
-  content.innerHTML = `<div class="dialog-header personal-plan-header"><div><span class="record-kind">${icon('lock')} ${plan.itemKind === 'event' ? 'Личное событие' : 'Личное дело'}</span><h2>${escapeHTML(plan.title)}</h2><p>${escapeHTML(personalPlanDateLabel(plan))}</p></div><button type="button" class="icon-button" data-plan-close aria-label="Закрыть">${icon('x')}</button></div><div class="dialog-form plan-hub"><div class="plan-hub-actions"><button type="button" class="secondary" data-plan-reminder>${icon('bell')} Напомнить</button><button type="button" class="secondary" data-plan-waiting>${icon('clock')} Жду ответа</button><button type="button" class="secondary" data-plan-edit>${icon('edit')} Изменить</button><button type="button" class="secondary" data-plan-complete>${icon(plan.status === 'done' ? 'rotate' : 'check')} ${plan.status === 'done' ? 'Вернуть в дела' : 'Выполнено'}</button>${plan.seriesId && plan.status === 'planned' ? `<button type="button" class="secondary" data-plan-skip>${icon('chevronRight')} Пропустить экземпляр</button>` : ''}</div><div class="personal-plan-facts">${plan.occurrenceState === 'skipped' ? '<span>Экземпляр пропущен</span>' : ''}<span>${formatMinutes(plan.actualMinutes)} факт</span><span>${formatMinutes(plan.plannedMinutes)} план</span>${plan.recurrence ? `<span>${plan.recurrence.active ? 'Серия активна' : 'Серия остановлена'} · ${escapeHTML(personalRecurrenceLabel(plan.recurrence))}</span>` : ''}</div>${project ? `<button type="button" class="personal-context-link" data-personal-edit="project" data-personal-id="${project.id}">${icon('folder')} ${escapeHTML(project.title)}</button>` : ''}${goal ? `<button type="button" class="personal-context-link" data-personal-edit="goal" data-personal-id="${goal.id}">${icon('target')} ${escapeHTML(goal.title)}</button>` : ''}${children.length ? `<section><h3>Подзадачи <small>${children.length}</small></h3>${children.map((child) => renderPlanRow(child, state.personal.links)).join('')}</section>` : ''}${plan.notes ? `<div class="markdown-body">${renderMarkdown(plan.notes)}</div>` : ''}<section class="plan-hub-notes"><header><h3>Заметки <small>${notes.length}</small></h3><div><button type="button" class="secondary" data-plan-new-note>${icon('plus')} Заметка</button><button type="button" class="text-button" data-plan-link-note>${icon('link')} Связать</button></div></header>${notes.map(({ link, note }) => `<article><header><h4>${escapeHTML(note.title)}</h4><div><button type="button" class="icon-button" data-plan-note="${note.id}" title="Редактировать заметку" aria-label="Редактировать заметку">${icon('edit')}</button><button type="button" class="icon-button" data-unlink-note="${link.id}" title="Убрать связь с планом" aria-label="Убрать связь с планом">${icon('x')}</button></div></header><div class="markdown-body">${renderMarkdown(note.body)}</div></article>`).join('') || '<p class="muted">Связанных заметок пока нет.</p>'}</section>${renderPersonalLinkChips(links.filter((link) => link.targetType !== 'note'))}</div>`;
+  const children = state.personal.plans.filter((item) => item.parentId === plan.id && item.status === 'planned');
+  content.innerHTML = `<div class="dialog-header personal-plan-header"><div><span class="record-kind">${icon('lock')} ${plan.itemKind === 'event' ? 'Личное событие' : 'Личное дело'}</span><h2>${escapeHTML(plan.title)}</h2><p>${escapeHTML(personalPlanDateLabel(plan))}</p></div><button type="button" class="icon-button" data-plan-close aria-label="Закрыть">${icon('x')}</button></div><div class="dialog-form plan-hub"><div class="plan-hub-actions"><button type="button" class="secondary" data-plan-reminder>${icon('bell')} Напомнить</button><button type="button" class="secondary" data-plan-waiting>${icon('clock')} Жду ответа</button><button type="button" class="secondary" data-plan-edit>${icon('edit')} Изменить</button><button type="button" class="secondary" data-plan-complete>${icon(plan.status === 'done' ? 'rotate' : 'check')} ${plan.status === 'done' ? 'Вернуть в дела' : 'Выполнено'}</button>${plan.seriesId && plan.status === 'planned' ? `<button type="button" class="secondary" data-plan-skip>${icon('chevronRight')} Пропустить экземпляр</button>` : ''}</div><div class="personal-plan-facts">${plan.occurrenceState === 'skipped' ? '<span>Экземпляр пропущен</span>' : ''}<span>${formatMinutes(plan.actualMinutes)} факт</span><span>${formatMinutes(plan.plannedMinutes)} план</span>${plan.recurrence ? `<span>${plan.recurrence.active ? 'Серия активна' : 'Серия остановлена'} · ${escapeHTML(personalRecurrenceLabel(plan.recurrence))}</span>` : ''}</div>${personalPlanReferenceDetails(state.personal,plan,escapeHTML,icon)}${children.length ? `<section><h3>Подзадачи <small>${children.length}</small></h3>${children.map((child) => renderPlanRow(child, state.personal.links)).join('')}</section>` : ''}${plan.notes ? `<div class="markdown-body">${renderMarkdown(plan.notes)}</div>` : ''}<section class="plan-hub-notes"><header><h3>Заметки <small>${notes.length}</small></h3><div><button type="button" class="secondary" data-plan-new-note>${icon('plus')} Заметка</button><button type="button" class="text-button" data-plan-link-note>${icon('link')} Связать</button></div></header>${notes.map(({ link, note }) => `<article><header><h4>${escapeHTML(note.title)}</h4><div><button type="button" class="icon-button" data-plan-note="${note.id}" title="Редактировать заметку" aria-label="Редактировать заметку">${icon('edit')}</button><button type="button" class="icon-button" data-unlink-note="${link.id}" title="Убрать связь с планом" aria-label="Убрать связь с планом">${icon('x')}</button></div></header><div class="markdown-body">${renderMarkdown(note.body)}</div></article>`).join('') || '<p class="muted">Связанных заметок пока нет.</p>'}</section>${renderPersonalLinkChips(links.filter((link) => link.targetType !== 'note'))}</div>`;
   $('[data-plan-close]', content).addEventListener('click', () => requestDialogClose(dialog));
   $('[data-plan-reminder]',content).onclick=()=>personalRemindersUI.open(id);
   $('[data-plan-waiting]',content).onclick=()=>personalWaitingUI.open('',id);
   $('[data-plan-edit]', content).addEventListener('click', () => openPersonalEditor('plan', id));
+  $$('[data-plan-parent]',content).forEach(button=>button.addEventListener('click',()=>openPersonalPlanDetails(button.dataset.planParent)));
   $('[data-plan-new-note]', content).addEventListener('click', () => openPersonalEditor('note', '', { planId: id }));
   $('[data-plan-link-note]', content).addEventListener('click', () => openPersonalLinkDialog('plan', id, plan.title, { notesOnly: true, returnPlanId: id }));
   $$('[data-plan-note]', content).forEach((button) => button.addEventListener('click', () => openPersonalEditor('note', button.dataset.planNote, { planId: id })));
