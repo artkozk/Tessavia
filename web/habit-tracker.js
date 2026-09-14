@@ -131,14 +131,27 @@ export function createHabitUI(ctx) {
   function renderList(habits) {
     syncAccount();
     const shown = habits.filter(h => filter === 'archive' ? h.archivedAt : !h.archivedAt && (filter === 'all' || filter === 'paused' && h.paused || filter === 'anti' && ['quit', 'reduce'].includes(h.rule.mode) || filter === 'build' && !['quit', 'reduce'].includes(h.rule.mode) || filter === 'today' && h.days?.some(d => d.date === h.today && d.planned)));
-    return `<section class="personal-section habit-section"><div class="section-heading"><div class="habit-section-title"><h2>Привычки</h2><span class="habit-count" aria-label="Привычек в списке: ${shown.length}">${shown.length}</span></div><button type="button" class="text-button" data-habit-new>${icon('plus')} Добавить</button></div><div class="habit-filters" role="group" aria-label="Фильтр привычек">${[['today', 'Сегодня'], ['all', 'Все'], ['build', 'Делать'], ['anti', 'Отказ и сокращение'], ['paused', 'Пауза'], ['archive', 'Архив']].map(([value, label]) => `<button type="button" aria-pressed="${filter === value}" data-habit-filter="${value}">${label}</button>`).join('')}</div><div class="habit-ledger" role="region" aria-label="Список привычек" tabindex="0">${shown.map(h => renderRow(h)).join('') || '<div class="personal-empty"><strong>Здесь пока нет привычек</strong><p>Выберите другой фильтр или добавьте свою привычку.</p><button type="button" class="text-button" data-habit-new>Добавить привычку</button></div>'}</div><p class="habit-list-hint">Отметьте привычку за сегодня. Прошлые дни, календарь и статистика доступны в истории каждой привычки.</p></section>`;
+    return `<section class="personal-section habit-section" data-swipe-tabs="personal-habits" data-sidebar-swipe="off"><div class="section-heading"><div class="habit-section-title"><h2>Привычки</h2><span class="habit-count" aria-label="Привычек в списке: ${shown.length}">${shown.length}</span></div><button type="button" class="text-button" data-habit-new>${icon('plus')} Добавить</button></div><div class="habit-filters" data-swipe-tablist role="group" aria-label="Фильтр привычек">${[['today', 'Сегодня'], ['all', 'Все'], ['build', 'Делать'], ['anti', 'Отказ и сокращение'], ['paused', 'Пауза'], ['archive', 'Архив']].map(([value, label]) => `<button type="button" aria-pressed="${filter === value}" data-swipe-tab="${value}" data-habit-filter="${value}">${label}</button>`).join('')}</div><div class="habit-ledger" data-swipe-panel role="region" aria-label="Список привычек" tabindex="0">${shown.map(h => renderRow(h)).join('') || '<div class="personal-empty"><strong>Здесь пока нет привычек</strong><p>Выберите другой фильтр или добавьте свою привычку.</p><button type="button" class="text-button" data-habit-new>Добавить привычку</button></div>'}</div><p class="habit-list-hint">Отметьте привычку за сегодня. Прошлые дни, календарь и статистика доступны в истории каждой привычки.</p></section>`;
   }
   function bind(root = document) {
     void pendingBadges();refreshDay();
     root.querySelectorAll('[data-habit-new]').forEach(b => b.addEventListener('click', () => settings()));
     root.querySelectorAll('[data-habit-open]').forEach(b => b.addEventListener('click', () => open(b.dataset.habitOpen, b.dataset.habitDate)));
     root.querySelectorAll('[data-habit-settings]').forEach(b => b.addEventListener('click', () => settings(findHabit(b.dataset.habitSettings))));
-    root.querySelectorAll('[data-habit-filter]').forEach(b => b.addEventListener('click', () => { filter = b.dataset.habitFilter; ctx.renderPersonal(); }));
+    root.querySelectorAll('[data-habit-filter]').forEach(b => b.addEventListener('click', () => {
+      const nextFilter = b.dataset.habitFilter, keepFocus = document.activeElement === b;
+      filter = nextFilter; ctx.renderPersonal();
+      // The layout observer reparents the rendered content. Restore only after
+      // that move, without stealing focus from a newer action or a touch swipe.
+      if (keepFocus) {
+        const owner = state.me?.id, workspace = state.activeWorkspaceId, page = state.view, tab = state.personalTab;
+        window.requestAnimationFrame(() => {
+          if (document.hidden || owner !== state.me?.id || workspace !== state.activeWorkspaceId || page !== state.view || tab !== state.personalTab || filter !== nextFilter) return;
+          const next = [...document.querySelectorAll('[data-habit-filter]')].find(button => button.dataset.habitFilter === nextFilter);
+          if (next && (!document.activeElement || document.activeElement === document.body || document.activeElement === next)) next.focus({ preventScroll: true });
+        });
+      }
+    }));
     root.querySelectorAll('[data-habit-day]').forEach(b => b.addEventListener('click', () => openDay(b.dataset.habitDay, b.dataset.habitDate)));
     root.querySelectorAll('[data-habit-quick]').forEach(b => b.addEventListener('click', () => quickCheckin(b)));
   }

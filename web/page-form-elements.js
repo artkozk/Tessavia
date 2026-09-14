@@ -1,4 +1,4 @@
-import { applyElementStyle } from './page-element-styles.js?v=20260914-mobile-gestures-today-1';
+import { applyElementStyle } from './page-element-styles.js?v=20260914-swipe-tabs-1';
 
 // Translate the earlier field-wide presentation once when entering the editor.
 // A later reset can then return to the platform defaults, not a hidden legacy value.

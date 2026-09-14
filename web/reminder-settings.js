@@ -1,4 +1,4 @@
-import { mountPhonePushSettings } from './phone-notifications.js?v=20260914-mobile-gestures-today-1';
+import { mountPhonePushSettings } from './phone-notifications.js?v=20260914-swipe-tabs-1';
 
 export function createReminderSettingsUI({state,api,escapeHTML:esc,icon,openModal,closeDialog,bindDraft,clearDraft,flushDrafts,toast}) {
   const q=(selector,root=document)=>root.querySelector(selector);

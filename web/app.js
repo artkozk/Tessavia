@@ -1,32 +1,33 @@
-import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260914-mobile-gestures-today-1';
-import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260914-mobile-gestures-today-1';
-import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-mobile-gestures-today-1';
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-mobile-gestures-today-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-mobile-gestures-today-1';
-import { createSettingsHub } from './settings-hub.js?v=20260914-mobile-gestures-today-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260914-mobile-gestures-today-1';
-import { createPageAppUI } from './page-apps.js?v=20260914-mobile-gestures-today-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260914-mobile-gestures-today-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-mobile-gestures-today-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-mobile-gestures-today-1';
+import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260914-swipe-tabs-1';
+import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260914-swipe-tabs-1';
+import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-swipe-tabs-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-swipe-tabs-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-swipe-tabs-1';
+import { createSettingsHub } from './settings-hub.js?v=20260914-swipe-tabs-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260914-swipe-tabs-1';
+import { createPageAppUI } from './page-apps.js?v=20260914-swipe-tabs-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260914-swipe-tabs-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-swipe-tabs-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-swipe-tabs-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-mobile-gestures-today-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-swipe-tabs-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-mobile-gestures-today-1';
-import { createReminderSettingsUI } from './reminder-settings.js?v=20260914-mobile-gestures-today-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-mobile-gestures-today-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-mobile-gestures-today-1';
-import { createFirstUseUI } from './first-use.js?v=20260914-mobile-gestures-today-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-swipe-tabs-1';
+import { createReminderSettingsUI } from './reminder-settings.js?v=20260914-swipe-tabs-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-swipe-tabs-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-swipe-tabs-1';
+import { createFirstUseUI } from './first-use.js?v=20260914-swipe-tabs-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260914-mobile-gestures-today-1';
+import { createLifeMapUI } from './life-map.js?v=20260914-swipe-tabs-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260914-mobile-gestures-today-1';
+import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260914-swipe-tabs-1';
+import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260914-swipe-tabs-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260914-mobile-gestures-today-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260914-swipe-tabs-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1591,6 +1592,10 @@ function bindGlobalEvents() {
     setTimeout(() => setSidebarOpen(false), 0);
   });
   bindSidebarSwipe();
+  installSwipeTabs({
+    isEnabled: () => Boolean(state.me && !state.layoutDraft && !state.pageLayoutDraft && !$('.sidebar').classList.contains('open')),
+    getContext: () => `${state.me?.id || ''}:${state.activeWorkspaceId || ''}:${state.view || ''}:${state.personalTab || ''}`,
+  });
   bindDialogDismissalEvents();
   $$('dialog').forEach((dialog) => dialog.addEventListener('close', () => {
     queueMicrotask(refreshPendingContent);
@@ -2962,6 +2967,7 @@ function bindPersonalInteractions() {
   }));
   $$('[data-plan-toggle]').forEach((button) => button.addEventListener('click', () => togglePersonalPlan(button.dataset.planToggle)));
   habitUI.bind();
+  $$('[data-swipe-tabs="personal-habits"]').forEach(revealSwipeTab);
   $$('[data-habit-check]').forEach((button) => button.addEventListener('click', () => toggleHabitCheckin(button.dataset.habitCheck, button.dataset.checkDate)));
   $$('[data-personal-link]').forEach((button) => button.addEventListener('click', () => openPersonalLinkDialog(button.dataset.personalLink, button.dataset.personalId, button.dataset.personalTitle)));
   $$('[data-personal-target-type]').forEach((button) => button.addEventListener('click', () => openPersonalTarget(button.dataset.personalTargetType, button.dataset.personalTargetId)));

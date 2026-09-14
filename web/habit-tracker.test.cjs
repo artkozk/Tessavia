@@ -68,6 +68,67 @@ function uiHarness(habit, options = {}) {
 }
 const quickHabit = (mode = 'quit') => ({ id: 'h1', title: 'Не смотреть YouTube Shorts', today: '2026-09-14', startDate: '2026-09-08', revision: 3, rule: { mode, target: mode === 'quit' ? 0 : 1, cadence: 'daily', unit: 'раз' }, days: [{ date: '2026-09-13', state: 'pending', editable: true, rule: { mode } }, { date: '2026-09-14', state: 'pending', editable: true, rule: { mode } }] });
 
+function filterFocusHarness() {
+ const focused = [], frames = [], body = {}, habit = quickHabit();
+ let current, active = body, rendered = 0;
+ const makeButtons = () => ['today', 'all', 'build', 'anti', 'paused', 'archive'].map(value => ({
+  dataset: { habitFilter: value }, addEventListener(_, listener) { this.click = listener; },
+  focus(options) { active = this;focused.push({ button: this, options }); },
+ }));
+ current = makeButtons();
+ const h = uiHarness(habit, {
+  document: { body, get activeElement() { return active; }, querySelectorAll: selector => selector === '[data-habit-filter]' ? current : [] },
+  window: { requestAnimationFrame: callback => frames.push(callback) },
+  ctx: { renderPersonal() { rendered++;current = makeButtons();active = body; } },
+ });
+ h.ui.renderList([]);
+ h.ui.bind({ querySelectorAll: selector => selector === '[data-habit-filter]' ? current : [] });
+ return { ...h, focused, frames, body, flush: () => { for (const callback of frames.splice(0)) callback(); },
+  get current() { return current; }, get active() { return active; },
+  set active(value) { active = value; }, get rendered() { return rendered; } };
+}
+
+test('a focused habit filter survives rendering and the later layout observer move without scrolling', () => {
+ const h = filterFocusHarness(), original = h.current[3];
+ h.active = original;original.click();
+ assert.equal(h.rendered, 1);
+ assert.notEqual(h.current[3], original, 'the old focused button was removed by rendering');
+ h.active = h.body; // applyPageLayout reparents personal-content after the click handler.
+ h.flush();
+ assert.equal(h.active, h.current[3]);assert.equal(h.focused.length, 1);
+ assert.equal(h.focused[0].options.preventScroll, true);
+ assert.match(h.ui.renderList([]), /aria-pressed="true" data-swipe-tab="anti" data-habit-filter="anti"/);
+});
+
+test('a programmatic swipe filter click never requests focus from the body or another filter', () => {
+ for (const focusOnOtherFilter of [false, true]) {
+  const h = filterFocusHarness(), destination = h.current[1];
+  if (focusOnOtherFilter) h.active = h.current[0];
+  destination.click();
+  assert.equal(h.frames.length, 0, 'a swipe must not schedule a future focus request');h.flush();
+  assert.equal(h.rendered, 1);assert.equal(h.focused.length, 0);
+  assert.equal(h.active, h.body);
+  assert.match(h.ui.renderList([]), /aria-pressed="true" data-swipe-tab="all" data-habit-filter="all"/);
+ }
+});
+
+test('a deferred habit filter focus cannot override newer navigation or another focused control', () => {
+ for (const interruption of ['owner', 'workspace', 'page', 'tab', 'focus', 'filter']) {
+  const h = filterFocusHarness(), original = h.current[3];
+  h.active = original;original.click();
+  if (interruption === 'owner') h.state.me = { id: 'other' };
+  if (interruption === 'workspace') h.state.activeWorkspaceId = 'other';
+  if (interruption === 'page') h.state.view = 'other';
+  if (interruption === 'tab') h.state.personalTab = 'other';
+  if (interruption === 'focus') h.active = { name: 'another control' };
+  if (interruption === 'filter') {
+   h.ui.bind({ querySelectorAll: selector => selector === '[data-habit-filter]' ? h.current : [] });
+   h.current[1].click();
+  }
+  h.flush();assert.equal(h.focused.length, 0, interruption);
+ }
+});
+
 test('today cards offer one check-in while keeping previous dates behind explicit history', () => {
  const habit = quickHabit();habit.days[0].state = 'success';habit.days[0].checkin = { state: 'measured', value: 0 };
  const { ui } = uiHarness(habit);
