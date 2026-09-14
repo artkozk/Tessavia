@@ -60,6 +60,7 @@ function uiHarness(habit, options = {}) {
   loadPersonal: async () => { loads.push(true);await options.loadPersonal?.(); }, outbox: () => ({
    pendingHabits: async () => options.pending || [], addHabit: async (...args) => queued.push(args), pump() {},
   }),
+  ...options.ctx,
  });
  const button = date => ({ dataset: { habitQuick: habit.id, ...(date ? { habitDate: date } : {}) }, isConnected: true, disabled: false, addEventListener(_, handler) { this.click = handler; } });
  const bind = buttons => ui.bind({ querySelectorAll: selector => selector === '[data-habit-quick]' ? buttons : [] });
@@ -67,15 +68,76 @@ function uiHarness(habit, options = {}) {
 }
 const quickHabit = (mode = 'quit') => ({ id: 'h1', title: 'Не смотреть YouTube Shorts', today: '2026-09-14', startDate: '2026-09-08', revision: 3, rule: { mode, target: mode === 'quit' ? 0 : 1, cadence: 'daily', unit: 'раз' }, days: [{ date: '2026-09-13', state: 'pending', editable: true, rule: { mode } }, { date: '2026-09-14', state: 'pending', editable: true, rule: { mode } }] });
 
-test('empty binary days offer a direct action while recorded days open correction', () => {
+test('today cards offer one check-in while keeping previous dates behind explicit history', () => {
  const habit = quickHabit();habit.days[0].state = 'success';habit.days[0].checkin = { state: 'measured', value: 0 };
  const { ui } = uiHarness(habit);
- const html = ui.renderRow(habit);
- assert.match(html, /data-habit-date="2026-09-14" data-habit-quick="h1"/);
- assert.match(html, /data-habit-date="2026-09-13" data-habit-day="h1"/);
- assert.match(html, /Отметить день без действия/);
- assert.doesNotMatch(html, /data-habit-date="2026-09-14" data-habit-open/);
- assert.doesNotMatch(html, /<form|<textarea|<input/);
+ for (const compact of [true, false]) {
+  const html = ui.renderRow(habit, compact);
+  assert.match(html, /data-habit-date="2026-09-14" data-habit-quick="h1"/);
+  assert.equal((html.match(/data-habit-date=/g) || []).length, 1);
+  assert.doesNotMatch(html, /habit-entry-week|data-habit-date="2026-09-13"/);
+  assert.match(html, /Сегодня<\/span><strong>Ещё не отмечено/);
+  assert.match(html, /habit-entry-history[^>]*data-habit-open="h1"/);
+  assert.doesNotMatch(html, /<form|<textarea|<input/);
+ }
+ habit.days[1] = { ...habit.days[1], state: 'success', checkin: { state: 'measured', value: 0 } };
+ const done = ui.renderRow(habit, true);
+ assert.doesNotMatch(done, /data-habit-quick/);
+ assert.match(done, /data-habit-date="2026-09-14" data-habit-day="h1"/);
+ assert.match(done, /Изменить отметку/);
+ assert.match(done, /День без действия/);
+});
+
+test('today count follows each habit local date and counts only explicitly successful current days', async () => {
+ const { habitTodaySummary } = await load();
+ const habit = quickHabit();
+ habit.currentStreak = 100;habit.days[0].state = 'success';habit.days[1].planned = true;
+ const completed = { ...quickHabit('build'), today: '2026-09-13', days: [{ date: '2026-09-13', planned: true, state: 'success' }] };
+ const recordedExtra = { ...quickHabit('reduce'), days: [{ date: '2026-09-14', planned: false, state: 'success', checkin: { state: 'measured', value: 0 } }] };
+ const partial = { ...quickHabit('duration'), days: [{ date: '2026-09-14', planned: true, state: 'partial', checkin: { state: 'measured', value: 10 } }] };
+ assert.deepEqual(habitTodaySummary([habit, completed, recordedExtra, partial]), { scheduled: 4, done: 2, label: '2 из 4 сегодня' });
+ assert.deepEqual(habitTodaySummary([
+  { ...completed, archivedAt: '2026-09-14' }, { ...completed, paused: true },
+  { ...habit, days: [habit.days[0]] }, { ...habit, days: [{ date: habit.today, planned: false, state: 'rest' }] },
+ ]), { scheduled: 0, done: 0, label: 'Нет на сегодня' });
+ for (const state of ['pending', 'skipped', 'snoozed', 'failed', 'partial']) {
+  assert.deepEqual(habitTodaySummary([{ ...habit, days: [{ date: habit.today, planned: true, state }] }]), { scheduled: 1, done: 0, label: '0 из 1 сегодня' });
+ }
+});
+
+test('current numeric progress preserves measured zero and fractions but does not invent a value for failure', () => {
+ const habit = quickHabit('reduce');habit.rule.unit = 'мин';
+ const { ui } = uiHarness(habit);
+ for (const value of [0, 10.5]) {
+  habit.days[1] = { ...habit.days[1], rule: habit.rule, state: 'partial', checkin: { state: 'measured', value } };
+  const html = ui.renderRow(habit, true);
+  assert.match(html, new RegExp(`habit-entry-measure">${value} мин`));
+  assert.match(html, /Изменить отметку/);
+  assert.doesNotMatch(html, /data-habit-quick/);
+ }
+ habit.days[1].checkin = { state: 'failed', value: 0 };
+ assert.doesNotMatch(ui.renderRow(habit), /habit-entry-measure/);
+ habit.days[1] = { ...habit.days[1], state: 'rest', editable: false, checkin: null };
+ const rest = ui.renderRow(habit);
+ assert.match(rest, /Отдых/);assert.doesNotMatch(rest, /data-habit-quick|data-habit-day=/);assert.match(rest, /habit-entry-history/);
+});
+
+test('history button opens the full current-month tracker without writing or forcing a day editor', async () => {
+ const dialog = { open: false }, content = { innerHTML: '', querySelector: () => null }, flushed = [];
+ let finish;
+ const h = uiHarness(quickHabit(), {
+  document: { querySelector: selector => selector === '#personal-dialog' ? dialog : content },
+  api: () => new Promise(resolve => { finish = resolve; }),
+  ctx: { flushDrafts: value => flushed.push(value), openModal: value => { value.open = true; } },
+ });
+ const history = { dataset: { habitOpen: 'h1' }, addEventListener(_, listener) { this.click = listener; } };
+ h.ui.bind({ querySelectorAll: selector => selector === '[data-habit-open]' ? [history] : [] });
+ const opening = history.click();
+ assert.equal(dialog.open, true);assert.equal(flushed[0], dialog);
+ assert.equal(h.calls[0][0], '/api/personal/habits/h1/tracker?from=2026-09-01&to=2026-09-30');
+ assert.equal(h.calls[0][1], undefined);assert.match(content.innerHTML, /Открываем трекер/);
+ dialog.open = false;finish({});await opening;
+ assert.equal(h.calls.length, 1);assert.equal(h.queued.length, 0);
 });
 
 test('direct check-ins use historical rules, preserve notes and never overwrite saved outcomes', async () => {

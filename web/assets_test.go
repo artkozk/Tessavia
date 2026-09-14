@@ -198,7 +198,8 @@ func TestContinuityAndLiveCollaborationAssetsAreEmbedded(t *testing.T) {
 		[]byte("function refreshLiveData"),
 		[]byte("data-target-tab"),
 		[]byte("state.activeRecordTab = 'overview'"),
-		[]byte("sidebar.setPointerCapture"),
+		[]byte("gesture.surface.setPointerCapture"),
+		[]byte("document.addEventListener('touchmove'"),
 		[]byte("workspace.inert"),
 		[]byte("graphDragBranch"),
 		[]byte("markdownPlain(result.context"),
@@ -250,7 +251,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 		t.Fatalf("read index.html: %v", err)
 	}
 	for _, asset := range []string{"app.js", "styles.css", "settings-hub.css", "personal-finance.css", "page-sheets.css", "page-components.css", "page-block-trash.css", "mobile-access.css", "phone-notifications.css"} {
-		if !bytes.Contains(index, []byte("/"+asset+"?v=20260914-mobile-access-1")) {
+		if !bytes.Contains(index, []byte("/"+asset+"?v=20260914-mobile-gestures-today-1")) {
 			t.Fatalf("current release must bump %s so production browsers do not keep a stale resource", asset)
 		}
 	}

@@ -1,32 +1,32 @@
-import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260914-mobile-access-1';
-import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260914-mobile-access-1';
-import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-mobile-access-1';
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-mobile-access-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-mobile-access-1';
-import { createSettingsHub } from './settings-hub.js?v=20260914-mobile-access-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260914-mobile-access-1';
-import { createPageAppUI } from './page-apps.js?v=20260914-mobile-access-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260914-mobile-access-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-mobile-access-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-mobile-access-1';
+import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260914-mobile-gestures-today-1';
+import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260914-mobile-gestures-today-1';
+import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-mobile-gestures-today-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-mobile-gestures-today-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-mobile-gestures-today-1';
+import { createSettingsHub } from './settings-hub.js?v=20260914-mobile-gestures-today-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260914-mobile-gestures-today-1';
+import { createPageAppUI } from './page-apps.js?v=20260914-mobile-gestures-today-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260914-mobile-gestures-today-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-mobile-gestures-today-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-mobile-gestures-today-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-mobile-access-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-mobile-gestures-today-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-mobile-access-1';
-import { createReminderSettingsUI } from './reminder-settings.js?v=20260914-mobile-access-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-mobile-access-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-mobile-access-1';
-import { createFirstUseUI } from './first-use.js?v=20260914-mobile-access-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-mobile-gestures-today-1';
+import { createReminderSettingsUI } from './reminder-settings.js?v=20260914-mobile-gestures-today-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-mobile-gestures-today-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-mobile-gestures-today-1';
+import { createFirstUseUI } from './first-use.js?v=20260914-mobile-gestures-today-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260914-mobile-access-1';
+import { createLifeMapUI } from './life-map.js?v=20260914-mobile-gestures-today-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI } from './habit-tracker.js?v=20260914-mobile-access-1';
+import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260914-mobile-gestures-today-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260914-mobile-access-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260914-mobile-gestures-today-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1841,67 +1841,121 @@ function bindDialogDismissalEvents() {
 function bindSidebarSwipe() {
   const sidebar = $('.sidebar');
   const backdrop = $('#sidebar-backdrop');
-  let pointerId = null;
-  let startX = 0;
-  let startY = 0;
-  let deltaX = 0;
-  let horizontal = false;
-  let abandoned = false;
-  let width = 252;
-  let suppressClick = false;
+  const app = $('#app-root');
+  const workspace = $('.workspace');
+  if (!sidebar || !backdrop || !app || !workspace) return;
+  const touchEvents = 'TouchEvent' in window;
+  let gesture = null;
+  let suppressClickUntil = 0;
+  const editable = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="spinbutton"], .custom-select, .drag-handle, .widget-move-handle, .widget-resize-handle, [data-reorder-handle], [data-block-resize], [data-widget-drag], [data-widget-resize], [data-sidebar-swipe="off"]';
+  const ownedGestures = 'canvas, iframe, audio, video, [role="application"], .graph-stage, #relationship-graph, .chat-bubble, .chat-message, .chat-thread-drawer, .app-builder, .page-layout-editing, .layout-editing, .work-kanban, .collection-board, .research-option-deck, .carousel, [data-carousel], [aria-roledescription="carousel"], .swiper, .swiper-container';
+  const canOpenFrom = (target) => {
+    if (!workspace.contains(target) || state.layoutDraft || state.pageLayoutDraft || target.closest(ownedGestures) || document.activeElement?.closest(editable) || document.getSelection?.()?.type === 'Range') return false;
+    // Keep horizontal containers in control even at either end of their range.
+    // Checking the actual ancestor geometry also covers user-created blocks.
+    for (let node = target; node && node !== app; node = node.parentElement) {
+      if (node.scrollWidth > node.clientWidth + 2 && /^(auto|scroll|overlay)$/.test(window.getComputedStyle(node).overflowX)) return false;
+    }
+    return true;
+  };
   const reset = () => {
-    const captured = pointerId;
-    pointerId = null;
-    if (captured !== null && sidebar.hasPointerCapture?.(captured)) sidebar.releasePointerCapture(captured);
-    sidebar.classList.remove('dragging');
+    const previous = gesture;
+    gesture = null;
+    if (previous?.kind === 'pointer' && previous.surface.hasPointerCapture?.(previous.id)) previous.surface.releasePointerCapture(previous.id);
+    sidebar.classList.remove('dragging', 'swipe-opening');
+    backdrop.classList.remove('dragging', 'swipe-opening');
     sidebar.style.removeProperty('transform');
     backdrop.style.removeProperty('opacity');
   };
   sidebar.cancelSwipe = reset;
   const finish = (event) => {
-    if (pointerId === null || event.pointerId !== pointerId) return;
-    const shouldClose = event.type === 'pointerup' && horizontal && !abandoned && -deltaX >= Math.max(48, width * .24);
+    if (!gesture || event.pointerId !== gesture.id) return;
+    const completed = gesture;
+    const commit = event.type === 'end' && completed.horizontal && !completed.abandoned && completed.distance >= Math.max(64, completed.width * .2);
+    if (completed.claimed) suppressClickUntil = Date.now() + 500;
     reset();
-    if (shouldClose) setSidebarOpen(false);
+    if (commit) setSidebarOpen(completed.opening);
   };
-  sidebar.addEventListener('pointerdown', (event) => {
-    if (pointerId !== null) { reset(); return; }
-    if (!event.isPrimary || event.button !== 0 || !sidebar.classList.contains('open') || !window.matchMedia('(max-width: 820px)').matches) return;
-    if (event.target?.closest('input, textarea, select, [contenteditable="true"], [role="slider"]')) return;
-    pointerId = event.pointerId;
-    startX = event.clientX;
-    startY = event.clientY;
-    deltaX = 0;
-    horizontal = false;
-    abandoned = false;
-    width = sidebar.getBoundingClientRect().width || 252;
-    suppressClick = false;
-  });
-  sidebar.addEventListener('pointermove', (event) => {
-    if (event.pointerId !== pointerId || abandoned) return;
-    const moveX = event.clientX - startX;
-    const moveY = event.clientY - startY;
-    if (!horizontal && Math.max(Math.abs(moveX), Math.abs(moveY)) >= 10) {
-      if (moveX >= 0 || Math.abs(moveY) >= Math.abs(moveX)) { abandoned = true; return; }
-      if (-moveX < Math.abs(moveY) * 1.25) return;
-      horizontal = true;
-      suppressClick = true;
-      sidebar.setPointerCapture?.(pointerId);
+  const start = (event, kind) => {
+    if (gesture) { reset(); return; }
+    suppressClickUntil = 0;
+    if (app.hidden || !window.matchMedia('(max-width: 820px)').matches || document.querySelector('dialog[open]')) return;
+    if (event.target?.closest(editable)) return;
+    const opening = !sidebar.classList.contains('open');
+    const surface = opening ? (canOpenFrom(event.target) ? workspace : null) : sidebar.contains(event.target) ? sidebar : event.target === backdrop ? backdrop : null;
+    if (!surface) return;
+    gesture = { id: event.pointerId, kind, surface, opening, startX: event.clientX, startY: event.clientY, distance: 0, horizontal: false, abandoned: false, width: sidebar.getBoundingClientRect().width || 252 };
+  };
+  const move = (event) => {
+    if (!gesture || event.pointerId !== gesture.id || gesture.abandoned) return;
+    if (!window.matchMedia('(max-width: 820px)').matches || app.hidden || document.querySelector('dialog[open]')) { reset(); return; }
+    if (gesture.opening && (state.layoutDraft || state.pageLayoutDraft || document.getSelection?.()?.type === 'Range')) { reset(); return; }
+    const moveX = event.clientX - gesture.startX;
+    const moveY = event.clientY - gesture.startY;
+    const distance = gesture.opening ? moveX : -moveX;
+    if (!gesture.horizontal) {
+      if (Math.max(Math.abs(moveX), Math.abs(moveY)) < (gesture.kind === 'touch' ? 5 : 14)) return;
+      if (distance <= 0 || distance <= Math.abs(moveY) * 1.5) { gesture.abandoned = true; return; }
+      // Touch scrolling must be reserved on the first clear horizontal move.
+      // No global pan-y: native carousels and arbitrary nested blocks retain it.
+      if (gesture.kind === 'touch' && !event.cancelable) { reset(); return; }
+      event.preventDefault();
+      gesture.claimed = true;
+      suppressClickUntil = Date.now() + 500;
+      if (distance < 14) return;
+      gesture.horizontal = true;
+      if (gesture.kind === 'pointer') gesture.surface.setPointerCapture?.(gesture.id);
     }
-    if (!horizontal) return;
+    if (gesture.kind === 'touch' && !event.cancelable) { reset(); return; }
     event.preventDefault();
-    deltaX = Math.max(-width, Math.min(0, moveX));
+    suppressClickUntil = Date.now() + 500;
+    const travel = gesture.width + 24;
+    gesture.distance = Math.max(0, Math.min(travel, distance));
+    const offset = gesture.opening ? gesture.distance - travel : -gesture.distance;
+    sidebar.classList.toggle('swipe-opening', gesture.opening);
+    backdrop.classList.toggle('swipe-opening', gesture.opening);
     sidebar.classList.add('dragging');
-    sidebar.style.transform = `translate3d(${deltaX}px, 0, 0)`;
-    backdrop.style.opacity = String(Math.max(0, 1 + deltaX / width));
-  });
-  sidebar.addEventListener('pointerup', finish);
-  sidebar.addEventListener('pointercancel', finish);
-  sidebar.addEventListener('lostpointercapture', finish);
-  sidebar.addEventListener('click', (event) => {
-    if (!suppressClick || event.detail === 0) return;
-    suppressClick = false;
-    event.preventDefault(); event.stopPropagation();
+    backdrop.classList.add('dragging');
+    sidebar.style.transform = `translate3d(${offset}px, 0, 0)`;
+    backdrop.style.opacity = String(Math.max(0, Math.min(1, 1 + offset / travel)));
+  };
+  // Touch Events let us reserve only an intentional page gesture. Pointer-only
+  // handling cannot reclaim panning after a browser emits pointercancel.
+  if (touchEvents) {
+    document.addEventListener('touchstart', (event) => {
+      if (event.touches.length !== 1) { reset(); return; }
+      const point = event.touches[0];
+      start({ target: event.target, pointerId: point.identifier, clientX: point.clientX, clientY: point.clientY }, 'touch');
+    }, { capture: true, passive: true });
+    document.addEventListener('touchmove', (event) => {
+      if (!gesture || gesture.kind !== 'touch') return;
+      if (event.touches.length !== 1) { reset(); return; }
+      const point = [...event.touches].find(point => point.identifier === gesture.id);
+      if (point) move({ pointerId: point.identifier, clientX: point.clientX, clientY: point.clientY, cancelable: event.cancelable, preventDefault: () => event.preventDefault() });
+    }, { capture: true, passive: false });
+    for (const type of ['touchend', 'touchcancel']) document.addEventListener(type, (event) => {
+      if (!gesture || gesture.kind !== 'touch') return;
+      if (event.touches.length) { reset(); return; }
+      const point = [...event.changedTouches].find(point => point.identifier === gesture.id);
+      if (point) finish({ pointerId: point.identifier, type: type === 'touchend' ? 'end' : 'cancel' });
+    }, { capture: true, passive: true });
+  }
+  document.addEventListener('pointerdown', (event) => {
+    if (!gesture) suppressClickUntil = 0;
+    if (!['touch', 'pen'].includes(event.pointerType) || event.pointerType === 'touch' && touchEvents) return;
+    if (!event.isPrimary || event.button !== 0) { if (gesture?.kind === 'pointer') reset(); return; }
+    start(event, 'pointer');
+  }, true);
+  document.addEventListener('pointermove', (event) => { if (gesture?.kind === 'pointer') move(event); }, { capture: true, passive: false });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) document.addEventListener(type, (event) => {
+    if (gesture?.kind === 'pointer') finish({ pointerId: event.pointerId, type: type === 'pointerup' ? 'end' : 'cancel' });
+  }, true);
+  window.addEventListener('blur', () => { reset(); suppressClickUntil = 0; });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
+  document.addEventListener('click', (event) => {
+    if (!suppressClickUntil || Date.now() > suppressClickUntil || event.detail === 0) return;
+    suppressClickUntil = 0;
+    event.preventDefault(); event.stopImmediatePropagation();
   }, true);
 }
 
@@ -2724,7 +2778,7 @@ function renderPersonalTab(data) {
   if (state.personalTab === 'review') return personalReviewUI.render();
   if (state.personalTab === 'waiting') return personalWaitingUI.renderList();
   const notes = [...data.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)).slice(0, 4);
-  return `<section class="personal-today-grid"><div class="personal-column">${personalTodayUI.renderBlocks(data)}${personalWaitingUI.renderToday()}${personalRemindersUI.render()}<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ритм дня</p><h2>Привычки</h2></div>${data.habits.length ? `<span class="panel-note">${data.habits.filter((habit) => habit.currentStreak > 0).length} серий</span>` : ''}</div><div class="habit-list">${data.habits.filter(h => !h.archivedAt && !h.paused).map((habit) => renderHabitRow(habit, data.links, true)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section>${personalTodayUI.renderPlans(data)}</div><div class="personal-column"><section class="personal-section life-section">${renderLifeMap(data.settings)}</section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Под рукой</p><h2>Заметки</h2></div><button type="button" class="text-button" data-personal-tab-jump="notes">Все заметки</button></div><div class="personal-notes-preview">${notes.map((note) => renderNoteCard(note, data.links, true)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section></div></section>`;
+  return `<section class="personal-today-grid"><div class="personal-column">${personalTodayUI.renderBlocks(data)}${personalWaitingUI.renderToday()}${personalRemindersUI.render()}<section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Ритм дня</p><h2>Привычки</h2></div>${data.habits.length ? `<span class="panel-note">${escapeHTML(habitTodaySummary(data.habits).label)}</span>` : ''}</div><div class="habit-list">${data.habits.filter(h => !h.archivedAt && !h.paused).map((habit) => renderHabitRow(habit, data.links, true)).join('') || personalEmpty('Привычек пока нет', 'habit', 'Добавить привычку')}</div></section>${personalTodayUI.renderPlans(data)}</div><div class="personal-column"><section class="personal-section life-section">${renderLifeMap(data.settings)}</section><section class="personal-section"><div class="section-heading"><div><p class="eyebrow">Под рукой</p><h2>Заметки</h2></div><button type="button" class="text-button" data-personal-tab-jump="notes">Все заметки</button></div><div class="personal-notes-preview">${notes.map((note) => renderNoteCard(note, data.links, true)).join('') || personalEmpty('Заметок пока нет', 'note', 'Создать заметку')}</div></section></div></section>`;
 }
 
 function renderPersonalProjects(data) {

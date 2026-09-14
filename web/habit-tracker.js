@@ -24,6 +24,16 @@ export function habitScheduleLabel(rule) {
 
 export const isSimpleHabit = rule => ['build', 'quit'].includes(rule?.mode);
 
+// Use each habit's server-calculated local day; a phone may have a different
+// timezone. A missing check-in, a skipped day or an old streak is not success.
+export function habitTodaySummary(habits = []) {
+  const days = habits.filter(h => !h.archivedAt && !h.paused)
+    .map(h => h.days?.find(day => day.date === h.today))
+    .filter(day => day && (day.planned || day.checkin));
+  const scheduled = days.length, done = days.filter(day => day.state === 'success').length;
+  return { scheduled, done, label: scheduled ? `${done} из ${scheduled} сегодня` : 'Нет на сегодня' };
+}
+
 // The rule on the selected date owns the meaning of its check-in, including
 // dates before a later target change. A saved result is never silently toggled.
 export function habitQuickPayload(habit, day) {
@@ -108,22 +118,20 @@ export function createHabitUI(ctx) {
     const today = h.days?.find(d => d.date === h.today), r = h.rule || {};
     const quick = habitQuickPayload(h, today);
     const subtitle = [r.mode === 'quit' ? 'Отказ' : r.mode !== 'build' ? goalLabel(r) : '', habitScheduleLabel(r)].filter(Boolean).join(' · ');
-    const status = h.archivedAt ? 'В архиве' : h.paused ? 'На паузе' : today ? habitStateLabel(today) : 'Вне расписания';
+    const status = h.archivedAt ? 'В архиве' : h.paused ? 'На паузе' : today?.state === 'pending' ? 'Ещё не отмечено' : today ? habitStateLabel(today) : 'Вне расписания';
+    const measured = !isSimpleHabit(today?.rule || r) ? habitMeasuredValue(today?.checkin) : '';
+    const actionLabel = quick ? (today.rule || r).mode === 'quit' ? 'День без действия' : 'Отметить выполненной' : today?.checkin ? 'Изменить отметку' : (today?.rule || r).mode === 'duration' ? 'Указать время' : 'Указать количество';
     return `<article class="habit-entry ${compact ? 'compact' : ''}" data-habit-color="${e(h.colorKey)}" data-habit-row="${h.id}">
       <div class="habit-entry-main"><span class="habit-emblem" aria-hidden="true">${icon(h.iconKey || 'checkSquare')}</span><div><button class="habit-entry-title" type="button" data-habit-open="${h.id}" title="${e(h.title)}">${e(h.title)}</button><p class="habit-entry-meta">${e(subtitle)}${h.currentStreak ? `<span title="Текущая серия: ${h.currentStreak} ${e(h.summary?.streakUnit || 'плановых дней')}"> · Серия ${h.currentStreak}</span>` : ''}</p><p class="habit-entry-pending" data-habit-pending="${h.id}" role="status" hidden></p></div></div>
-      <div class="habit-entry-week" role="group" aria-label="Последние семь дней: ${e(h.title)}">${habitWeekDays(h).map(d => {
-        const label = d.state === 'unavailable' ? d.beforeStart ? 'До начала привычки' : 'Нет данных за дату' : habitStateLabel(d);
-        const quickDay = habitQuickPayload(h, d), action = quickDay ? `${d.rule?.mode === 'quit' || !d.rule && r.mode === 'quit' ? 'Отметить день без действия' : 'Отметить выполнение'}. ` : '';
-        return `<button type="button" class="habit-cell is-${d.state} ${d.date === h.today ? 'is-today' : ''}" ${d.state === 'unavailable' ? 'disabled' : `data-habit-date="${d.date}" ${quickDay ? `data-habit-quick="${h.id}"` : `data-habit-day="${h.id}"`}`} aria-label="${e(action)}${e(dateLabel(d.date))}: ${e(label)}" ${d.date === h.today ? 'aria-current="date"' : ''} title="${e(dateLabel(d.date))}: ${e(label)}"><small>${weekdays[new Date(`${d.date}T12:00:00Z`).getUTCDay()]}</small><span class="habit-cell-mark" aria-hidden="true">${symbols[d.state] || '—'}</span></button>`;
-      }).join('')}</div>
-      <div class="habit-entry-action"><span class="habit-entry-status ${today?.state === 'success' ? 'is-done' : ''}">${e(status)}</span>${quick ? `<button type="button" class="secondary" data-habit-quick="${h.id}">${(today.rule || r).mode === 'quit' ? 'День без действия' : 'Выполнено'}</button>` : `<button type="button" class="text-button" data-habit-day="${h.id}" data-habit-date="${h.today}">${today?.editable ? today.checkin ? 'Изменить отметку' : (today.rule || r).mode === 'duration' ? 'Указать время' : 'Указать количество' : 'Трекер'}</button>`}</div>
+      <div class="habit-entry-status ${today?.state === 'success' ? 'is-done' : ''}"><span class="habit-entry-today-label">Сегодня</span><strong>${today?.state === 'success' ? '<span aria-hidden="true">✓ </span>' : ''}${e(status)}</strong>${measured !== '' ? `<span class="habit-entry-measure">${e(measured)} ${e((today?.rule || r).unit || '')}</span>` : ''}</div>
+      <div class="habit-entry-action">${today?.editable ? `<button type="button" class="${quick ? 'primary' : 'secondary'}" data-habit-date="${h.today}" ${quick ? `data-habit-quick="${h.id}"` : `data-habit-day="${h.id}"`} aria-label="${e(actionLabel)}: ${e(h.title)}">${e(actionLabel)}</button>` : ''}<button type="button" class="text-button habit-entry-history" data-habit-open="${h.id}" aria-label="История привычки ${e(h.title)}">История</button></div>
       <button type="button" class="icon-button habit-entry-settings" data-habit-settings="${h.id}" aria-label="Настроить привычку ${e(h.title)}">${icon('settings')}</button>
     </article>`;
   }
   function renderList(habits) {
     syncAccount();
     const shown = habits.filter(h => filter === 'archive' ? h.archivedAt : !h.archivedAt && (filter === 'all' || filter === 'paused' && h.paused || filter === 'anti' && ['quit', 'reduce'].includes(h.rule.mode) || filter === 'build' && !['quit', 'reduce'].includes(h.rule.mode) || filter === 'today' && h.days?.some(d => d.date === h.today && d.planned)));
-    return `<section class="personal-section habit-section"><div class="section-heading"><div class="habit-section-title"><h2>Привычки</h2><span class="habit-count" aria-label="Привычек в списке: ${shown.length}">${shown.length}</span></div><button type="button" class="text-button" data-habit-new>${icon('plus')} Добавить</button></div><div class="habit-filters" role="group" aria-label="Фильтр привычек">${[['today', 'Сегодня'], ['all', 'Все'], ['build', 'Делать'], ['anti', 'Отказ и сокращение'], ['paused', 'Пауза'], ['archive', 'Архив']].map(([value, label]) => `<button type="button" aria-pressed="${filter === value}" data-habit-filter="${value}">${label}</button>`).join('')}</div><div class="habit-ledger" role="region" aria-label="Список привычек" tabindex="0">${shown.map(h => renderRow(h)).join('') || '<div class="personal-empty"><strong>Здесь пока нет привычек</strong><p>Выберите другой фильтр или добавьте свою привычку.</p><button type="button" class="text-button" data-habit-new>Добавить привычку</button></div>'}</div><p class="habit-list-hint">Нажмите на пустой день, чтобы отметить простую привычку. Повторное нажатие откроет изменение или отмену. Для количества и времени укажите значение.</p></section>`;
+    return `<section class="personal-section habit-section"><div class="section-heading"><div class="habit-section-title"><h2>Привычки</h2><span class="habit-count" aria-label="Привычек в списке: ${shown.length}">${shown.length}</span></div><button type="button" class="text-button" data-habit-new>${icon('plus')} Добавить</button></div><div class="habit-filters" role="group" aria-label="Фильтр привычек">${[['today', 'Сегодня'], ['all', 'Все'], ['build', 'Делать'], ['anti', 'Отказ и сокращение'], ['paused', 'Пауза'], ['archive', 'Архив']].map(([value, label]) => `<button type="button" aria-pressed="${filter === value}" data-habit-filter="${value}">${label}</button>`).join('')}</div><div class="habit-ledger" role="region" aria-label="Список привычек" tabindex="0">${shown.map(h => renderRow(h)).join('') || '<div class="personal-empty"><strong>Здесь пока нет привычек</strong><p>Выберите другой фильтр или добавьте свою привычку.</p><button type="button" class="text-button" data-habit-new>Добавить привычку</button></div>'}</div><p class="habit-list-hint">Отметьте привычку за сегодня. Прошлые дни, календарь и статистика доступны в истории каждой привычки.</p></section>`;
   }
   function bind(root = document) {
     void pendingBadges();refreshDay();
@@ -184,7 +192,7 @@ export function createHabitUI(ctx) {
       const queued = await saveMeasurement(h, date, payload);
       if (owner !== state.me?.id) return;
       if (queued) { toast('Отметка сохранена на устройстве и ждёт отправки');void pendingBadges(); }
-      else { const keepFocus = document.activeElement === button;await loadPersonal({ force: true });if (owner === state.me?.id) { restorePosition(keepFocus);toast('Отметка сохранена. Чтобы изменить или отменить её, нажмите на отмеченный день.'); } }
+      else { const keepFocus = document.activeElement === button;await loadPersonal({ force: true });if (owner === state.me?.id) { restorePosition(keepFocus);toast('Отметка сохранена. Изменить или убрать её можно через «Изменить отметку».'); } }
     } catch (error) { if (owner === state.me?.id) toast(error.message, true); }
     finally { restorePosition.dispose?.();quickSaving.delete(key);if (button.isConnected) button.disabled = false; }
   }
