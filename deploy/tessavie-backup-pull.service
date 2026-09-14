@@ -1,0 +1,31 @@
+[Unit]
+Description=Pull verified encrypted Tessavie archives from the VPS
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=tessavie-backup
+Group=tessavie-backup
+ExecStart=/usr/bin/python3 /usr/local/libexec/tessavie-backup-pull --config /etc/tessavie-backup-pull.json
+UMask=0077
+TimeoutStartSec=15min
+KillMode=control-group
+Nice=10
+CPUQuota=25%
+MemoryMax=128M
+TasksMax=16
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/tessavie-backup-client /var/lib/tessavie-backup-vault

@@ -58,7 +58,10 @@ tar -C "${verification_directory}" -xzf "${verification_directory}/verified.tar.
 )
 test "$(sqlite3 "${verification_directory}/business-control.db" 'PRAGMA integrity_check;')" = "ok"
 
-install -o root -g root -m 0600 "${encrypted_archive}" "${final_backup}"
+# The private work directory is on this same filesystem. Publish the completed
+# file atomically; a timestamp collision must fail instead of replacing a copy.
+chmod 0600 "${encrypted_archive}"
+ln -- "${encrypted_archive}" "${final_backup}"
 find "${backup_directory}" -maxdepth 1 -type f -name 'business-control-*.tar.gz.enc' -mtime "+${retention_days}" -delete
 
 echo "Created encrypted and verified local backup: ${final_backup}"

@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly check for new Tessavie encrypted backups
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=300
+Unit=tessavie-backup-pull.service
+
+[Install]
+WantedBy=timers.target

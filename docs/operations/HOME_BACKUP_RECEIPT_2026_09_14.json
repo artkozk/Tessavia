@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "date": "2026-09-14",
+  "production": {
+    "measured_at": "2026-09-14T05:23:41.300012+00:00",
+    "prior_archives_preserved": true,
+    "prior_archive_count": 39,
+    "archive_count": 40,
+    "archive_bytes": 59586064,
+    "newest_archive": "business-control-20260914-052146.tar.gz.enc",
+    "source_export_hashes_match": true,
+    "app_pid_before": 870192,
+    "app_pid_after": 870192,
+    "app_pid_unchanged": true,
+    "free_bytes": 2300325888,
+    "backup_service_result": "success",
+    "backup_timer_enabled": "enabled",
+    "key_mode": "0o600",
+    "source_directory_mode": "0o700",
+    "script_sha256": {
+      "backup": "359bab9f18bff55e6fa6726de0616164ed88b2253e5f240f12efea9047e4a510",
+      "export": "108ce095731b2e5444dea678f8735358ee95d0fbba0bcf925c5050751432faca"
+    }
+  },
+  "home": {
+    "measured_at": "2026-09-14T05:26:01.287377+00:00",
+    "host": "178.234.15.210",
+    "administration_ssh_port": 3223,
+    "virtualization": "lxc",
+    "cpu_count": 3,
+    "memory_total_bytes": 3221225472,
+    "filesystem": {
+      "total_bytes": 16870932480,
+      "used_bytes": 7339114496,
+      "free_bytes": 9531817984
+    },
+    "archive_count": 40,
+    "archive_bytes": 59586064,
+    "private_archive_modes": true,
+    "first_pull": {
+      "checked_at": "2026-09-14T05:21:16.833078+00:00",
+      "downloaded": 39,
+      "last_success_at": "2026-09-14T05:22:04.022300+00:00",
+      "newest_source_archive": "business-control-20260914-021607.tar.gz.enc",
+      "newest_source_archive_time": "2026-09-14T02:16:07+00:00",
+      "ok": true,
+      "retained_bytes": 54739872,
+      "source_age_seconds": 11157,
+      "source_archives": 39,
+      "source_fresh": true,
+      "version": 1
+    },
+    "catchup_pull": {
+      "checked_at": "2026-09-14T05:22:56.783693+00:00",
+      "downloaded": 1,
+      "last_success_at": "2026-09-14T05:23:00.100869+00:00",
+      "newest_source_archive": "business-control-20260914-052146.tar.gz.enc",
+      "newest_source_archive_time": "2026-09-14T05:21:46+00:00",
+      "ok": true,
+      "retained_bytes": 59586064,
+      "source_age_seconds": 74,
+      "source_archives": 40,
+      "source_fresh": true,
+      "version": 1
+    },
+    "repeat_pull": {
+      "checked_at": "2026-09-14T05:24:11.819758+00:00",
+      "downloaded": 0,
+      "last_success_at": "2026-09-14T05:24:14.533627+00:00",
+      "newest_source_archive": "business-control-20260914-052146.tar.gz.enc",
+      "newest_source_archive_time": "2026-09-14T05:21:46+00:00",
+      "ok": true,
+      "retained_bytes": 59586064,
+      "source_age_seconds": 148,
+      "source_archives": 40,
+      "source_fresh": true,
+      "version": 1
+    },
+    "repeat_kept_inodes_mtimes_sizes": true,
+    "ssh_restrictions": {
+      "allowed_list": true,
+      "shell_denied": true,
+      "traversal_denied": true,
+      "extra_args_denied": true,
+      "shell_suffix_denied": true,
+      "sftp_denied": true,
+      "pty_denied": true,
+      "forwarding_denied": true
+    },
+    "timer_enabled": "enabled",
+    "timer_state": "active",
+    "minecraft_state": "active",
+    "minecraft_start_time": "Mon 2026-09-14 02:01:33 UTC",
+    "script_sha256": "ea28fd7a947810c583e1384ff9f5cb8d1b32a62b3892807b77b16ef60485eb54",
+    "limits": {
+      "max_file_bytes": 536870912,
+      "max_vault_bytes": 2147483648,
+      "min_free_bytes": 2147483648,
+      "source_freshness_seconds": 172800,
+      "memory_max_bytes": 134217728,
+      "cpu_quota_percent": 25
+    },
+    "encryption_key_transferred": false,
+    "live_database_transferred": false,
+    "home_restore_executed": false
+  },
+  "validation": {
+    "linux_export_tests_passed": 11,
+    "linux_pull_tests_passed": 14,
+    "linux_publication_restore_tests_passed": 3,
+    "linux_skipped": 0,
+    "public_health_http": 200,
+    "negative_ssh_probes_passed": 7,
+    "real_backup_service_succeeded": true,
+    "existing_39_archives_preserved": true,
+    "home_restore_executed": false,
+    "encrypted_content_verified_against_source_sha256": true
+  },
+  "normalized_source_sha256": {
+    "business-control-backup.sh": "359bab9f18bff55e6fa6726de0616164ed88b2253e5f240f12efea9047e4a510",
+    "business_control_backup_publication_test.py": "2a0c62388f29351fae5cbd48d6b0578c1bc499a7dc223a7fd17d5497b221a06e",
+    "tessavie_backup_export.py": "108ce095731b2e5444dea678f8735358ee95d0fbba0bcf925c5050751432faca",
+    "tessavie_backup_export_test.py": "b7737d494e3ed74a0791bec2772c52a17bc9233831ceccc166f2d086570014c8",
+    "tessavie_backup_pull.py": "ea28fd7a947810c583e1384ff9f5cb8d1b32a62b3892807b77b16ef60485eb54",
+    "tessavie_backup_pull_test.py": "a2cb7b86c4a71f1be4896704301236e3fe2d5b60bd53861d3bf418c26a4543fd",
+    "tessavie-backup-export.conf": "450a117b4c70e849073deb96ea906b85d566de938cdb36876dfb93782143aa93",
+    "tessavie-backup-pull.service": "8706eb06eaeba3b78738a26c33d380d6f3f2ff0130732e09a9735eca74facdd2",
+    "tessavie-backup-pull.timer": "6ad5856232c17c262502ae680a8aae4701938d5cbb3f02d30699a345d70c341e"
+  },
+  "scope": {
+    "application_restarted": false,
+    "minecraft_restarted": false,
+    "live_data_migrated": false,
+    "yandex_disk_connected": false,
+    "hypervisor_disk_resized": false,
+    "automatic_home_deletion_enabled": false,
+    "independent_owner_encryption_key_copy_verified": false
+  }
+}
