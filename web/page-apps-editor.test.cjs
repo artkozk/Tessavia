@@ -8,10 +8,10 @@ function surface(){return{firstElementChild:null,nodes:new Map(),_html:'',set in
  this._html=value;this.firstElementChild={inert:false};this.nodes=new Map();const elements={};
  for(const tag of value.match(/<(?:input|textarea|select)\b[^>]*>/g)||[]){const name=tag.match(/\bname="([^"]+)"/)?.[1];if(name)elements[name]={value:tag.match(/\bvalue="([^"]*)"/)?.[1]||''};}
  for(const [,name,text] of value.matchAll(/<textarea\b[^>]*name="([^"]+)"[^>]*>([\s\S]*?)<\/textarea>/g))if(elements[name])elements[name].value=text;
- for(const tag of value.match(/<(?:button|form|input)\b[^>]*>/g)||[]){
-  const attrs=[...tag.matchAll(/\b(data-(?:builder|app|template|component)-[a-z-]+)(?:="([^"]*)")?/g)];
+ for(const tag of value.match(/<(?:button|form|input|section)\b[^>]*>/g)||[]){
+  const attrs=[...tag.matchAll(/\b(data-(?:builder|app|template|component|trash)-[a-z-]+)(?:="([^"]*)")?/g)];
   if(!attrs.length&&!/type="submit"/.test(tag))continue;
-  const node={disabled:false,value:'',dataset:{},elements,reportValidity:()=>true,addEventListener(type,handler){this[`on${type}`]=handler;},querySelector:selector=>this.querySelector(selector),querySelectorAll:selector=>this.querySelectorAll(selector)};
+  const node={disabled:false,value:'',dataset:{},elements,focus(options){this.focusOptions=options;},scrollIntoView(options){this.scrollOptions=options;},reportValidity:()=>true,addEventListener(type,handler){this[`on${type}`]=handler;},querySelector:selector=>this.querySelector(selector),querySelectorAll:selector=>this.querySelectorAll(selector)};
   const add=key=>{if(!this.nodes.has(key))this.nodes.set(key,[]);this.nodes.get(key).push(node);};
   for(const [,attr,content] of attrs){node.dataset[attr.slice(5).replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase())]=content||'';add(`[${attr}]`);}
   if(/type="submit"/.test(tag))add('[type=submit]');
@@ -24,7 +24,7 @@ function harness(){
  const $=(selector,root)=>root?root.querySelector(selector):({'#workspace-dialog':box,'#workspace-dialog-content':host,'#main-content':main}[selector]||null);
  const context=vm.createContext({structuredClone,crypto:{randomUUID:()=> `00000000-0000-4000-8000-${String(++nextID).padStart(12,'0')}`},localStorage:{getItem(key){reads.push(key);return storage.get(key)||null;},setItem(key,value){storage.set(key,value);},removeItem(key){storage.delete(key);}},
   createPageDataUI:()=>({mount(){}}),mountPageForms(){},applyElementStyles(){},migrateFormElementStyles(){},blockVisible:()=>true,blockOutline:def=>def.blocks.map(block=>({block,depth:0})),groupChoices:()=>[],elementStyleConfig:()=>'',visibilityConfig:()=>''});
- for(const file of ['page-sheets.js','page-components.js','page-block-kind.js','page-apps.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),context);
+ for(const file of ['page-sheets.js','page-components.js','page-block-kind.js','page-block-trash.js','page-apps.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),context);
  const createComponents=context.createPageComponentEditor;context.createPageComponentEditor=options=>{const editor=createComponents(options);components.push(editor);return editor;};
  context.createPageSheetUI=()=>({mount(){},reset(){}});
  context.options={state,api:(url,options)=>{const pending=deferred();calls.push({url,options,...pending});return pending.promise;},escapeHTML:String,icon:()=>'', $, $$:(selector,root)=>root?.querySelectorAll(selector)||[],
@@ -244,4 +244,48 @@ test('component metadata is scoped by account, workspace and page, and a stale i
   await h.host.querySelector('[data-builder-close]').onclick();if(scope==='account')h.state.me={id:'other'};if(scope==='workspace')h.state.activeWorkspaceId='other';if(scope==='page'){h.page.id='other-page';h.state.view='page:other-page';}
   form.elements.name.value='Stale overwrite';form.oninput();assert.equal(h.storage.get(componentDraftKey),before);await reopenEditor(h,blocks);h.components.at(-1).save();assert.doesNotMatch(h.host.innerHTML,/PRIVATE NAME|PRIVATE DESCRIPTION/);assert.equal(h.storage.get(componentDraftKey),before);
  }
+});
+
+test('full editor opens actionable block management, and archived submission contains collected tracker drafts',async()=>{
+ const h=harness(),blocks=Array.from({length:40},(_,i)=>({id:`b${i}`,kind:i===0?'tracker':'text',title:`Block ${i}`,hidden:true,items:[]}));
+ const draft={revision:1,definition:{version:1,blocks},pageName:'Current draft',pendingItems:{b0:'One\nTwo'},componentDrafts:{b0:{name:'Reusable metadata',description:'Keep me'}}};h.storage.set(componentDraftKey,JSON.stringify(draft));await openEditor(h,blocks);h.host.querySelector('[data-builder-restore]').onclick();
+ h.host.querySelector('[data-builder-add]').onclick();assert.match(h.host.innerHTML,/Скрытые · 40/);h.host.querySelector('[data-trash-remove]').onclick();
+ const sending=h.host.querySelector('[data-trash-confirm-remove]').onclick(),body=JSON.parse(h.calls.at(-1).options.body);
+ assert.equal(body.definition.blocks.length,40);assert.equal(body.definition.blocks[0].items.length,2);assert.equal(body.pageName,'Current draft');assert.equal(body.blockId,'b0');assert.equal(h.calls.at(-1).options.headers['X-Outbox-Owner'],'owner');assert.equal(h.calls.at(-1).options.headers['X-Workspace-ID'],'personal');
+ assert.equal(h.host.firstElementChild.inert,true);await h.host.querySelector('[data-builder-close]').onclick();assert.equal(h.stats.closed,0);
+ const updated=blocks.slice(1);h.calls.at(-1).resolve({...loaded(updated),revision:2,pageName:'Current draft',rootBlockId:'b0'});await tick();h.calls.at(-1).resolve({...loaded(updated),revision:2});await sending;
+ assert.match(h.host.innerHTML,/Блоков: 39\/40/);const stored=JSON.parse(h.storage.get(componentDraftKey));assert.equal(stored.trashRequest,null);assert.equal(stored.pageDirty,false);assert.deepEqual(stored.componentDrafts.b0,draft.componentDrafts.b0);
+});
+
+test('unknown trash outcome locks actual editor controls and resumes automatically after reload with exact original revision',async()=>{
+ const h=harness(),blocks=[{id:'root',kind:'text',title:'Remove me'}];await openEditor(h,blocks);const staleSave=h.host.querySelector('[data-builder-save]').onclick,staleAdd=h.host.querySelector('[data-builder-add]').onclick,staleName=h.host.querySelector('[data-builder-page-name]').oninput;
+ h.host.querySelector('[data-builder-page-name]').oninput({target:{value:'Unsaved title'}});h.host.querySelector('[data-builder-manage]').onclick();h.host.querySelector('[data-trash-remove]').onclick();const sending=h.host.querySelector('[data-trash-confirm-remove]').onclick(),exact=h.calls.at(-1).options.body;
+ h.calls.at(-1).reject(new TypeError('Connection interrupted'));await sending;
+ assert.equal(h.host.querySelector('[data-builder-save]').disabled,true);assert.equal(h.host.querySelector('[data-builder-cancel]').disabled,true);assert.equal(h.host.querySelector('[data-builder-page-name]').disabled,true);assert.equal(h.host.querySelector('[data-builder-manage]').disabled,true);
+ await staleSave();staleAdd();staleName({target:{value:'Must not overwrite'}});await h.host.querySelector('[data-builder-cancel]').onclick();assert.equal(h.calls.length,2);assert.equal(h.stats.closed,0);assert.equal(JSON.parse(h.storage.get(componentDraftKey)).pageName,'Unsaved title');
+ await h.host.querySelector('[data-builder-close]').onclick();await reopenEditor(h,[],8);
+ assert.match(h.host.innerHTML,/Проверим результат переноса в корзину/);assert.equal(h.host.querySelector('[data-builder-discard]'),null);assert.equal(h.host.querySelector('[data-builder-restore]'),null);
+ const retry=h.host.querySelector('[data-trash-retry]').onclick();assert.equal(h.calls.at(-1).options.body,exact);h.calls.at(-1).resolve({...loaded([]),revision:8,pageName:'Unsaved title',rootBlockId:'root',alreadyApplied:true});await tick();h.calls.at(-1).resolve({...loaded([]),revision:8});await retry;assert.equal(h.storage.size,0);assert.equal(h.host.querySelector('[data-builder-save]').disabled,false);
+});
+
+test('a recovered trash request rejected after newer server edits retains old CAS for subsequent save',async()=>{
+ const h=harness(),blocks=[{id:'root',kind:'text',title:'Original'}];await openEditor(h,blocks);h.host.querySelector('[data-builder-page-name]').oninput({target:{value:'My edits'}});h.host.querySelector('[data-builder-manage]').onclick();h.host.querySelector('[data-trash-remove]').onclick();const sending=h.host.querySelector('[data-trash-confirm-remove]').onclick();h.calls.at(-1).reject(new TypeError('Network'));await sending;
+ await h.host.querySelector('[data-builder-close]').onclick();await reopenEditor(h,blocks,5);const retry=h.host.querySelector('[data-trash-retry]').onclick();h.calls.at(-1).reject(Object.assign(new Error('Page changed'),{status:409}));await retry;
+ h.host.querySelector('[data-trash-back]').onclick();const saving=h.host.querySelector('[data-builder-save]').onclick();assert.equal(JSON.parse(h.calls.at(-1).options.body).expectedRevision,1);h.calls.at(-1).reject(Object.assign(new Error('Page changed'),{status:409}));await saving;
+ const stored=JSON.parse(h.storage.get(componentDraftKey));assert.equal(stored.revision,1);assert.equal(stored.pageName,'My edits');assert.equal(stored.trashRequest,null);
+});
+
+test('a stored trash request is scoped to page and account and does not seize another editor',async()=>{
+ for(const scope of ['account','workspace','page']){
+  const h=harness(),blocks=[{id:'root',kind:'text',title:'Private block'}];await openEditor(h,blocks);h.host.querySelector('[data-builder-manage]').onclick();h.host.querySelector('[data-trash-remove]').onclick();const sending=h.host.querySelector('[data-trash-confirm-remove]').onclick();h.calls.at(-1).reject(new TypeError('Network'));await sending;const saved=h.storage.get(componentDraftKey);
+  await h.host.querySelector('[data-builder-close]').onclick();if(scope==='account')h.state.me={id:'other'};if(scope==='workspace')h.state.activeWorkspaceId='other';if(scope==='page'){h.page.id='other';h.state.view='page:other';}await reopenEditor(h,[]);
+  assert.doesNotMatch(h.host.innerHTML,/Проверим результат|Private block/);assert.equal(h.host.querySelector('[data-builder-save]').disabled,false);assert.equal(h.storage.get(componentDraftKey),saved);
+ }
+});
+
+test('opening a dependency or an outline item focuses and reveals its properties below a long mobile outline',async()=>{
+ const h=harness(),blocks=[{id:'source',kind:'tracker',title:'Reading',items:[]},{id:'dependent',kind:'text',title:'Next step',visibility:{source:'source'}}];await openEditor(h,blocks);
+ h.host.querySelector('[data-builder-manage]').onclick();h.host.querySelector('[data-trash-remove]').onclick();h.host.querySelector('[data-trash-select]').onclick();
+ let properties=h.host.querySelector('[data-builder-properties]');assert.equal(properties.tabIndex,-1);assert.equal(properties.focusOptions.preventScroll,true);assert.equal(properties.scrollOptions.block,'start');assert.equal(properties.scrollOptions.behavior,'instant');assert.match(h.host.innerHTML,/value="Next step"/);
+ h.host.querySelector('[data-builder-select]').onclick();properties=h.host.querySelector('[data-builder-properties]');assert.equal(properties.tabIndex,-1);assert.equal(properties.scrollOptions.behavior,'instant');assert.match(h.host.innerHTML,/value="Reading"/);
 });

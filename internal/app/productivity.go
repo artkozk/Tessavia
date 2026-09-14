@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"sort"
 	"strconv"
@@ -355,9 +354,7 @@ func (s *Server) listActivitySince(ctx context.Context, since string, limit int)
 		if err := rows.Scan(&item.ID, &item.ActorID, &item.ActorUsername, &item.EntityType, &item.EntityID, &item.Action, &details, &item.Reason, &item.CreatedAt); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(details), &item.Details); err != nil {
-			item.Details = map[string]any{"raw": details}
-		}
+		item.Details = decodePublicActivityDetails(item.Action, details)
 		items = append(items, item)
 	}
 	return items, rows.Err()

@@ -237,6 +237,10 @@ func (s *Server) handlePageApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	if err = validatePageBlockTrashIDs(r.Context(), tx, currentWorkspace(r).ID, r.PathValue("id"), input.Definition); err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
 	var changed sql.Result
 	if input.ExpectedRevision == 0 {
 		changed, err = tx.ExecContext(r.Context(), `INSERT INTO page_app_definitions(page_id,definition_json,revision,updated_at) VALUES(?,?,1,?) ON CONFLICT(page_id) DO NOTHING`, r.PathValue("id"), string(raw), now)

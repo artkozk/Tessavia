@@ -176,9 +176,7 @@ func (s *Server) readActivityPage(ctx context.Context, since string, page *recor
 		if err := rows.Scan(&page.ActivityAfter, &item.ID, &item.ActorID, &item.ActorUsername, &item.EntityType, &item.EntityID, &item.Action, &details, &item.Reason, &item.CreatedAt); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(details), &item.Details); err != nil {
-			item.Details = map[string]any{"raw": details}
-		}
+		item.Details = decodePublicActivityDetails(item.Action, details)
 		items = append(items, item)
 	}
 	if !more {

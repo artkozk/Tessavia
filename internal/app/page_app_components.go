@@ -334,6 +334,10 @@ func (s *Server) handleInsertPageAppComponent(w http.ResponseWriter, r *http.Req
 		return
 	}
 	defer tx.Rollback()
+	if err = validatePageBlockTrashIDs(r.Context(), tx, currentWorkspace(r).ID, r.PathValue("id"), combined); err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
 	// Claim the request and revision in the same transaction as the fresh
 	// schemas. Conflicts, failed source validation and retries create no orphans.
 	now := nowText()

@@ -104,6 +104,9 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/page-app/components", s.requireAuth(http.HandlerFunc(s.handleCreatePageAppComponent)))
 	s.mux.Handle("GET /api/page-app/components/{id}", s.requireAuth(http.HandlerFunc(s.handleGetPageAppComponent)))
 	s.mux.Handle("POST /api/workspace/pages/{id}/app/component", s.requireAuth(http.HandlerFunc(s.handleInsertPageAppComponent)))
+	s.mux.Handle("GET /api/workspace/pages/{id}/app/trash", s.requireAuth(http.HandlerFunc(s.handlePageBlockTrash)))
+	s.mux.Handle("POST /api/workspace/pages/{id}/app/trash", s.requireAuth(http.HandlerFunc(s.handlePageBlockTrash)))
+	s.mux.Handle("POST /api/workspace/pages/{id}/app/trash/{trashId}/restore", s.requireAuth(http.HandlerFunc(s.handleRestorePageBlockTrash)))
 	s.mux.Handle("GET /api/page-app/templates/{id}", s.requireAuth(http.HandlerFunc(s.handleGetPageAppTemplate)))
 	s.mux.Handle("PATCH /api/page-app/templates/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdatePageAppTemplate)))
 	s.mux.Handle("POST /api/workspace/pages/{id}/app/template", s.requireAuth(http.HandlerFunc(s.handleCreatePageAppTemplate)))
@@ -3329,9 +3332,7 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "Не удалось прочитать историю")
 			return
 		}
-		if err := json.Unmarshal([]byte(details), &item.Details); err != nil {
-			item.Details = map[string]any{"raw": details}
-		}
+		item.Details = decodePublicActivityDetails(item.Action, details)
 		activity = append(activity, item)
 	}
 	writeJSON(w, http.StatusOK, activity)

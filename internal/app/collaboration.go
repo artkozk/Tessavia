@@ -168,7 +168,7 @@ func (s *Server) listUserActivity(ctx context.Context, userID int64, limit int) 
 		if err := rows.Scan(&item.ID, &item.ActorID, &item.ActorUsername, &item.EntityType, &item.EntityID, &item.Action, &details, &item.Reason, &item.CreatedAt); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal([]byte(details), &item.Details)
+		item.Details = decodePublicActivityDetails(item.Action, details)
 		items = append(items, item)
 	}
 	return items, rows.Err()

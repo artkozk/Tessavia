@@ -249,8 +249,10 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	if bytes.Count(index, []byte("20260914-constructor-safety-1")) != 6 {
-		t.Fatal("current release must bump embedded asset URLs so production browsers do not keep stale CSS/JS")
+	for _, asset := range []string{"app.js", "styles.css", "settings-hub.css", "personal-finance.css", "page-sheets.css", "page-components.css", "page-block-trash.css"} {
+		if !bytes.Contains(index, []byte("/"+asset+"?v=20260914-block-capacity-1")) {
+			t.Fatalf("current release must bump %s so production browsers do not keep a stale resource", asset)
+		}
 	}
 	styles, err := Files.ReadFile("styles.css")
 	if err != nil {
