@@ -24,6 +24,7 @@ func main() {
 	if config.ReminderWorkerEnabled {
 		go app.RunReminderWorker(ctx, store)
 	}
+	go app.RunPushWorker(ctx, store, config)
 
 	server := &http.Server{
 		Addr:              config.Address,

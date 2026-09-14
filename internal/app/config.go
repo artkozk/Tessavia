@@ -12,6 +12,10 @@ type Config struct {
 	DatabasePath                 string
 	CookieSecure                 bool
 	ReminderWorkerEnabled        bool
+	PushEnabled                  bool
+	PushVAPIDPublicKey           string
+	PushVAPIDPrivateKey          string
+	PushVAPIDSubject             string
 	SessionLifetime              time.Duration
 	AllowedUsernames             map[string]struct{}
 	GroqAPIKey                   string
@@ -42,6 +46,10 @@ func LoadConfig() Config {
 		DatabasePath:                 envOr("BUSINESS_DATABASE_PATH", "./data/business-control.db"),
 		CookieSecure:                 envBool("BUSINESS_COOKIE_SECURE", false),
 		ReminderWorkerEnabled:        envBool("BUSINESS_REMINDERS_ENABLED", true),
+		PushEnabled:                  envBool("BUSINESS_PUSH_ENABLED", false),
+		PushVAPIDPublicKey:           strings.TrimSpace(os.Getenv("BUSINESS_PUSH_VAPID_PUBLIC_KEY")),
+		PushVAPIDPrivateKey:          strings.TrimSpace(os.Getenv("BUSINESS_PUSH_VAPID_PRIVATE_KEY")),
+		PushVAPIDSubject:             strings.TrimSpace(os.Getenv("BUSINESS_PUSH_VAPID_SUBJECT")),
 		SessionLifetime:              90 * 24 * time.Hour,
 		AllowedUsernames:             parseAllowedUsernames(os.Getenv("BUSINESS_ALLOWED_USERNAMES")),
 		GroqAPIKey:                   strings.TrimSpace(os.Getenv("GROQ_API_KEY")),

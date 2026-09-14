@@ -1,35 +1,37 @@
-const CACHE = 'tessavie-shell-20260914-offline-recovery-1';
+const CACHE = 'tessavie-shell-20260914-mobile-access-1';
 const ASSETS = [
- '/page-block-trash.js?v=20260914-personal-references-1', '/page-block-trash.css?v=20260914-personal-references-1',
- '/page-block-kind.js?v=20260914-personal-references-1',
- '/field-conversion.js?v=20260914-personal-references-1',
- '/page-sheets.js?v=20260914-personal-references-1', '/page-sheets.css?v=20260914-personal-references-1',
- '/page-components.js?v=20260914-personal-references-1', '/page-components.css?v=20260914-personal-references-1', '/page-labels.js?v=20260914-personal-references-1',
- '/personal-plan-references.js?v=20260914-personal-references-1', '/personal-finance.js?v=20260914-personal-references-1', '/personal-finance.css?v=20260914-personal-references-1',
- '/settings-hub.js?v=20260914-personal-references-1', '/settings-hub.css?v=20260914-personal-references-1',
- '/page-block-visibility.js?v=20260914-personal-references-1',
- '/page-data-sources.js?v=20260914-personal-references-1',
- '/page-action-conditions.js?v=20260914-personal-references-1',
- '/page-record-actions.js?v=20260914-personal-references-1',
- '/page-forms.js?v=20260914-personal-references-1',
- '/field-conflicts.js?v=20260914-personal-references-1',
- '/page-apps.js?v=20260914-personal-references-1', '/page-composition.js?v=20260914-personal-references-1', '/page-form-elements.js?v=20260914-personal-references-1', '/page-element-styles.js?v=20260914-personal-references-1', '/page-calculations.js?v=20260914-personal-references-1', '/page-record-card.js?v=20260914-personal-references-1', '/page-record-bindings.js?v=20260914-personal-references-1',
-  '/chat-groups.js?v=20260914-personal-references-1',
-  '/personal-calendar.js?v=20260914-personal-references-1',
-  '/', '/chat-workspace.js?v=20260914-personal-references-1', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260914-personal-references-1', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260914-offline-recovery-1', '/styles.css?v=20260914-personal-references-1',
-  '/reminder-settings.js?v=20260904-reminder-digests-1',
-  '/personal-reminders.js?v=20260914-personal-references-1',
-  '/personal-navigation.js?v=20260914-personal-references-1',
-  '/personal-today.js?v=20260914-personal-references-1',
-  '/life-map.js?v=20260914-personal-references-1', '/personal-publish.js?v=20260904-personal-batch-3',
-  '/personal-inbox.js?v=20260904-first-use-4', '/first-use.js?v=20260914-personal-references-1',
+ '/mobile-access.js?v=20260914-mobile-access-1', '/mobile-access.css?v=20260914-mobile-access-1',
+ '/phone-notifications.js?v=20260914-mobile-access-1', '/phone-notifications.css?v=20260914-mobile-access-1',
+ '/page-block-trash.js?v=20260914-mobile-access-1', '/page-block-trash.css?v=20260914-mobile-access-1',
+ '/page-block-kind.js?v=20260914-mobile-access-1',
+ '/field-conversion.js?v=20260914-mobile-access-1',
+ '/page-sheets.js?v=20260914-mobile-access-1', '/page-sheets.css?v=20260914-mobile-access-1',
+ '/page-components.js?v=20260914-mobile-access-1', '/page-components.css?v=20260914-mobile-access-1', '/page-labels.js?v=20260914-mobile-access-1',
+ '/personal-plan-references.js?v=20260914-mobile-access-1', '/personal-finance.js?v=20260914-mobile-access-1', '/personal-finance.css?v=20260914-mobile-access-1',
+ '/settings-hub.js?v=20260914-mobile-access-1', '/settings-hub.css?v=20260914-mobile-access-1',
+ '/page-block-visibility.js?v=20260914-mobile-access-1',
+ '/page-data-sources.js?v=20260914-mobile-access-1',
+ '/page-action-conditions.js?v=20260914-mobile-access-1',
+ '/page-record-actions.js?v=20260914-mobile-access-1',
+ '/page-forms.js?v=20260914-mobile-access-1',
+ '/field-conflicts.js?v=20260914-mobile-access-1',
+ '/page-apps.js?v=20260914-mobile-access-1', '/page-composition.js?v=20260914-mobile-access-1', '/page-form-elements.js?v=20260914-mobile-access-1', '/page-element-styles.js?v=20260914-mobile-access-1', '/page-calculations.js?v=20260914-mobile-access-1', '/page-record-card.js?v=20260914-mobile-access-1', '/page-record-bindings.js?v=20260914-mobile-access-1',
+  '/chat-groups.js?v=20260914-mobile-access-1',
+  '/personal-calendar.js?v=20260914-mobile-access-1',
+  '/', '/chat-workspace.js?v=20260914-mobile-access-1', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260914-mobile-access-1', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260914-mobile-access-1', '/styles.css?v=20260914-mobile-access-1',
+  '/reminder-settings.js?v=20260914-mobile-access-1',
+  '/personal-reminders.js?v=20260914-mobile-access-1',
+  '/personal-navigation.js?v=20260914-mobile-access-1',
+  '/personal-today.js?v=20260914-mobile-access-1',
+  '/life-map.js?v=20260914-mobile-access-1', '/personal-publish.js?v=20260904-personal-batch-3',
+  '/personal-inbox.js?v=20260904-first-use-4', '/first-use.js?v=20260914-mobile-access-1',
   '/reading.js?v=20260906-reading-groups-1',
   '/emoji-picker.js?v=20260904-chat-emoji-3', '/vendor/emoji-17.0-cldr48.2.json',
-  '/outbox-ui.js?v=20260914-personal-references-1', '/offline-outbox.js?v=20260903-offline-outbox-3',
+  '/outbox-ui.js?v=20260914-mobile-access-1', '/offline-outbox.js?v=20260903-offline-outbox-3',
   '/note-media.js?v=20260904-note-media-3',
   '/note-library.js?v=20260904-note-media-3',
   '/bulk-work.js?v=20260904-bulk-actions-3',
-  '/habit-tracker.js?v=20260914-personal-references-1',
+  '/habit-tracker.js?v=20260914-mobile-access-1',
   '/graph-layout-state.js?v=20260903-graph-layouts-1', '/manifest.webmanifest',
   '/vendor/cytoscape-3.34.1.min.js', '/vendor/marked-18.0.9.umd.js', '/vendor/dompurify-3.4.13.min.js',
   '/fonts/Inter-Regular.woff2', '/fonts/Inter-SemiBold.woff2', '/fonts/Inter-Bold.woff2', '/fonts/Onest-Variable.ttf',
@@ -65,4 +67,33 @@ self.addEventListener('fetch', event => {
   } else if (allowed.has(url.href)) {
     event.respondWith((async () => (await (await caches.open(CACHE)).match(request)) || fetch(request))());
   }
+});
+
+// Background messages contain no private content. Never render provider-supplied text or URLs.
+self.addEventListener('push', event => event.waitUntil((async () => {
+  let payload = {};
+  try { payload = event.data?.json() || {}; } catch (_) { /* A visible neutral fallback is required. */ }
+  const valid = payload.version === 1;
+  const tag = valid && /^tessavie-[a-zA-Z0-9-]{1,80}$/.test(payload.tag || '') ? payload.tag : 'tessavie-notification';
+  await self.registration.showNotification('Tessavie', {
+    body: valid && payload.type === 'test' ? 'Уведомления на этом устройстве работают' : 'Есть новое уведомление',
+    icon: '/brand/tessavie-192.png?v=linked-1', badge: '/brand/tessavie-192.png?v=linked-1', tag,
+    data: { action: 'notifications' },
+  });
+})()));
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const target = windows.filter(client => {
+      try { const url = new URL(client.url); return url.origin === self.location.origin && (url.pathname === '/' || url.pathname === '/index.html'); }
+      catch (_) { return false; }
+    }).sort((a, b) => Number(b.focused) - Number(a.focused))[0];
+    if (target) {
+      // App navigation preserves drafts; navigating/reloading the window here would lose focus and input.
+      target.postMessage({ type: 'tessavie-open-notifications' });
+      await target.focus();
+    } else await self.clients.openWindow('/?launch=notifications');
+  })());
 });

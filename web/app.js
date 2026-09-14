@@ -1,31 +1,32 @@
-import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260914-personal-references-1';
-import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-personal-references-1';
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-personal-references-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-personal-references-1';
-import { createSettingsHub } from './settings-hub.js?v=20260914-personal-references-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260914-personal-references-1';
-import { createPageAppUI } from './page-apps.js?v=20260914-personal-references-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260914-personal-references-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-personal-references-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-personal-references-1';
+import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260914-mobile-access-1';
+import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260914-mobile-access-1';
+import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-mobile-access-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-mobile-access-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-mobile-access-1';
+import { createSettingsHub } from './settings-hub.js?v=20260914-mobile-access-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260914-mobile-access-1';
+import { createPageAppUI } from './page-apps.js?v=20260914-mobile-access-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260914-mobile-access-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-mobile-access-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-mobile-access-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-personal-references-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-mobile-access-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-personal-references-1';
-import { createReminderSettingsUI } from './reminder-settings.js?v=20260904-reminder-digests-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-personal-references-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-personal-references-1';
-import { createFirstUseUI } from './first-use.js?v=20260914-personal-references-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-mobile-access-1';
+import { createReminderSettingsUI } from './reminder-settings.js?v=20260914-mobile-access-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-mobile-access-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-mobile-access-1';
+import { createFirstUseUI } from './first-use.js?v=20260914-mobile-access-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260914-personal-references-1';
+import { createLifeMapUI } from './life-map.js?v=20260914-mobile-access-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI } from './habit-tracker.js?v=20260914-personal-references-1';
+import { createHabitUI } from './habit-tracker.js?v=20260914-mobile-access-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260914-personal-references-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260914-mobile-access-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -99,6 +100,7 @@ const iconPaths = {
   pause: '<path d="M9 5v14M15 5v14"/>',
 	more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
 	phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2Z"/>',
+  smartphone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/>',
   mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M12 8v4M12 16h.01"/>',
   alertTriangle: '<path d="M10.3 3.7 2.2 18a2 2 0 0 0 1.8 3h16a2 2 0 0 0 1.8-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
@@ -1164,6 +1166,7 @@ function showAuth() {
 }
 
 function clearPrivateClientState() {
+  mobileAccessUI.resetPrivate();
   if (typeof offlineOutbox !== 'undefined') void offlineOutbox?.signOut();
   state.offlineMode = false;
   state.loadDataAbort?.abort();
@@ -1242,12 +1245,11 @@ async function bootstrap() {
   });
   interfaceObserver.observe(document.body, { childList: true, subtree: true });
   try {
-    // The browser's network hint can be wrong; the server response decides whether to use the local screen.
     state.me = await api('/api/me');
     showApp();
     await loadData();
 		maybeShowOnboarding();
-		if (!maybeOpenPendingInvitation()) maybeOpenPendingInterfacePreset();
+		if (!maybeOpenPendingInvitation() && !maybeOpenPendingInterfacePreset()) await mobileAccessUI.consumeLaunch();
   } catch (error) {
     if(state.me) renderProjectLoadError(error); else if (![401,403].includes(error.status) && await offlineOutbox.offline()) return; else showAuth();
   }
@@ -2068,7 +2070,7 @@ async function submitAuth(event) {
     showApp();
     await loadData();
 		maybeShowOnboarding();
-		if (!maybeOpenPendingInvitation()) maybeOpenPendingInterfacePreset();
+		if (!maybeOpenPendingInvitation() && !maybeOpenPendingInterfacePreset()) await mobileAccessUI.consumeLaunch();
   } catch (error) {
     $('#auth-error').textContent = error.message;
   }
@@ -2426,13 +2428,13 @@ function openInterfaceSettings(section = 'page') {
   settingsHub.open(section);
 }
 
-async function leaveSettingsFor(action) {
+async function leaveSettingsFor(action, { closeAll = false } = {}) {
   const hub = $('#settings-dialog');
-  if (!hub?.open) return action();
+  if (!hub?.open && !closeAll) return action();
   const afterHistory = close => new Promise((resolve, reject) => {
     const previous = state.afterOverlayClose;
     const resume = async () => {
-      try { await previous?.(); resolve(await leaveSettingsFor(action)); }
+      try { await previous?.(); resolve(await leaveSettingsFor(action, {closeAll})); }
       catch (error) { reject(error); }
     };
     state.afterOverlayClose = resume;
@@ -2443,10 +2445,29 @@ async function leaveSettingsFor(action) {
   // A leaf may already be closed while its Back event is still queued. Wait for
   // that event, then remove the hub entry before navigating or opening an editor.
   if (state.suppressOverlayPop) return afterHistory();
-  const dialog = topOpenDialog() || hub;
+  const dialog = topOpenDialog() || (hub?.open ? hub : null);
+  if (!dialog) return action();
   if (dialog.dataset.historyState === 'true' && history.state?.businessControlOverlay === dialog.id) return afterHistory(dialog);
   if (!await requestDialogClose(dialog)) return false;
-  return leaveSettingsFor(action);
+  return leaveSettingsFor(action, {closeAll});
+}
+
+async function runMobileLaunch(action) {
+  if (!mobileLaunchURL(action) || !state.me || state.offlineMode || !state.projectDataReady) return false;
+  const owner = state.me.id, workspace = state.activeWorkspaceId, view = state.view, epoch = state.projectContextEpoch, request = state.viewRestoreRequest;
+  const originalContext = () => owner === state.me?.id && workspace === state.activeWorkspaceId && view === state.view && epoch === state.projectContextEpoch && request === state.viewRestoreRequest;
+  return leaveSettingsFor(async () => {
+    if (!originalContext()) return false;
+    const tab = action === 'note' || action === 'notes' ? 'notes' : action === 'plan' ? 'plans' : 'today';
+    const destination = action === 'notifications' ? 'notifications' : 'personal';
+    if (!await navigateToView(destination, {personalTab:tab}) || owner !== state.me?.id) return false;
+    if (action !== 'note' && action !== 'plan') return true;
+    const targetWorkspace = state.activeWorkspaceId, routeRequest = state.viewRestoreRequest;
+    await loadPersonal({force:true});
+    if (owner !== state.me?.id || targetWorkspace !== state.activeWorkspaceId || routeRequest !== state.viewRestoreRequest || state.view !== 'personal' || state.personalTab !== tab || state.personalError) return false;
+    openPersonalEditor(action);
+    return true;
+  }, {closeAll:true});
 }
 
 async function runSettingsAction(key, {context}) {
@@ -2473,6 +2494,7 @@ async function runSettingsAction(key, {context}) {
   if (key === 'interface-presets') return openInterfacePresetsDialog();
   if (key === 'page-library') return pageAppUI.library();
   if (key === 'profile') return openProfile(state.me.id);
+  if (key === 'mobile-access') return mobileAccessUI.open();
   if (key === 'reminders') return reminderSettingsUI.open();
   if (key === 'day') return personalTodayUI.openSettings();
   if (key === 'finance') return personalFinanceUI.openSettings();
@@ -2792,6 +2814,7 @@ const personalFinanceUI=createPersonalFinanceUI({state,api,escapeHTML,icon,openM
 const personalRemindersUI=createPersonalRemindersUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,renderPersonal,openSource:openPersonalReminderSource,openHabit:openHabitReminderSource,openPlans:()=>navigateToView('personal',{personalTab:'plans'}),refreshNotifications:loadNotificationInbox});
 async function openPersonalReminderSource(id){const owner=state.me?.id;await navigateToView('personal',{personalTab:'today'});if(owner!==state.me?.id)return;await loadPersonal({force:true});if(owner===state.me?.id)openPersonalPlanDetails(id);}
 const settingsHub=createSettingsHub({getContext:settingsContext,escapeHTML,icon,openModal,requestDialogClose,runAction:runSettingsAction});
+const mobileAccessUI=createMobileAccessUI({getContext:()=>({...settingsContext(),ready:state.projectDataReady&&!state.offlineMode}),runLaunch:runMobileLaunch,openReminders:()=>runSettingsAction('reminders',{context:settingsContext()}),escapeHTML,icon,openModal,requestDialogClose,toast});
 const reminderSettingsUI=createReminderSettingsUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
 const personalTodayUI=createPersonalTodayUI({state,api,escapeHTML,icon,renderPersonal,renderPlanRow,formatMinutes,openPlan:openPersonalPlanDetails,openRecurrence:plan=>personalCalendarUI.openRecurrence(plan.id,plan),refreshPersonal:async()=>{await loadPersonal({force:true});if(state.personalError)throw new Error(state.personalError);},openProject:(id,workspaceId)=>openPersonalReviewSource({sourceKind:'record',sourceId:id,workspaceId}),togglePlan:togglePersonalPlan,openDay:openDayWorkspace,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
 const firstUseUI = createFirstUseUI({state,api,escapeHTML,icon,activeWorkspace,canConfigureWorkspace,openModal,closeDialog:requestDialogClose,toast,

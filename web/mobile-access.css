@@ -1,0 +1,36 @@
+/* Device help lives under the shared settings hub and keeps its palette. */
+#mobile-access-dialog { width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; color: var(--ink); background: var(--surface); overflow: auto; }
+.mobile-access-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.mobile-access-header h2 { font-size: 23px; }
+.mobile-access-header .icon-button { flex: 0 0 44px; min-height: 44px; }
+.mobile-access-body { padding: 0 24px 24px; min-width: 0; }
+.mobile-access-body section { padding: 22px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.mobile-access-body h3 { font-size: 17px; margin-bottom: 10px; }
+.mobile-access-body p, .mobile-access-body li { line-height: 1.55; overflow-wrap: anywhere; }
+.mobile-access-body p + p, .mobile-access-body p + button { margin-top: 12px; }
+.mobile-access-body details { margin-top: 12px; }
+.mobile-access-body summary { min-height: 44px; padding: 12px 0; cursor: pointer; color: var(--accent-strong); font-weight: 600; }
+.mobile-access-body ol { padding-left: 24px; margin: 4px 0 12px; }
+.mobile-access-body li + li { margin-top: 8px; }
+.mobile-access-body button { min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.mobile-access-body a { color: var(--accent-strong); }
+.mobile-access-device { padding: 10px 12px; border-radius: 8px; background: var(--surface-soft); }
+.mobile-access-shortcuts { margin-top: 12px; }
+.mobile-access-shortcuts article { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); padding: 4px 0; }
+.mobile-access-shortcuts a { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 64px; padding: 8px 0; text-decoration: none; }
+.mobile-access-shortcuts a > svg { flex: 0 0 20px; }
+.mobile-access-shortcuts a > span { min-width: 0; }
+.mobile-access-shortcuts strong, .mobile-access-shortcuts small { display: block; line-height: 1.5; overflow-wrap: anywhere; }
+.mobile-access-shortcuts small { margin-top: 3px; color: var(--muted); font-weight: 400; }
+.mobile-access-shortcuts article:last-child { border-bottom: 0; }
+.mobile-access-copy-fallback { margin-top: 14px; }
+.mobile-access-copy-fallback input { width: 100%; min-width: 0; }
+.mobile-access-message, .mobile-access-error { margin-top: 16px; }
+.mobile-access-error { color: var(--red); }
+@media (max-width: 640px) {
+  #mobile-access-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); scrollbar-width: none; }
+  #mobile-access-dialog::-webkit-scrollbar { display: none; }
+  .mobile-access-header { padding: 16px; gap: 12px; }
+  .mobile-access-body { padding: 0 16px 20px; }
+  .mobile-access-body section { padding: 18px 0; }
+}

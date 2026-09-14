@@ -249,12 +249,8 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	for _, asset := range []string{"app.js", "styles.css", "settings-hub.css", "personal-finance.css", "page-sheets.css", "page-components.css", "page-block-trash.css"} {
-		version := "20260914-personal-references-1"
-		if asset == "app.js" {
-			version = "20260914-offline-recovery-1"
-		}
-		if !bytes.Contains(index, []byte("/"+asset+"?v="+version)) {
+	for _, asset := range []string{"app.js", "styles.css", "settings-hub.css", "personal-finance.css", "page-sheets.css", "page-components.css", "page-block-trash.css", "mobile-access.css", "phone-notifications.css"} {
+		if !bytes.Contains(index, []byte("/"+asset+"?v=20260914-mobile-access-1")) {
 			t.Fatalf("current release must bump %s so production browsers do not keep a stale resource", asset)
 		}
 	}

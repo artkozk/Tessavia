@@ -3,12 +3,14 @@ module business-control
 go 1.24.0
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	golang.org/x/crypto v0.37.0
 	modernc.org/sqlite v1.36.3
 )
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
