@@ -1,5 +1,5 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
-const source = fs.readFileSync(path.join(__dirname, 'mobile-access.js'), 'utf8').replaceAll('export ', '');
+const source = fs.readFileSync(path.join(__dirname, 'mobile-access.js'), 'utf8').replace(/^import .+;\r?\n/gm, '').replaceAll('export ', '');
 const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 const origin = 'https://control.e-rd.ru', esc = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
 const fragment = (start, end) => app.slice(app.indexOf(start), app.indexOf(end));
@@ -86,7 +86,7 @@ test('install completion after closing or changing account cannot repaint a diff
 
 test('mobile help distinguishes unknown install state, browser permission, and shortcuts from live widgets', () => {
   const ctx = context(), device = { standalone: false, ios: true, online: true, permission: 'granted' }, html = ctx.mobileAccessMarkup(device, {}, esc, () => '');
-  assert.match(html, /Открыто в браузере/); assert.match(html, /нельзя определить/); assert.match(html, /живые системные виджеты ещё не реализованы/); assert.match(html, /Браузер разрешает уведомления/); assert.doesNotMatch(html, /Уведомления подключены/); assert.equal((html.match(/data-mobile-launch=/g) || []).length, 4); assert.match(html, /<details open><summary>iPhone/);
+  assert.match(html, /Открыто в браузере/); assert.match(html, /нельзя определить/); assert.match(html, /Виджеты Android/); assert.match(html, /системный виджет iOS пока не готов/); assert.match(html, /Браузер разрешает уведомления/); assert.doesNotMatch(html, /Уведомления подключены/); assert.equal((html.match(/data-mobile-launch=/g) || []).length, 4); assert.match(html, /<details open><summary>iPhone/);
   const standalone = ctx.mobileAccessMarkup({ ...device, standalone: true }, { promptAvailable: true }, esc, () => ''); assert.match(standalone, /Открыто как приложение/); assert.doesNotMatch(standalone, /data-mobile-install/);
 });
 

@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Tessavie Widgets</string>
+    <string name="configure_title">Подключить блок</string>
+    <string name="widget_description">Выбранный блок конструктора: привычки, чтение или другой прогресс.</string>
+    <string name="refresh">Обновить</string>
+    <string name="open">Открыть</string>
+    <string name="brand">TESSAVIE</string>
+    <string name="preview_title">Мой блок</string>
+    <string name="preview_progress">Подключите в настройках</string>
+    <string name="preview_status">Добавьте выбранный блок</string>
+</resources>

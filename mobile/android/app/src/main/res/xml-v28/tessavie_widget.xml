@@ -1,0 +1,7 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="220dp" android:minHeight="220dp"
+    android:minResizeWidth="180dp" android:minResizeHeight="180dp"
+    android:initialLayout="@layout/widget"
+    android:description="@string/widget_description" android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" android:updatePeriodMillis="1800000"
+    android:configure="ru.tessavie.widgets.ConfigureActivity" android:widgetFeatures="reconfigurable" />

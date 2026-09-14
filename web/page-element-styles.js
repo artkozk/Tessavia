@@ -1,6 +1,6 @@
-import { recordCardBody, recordPartLabel, applyRecordCardLayout } from './page-record-card.js?v=20260914-swipe-tabs-1';
-import { blockSubtree } from './page-composition.js?v=20260914-swipe-tabs-1';
-import { recordRowText } from './page-record-bindings.js?v=20260914-swipe-tabs-1';
+import { recordCardBody, recordPartLabel, applyRecordCardLayout } from './page-record-card.js?v=20260914-android-widget-1';
+import { blockSubtree } from './page-composition.js?v=20260914-android-widget-1';
+import { recordRowText } from './page-record-bindings.js?v=20260914-android-widget-1';
 const styleNames={sheetLabel:'Все подписи листа',sheetValue:'Все числа листа',sheetUnit:'Все единицы листа',title:'Заголовок блока',text:'Текст блока',item:'Все пункты',progressValue:'Процент прогресса',progressCount:'Количество выполненного',progressBar:'Полоса прогресса',button:'Кнопка перехода',row:'Карточка целиком',rowTitle:'Заголовки карточек',rowSubtitle:'Подписи карточек',fieldLabel:'Все названия полей',fieldValue:'Все значения полей',createButton:'Кнопка добавления',actionButton:'Все кнопки действий',formLabel:'Все подписи формы',formControl:'Все поля ввода',formSubmit:'Кнопка отправки',formResult:'Сообщение результата'};
 export function elementStyleTargets(b,collection){
  const keys=b.kind==='button'?['button']:['title'];

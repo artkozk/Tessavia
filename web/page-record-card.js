@@ -1,4 +1,4 @@
-import { recordRowText } from './page-record-bindings.js?v=20260914-swipe-tabs-1';
+import { recordRowText } from './page-record-bindings.js?v=20260914-android-widget-1';
 export const recordPartKinds={title:'Заголовок карточки',subtitle:'Подпись карточки',field:'Поле записи',text:'Свой текст'};
 export function defaultRecordCard(block,uid){return {enabled:true,columns:1,gap:10,parts:[{id:uid(),kind:'title',width:12},{id:uid(),kind:'subtitle',width:12},...(block.fields||[]).map(fieldId=>({id:uid(),kind:'field',fieldId,width:6}))]};}
 export function recordPartLabel(part,collection){return part.kind==='field'?part.label||collection?.fields?.find(f=>f.id===part.fieldId)?.name||'Недоступное поле':part.kind==='text'?part.text||'Свой текст':recordPartKinds[part.kind]||'Часть карточки';}

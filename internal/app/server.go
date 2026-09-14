@@ -38,14 +38,15 @@ var recordStatuses = map[string]struct{}{
 }
 
 type Server struct {
-	store       *Store
-	config      Config
-	mux         *http.ServeMux
-	aiClient    *http.Client
-	aiClients   []*http.Client
-	aiCursor    atomic.Uint32
-	aiClientErr error
-	pageEpoch   string
+	store        *Store
+	config       Config
+	mux          *http.ServeMux
+	aiClient     *http.Client
+	aiClients    []*http.Client
+	aiCursor     atomic.Uint32
+	aiClientErr  error
+	pageEpoch    string
+	widgetLimits widgetRateLimiter
 }
 
 type contextKey string
@@ -68,6 +69,12 @@ func NewServer(store *Store, config Config) http.Handler {
 }
 
 func (s *Server) routes() {
+	s.mux.Handle("GET /api/me/widgets/sources", widgetNoStore(s.requireAuth(http.HandlerFunc(s.handleWidgetSources))))
+	s.mux.Handle("GET /api/me/widgets", widgetNoStore(s.requireAuth(http.HandlerFunc(s.handleWidgetDevices))))
+	s.mux.Handle("POST /api/me/widgets", widgetNoStore(s.requireAuth(http.HandlerFunc(s.handleWidgetDevices))))
+	s.mux.Handle("DELETE /api/me/widgets/{id}", widgetNoStore(s.requireAuth(http.HandlerFunc(s.handleDeleteWidgetDevice))))
+	s.mux.Handle("POST /api/mobile/widgets/redeem", widgetNoStore(http.HandlerFunc(s.handleRedeemWidgetDevice)))
+	s.mux.Handle("GET /api/mobile/widget", widgetNoStore(http.HandlerFunc(s.handleMobileWidget)))
 	s.mux.Handle("GET /api/personal/habits/{id}/reminder", s.requireAuth(http.HandlerFunc(s.handleHabitReminderPreference)))
 	s.mux.Handle("PUT /api/personal/habits/{id}/reminder", s.requireAuth(http.HandlerFunc(s.handleHabitReminderPreference)))
 	s.mux.Handle("GET /api/personal/reminders", s.requireAuth(http.HandlerFunc(s.handlePersonalReminders)))

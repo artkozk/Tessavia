@@ -27,10 +27,29 @@
 .mobile-access-copy-fallback input { width: 100%; min-width: 0; }
 .mobile-access-message, .mobile-access-error { margin-top: 16px; }
 .mobile-access-error { color: var(--red); }
+.mobile-widget-form { display: grid; gap: 14px; margin-top: 16px; min-width: 0; }
+.mobile-widget-form label, .mobile-widget-pairing label { display: grid; gap: 7px; min-width: 0; }
+.mobile-widget-form input, .mobile-widget-form select, .mobile-widget-pairing input { width: 100%; min-width: 0; }
+.mobile-widget-form > button { justify-self: start; }
+.mobile-widget-pairing { margin-top: 18px; padding: 14px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.mobile-widget-pairing input { font-size: 14px; font-family: ui-monospace, monospace; }
+.mobile-widget-pairing p { margin-top: 10px; }
+.mobile-widget-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.mobile-widget-devices { margin-top: 22px; }
+.mobile-widget-devices h4 { font-size: 15px; margin-bottom: 8px; }
+.mobile-widget-devices article { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.mobile-widget-devices article > div { display: grid; gap: 5px; min-width: 0; flex: 1; }
+.mobile-widget-devices strong, .mobile-widget-devices span, .mobile-widget-devices small { overflow-wrap: anywhere; }
+.mobile-widget-devices small { color: var(--muted); line-height: 1.5; }
+.mobile-widget-devices article > button { flex: 0 0 auto; }
+.mobile-widget-download { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; text-decoration: none; font-weight: 600; }
 @media (max-width: 640px) {
   #mobile-access-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); scrollbar-width: none; }
   #mobile-access-dialog::-webkit-scrollbar { display: none; }
   .mobile-access-header { padding: 16px; gap: 12px; }
   .mobile-access-body { padding: 0 16px 20px; }
   .mobile-access-body section { padding: 18px 0; }
+  .mobile-widget-devices article { align-items: flex-start; flex-wrap: wrap; }
+  .mobile-widget-devices article > div { flex-basis: 100%; }
+  .mobile-widget-form > button { justify-self: stretch; }
 }

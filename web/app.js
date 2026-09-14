@@ -1,33 +1,33 @@
-import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260914-swipe-tabs-1';
-import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260914-swipe-tabs-1';
-import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-swipe-tabs-1';
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-swipe-tabs-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-swipe-tabs-1';
-import { createSettingsHub } from './settings-hub.js?v=20260914-swipe-tabs-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260914-swipe-tabs-1';
-import { createPageAppUI } from './page-apps.js?v=20260914-swipe-tabs-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260914-swipe-tabs-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-swipe-tabs-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-swipe-tabs-1';
+import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260914-android-widget-1';
+import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260914-android-widget-1';
+import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-android-widget-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-android-widget-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-android-widget-1';
+import { createSettingsHub } from './settings-hub.js?v=20260914-android-widget-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260914-android-widget-1';
+import { createPageAppUI } from './page-apps.js?v=20260914-android-widget-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260914-android-widget-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-android-widget-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-android-widget-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-swipe-tabs-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-android-widget-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-swipe-tabs-1';
-import { createReminderSettingsUI } from './reminder-settings.js?v=20260914-swipe-tabs-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-swipe-tabs-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-swipe-tabs-1';
-import { createFirstUseUI } from './first-use.js?v=20260914-swipe-tabs-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-android-widget-1';
+import { createReminderSettingsUI } from './reminder-settings.js?v=20260914-android-widget-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-android-widget-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-android-widget-1';
+import { createFirstUseUI } from './first-use.js?v=20260914-android-widget-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260914-swipe-tabs-1';
+import { createLifeMapUI } from './life-map.js?v=20260914-android-widget-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260914-swipe-tabs-1';
-import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260914-swipe-tabs-1';
+import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260914-android-widget-1';
+import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260914-android-widget-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260914-swipe-tabs-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260914-android-widget-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -2439,7 +2439,6 @@ function renderNav() {
   const groups = new Set(preferences.hiddenNavGroups || []);
   const items = navigationCatalog().filter(item => navigationItemVisible(item, preferences));
   const selectedKey = state.view === 'personal' ? personalNavigationKey(state.personalTab) : state.view;
-  const personal = activeWorkspace()?.kind === 'personal';
   $('#main-nav').innerHTML = `<div class="project-nav-items">${items.map((item) => { const count = navCount(item.key); return `<button type="button" class="nav-item ${selectedKey === item.key ? 'active' : ''}" ${selectedKey === item.key ? 'aria-current="page"' : ''} data-view="${escapeHTML(item.key)}" title="${escapeHTML(item.label)}">${icon(item.iconName)}<span>${escapeHTML(item.label)}</span>${count !== '' ? `<b>${count}</b>` : ''}</button>`; }).join('')}</div>`;
   $$('[data-view]', $('#main-nav')).forEach((button) => button.addEventListener('click', () => navigateToView(button.dataset.view)));
   // Keep the selected page visible when a long, customized menu is redrawn.
@@ -2450,10 +2449,6 @@ function renderNav() {
     if (itemRect.bottom > listRect.bottom) list.scrollTop += itemRect.bottom - listRect.bottom;
     else if (itemRect.top < listRect.top) list.scrollTop -= listRect.top - itemRect.top;
   });
-  if (personal) {
-    $('#main-nav').insertAdjacentHTML('beforeend', `<button type="button" class="nav-item personal-menu-add" data-personal-menu-add>${icon('plus')}<span>Добавить в меню</span></button>`);
-    $('[data-personal-menu-add]').addEventListener('click', () => { setSidebarOpen(false); openNavigationSettings('menu'); });
-  }
   $('#main-nav').insertAdjacentHTML('beforeend', `<button type="button" class="nav-item" data-teams-directory>${icon('users')}<span>Команды</span></button>`);
   $('[data-teams-directory]').addEventListener('click', () => { setSidebarOpen(false); openTeamsDirectory(); });
 }
@@ -2873,7 +2868,7 @@ const personalFinanceUI=createPersonalFinanceUI({state,api,escapeHTML,icon,openM
 const personalRemindersUI=createPersonalRemindersUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,renderPersonal,openSource:openPersonalReminderSource,openHabit:openHabitReminderSource,openPlans:()=>navigateToView('personal',{personalTab:'plans'}),refreshNotifications:loadNotificationInbox});
 async function openPersonalReminderSource(id){const owner=state.me?.id;await navigateToView('personal',{personalTab:'today'});if(owner!==state.me?.id)return;await loadPersonal({force:true});if(owner===state.me?.id)openPersonalPlanDetails(id);}
 const settingsHub=createSettingsHub({getContext:settingsContext,escapeHTML,icon,openModal,requestDialogClose,runAction:runSettingsAction});
-const mobileAccessUI=createMobileAccessUI({getContext:()=>({...settingsContext(),ready:state.projectDataReady&&!state.offlineMode}),runLaunch:runMobileLaunch,openReminders:()=>runSettingsAction('reminders',{context:settingsContext()}),escapeHTML,icon,openModal,requestDialogClose,toast});
+const mobileAccessUI=createMobileAccessUI({api,getContext:()=>({...settingsContext(),ready:state.projectDataReady&&!state.offlineMode}),runLaunch:runMobileLaunch,openReminders:()=>runSettingsAction('reminders',{context:settingsContext()}),escapeHTML,icon,openModal,requestDialogClose,toast,enhance:enhanceSelects});
 const reminderSettingsUI=createReminderSettingsUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
 const personalTodayUI=createPersonalTodayUI({state,api,escapeHTML,icon,renderPersonal,renderPlanRow,formatMinutes,openPlan:openPersonalPlanDetails,openRecurrence:plan=>personalCalendarUI.openRecurrence(plan.id,plan),refreshPersonal:async()=>{await loadPersonal({force:true});if(state.personalError)throw new Error(state.personalError);},openProject:(id,workspaceId)=>openPersonalReviewSource({sourceKind:'record',sourceId:id,workspaceId}),togglePlan:togglePersonalPlan,openDay:openDayWorkspace,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast});
 const firstUseUI = createFirstUseUI({state,api,escapeHTML,icon,activeWorkspace,canConfigureWorkspace,openModal,closeDialog:requestDialogClose,toast,

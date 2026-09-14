@@ -1,3 +1,5 @@
+import { createMobileWidgetsUI } from './mobile-widgets.js?v=20260914-android-widget-1';
+
 const launchActions = new Set(['note', 'plan', 'today', 'notes', 'notifications']);
 
 export function mobileLaunchAction(value, origin) {
@@ -47,18 +49,20 @@ export function mobileAccessMarkup(device, { promptAvailable = false, installed 
       <details${device.android && !device.standalone ? ' open' : ''}><summary>Android</summary><ol><li>Откройте этот сайт в Chrome.</li><li>Нажмите ⋮ и выберите «Добавить на главный экран», затем «Установить», если этот пункт доступен.</li><li>Подтвердите добавление и запускайте Tessavie с нового значка.</li></ol><a href="https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DAndroid&amp;hl=ru" target="_blank" rel="noopener noreferrer">Инструкция Chrome</a></details></section>
       <section aria-labelledby="mobile-shortcuts-title"><h3 id="mobile-shortcuts-title">Быстрый доступ</h3><p>Откройте нужный раздел или скопируйте его ссылку для своего ярлыка.</p><div class="mobile-access-shortcuts">${shortcuts.map(([action, title, description, glyph]) => `<article><a href="${mobileLaunchURL(action)}" data-mobile-launch="${action}">${icon(glyph)}<span><strong>${e(title)}</strong><small>${e(description)}</small></span></a><button type="button" class="icon-button" data-mobile-copy="${action}" aria-label="Скопировать ссылку: ${e(title)}" title="Скопировать ссылку">${icon('link')}</button></article>`).join('')}</div><p class="muted">В Android удерживайте значок установленной Tessavie: если система поддерживает быстрые команды, появятся «Новая заметка», «Новое дело» и «Сегодня». Состав меню зависит от браузера и системы.</p><details><summary>Отдельный ярлык на iPhone</summary><p>В приложении «Быстрые команды» создайте команду с действием «Открыть URL» и вставьте скопированную ссылку. Затем добавьте команду на экран «Домой». Она открывает выбранный раздел после входа в аккаунт.</p></details><label class="mobile-access-copy-fallback" data-mobile-copy-fallback hidden>Ссылка для копирования<input readonly type="url" data-mobile-copy-value></label></section>
       <section aria-labelledby="mobile-notification-title"><h3 id="mobile-notification-title">Уведомления</h3><p>${e(permission)}. Подключение этого устройства и проверка доставки находятся в настройках напоминаний.</p><button type="button" class="secondary" data-mobile-reminders>${icon('bell')} Уведомления и напоминания</button></section>
-      <section aria-labelledby="mobile-widget-title"><h3 id="mobile-widget-title">Ярлыки и виджеты</h3><p>Ярлык открывает приложение или выбранное действие. Живой виджет показывает меняющиеся данные прямо на главном экране телефона. В этом выпуске Tessavie предоставляет ярлыки; живые системные виджеты ещё не реализованы.</p><p class="muted">Внутри Tessavie вы можете собрать свою страницу из блоков. Установка приложения не создаёт набор и не меняет вашу страницу.</p></section>
+      <section aria-labelledby="mobile-widget-title" data-mobile-widgets><h3 id="mobile-widget-title">Виджеты Android</h3><p>Подключите блок своей страницы к виджету на главном экране Android. Для iPhone установка сайта и ярлыки описаны выше; системный виджет iOS пока не готов.</p></section>
       <p class="mobile-access-message" data-mobile-access-message role="status" hidden></p><p class="mobile-access-error" data-mobile-access-error role="alert" hidden></p>
     </div>`;
 }
 
-export function createMobileAccessUI({ getContext, runLaunch, openReminders, escapeHTML, icon, openModal, requestDialogClose, toast, win = window, nav = navigator, doc = document }) {
+export function createMobileAccessUI({ api, getContext, runLaunch, openReminders, escapeHTML, icon, openModal, requestDialogClose, toast, enhance, win = window, nav = navigator, doc = document }) {
   const dialog = doc.createElement('dialog');
   dialog.id = 'mobile-access-dialog'; dialog.className = 'mobile-access-dialog';
   dialog.setAttribute('aria-labelledby', 'mobile-access-title'); doc.body.append(dialog);
   let context = null, revision = 0, deferredPrompt = null, installed = false, installBusy = false, launching = false;
   let pendingLaunch = mobileLaunchAction(win.location.href, win.location.origin);
   const owns = () => context && dialog.open && ['userId', 'workspaceId', 'view'].every(key => getContext()?.[key] === context[key]);
+  const widgets = api ? createMobileWidgetsUI({ api, getContext, isOpen: owns, escapeHTML, icon, enhance, nav }) : null;
+  dialog.addEventListener?.('close', () => widgets?.reset());
   const cleanLaunchURL = () => {
     const url = new URL(win.location.href);
     if (!url.searchParams.has('launch')) return;
@@ -86,9 +90,10 @@ export function createMobileAccessUI({ getContext, runLaunch, openReminders, esc
   function paint(preserve = false) {
     const scrollTop = dialog.scrollTop, detailStates = preserve ? [...dialog.querySelectorAll('details')].map(item => item.open) : [];
     const focused = preserve && dialog.contains?.(doc.activeElement) ? doc.activeElement : null;
-    const focusAttribute = ['data-mobile-access-close', 'data-mobile-install', 'data-mobile-launch', 'data-mobile-copy', 'data-mobile-reminders'].find(name => focused?.hasAttribute?.(name));
+    const focusAttribute = ['data-mobile-access-close', 'data-mobile-install', 'data-mobile-launch', 'data-mobile-copy', 'data-mobile-reminders', 'data-mobile-widget-name', 'data-mobile-widget-source'].find(name => focused?.hasAttribute?.(name));
     const focusValue = focusAttribute ? focused.getAttribute(focusAttribute) : '';
     dialog.innerHTML = mobileAccessMarkup(mobileDeviceState(win, nav), { promptAvailable: Boolean(deferredPrompt), installed }, escapeHTML, icon);
+    widgets?.mount(dialog.querySelector('[data-mobile-widgets]'));
     dialog.querySelector('[data-mobile-access-close]').onclick = () => requestDialogClose(dialog);
     dialog.querySelectorAll('[data-mobile-launch]').forEach(link => link.onclick = event => {
       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button > 0) return;
@@ -131,8 +136,8 @@ export function createMobileAccessUI({ getContext, runLaunch, openReminders, esc
     pendingLaunch = 'notifications'; void consumeLaunch();
   });
   return {
-    open() { if (!getContext()?.userId) return; context = { ...getContext() }; revision++; paint(); openModal(dialog); },
+    open() { if (!getContext()?.userId) return; context = { ...getContext() }; revision++; paint(); openModal(dialog); void widgets?.open(); },
     consumeLaunch,
-    resetPrivate() { revision++; context = null; if (getContext()?.userId) { pendingLaunch = ''; cleanLaunchURL(); } },
+    resetPrivate() { revision++; context = null; widgets?.reset(); if (getContext()?.userId) { pendingLaunch = ''; cleanLaunchURL(); } },
   };
 }
