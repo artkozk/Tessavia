@@ -1,0 +1,61 @@
+name: Sync GitHub Wiki
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - README.md
+      - docs/**
+      - tools/build_wiki.py
+      - tools/build_wiki_test.py
+      - .github/workflows/sync-wiki.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tessavie-wiki-main
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    if: github.repository == 'artkozk/Tessavia'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the canonical repository
+        uses: actions/checkout@v5
+
+      - name: Verify and build Wiki pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tools -p 'build_wiki_test.py'
+          python tools/build_wiki.py \
+            --output "$RUNNER_TEMP/tessavie-wiki-pages" \
+            --repository "$GITHUB_REPOSITORY" \
+            --ref main \
+            --source-commit "$GITHUB_SHA"
+
+      - name: Publish without deleting historical pages
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          basic_auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c http.extraheader="AUTHORIZATION: basic $basic_auth" \
+            clone "https://github.com/$GITHUB_REPOSITORY.wiki.git" "$RUNNER_TEMP/tessavie-wiki"
+          cp -R "$RUNNER_TEMP/tessavie-wiki-pages/." "$RUNNER_TEMP/tessavie-wiki/"
+          cd "$RUNNER_TEMP/tessavie-wiki"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          if git diff --cached --quiet; then
+            echo "Wiki already matches $GITHUB_SHA"
+            exit 0
+          fi
+          git commit -m "docs: sync Wiki from ${GITHUB_SHA::12}"
+          git -c http.extraheader="AUTHORIZATION: basic $basic_auth" push origin HEAD
