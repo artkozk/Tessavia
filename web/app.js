@@ -1242,7 +1242,7 @@ async function bootstrap() {
   });
   interfaceObserver.observe(document.body, { childList: true, subtree: true });
   try {
-    if (!navigator.onLine && await offlineOutbox.offline()) return;
+    // The browser's network hint can be wrong; the server response decides whether to use the local screen.
     state.me = await api('/api/me');
     showApp();
     await loadData();

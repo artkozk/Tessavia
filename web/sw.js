@@ -1,4 +1,4 @@
-const CACHE = 'tessavie-shell-20260914-personal-references-1';
+const CACHE = 'tessavie-shell-20260914-offline-recovery-1';
 const ASSETS = [
  '/page-block-trash.js?v=20260914-personal-references-1', '/page-block-trash.css?v=20260914-personal-references-1',
  '/page-block-kind.js?v=20260914-personal-references-1',
@@ -16,7 +16,7 @@ const ASSETS = [
  '/page-apps.js?v=20260914-personal-references-1', '/page-composition.js?v=20260914-personal-references-1', '/page-form-elements.js?v=20260914-personal-references-1', '/page-element-styles.js?v=20260914-personal-references-1', '/page-calculations.js?v=20260914-personal-references-1', '/page-record-card.js?v=20260914-personal-references-1', '/page-record-bindings.js?v=20260914-personal-references-1',
   '/chat-groups.js?v=20260914-personal-references-1',
   '/personal-calendar.js?v=20260914-personal-references-1',
-  '/', '/chat-workspace.js?v=20260914-personal-references-1', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260914-personal-references-1', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260914-personal-references-1', '/styles.css?v=20260914-personal-references-1',
+  '/', '/chat-workspace.js?v=20260914-personal-references-1', '/personal-review.js?v=20260904-personal-review-3', '/personal-waiting.js?v=20260914-personal-references-1', '/habit-reminders.js?v=20260904-habit-reminders-1', '/app.js?v=20260914-offline-recovery-1', '/styles.css?v=20260914-personal-references-1',
   '/reminder-settings.js?v=20260904-reminder-digests-1',
   '/personal-reminders.js?v=20260914-personal-references-1',
   '/personal-navigation.js?v=20260914-personal-references-1',
