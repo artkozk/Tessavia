@@ -4,3 +4,4 @@ web/app.js text eol=lf
 deploy/deploy-homegroup-reading-20260904.sh text eol=lf
 deploy/deploy-reading-reflections-20260905.sh text eol=lf
 deploy/deploy-reading-ui-20260905.sh text eol=lf
+mobile/ios/*.sh text eol=lf
