@@ -1,0 +1,48 @@
+{
+  "production": {
+    "BACKUP": "/var/lib/business-control/backups/pre-offline-recovery-20260914T055206Z",
+    "RELEASE": "/opt/business-control/releases/20260914-offline-recovery-c0de3fc",
+    "COMMIT": "c0de3fca17b28d10558c089e505e4bcba1791a3b",
+    "SHA256": "c8f153d041515f0ce046f2605f928c2a950039fb4be0fb2192dbf184ffbd6bb7",
+    "checked_at": "2026-09-14T05:53:42.110535+00:00",
+    "active": "active",
+    "dry_run_ok": true,
+    "rollback_trial_ok": true,
+    "backup_timer_active": "active",
+    "disk_free_bytes": 2251767808,
+    "application_home_dependency": false,
+    "live_database_on_local_ext4": true,
+    "live_uploads_on_local_ext4": true
+  },
+  "browser": {
+    "baseline_false_offline_requests": 0,
+    "fixed_false_offline_requests": 1,
+    "real_failure_falls_back_after_two_requests": true,
+    "manual_reconnect_recovers": true,
+    "paused_local_draft_preserved": true,
+    "expired_session_shows_auth": true,
+    "mobile_width": 390,
+    "no_offline_horizontal_overflow": true,
+    "browser": "Edge Chromium headless",
+    "physical_phone_tested": false
+  },
+  "source": {
+    "commit": "c0de3fca17b28d10558c089e505e4bcba1791a3b",
+    "build_input_count": 311,
+    "binary_sha256": "c8f153d041515f0ce046f2605f928c2a950039fb4be0fb2192dbf184ffbd6bb7",
+    "mobile_index_tree_before": "a781dcd4c84721afc202dfa559b520e5c59ad8fe"
+  },
+  "tests": {
+    "node_passed": 24,
+    "go_web_passed": true,
+    "backend_changed": false,
+    "schema_unchanged": true,
+    "tables_compared": 127,
+    "physical_phone_tested": false
+  },
+  "task": {
+    "id": "3d9a860505030ea14061633f22b115fd",
+    "proof_added_or_verified": true,
+    "status_preserved": "in_progress"
+  }
+}
