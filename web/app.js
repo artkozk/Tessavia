@@ -1,33 +1,34 @@
-import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260914-android-widget-1';
-import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260914-android-widget-1';
-import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260914-android-widget-1';
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260914-android-widget-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260914-android-widget-1';
-import { createSettingsHub } from './settings-hub.js?v=20260914-android-widget-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260914-android-widget-1';
-import { createPageAppUI } from './page-apps.js?v=20260914-android-widget-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260914-android-widget-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260914-android-widget-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260914-android-widget-1';
+import { selectMenuPosition, selectOptionScrollTop } from './select-positioning.js?v=20260915-smart-select-1';
+import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260915-smart-select-1';
+import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260915-smart-select-1';
+import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260915-smart-select-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260915-smart-select-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260915-smart-select-1';
+import { createSettingsHub } from './settings-hub.js?v=20260915-smart-select-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260915-smart-select-1';
+import { createPageAppUI } from './page-apps.js?v=20260915-smart-select-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260915-smart-select-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260915-smart-select-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260915-smart-select-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260914-android-widget-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260915-smart-select-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260914-android-widget-1';
-import { createReminderSettingsUI } from './reminder-settings.js?v=20260914-android-widget-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260914-android-widget-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260914-android-widget-1';
-import { createFirstUseUI } from './first-use.js?v=20260914-android-widget-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260915-smart-select-1';
+import { createReminderSettingsUI } from './reminder-settings.js?v=20260915-smart-select-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260915-smart-select-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260915-smart-select-1';
+import { createFirstUseUI } from './first-use.js?v=20260915-smart-select-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260914-android-widget-1';
+import { createLifeMapUI } from './life-map.js?v=20260915-smart-select-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
 import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260914-android-widget-1';
-import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260914-android-widget-1';
+import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260915-smart-select-1';
+import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260915-smart-select-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260914-android-widget-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260915-smart-select-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -644,21 +645,40 @@ function positionCustomSelectMenu(control) {
   if (!trigger || !menu) return;
   if (!menu.matches(':popover-open')) menu.showPopover();
   const viewport = window.visualViewport;
-  const viewportTop = viewport?.offsetTop || 0;
-  const viewportHeight = viewport?.height || window.innerHeight;
-  const viewportWidth = viewport?.width || window.innerWidth;
-  if (window.matchMedia('(max-width: 820px)').matches) {
-    Object.assign(menu.style, { left: '12px', right: 'auto', top: 'auto', bottom: `${Math.max(12, window.innerHeight - viewportTop - viewportHeight + 12)}px`, width: `${viewportWidth - 24}px`, maxHeight: `${Math.min(360, viewportHeight * .55)}px` });
-    return;
-  }
-  const triggerRect = trigger.getBoundingClientRect();
-  const topBoundary = viewportTop + 12;
-  const bottomBoundary = viewportTop + viewportHeight - 12;
-  const availableAbove = triggerRect.top - topBoundary;
-  const availableBelow = bottomBoundary - triggerRect.bottom;
-  const above = availableBelow < 260 && availableAbove > availableBelow;
-  const height = Math.max(44, Math.min(260, (above ? availableAbove : availableBelow) - 6));
-  Object.assign(menu.style, { left: `${Math.max(12, Math.min(triggerRect.left, viewportWidth - Math.max(180, triggerRect.width) - 12))}px`, right: 'auto', bottom: 'auto', width: `${Math.min(viewportWidth - 24, Math.max(180, triggerRect.width))}px`, maxHeight: `${height}px`, top: `${above ? triggerRect.top - Math.min(menu.scrollHeight, height) - 6 : triggerRect.bottom + 6}px` });
+  const styles = getComputedStyle(menu);
+  const safeInsets = Object.fromEntries(['top', 'right', 'bottom', 'left'].map((edge) => [edge, parseFloat(styles.getPropertyValue(`--select-safe-${edge}`)) || 0]));
+  const geometry = { anchor: trigger.getBoundingClientRect(), viewport: { top: viewport?.offsetTop || 0, left: viewport?.offsetLeft || 0, height: viewport?.height || window.innerHeight, width: viewport?.width || window.innerWidth }, safeInsets };
+  const width = selectMenuPosition({ ...geometry, contentHeight: 0 }).width;
+  const previousScrollTop = menu.scrollTop;
+  // Measure wrapped labels at their final width, independent of the previous cap.
+  menu.dataset.placement = '';
+  Object.assign(menu.style, { width: `${width}px`, maxHeight: 'none', right: 'auto', bottom: 'auto' });
+  const border = (parseFloat(styles.borderTopWidth) || 0) + (parseFloat(styles.borderBottomWidth) || 0);
+  let position = selectMenuPosition({ ...geometry, contentHeight: menu.scrollHeight + border });
+  menu.dataset.placement = position.placement;
+  if (position.placement === 'viewport') position = selectMenuPosition({ ...geometry, contentHeight: menu.scrollHeight + border });
+  Object.assign(menu.style, { left: `${position.left}px`, top: `${position.top}px`, maxHeight: `${position.height}px` });
+  menu.scrollTop = previousScrollTop;
+  revealCustomSelectOption(menu.querySelector('.custom-select-option:focus'), menu);
+}
+
+function revealCustomSelectOption(option, menu) {
+  if (!option || !menu) return;
+  const optionRect = option.getBoundingClientRect();
+  const menuTop = menu.getBoundingClientRect().top + menu.clientTop;
+  const context = menu.dataset.placement === 'viewport' ? menu.querySelector('.custom-select-context') : null;
+  const topInset = context ? Math.max(0, context.getBoundingClientRect().bottom - menuTop) : 0;
+  menu.scrollTop = selectOptionScrollTop({ scrollTop: menu.scrollTop, clientHeight: menu.clientHeight, scrollHeight: menu.scrollHeight, menuTop, optionTop: optionRect.top, optionBottom: optionRect.bottom, topInset });
+}
+
+function focusCustomSelectOption(option, menu) {
+  if (!option || !menu) return;
+  option.focus({ preventScroll: true });
+  revealCustomSelectOption(option, menu);
+}
+
+function positionOpenCustomSelects() {
+  $$('.custom-select.open').forEach(positionCustomSelectMenu);
 }
 
 function syncCustomSelect(select) {
@@ -699,6 +719,12 @@ function enhanceSelect(select) {
   trigger.setAttribute('aria-controls', menu.id);
   trigger.setAttribute('aria-label', select.getAttribute('aria-label') || select.closest('label')?.childNodes[0]?.textContent.trim() || 'Выберите');
   menu.setAttribute('role', 'listbox');
+  menu.setAttribute('aria-label', trigger.getAttribute('aria-label'));
+  const context = document.createElement('div');
+  context.className = 'custom-select-context';
+  context.setAttribute('role', 'presentation');
+  context.textContent = trigger.getAttribute('aria-label');
+  menu.appendChild(context);
   [...select.options].forEach((sourceOption) => {
     const option = document.createElement('button');
     option.type = 'button';
@@ -712,7 +738,7 @@ function enhanceSelect(select) {
       select.dispatchEvent(new Event('change', { bubbles: true }));
       syncCustomSelect(select);
       closeCustomSelects();
-      trigger.focus();
+      if (trigger.isConnected) trigger.focus({ preventScroll: true });
     });
     menu.appendChild(option);
   });
@@ -727,7 +753,7 @@ function enhanceSelect(select) {
     trigger.setAttribute('aria-expanded', String(willOpen));
     if (willOpen) {
       positionCustomSelectMenu(control);
-      $('.custom-select-option.selected', control)?.focus({ preventScroll: true });
+      focusCustomSelectOption($('.custom-select-option.selected:not(:disabled):not([hidden])', control) || $('.custom-select-option:not(:disabled):not([hidden])', control), menu);
     } else {
       if (menu.matches(':popover-open')) menu.hidePopover();
     }
@@ -735,29 +761,33 @@ function enhanceSelect(select) {
   trigger.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
+      closeCustomSelects(control);
       control.classList.add('open');
       trigger.setAttribute('aria-expanded', 'true');
       positionCustomSelectMenu(control);
-      const options = $$('.custom-select-option:not(:disabled)', control);
+      const options = $$('.custom-select-option:not(:disabled):not([hidden])', control);
       const selectedIndex = Math.max(0, options.findIndex((option) => option.classList.contains('selected')));
-      options[event.key === 'ArrowDown' ? selectedIndex : Math.max(0, selectedIndex - 1)]?.focus();
+      focusCustomSelectOption(options[event.key === 'ArrowDown' ? selectedIndex : Math.max(0, selectedIndex - 1)], menu);
     }
   });
   menu.addEventListener('keydown', (event) => {
-    const options = $$('.custom-select-option:not(:disabled)', control);
+    const options = $$('.custom-select-option:not(:disabled):not([hidden])', control);
     const index = options.indexOf(document.activeElement);
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       const next = event.key === 'ArrowDown' ? Math.min(options.length - 1, index + 1) : Math.max(0, index - 1);
-      options[next]?.focus();
+      focusCustomSelectOption(options[next], menu);
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      focusCustomSelectOption(options[event.key === 'Home' ? 0 : options.length - 1], menu);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
       closeCustomSelects();
-      trigger.focus();
+      trigger.focus({ preventScroll: true });
     } else if (event.key === 'Tab') {
       closeCustomSelects();
-      trigger.focus();
+      trigger.focus({ preventScroll: true });
     }
   });
   select.addEventListener('change', () => syncCustomSelect(select));
@@ -1647,9 +1677,14 @@ function bindGlobalEvents() {
     if (event.target instanceof Element && event.target.closest('.custom-select-menu')) return;
     $$('.custom-select.open').forEach((control) => {
       const box = $('.custom-select-trigger', control).getBoundingClientRect();
-      if (box.bottom < 0 || box.top > innerHeight) closeCustomSelects(); else positionCustomSelectMenu(control);
+      const viewport = window.visualViewport;
+      const top = viewport?.offsetTop || 0;
+      const bottom = top + (viewport?.height || innerHeight);
+      if (box.bottom <= top || box.top >= bottom) closeCustomSelects(); else positionCustomSelectMenu(control);
     });
   }, { capture: true, passive: true });
+  window.visualViewport?.addEventListener('resize', positionOpenCustomSelects, { passive: true });
+  window.visualViewport?.addEventListener('scroll', positionOpenCustomSelects, { passive: true });
   window.addEventListener('scroll', () => {
     clearTimeout(rememberTimer);
     rememberTimer = setTimeout(rememberView, 160);

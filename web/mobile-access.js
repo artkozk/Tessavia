@@ -1,4 +1,4 @@
-import { createMobileWidgetsUI } from './mobile-widgets.js?v=20260914-android-widget-1';
+import { createMobileWidgetsUI } from './mobile-widgets.js?v=20260915-smart-select-1';
 
 const launchActions = new Set(['note', 'plan', 'today', 'notes', 'notifications']);
 

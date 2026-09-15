@@ -76,14 +76,29 @@ test('keyboard reorder works; a failed persistence restores previous order', asy
 });
 
 test('select opens in the top layer and stays inside desktop and mobile bounds', () => {
-  let mobile=false, shown=false, top=100;
-  const menu={style:{},scrollHeight:200,matches:()=>shown,showPopover(){shown=true;}};
-  const trigger={getBoundingClientRect:()=>({left:50,right:220,width:170,top,bottom:top+44})};
-  const context=vm.createContext({window:{innerWidth:1000,innerHeight:600,matchMedia:()=>({matches:mobile})},$:selector=>selector.includes('trigger')?trigger:menu});
+  let shown=false, shows=0, top=100, left=50, width=170;
+  const menu={style:{},dataset:{},scrollTop:0,scrollHeight:200,querySelector:()=>null,matches:selector=>{assert.equal(selector,':popover-open');return shown;},showPopover(){shown=true;shows++;}};
+  const trigger={getBoundingClientRect:()=>({left,right:left+width,width,top,bottom:top+44})};
+  const context=vm.createContext({window:{innerWidth:1000,innerHeight:600},$:selector=>selector.includes('trigger')?trigger:menu,getComputedStyle:element=>{assert.equal(element,menu);return{getPropertyValue:()=> '0px',borderTopWidth:'1px',borderBottomWidth:'1px'};}});
+  const geometry=fs.readFileSync(require('node:path').join(__dirname,'select-positioning.js'),'utf8');
+  vm.runInContext(geometry.replaceAll('export ',''),context);
   runFunction(context,'positionCustomSelectMenu','syncCustomSelect');
   vm.runInContext('positionCustomSelectMenu({})',context);
-  assert.equal(shown,true);assert.equal(menu.style.top,'150px');assert.equal(menu.style.width,'180px');
-  top=530;vm.runInContext('positionCustomSelectMenu({})',context);assert.equal(menu.style.top,'324px');
-  mobile=true;context.window.innerWidth=320;context.window.innerHeight=740;
-  vm.runInContext('positionCustomSelectMenu({})',context);assert.equal(menu.style.width,'296px');assert.equal(menu.style.bottom,'12px');
+  assert.equal(shown,true);assert.equal(shows,1);assert.equal(menu.dataset.placement,'below');
+  assert.equal(menu.style.top,'150px');assert.equal(menu.style.width,'180px');assert.equal(menu.style.maxHeight,'202px');
+  top=530;vm.runInContext('positionCustomSelectMenu({})',context);
+  assert.equal(menu.dataset.placement,'above');assert.equal(menu.style.top,'322px');
+  assert.equal(top-(parseFloat(menu.style.top)+parseFloat(menu.style.maxHeight)),6);
+  context.window.innerWidth=320;context.window.innerHeight=740;top=120;left=20;width=400;
+  vm.runInContext('positionCustomSelectMenu({})',context);
+  assert.equal(menu.dataset.placement,'below');assert.equal(menu.style.width,'296px');assert.equal(menu.style.left,'12px');
+  assert.equal(menu.style.top,'170px');assert.equal(menu.style.bottom,'auto');
+  // A keyboard/zoom resize changes the visible rectangle without changing the layout viewport.
+  context.window.visualViewport={offsetLeft:30,offsetTop:80,width:260,height:260};top=240;left=50;width=170;
+  vm.runInContext('positionCustomSelectMenu({})',context);
+  assert.equal(menu.dataset.placement,'above');assert.equal(menu.style.top,'92px');assert.equal(menu.style.maxHeight,'142px');
+  assert.ok(parseFloat(menu.style.left)>=42);
+  assert.ok(parseFloat(menu.style.left)+parseFloat(menu.style.width)<=278);
+  assert.ok(parseFloat(menu.style.top)+parseFloat(menu.style.maxHeight)<=328);
+  assert.equal(shows,1,'repositioning an open menu does not hide or reopen the top layer');
 });
