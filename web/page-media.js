@@ -1,4 +1,5 @@
-import { createNoteFileDraftStore, validateNoteFiles } from './note-media.js?v=20260915-finance-constructor-1';
+import { createNoteFileDraftStore, validateNoteFiles } from './note-media.js?v=20260915-media-variants-1';
+import { createMediaVariantsUI } from './media-variants.js?v=20260915-media-variants-1';
 
 export function privateMediaKind(type) {
   if (['image/png','image/jpeg','image/gif','image/webp'].includes(type)) return 'image';
@@ -42,6 +43,7 @@ export function bindRecordMediaPreview(root,files,{state,workspace,escapeHTML:e,
 
 export function createPageMediaUI({state,api,escapeHTML:e,icon,openModal,requestDialogClose,toast}) {
   const drafts=createNoteFileDraftStore(),q=(s,r=document)=>r.querySelector(s),qa=(s,r=document)=>[...r.querySelectorAll(s)];
+  const variants=createMediaVariantsUI({state,api,escapeHTML:e,icon,openModal,requestDialogClose,toast,draftStore:drafts});
   const locks=new Map();
   const locked=async(key,action)=>{
     const previous=locks.get(key)||Promise.resolve();
@@ -61,16 +63,32 @@ export function createPageMediaUI({state,api,escapeHTML:e,icon,openModal,request
   function mount(root,definition,context) {
     for(const block of definition.blocks.filter(item=>item.kind==='media')) {
       const host=q(`[data-app-media="${block.id}"]`,root);if(!host)continue;
+      const owner=context.ownerId,workspace=context.workspace,pageId=context.page.id;
+      const alive=()=>host.isConnected&&state.me?.id===owner&&state.activeWorkspaceId===workspace&&state.view===`page:${pageId}`;
+      host.innerHTML='<div data-media-variants></div><section data-media-legacy hidden><p class="muted">Файлы из прежней очереди отправки</p><div data-media-legacy-body></div></section>';
+      const view=variants.mount(q('[data-media-variants]',host),{kind:'page',ownerId:owner,workspaceId:workspace,pageId,blockId:block.id,isCurrent:alive});
+      const legacy=q('[data-media-legacy]',host),body=q('[data-media-legacy-body]',host);
+      const legacyRoot=document.createElement('div');legacyRoot.dataset.appMedia=block.id;body.append(legacyRoot);
+      // Retain the old request keys and bytes until their existing upload receipt
+      // is confirmed. New variants never steal or reinterpret a pending draft.
+      mountLegacy(body,{blocks:[block]},{...context,legacyHost:legacy,variantView:view});
+    }
+  }
+  function mountLegacy(root,definition,context) {
+    for(const block of definition.blocks.filter(item=>item.kind==='media')) {
+      const host=q(`[data-app-media="${block.id}"]`,root);if(!host)continue;
       const owner=context.ownerId,scope=pageMediaDraftKey(owner,context.workspace,context.page.id,block.id),path=`/api/workspace/pages/${context.page.id}/app/media/${block.id}`;
       const alive=()=>host.isConnected&&state.me?.id===owner&&state.activeWorkspaceId===context.workspace&&state.view===`page:${context.page.id}`;
       const call=(suffix='',options={})=>api(path+suffix,{...options,headers:{...options.headers,'X-Workspace-ID':context.workspace,'X-Outbox-Owner':String(owner)}});
       let files=[],draft={key:scope,files:[]},busy=false,showRemoved=false,error='',storageError=false;
       host.innerHTML=`<div class="page-media-toolbar"><button type="button" class="secondary" data-media-choose>${icon('plus')} Добавить фото или файлы</button><input type="file" multiple hidden data-media-picker aria-label="Выбрать медиа и файлы"><button type="button" class="text-button" data-media-archive hidden>Архив файлов</button></div><p class="muted page-media-hint">Фото, видео и документы · до 15 МБ. Можно вставить из буфера или перетащить сюда.</p><div class="page-media-grid" data-media-grid></div><div data-media-pending></div><p role="status" data-media-status></p><p role="alert" data-media-error></p>`;
+      if(context.legacyHost)qa('.page-media-toolbar,.page-media-hint,[data-media-grid],[data-media-status]',host).forEach(node=>{node.hidden=true;});
       const draw=()=>{
         if(!alive())return;
         q('[data-media-grid]',host).innerHTML=files.filter(item=>showRemoved||!item.removedAt).map(item=>mediaTileMarkup(item,fileURL(context,block,item),e,icon)).join('')||'<p class="muted">Здесь появятся изображения и материалы этого блока.</p>';
         q('[data-media-pending]',host).innerHTML=draft.files.length?`<div class="page-media-pending"><p>${busy?'Отправляем':'Ожидают отправки'} · ${draft.files.length}. Файлы сохранены на этом устройстве.</p>${draft.files.map(item=>`<div><span>${e(item.name)}</span><button type="button" class="text-button" data-media-pending-remove="${e(item.requestKey)}" ${busy?'disabled':''}>Убрать</button></div>`).join('')}<button type="button" class="secondary" data-media-retry ${busy||storageError?'disabled':''}>${busy?'Отправляется…':'Повторить отправку'}</button></div>`:'';
         q('[data-media-error]',host).textContent=error;
+        if(context.legacyHost)context.legacyHost.hidden=!draft.files.length&&!error;
         q('[data-media-choose]',host).disabled=busy||storageError;
         const archive=q('[data-media-archive]',host);archive.hidden=!files.some(item=>item.removedAt);archive.textContent=showRemoved?'Скрыть архив':'Архив файлов';
         qa('[data-media-open]',host).forEach(button=>button.onclick=()=>{const item=files.find(f=>f.id===button.dataset.mediaOpen);showPreview(item,fileURL(context,block,item),alive);});
@@ -101,13 +119,16 @@ export function createPageMediaUI({state,api,escapeHTML:e,icon,openModal,request
           }
           // A previous render may have finished an upload while this render
           // waited for the same draft lock. Refresh metadata after acquiring it.
-          if(alive()){const result=await call();if(Array.isArray(result))files=result;}
+          if(alive()){
+            if(context.variantView)await context.variantView.refresh();
+            else {const result=await call();if(Array.isArray(result))files=result;}
+          }
         });}catch(err){error=err.message||'Не удалось отправить файл. Он остался на этом устройстве.';}
         finally{busy=false;draw();}
       }
       const ready=(async()=>{
         try{draft=await drafts.get(scope)||draft;}catch(err){storageError=true;error='Файлы пока нельзя сохранить на устройстве: '+err.message;}
-        try{const result=await call();if(!Array.isArray(result))throw new Error('Не удалось прочитать список файлов. Откройте страницу ещё раз.');if(alive())files=result;}catch(err){error=err.message;}
+        if(!context.legacyHost)try{const result=await call();if(!Array.isArray(result))throw new Error('Не удалось прочитать список файлов. Откройте страницу ещё раз.');if(alive())files=result;}catch(err){error=err.message;}
         if(alive()){draw();if(draft.files.length&&!storageError)void pump();}
       })();
       async function add(selected){
@@ -123,6 +144,7 @@ export function createPageMediaUI({state,api,escapeHTML:e,icon,openModal,request
         finally{busy=false;draw();}
         if(!error&&alive())void pump();
       }
+      if(context.legacyHost)continue;
       q('[data-media-choose]',host).onclick=()=>q('[data-media-picker]',host).click();
       q('[data-media-picker]',host).onchange=event=>{void add([...event.target.files]);event.target.value='';};
       q('[data-media-archive]',host).onclick=()=>{showRemoved=!showRemoved;draw();};

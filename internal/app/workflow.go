@@ -801,13 +801,18 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusRequestEntityTooLarge, "Файл должен быть не больше 15 МБ")
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
+	requestKey := r.FormValue("requestKey")
+	if !validateCreateRequestKey(w, r, &requestKey) {
+		return
+	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "Выберите файл")
 		return
 	}
 	defer file.Close()
-	name := filepath.Base(strings.TrimSpace(header.Filename))
+	name := filepath.Base(strings.ReplaceAll(strings.TrimSpace(header.Filename), "\\", "/"))
 	if name == "" || len(name) > 240 {
 		writeError(w, http.StatusBadRequest, "Некорректное имя файла")
 		return
@@ -838,9 +843,9 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request) 
 	}
 	hash := sha256.New()
 	writer := io.MultiWriter(target, hash)
-	written, copyErr := io.Copy(writer, io.MultiReader(bytes.NewReader(buffer), file))
+	written, copyErr := io.Copy(writer, io.LimitReader(io.MultiReader(bytes.NewReader(buffer), file), maxAttachmentBytes+1))
 	closeErr := target.Close()
-	if copyErr != nil || closeErr != nil || written > maxAttachmentBytes {
+	if copyErr != nil || closeErr != nil || written < 1 || written > maxAttachmentBytes {
 		os.Remove(tempPath)
 		writeError(w, http.StatusRequestEntityTooLarge, "Файл должен быть не больше 15 МБ")
 		return
@@ -860,10 +865,56 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer tx.Rollback()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(finalPath)
+		}
+	}()
+	if err := recordUploadScope(r.Context(), tx, currentWorkspace(r).ID, record.ID, user.ID); err != nil {
+		writeMediaError(w, err)
+		return
+	}
+	fingerprint, err := createPayloadHash(struct {
+		Name, ContentType, Hash string
+		Size                    int64
+	}{name, contentType, digest, written})
+	if err != nil {
+		writeMediaError(w, err)
+		return
+	}
+	if requestKey != "" {
+		var previousHash, attachmentID string
+		err := tx.QueryRowContext(r.Context(), `SELECT payload_hash,attachment_id FROM record_attachment_requests WHERE owner_id=? AND record_id=? AND request_key=?`, user.ID, record.ID, requestKey).Scan(&previousHash, &attachmentID)
+		if err == nil {
+			if previousHash != fingerprint {
+				writeError(w, 409, "Ключ отправки уже использован для другого файла")
+				return
+			}
+			var item RecordAttachment
+			err = tx.QueryRowContext(r.Context(), `SELECT a.id,a.record_id,a.uploader_id,u.username,a.original_name,a.content_type,a.size_bytes,a.sha256,a.created_at FROM record_attachments a JOIN users u ON u.id=a.uploader_id WHERE a.id=? AND a.record_id=?`, attachmentID, record.ID).Scan(&item.ID, &item.RecordID, &item.UploaderID, &item.UploaderUsername, &item.OriginalName, &item.ContentType, &item.SizeBytes, &item.SHA256, &item.CreatedAt)
+			if err != nil {
+				writeMediaError(w, err)
+				return
+			}
+			writeJSON(w, 200, item)
+			return
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			writeMediaError(w, err)
+			return
+		}
+	}
 	if _, err := tx.ExecContext(r.Context(), `INSERT INTO record_attachments(id, record_id, uploader_id, original_name, stored_name, content_type, size_bytes, sha256, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, record.ID, user.ID, name, storedName, contentType, written, digest, now); err != nil {
 		os.Remove(finalPath)
 		writeError(w, http.StatusInternalServerError, "Не удалось записать файл")
 		return
+	}
+	if requestKey != "" {
+		if _, err := tx.ExecContext(r.Context(), `INSERT INTO record_attachment_requests(owner_id,record_id,request_key,payload_hash,attachment_id,created_at) VALUES(?,?,?,?,?,?)`, user.ID, record.ID, requestKey, fingerprint, id, now); err != nil {
+			writeMediaError(w, err)
+			return
+		}
 	}
 	if err := writeActivity(r.Context(), tx, user.ID, record.Type, record.ID, "attachment_added", "", map[string]any{"attachmentId": id, "name": name, "sizeBytes": written, "sha256": digest}); err != nil {
 		os.Remove(finalPath)
@@ -875,8 +926,8 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "Не удалось завершить загрузку")
 		return
 	}
-	items, _ := s.listAttachments(r.Context(), record.ID)
-	writeJSON(w, http.StatusCreated, items[0])
+	committed = true
+	writeJSON(w, http.StatusCreated, RecordAttachment{ID: id, RecordID: record.ID, UploaderID: user.ID, UploaderUsername: user.Username, OriginalName: name, ContentType: contentType, SizeBytes: written, SHA256: digest, CreatedAt: now})
 }
 
 func (s *Server) handleDownloadAttachment(w http.ResponseWriter, r *http.Request) {

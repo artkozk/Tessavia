@@ -21,15 +21,40 @@ export function pendingNoteFileEntries(items) {
   return items.filter(item=>item.kind==='note-attachment'&&item.status!=='confirmed').map(item=>({...item,note:item.note||notes.get(`${item.owner}:${item.noteRequestKey}`)}));
 }
 
-export function watchShellUpdates(serviceWorker, toastAction, reload = () => location.reload()) {
+export function watchShellUpdates(serviceWorker, toastAction, reload = () => location.reload(), { document: page = globalThis.document, window: host = globalThis.window, onPendingChange = () => {}, loadedVersion = '' } = {}) {
   if (!serviceWorker?.addEventListener || typeof toastAction !== 'function') return;
-  serviceWorker.addEventListener('message', event => {
+  let pending = '', announced = false;
+  const announce = () => {
+    if (!pending || page?.hidden || announced) return;
+    announced = true;
+    toastAction('Доступно обновление интерфейса. Оно также сохранено в настройках.', 'Обновить', reload);
+  };
+  const message = event => {
     if (event.data?.type !== 'tessavie-shell-updated') return;
-    toastAction('Интерфейс Tessavie обновлён', 'Обновить', reload);
-  });
+    const version = event.data.version;
+    if (typeof version !== 'string' || !/^tessavie-shell-[a-zA-Z0-9-]{1,100}$/.test(version)) return;
+    if (version === loadedVersion) { if (pending) { pending = ''; announced = false; onPendingChange(''); } return; }
+    if (version === pending) return;
+    pending = version; announced = false;
+    onPendingChange(pending);
+    announce();
+  };
+  const requestVersion = () => serviceWorker.controller?.postMessage?.({ type: 'tessavie-shell-version-request' });
+  const returned = () => { if (!page?.hidden) { requestVersion(); announce(); } };
+  const visibility = () => { if (page?.hidden) announced = false; else returned(); };
+  serviceWorker.addEventListener('message', message);
+  serviceWorker.addEventListener('controllerchange', requestVersion);
+  page?.addEventListener('visibilitychange', visibility);
+  host?.addEventListener('pageshow', returned);
+  return { get pending() { return pending; }, apply: reload, stop() {
+    serviceWorker.removeEventListener?.('message', message);
+    serviceWorker.removeEventListener?.('controllerchange', requestVersion);
+    page?.removeEventListener('visibilitychange', visibility);
+    host?.removeEventListener('pageshow', returned);
+  } };
 }
 
-export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPersonal, newCapture, onConfirmed, onOfflineIdentity, onAuthRequired, escapeHTML, toast, toastAction }) {
+export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPersonal, newCapture, onConfirmed, onOfflineIdentity, onAuthRequired, escapeHTML, toast, toastAction, reloadInterface, onShellUpdate }) {
   const store = createIndexedOutbox();
   let owner = null, refreshVersion = 0, lastMarkup = '', channel;
   const uploadProgress=new Map();
@@ -173,7 +198,7 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
     pump: () => queue.pump(), open,
   };
   if ('serviceWorker' in navigator) {
-    watchShellUpdates(navigator.serviceWorker, toastAction);
+    watchShellUpdates(navigator.serviceWorker, toastAction, reloadInterface, { onPendingChange: onShellUpdate, loadedVersion: 'tessavie-shell-20260915-media-variants-1' });
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(registration => { void registration.update?.(); return navigator.serviceWorker.ready; }).then(() => { local.querySelector('[data-offline-ready]').textContent = 'Оболочка доступна для следующего запуска без сети.'; }).catch(() => { local.querySelector('[data-offline-ready]').textContent = 'Оболочка ещё не сохранена для запуска без сети.'; });
   }
   return ui;

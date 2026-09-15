@@ -75,6 +75,12 @@ func pageMediaBlockExists(ctx context.Context, db personalQueryer, workspace, pa
 
 const pageMediaSelect = `SELECT id,original_name,content_type,size_bytes,uploader_id,created_at,updated_at,removed_at FROM page_media_attachments WHERE page_id=? AND block_id=?`
 
+// Old attachment URLs and lists follow the same archive visibility as variants.
+const pageMediaVisibleVariant = ` AND (? IN ('owner','admin') OR NOT EXISTS (
+ SELECT 1 FROM media_versions mv JOIN media_variants v ON v.id=mv.variant_id
+ WHERE mv.attachment_kind='page' AND mv.attachment_id=page_media_attachments.id
+ AND v.archived=1 AND v.created_by<>?))`
+
 func scanPageMedia(row recordScanner, user int64, role string) (PageMediaAttachment, error) {
 	var item PageMediaAttachment
 	err := row.Scan(&item.ID, &item.Name, &item.ContentType, &item.Size, &item.UploaderID, &item.CreatedAt, &item.UpdatedAt, &item.RemovedAt)
@@ -100,7 +106,7 @@ func (s *Server) handlePageMedia(w http.ResponseWriter, r *http.Request) {
 		s.uploadPageMedia(w, r)
 		return
 	}
-	rows, err := s.store.db.QueryContext(r.Context(), pageMediaSelect+` ORDER BY created_at,id`, r.PathValue("id"), r.PathValue("blockId"))
+	rows, err := s.store.db.QueryContext(r.Context(), pageMediaSelect+pageMediaVisibleVariant+` ORDER BY created_at,id`, r.PathValue("id"), r.PathValue("blockId"), currentWorkspace(r).Role, currentUser(r).ID)
 	if err != nil {
 		writeError(w, 500, "Не удалось прочитать файлы")
 		return
@@ -282,7 +288,7 @@ func (s *Server) handlePageMediaState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "Медиаблок больше недоступен")
 		return
 	}
-	item, err := scanPageMedia(tx.QueryRowContext(r.Context(), pageMediaSelect+` AND id=?`, page, block, r.PathValue("attachment")), currentUser(r).ID, workspace.Role)
+	item, err := scanPageMedia(tx.QueryRowContext(r.Context(), pageMediaSelect+pageMediaVisibleVariant+` AND id=?`, page, block, workspace.Role, currentUser(r).ID, r.PathValue("attachment")), currentUser(r).ID, workspace.Role)
 	if err != nil {
 		writeError(w, 404, "Файл не найден")
 		return
@@ -363,7 +369,7 @@ func (s *Server) handlePageMediaFile(w http.ResponseWriter, r *http.Request) {
 	if !s.pageMediaAccess(w, r) {
 		return
 	}
-	item, err := scanPageMedia(s.store.db.QueryRowContext(r.Context(), pageMediaSelect+` AND id=?`, r.PathValue("id"), r.PathValue("blockId"), r.PathValue("attachment")), currentUser(r).ID, currentWorkspace(r).Role)
+	item, err := scanPageMedia(s.store.db.QueryRowContext(r.Context(), pageMediaSelect+pageMediaVisibleVariant+` AND id=?`, r.PathValue("id"), r.PathValue("blockId"), currentWorkspace(r).Role, currentUser(r).ID, r.PathValue("attachment")), currentUser(r).ID, currentWorkspace(r).Role)
 	if err != nil || (item.RemovedAt != nil && !item.CanManage) {
 		writeError(w, 404, "Файл не найден")
 		return

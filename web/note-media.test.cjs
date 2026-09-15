@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const media = vm.createContext({});
-vm.runInContext(fs.readFileSync(path.join(__dirname,'note-media.js'),'utf8').replaceAll('export function','function'),media);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'note-media.js'),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export function','function'),media);
 const outbox = vm.createContext({});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'outbox-ui.js'),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export function','function'),outbox);
 
@@ -59,4 +59,53 @@ test('file draft storage waits for transaction commit, reports quota abort and k
   assert.equal(request.key,'personal:2:note:new');request.onsuccess({target:{result:undefined}});tx.oncomplete();assert.equal(await other,null);
   const get=store.get(draft.key);for(let i=0;i<8;i++)await Promise.resolve();
   request.onsuccess({target:{result:draft}});tx.oncomplete();assert.equal((await get).requestKey,'stable-key');
+});
+
+function savedNoteHarness(){
+  const nodes=new Map(),events={},windowEvents={},panels=[],queue=[],uploads=[],state={me:{id:1},activeWorkspaceId:'personal-one'};
+  const node=()=>({innerHTML:'',textContent:'',hidden:false,isConnected:true,classList:{add(){},remove(){}},querySelector(selector){if(!nodes.has(selector))nodes.set(selector,node());return nodes.get(selector);},querySelectorAll(){return[];}});
+  const root=node(),dialog={open:true},actions={before(value){this.inserted=value;},append(value){this.history=value;}},form={isConnected:true,body:'UNSAVED NOTE TEXT',dataset:{workingDraftScope:'personal:1:note:note'},closest:()=>dialog,querySelector:()=>actions,addEventListener:(type,handler)=>{events[type]=handler;}};
+  let refreshes=0,apiCalls=0;
+  const local=vm.createContext({document:{createElement:tag=>tag==='section'?root:node()},window:{addEventListener:(type,handler)=>{windowEvents[type]=handler;}},createMediaVariantsUI:options=>({mount(host,context){panels.push({host,context,options});return{async addFiles(files){uploads.push(files);},async refresh(){refreshes++;},dispose(){}};}})});
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'note-media.js'),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export function','function'),local);
+  const ui=local.createNoteMediaUI({state,api(){apiCalls++;throw new Error('Legacy saved-note read must not run');},outbox:()=>({pendingNoteFiles:()=>new Promise(resolve=>queue.push(resolve)),open(){}}),escapeHTML:value=>String(value).replaceAll('<','&lt;'),icon:()=>'',openModal(){},closeDialog(){},flushDrafts:()=>true,toast(){}});
+  const binding=ui.bindEditor(form,{id:'note',title:'Saved title'});
+  return{ui,binding,state,form,dialog,actions,root,nodes,events,windowEvents,panels,queue,uploads,get refreshes(){return refreshes;},get apiCalls(){return apiCalls;},tick:async()=>{for(let i=0;i<12;i++)await Promise.resolve();}};
+}
+
+test('saved notes mount the shared variant gallery beside the text draft and route only file paste/drop payloads',async()=>{
+  const h=savedNoteHarness(),panel=h.panels[0];
+  assert.equal(panel.context.kind,'note');assert.equal(panel.context.noteId,'note');assert.equal(panel.context.ownerId,1);assert.equal(panel.context.workspaceId,'personal-one');
+  assert.equal(typeof panel.options.draftStore.get,'function');assert.equal(h.actions.inserted,h.root);assert.equal(h.actions.history.textContent,'История заметки');assert.equal(h.apiCalls,0);
+  let prevented=0;const controls={preventDefault(){prevented++;},stopImmediatePropagation(){}};
+  h.events.paste({...controls,clipboardData:{files:[]}});assert.equal(prevented,0);
+  const photo={name:'Sketch.png',size:20};h.events.paste({...controls,clipboardData:{files:[photo]}});await h.tick();
+  assert.equal(prevented,1);assert.equal(h.uploads.length,1);assert.equal(h.uploads[0][0],photo);assert.equal(h.form.body,'UNSAVED NOTE TEXT');
+  h.events.drop({...controls,dataTransfer:{files:[photo]}});await h.tick();assert.equal(h.uploads.length,2);
+  assert.deepEqual(Array.from((await h.binding.creation()).files),[]);
+});
+
+test('saved note gallery refuses stale owner/workspace or a closed note editor without swallowing another paste',async()=>{
+  const h=savedNoteHarness(),context=h.panels[0].context;
+  assert.equal(context.isCurrent(),true);h.state.activeWorkspaceId='another';assert.equal(context.isCurrent(),false);
+  let prevented=false;h.events.paste({clipboardData:{files:[{size:1}]},preventDefault(){prevented=true;},stopImmediatePropagation(){}});await h.tick();
+  assert.equal(prevented,false);assert.equal(h.uploads.length,0);
+  h.state.activeWorkspaceId='personal-one';h.state.me={id:2};assert.equal(context.isCurrent(),false);
+  h.state.me={id:1};h.dialog.open=false;assert.equal(context.isCurrent(),false);
+});
+
+test('saved note legacy outbox remains visible and refreshes the shared gallery only after its original confirmation',async()=>{
+  const h=savedNoteHarness();
+  h.queue[0]([{id:'own',owner:1,note:'note',fileName:'Original sketch',status:'sending'},{id:'other',owner:1,note:'other-note',fileName:'Other note private file'},{id:'foreign',owner:2,note:'note',fileName:'Other owner private file'}]);await h.tick();
+  const legacy=h.nodes.get('[data-note-file-legacy-pending]');assert.equal(legacy.hidden,false);assert.match(legacy.innerHTML,/Original sketch/);assert.doesNotMatch(legacy.innerHTML,/Other note private file|Other owner private file/);
+  h.ui.confirmed({kind:'note-attachment',owner:2,note:'note'},{});assert.equal(h.refreshes,0);
+  h.ui.confirmed({kind:'note-attachment',owner:1,note:'note'},{});assert.equal(h.refreshes,1);h.queue[1]([]);await h.tick();
+  assert.equal(legacy.hidden,true);assert.equal(h.form.body,'UNSAVED NOTE TEXT');
+});
+
+test('a late old note queue result cannot reveal names after switching accounts',async()=>{
+  const h=savedNoteHarness();h.state.me={id:2};
+  h.queue[0]([{id:'old',owner:1,note:'note',fileName:'FORBIDDEN PRIVATE FILE'}]);await h.tick();
+  assert.equal(h.nodes.get('[data-note-file-legacy-pending]'),undefined);
+  assert.equal(h.form.body,'UNSAVED NOTE TEXT');
 });

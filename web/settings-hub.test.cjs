@@ -9,6 +9,12 @@ const sections = input => context.settingsHubSections(input);
 const rows = (input, section) => sections(input).find(item => item.id === section).rows;
 const admin = { canConfigure: true, workspaceId: 'a', workspaceName: 'Team A', view: 'page:one', pageName: 'My Page', pageApp: true, teamId: 'team', collections: [{ id: 'board', name: 'Board' }] };
 
+test('a pending interface update remains reachable in the unified settings for every account', () => {
+  assert.equal(rows({}, 'interface').some(item => item.key === 'shell-update'), false);
+  const item = rows({ personal: true, shellUpdatePending: true }, 'interface').find(item => item.key === 'shell-update');
+  assert.equal(item.title, 'Обновить интерфейс'); assert.equal(item.disabledReason, '');
+});
+
 test('ordinary members can browse sets and customize appearance, but cannot edit a shared page', () => {
   const member = { ...admin, canConfigure: false };
   assert.ok(rows(member, 'page').find(item => item.key === 'page-edit').disabledReason);

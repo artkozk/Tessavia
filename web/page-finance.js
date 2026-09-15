@@ -1,5 +1,5 @@
-import { financeAccountBalances, financeJournal, financeMoney } from './personal-finance.js?v=20260915-finance-constructor-1';
-import { applyElementStyles } from './page-element-styles.js?v=20260915-finance-constructor-1';
+import { financeAccountBalances, financeJournal, financeMoney } from './personal-finance.js?v=20260915-media-variants-1';
+import { applyElementStyles } from './page-element-styles.js?v=20260915-media-variants-1';
 
 const financeBlockLabels={totalLabel:'Всего на счетах',accountsLabel:'Счета',recentLabel:'Последние операции',openLabel:'Открыть финансы',incomeLabel:'Доход',expenseLabel:'Расход'};
 export function pageFinanceConfig(block) {

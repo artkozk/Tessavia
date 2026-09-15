@@ -1,35 +1,35 @@
-import { selectMenuPosition, selectOptionScrollTop } from './select-positioning.js?v=20260915-finance-constructor-1';
-import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260915-finance-constructor-1';
-import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260915-finance-constructor-1';
-import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260915-finance-constructor-1';
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260915-finance-constructor-1';
-import { recordMediaMarkup, bindRecordMediaPreview } from './page-media.js?v=20260915-finance-constructor-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260915-finance-constructor-1';
-import { createSettingsHub } from './settings-hub.js?v=20260915-finance-constructor-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260915-finance-constructor-1';
-import { createPageAppUI } from './page-apps.js?v=20260915-finance-constructor-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260915-finance-constructor-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260915-finance-constructor-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260915-finance-constructor-1';
+import { selectMenuPosition, selectOptionScrollTop, trackSelectAnchor } from './select-positioning.js?v=20260915-media-variants-1';
+import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260915-media-variants-1';
+import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260915-media-variants-1';
+import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260915-media-variants-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260915-media-variants-1';
+import { createMediaVariantsUI } from './media-variants.js?v=20260915-media-variants-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260915-media-variants-1';
+import { createSettingsHub } from './settings-hub.js?v=20260915-media-variants-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260915-media-variants-1';
+import { createPageAppUI } from './page-apps.js?v=20260915-media-variants-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260915-media-variants-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260915-media-variants-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260915-media-variants-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260915-finance-constructor-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260915-media-variants-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260915-finance-constructor-1';
-import { createReminderSettingsUI } from './reminder-settings.js?v=20260915-finance-constructor-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260915-finance-constructor-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260915-finance-constructor-1';
-import { createFirstUseUI } from './first-use.js?v=20260915-finance-constructor-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260915-media-variants-1';
+import { createReminderSettingsUI } from './reminder-settings.js?v=20260915-media-variants-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260915-media-variants-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260915-media-variants-1';
+import { createFirstUseUI } from './first-use.js?v=20260915-media-variants-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260915-finance-constructor-1';
+import { createLifeMapUI } from './life-map.js?v=20260915-media-variants-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
-import { createNoteMediaUI } from './note-media.js?v=20260915-finance-constructor-1';
+import { createNoteMediaUI, createNoteFileDraftStore } from './note-media.js?v=20260915-media-variants-1';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260915-finance-constructor-1';
-import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260915-finance-constructor-1';
+import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260915-media-variants-1';
+import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260915-media-variants-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260915-finance-constructor-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260915-media-variants-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -632,6 +632,7 @@ function bindMarkdownViews(root = document) {
 function closeCustomSelects(except = null) {
   $$('.custom-select.open').forEach((control) => {
     if (control !== except) {
+      control.stopAnchorTracking?.();
       const menu = control.querySelector('.custom-select-menu');
       if (menu?.matches(':popover-open')) menu.hidePopover();
       control.classList.remove('open');
@@ -745,6 +746,10 @@ function enhanceSelect(select) {
     menu.appendChild(option);
   });
   control.append(trigger, menu);
+  const trackAnchor = () => {
+    control.stopAnchorTracking?.();
+    control.stopAnchorTracking = trackSelectAnchor(trigger, () => positionCustomSelectMenu(control), { active: () => control.isConnected && control.classList.contains('open') });
+  };
   control.addEventListener('click', (event) => {
     if (event.target === control && control.classList.contains('open')) closeCustomSelects();
   });
@@ -755,8 +760,10 @@ function enhanceSelect(select) {
     trigger.setAttribute('aria-expanded', String(willOpen));
     if (willOpen) {
       positionCustomSelectMenu(control);
+      trackAnchor();
       focusCustomSelectOption($('.custom-select-option.selected:not(:disabled):not([hidden])', control) || $('.custom-select-option:not(:disabled):not([hidden])', control), menu);
     } else {
+      control.stopAnchorTracking?.();
       if (menu.matches(':popover-open')) menu.hidePopover();
     }
   });
@@ -767,6 +774,7 @@ function enhanceSelect(select) {
       control.classList.add('open');
       trigger.setAttribute('aria-expanded', 'true');
       positionCustomSelectMenu(control);
+      trackAnchor();
       const options = $$('.custom-select-option:not(:disabled):not([hidden])', control);
       const selectedIndex = Math.max(0, options.findIndex((option) => option.classList.contains('selected')));
       focusCustomSelectOption(options[event.key === 'ArrowDown' ? selectedIndex : Math.max(0, selectedIndex - 1)], menu);
@@ -793,7 +801,7 @@ function enhanceSelect(select) {
     }
   });
   select.addEventListener('change', () => syncCustomSelect(select));
-  control.closest('dialog')?.addEventListener('close', () => { if (menu.matches(':popover-open')) menu.hidePopover(); });
+  control.closest('dialog')?.addEventListener('close', () => { control.stopAnchorTracking?.(); if (menu.matches(':popover-open')) menu.hidePopover(); });
   syncCustomSelect(select);
 }
 
@@ -1221,6 +1229,7 @@ function clearPrivateClientState() {
   state.personalTab = 'today';
   personalFinanceUI.reset();
   pageAppUI.resetPrivate();
+  recordMediaUI?.reset();
   ['personal-dialog', 'profile-dialog'].forEach((id) => {
     const dialog = document.getElementById(id);
     if (dialog?.open) closeDialogImmediately(dialog);
@@ -1242,6 +1251,12 @@ offlineOutbox = createOutboxUI({
   user: () => state.me, workspace: () => state.activeWorkspaceId,
   openDialog: openModal, closeDialog: requestDialogClose, newPersonal: openPersonalEditor, newCapture:openPersonalCapture,
   escapeHTML, toast, toastAction, onAuthRequired: showAuth,
+  reloadInterface: reloadUpdatedInterface,
+  onShellUpdate: version => {
+    state.shellUpdatePending = version;
+    const button = $('#interface-settings-button');
+    if (button) { button.dataset.updateAvailable = String(Boolean(version)); button.title = version ? 'Настройки · доступно обновление интерфейса' : 'Настройки'; }
+  },
   onOfflineIdentity: account => { state.me = account; state.offlineMode = true; },
   onConfirmed: (item,result) => {
     if (item.owner !== state.me?.id || state.offlineMode) return;
@@ -2511,7 +2526,17 @@ function settingsContext() {
     pageName: $('#page-title')?.textContent || 'Страница', personal: workspace?.kind === 'personal', deviceLabel: interfaceDevice() === 'mobile' ? 'Телефон' : 'ПК',
     canConfigure: canConfigureWorkspace(), teamId: workspace?.teamId || '', pageApp: Boolean(page?.app), pageId: page?.id || '',
     collectionId: state.collections.find(item => item.id === collectionID)?.id || '', collections: state.collections.map(({id,name}) => ({id,name})),
-    view: state.view, layoutEditing: Boolean(state.pageLayoutDraft || state.layoutDraft) };
+    view: state.view, layoutEditing: Boolean(state.pageLayoutDraft || state.layoutDraft), shellUpdatePending: Boolean(state.shellUpdatePending) };
+}
+
+async function reloadUpdatedInterface() {
+  const editableLayout = () => state.layoutDraft || state.pageLayoutDraft;
+  if (editableLayout()) { toast('Сохраните или отмените редактирование страницы перед обновлением.', true); return false; }
+  return leaveSettingsFor(() => {
+    if (editableLayout()) { toast('Сначала завершите редактирование страницы.', true); return false; }
+    location.reload();
+    return true;
+  }, { closeAll: true });
 }
 
 function openInterfaceSettings(section = 'page') {
@@ -2564,6 +2589,7 @@ async function runMobileLaunch(action) {
 
 async function runSettingsAction(key, {context}) {
   if (state.me?.id !== context.userId || state.activeWorkspaceId !== context.workspaceId || state.view !== context.view) throw new Error('Пространство изменилось. Откройте настройки заново.');
+  if (key === 'shell-update') return reloadUpdatedInterface();
   const page = state.workspacePages.find(item => item.id === context.pageId);
   const collection = state.collections.find(item => item.id === context.collectionId);
   const workspace = activeWorkspace();
@@ -6676,6 +6702,7 @@ function recordTabItems(record, detail, activity) {
   const comparison = record.type === 'research' ? state.researchComparisons.get(record.id) : null;
   const contentCount = comparison ? (comparison.options?.length ? String(comparison.options.length) : '') : `${filledSections}/${detail.sections.length}`;
   const workflow = detail.workflow || {};
+  const attachmentCount = workflow.mediaAttachmentCount ?? workflow.attachments?.length ?? 0;
   const tabs = [
     ['overview', 'Обзор', ''],
     ['content', 'Содержание', contentCount],
@@ -6685,7 +6712,7 @@ function recordTabItems(record, detail, activity) {
   if (record.type === 'task') tabs.splice(2, 0, ['execution', 'Исполнение', detail.workflowLoaded ? `${(workflow.checklist || []).filter((item) => item.status === 'completed').length}/${(workflow.checklist || []).length}` : '']);
   tabs.splice(tabs.length - 2, 0,
     ['discussion', 'Обсуждение', detail.workflowLoaded && workflow.comments?.length ? `${workflow.comments.length}` : ''],
-    ['files', 'Файлы', detail.workflowLoaded && workflow.attachments?.length ? `${workflow.attachments.length}` : ''],
+    ['files', 'Файлы', detail.workflowLoaded && attachmentCount ? `${attachmentCount}` : ''],
   );
   if (record.type === 'question_set') {
     const workflow = detail.questionWorkflow || { questions: [], resolved: 0 };
@@ -7228,62 +7255,10 @@ function formatFileSize(bytes) {
   return `${(value / 1048576).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} МБ`;
 }
 
+let recordMediaUI;
 function renderFilesPane(detail, canEdit) {
   if (!detail.workflowLoaded) return renderWorkflowLoading('files');
-  const attachments = detail.workflow.attachments || [];
-  return `<div class="record-pane ${state.activeRecordTab === 'files' ? 'active' : ''}" data-record-pane="files"><section class="files-panel"><div class="section-heading"><div><p class="eyebrow">Материалы карточки</p><h3>Файлы</h3><p>Файл нельзя бесследно удалить; имя, автор, размер и контрольная сумма остаются в аудите.</p></div></div><div class="page-media-grid">${recordMediaMarkup(attachments,state.activeWorkspaceId,escapeHTML,icon) || `<div class="guided-empty compact">${icon('fileText')}<h3>Файлов пока нет</h3><p>Приложите отчёт, таблицу, изображение или исходный документ.</p></div>`}</div>${canEdit ? `<form id="attachment-form" class="attachment-form"><label class="file-drop" data-file-drop><input name="files" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.heic,.mp4,.webm,.txt,.md,.csv,.xlsx,.docx,.pptx,.zip"><span class="file-drop-icon">${icon('fileText')}</span><span><strong>Перетащите файлы сюда</strong><small>или выберите несколько файлов · до 15 МБ каждый</small></span><button type="button" class="secondary" data-choose-files>${icon('plus')} Выбрать</button></label><div class="upload-queue" id="upload-queue" aria-live="polite"></div><button type="submit" class="primary upload-submit" disabled>${icon('send')} Загрузить выбранные</button></form>` : ''}</section></div>`;
-}
-
-function renderUploadQueue(files) {
-	const queue = $('#upload-queue');
-	const submit = $('#attachment-form .upload-submit');
-	if (!queue || !submit) return;
-	queue.innerHTML = files.map((file, index) => `<div class="upload-item" data-upload-index="${index}"><span class="type-icon type-document">${icon('fileText')}</span><span><strong>${escapeHTML(file.name)}</strong><small>${formatFileSize(file.size)} · готов к загрузке</small><progress max="100" value="0"></progress></span><b>0%</b></div>`).join('');
-	submit.disabled = files.length === 0;
-}
-
-function uploadAttachmentFile(recordID, file, row) {
-	return new Promise((resolve, reject) => {
-		if (file.size > 15 * 1024 * 1024) return reject(new Error('Файл больше 15 МБ'));
-		const xhr = new XMLHttpRequest();
-		xhr.open('POST', `/api/records/${recordID}/attachments`);
-		xhr.withCredentials = true;
-		const progress = $('progress', row);
-		const percent = $('b', row);
-		const meta = $('small', row);
-		xhr.upload.addEventListener('progress', (event) => {
-			if (!event.lengthComputable) return;
-			const value = Math.round(event.loaded * 100 / event.total);
-			progress.value = value; percent.textContent = `${value}%`; meta.textContent = `${formatFileSize(file.size)} · загружается`;
-		});
-		xhr.addEventListener('load', () => {
-			if (xhr.status >= 200 && xhr.status < 300) {
-				progress.value = 100; percent.textContent = '100%'; meta.textContent = `${formatFileSize(file.size)} · загружен`; row.classList.add('complete'); resolve(); return;
-			}
-			let message = 'Не удалось загрузить файл';
-			try { message = JSON.parse(xhr.responseText).error || message; } catch (_) {}
-			reject(new Error(message));
-		});
-		xhr.addEventListener('error', () => reject(new Error('Соединение прервано')));
-		xhr.addEventListener('abort', () => reject(new Error('Загрузка отменена')));
-		const body = new FormData(); body.append('file', file, file.name); xhr.send(body);
-	});
-}
-
-async function uploadAttachmentBatch(recordID, files) {
-	const selected = [...files];
-	if (!selected.length) return;
-	renderUploadQueue(selected);
-	const submit = $('#attachment-form .upload-submit');
-	if (submit) submit.disabled = true;
-	let succeeded = 0;
-	for (let index = 0; index < selected.length; index += 1) {
-		const row = $(`[data-upload-index="${index}"]`);
-		try { await uploadAttachmentFile(recordID, selected[index], row); succeeded += 1; }
-		catch (error) { row?.classList.add('failed'); const meta = $('small', row); const percent = $('b', row); if (meta) meta.textContent = error.message; if (percent) percent.textContent = 'Ошибка'; }
-	}
-	if (succeeded) await refreshActiveRecordWorkflow(recordID);
-	toast(succeeded === selected.length ? `Загружено файлов: ${succeeded}` : `Загружено ${succeeded} из ${selected.length}`, succeeded !== selected.length);
+  return `<div class="record-pane ${state.activeRecordTab === 'files' ? 'active' : ''}" data-record-pane="files"><section class="files-panel"><div class="section-heading"><div><p class="eyebrow">Материалы карточки</p><h3>Варианты и версии</h3><p>Сравнивайте эскизы и сохраняйте историю. Выбранная версия отмечается отдельно.</p></div></div><div data-record-media-variants></div></section></div>`;
 }
 
 function recordActivity(detail) {
@@ -7915,22 +7890,14 @@ function bindRecordDialogEvents() {
     const saved = await mutateWorkflow(`/api/records/${record.id}/comments`, { method: 'POST', body: JSON.stringify({ body: form.get('body') }) });
     if (saved) clearWorkingDraftFor(event.currentTarget);
   });
-	const attachmentForm = $('#attachment-form');
-	bindRecordMediaPreview($('[data-record-pane="files"]'), detail.workflow?.attachments || [], { state, workspace: state.activeWorkspaceId, escapeHTML, icon, openModal, requestDialogClose });
-	if (attachmentForm) {
-		const input = attachmentForm.elements.files;
-		const drop = $('[data-file-drop]', attachmentForm);
-		const showSelection = () => renderUploadQueue([...input.files]);
-		$('[data-choose-files]', attachmentForm)?.addEventListener('click', (event) => { event.preventDefault(); input.click(); });
-		input.addEventListener('change', showSelection);
-		['dragenter', 'dragover'].forEach((name) => drop.addEventListener(name, (event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; drop.classList.add('drag-active'); }));
-		['dragleave', 'dragend'].forEach((name) => drop.addEventListener(name, () => drop.classList.remove('drag-active')));
-		drop.addEventListener('drop', async (event) => {
-			event.preventDefault(); drop.classList.remove('drag-active');
-			await uploadAttachmentBatch(record.id, event.dataTransfer.files);
-		});
-		attachmentForm.addEventListener('submit', async (event) => { event.preventDefault(); await uploadAttachmentBatch(record.id, input.files); });
-	}
+  recordMediaUI ||= createMediaVariantsUI({state,api,escapeHTML,icon,openModal,requestDialogClose,toast,draftStore:createNoteFileDraftStore()});
+  recordMediaUI.mount($('[data-record-media-variants]'),{kind:'record',ownerId:state.me.id,workspaceId:state.activeWorkspaceId,recordId:record.id,isCurrent:()=>state.activeDetail?.record.id===record.id&&$('#record-dialog').open,onChange:({attachmentCount})=>{
+    const detail=state.activeDetail;if(detail?.record.id!==record.id||!detail.workflow)return;
+    detail.workflow.mediaAttachmentCount=attachmentCount;
+    const tab=$('[data-record-tab="files"]'),badge=tab?.querySelector('b');
+    if(attachmentCount){if(badge)badge.textContent=String(attachmentCount);else if(tab){const count=document.createElement('b');count.textContent=String(attachmentCount);tab.append(count);}}else badge?.remove();
+    const option=$('#record-tab-select option[value="files"]');if(option)option.textContent=attachmentCount?`Файлы · ${attachmentCount}`:'Файлы';
+  }});
   $('#recurrence-form')?.addEventListener('submit', async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
     await mutateWorkflow(`/api/records/${record.id}/recurrence`, { method: 'PUT', body: JSON.stringify({ active: form.get('active') === 'on', interval: Number(form.get('interval') || 1), cadence: form.get('cadence') }) });

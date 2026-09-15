@@ -3767,6 +3767,8 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
 .custom-select-menu[popover]:popover-open { display: grid; }
 .custom-select.open:has(> [popover])::after { display: none; }
 .custom-select-menu[popover]::backdrop { background: transparent; }
+#interface-settings-button[data-update-available="true"] { position: relative; }
+#interface-settings-button[data-update-available="true"]::after { content: ''; position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); border: 1px solid var(--surface, #fffefa); pointer-events: none; }
 .interface-device-tabs { width: fit-content; margin-block: 16px; }
 .composer-menu-row, .layout-action-order > div { grid-template-columns: 40px minmax(0, 1fr); }
 [data-reorder-handle] { width: 40px; height: 44px; min-height: 44px; touch-action: none; cursor: grab; flex: 0 0 40px; }

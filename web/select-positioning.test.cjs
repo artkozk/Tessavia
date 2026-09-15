@@ -10,6 +10,17 @@ const place = context.selectMenuPosition;
 const viewport = { left: 0, top: 0, width: 390, height: 780 };
 const anchorAt = (top, left = 20, width = 350, height = 44) => ({ top, bottom: top + height, left, right: left + width, width });
 
+test('an open select follows form layout movement without scrolling or stealing focus, then stops', () => {
+  let top = 150, connected = true, pending, positions = 0, cancelled = 0;
+  const anchor = { getBoundingClientRect: () => anchorAt(top) };
+  const stop = context.trackSelectAnchor(anchor, () => positions++, { active: () => connected, frame: cb => { pending = cb; return 4; }, cancel: id => { assert.equal(id, 4); cancelled++; } });
+  pending(); assert.equal(positions, 0, 'stable geometry does not rewrite menu styles');
+  top = 270; pending(); assert.equal(positions, 1, 'validation or expanded content moves the menu with its field');
+  pending(); assert.equal(positions, 1);
+  connected = false; pending(); top = 310; pending(); assert.equal(positions, 1, 'detached controls stop tracking');
+  stop(); assert.equal(cancelled, 1);
+});
+
 test('finance source in the upper half opens immediately below its field, not at the screen bottom', () => {
   const anchor = anchorAt(190);
   const result = place({ anchor, viewport, contentHeight: 150 });

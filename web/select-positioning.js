@@ -34,3 +34,23 @@ export function selectOptionScrollTop({ scrollTop, clientHeight, scrollHeight, m
   const change = top < topBoundary ? top - topBoundary : bottom > clientHeight - padding ? bottom - clientHeight + padding : 0;
   return clamp(scrollTop + change, 0, Math.max(0, scrollHeight - clientHeight));
 }
+
+// A field can move without a scroll or a window resize (validation, fonts,
+// expanding content). Watch just the open field; only reposition on a change.
+export function trackSelectAnchor(anchor, reposition, { active = () => anchor.isConnected, frame = globalThis.requestAnimationFrame, cancel = globalThis.cancelAnimationFrame } = {}) {
+  if (typeof frame !== 'function') return () => {};
+  let stopped = false, id, previous;
+  const geometry = () => {
+    const rect = anchor.getBoundingClientRect();
+    return [rect.top, rect.left, rect.width, rect.height].join(':');
+  };
+  previous = geometry();
+  const tick = () => {
+    if (stopped || !active()) { stopped = true; return; }
+    const next = geometry();
+    if (next !== previous) { previous = next; reposition(); }
+    if (!stopped) id = frame(tick);
+  };
+  id = frame(tick);
+  return () => { stopped = true; if (typeof cancel === 'function') cancel(id); };
+}

@@ -251,7 +251,7 @@ func TestKnowledgeNavigationGraphBranchesAndChatIdempotencyAssetsAreEmbedded(t *
 		t.Fatalf("read index.html: %v", err)
 	}
 	for _, asset := range []string{"app.js", "styles.css", "settings-hub.css", "personal-finance.css", "page-sheets.css", "page-components.css", "page-block-trash.css", "mobile-access.css", "phone-notifications.css"} {
-		if !bytes.Contains(index, []byte("/"+asset+"?v=20260915-finance-constructor-1")) {
+		if !bytes.Contains(index, []byte("/"+asset+"?v=20260915-media-variants-1")) {
 			t.Fatalf("current release must bump %s so production browsers do not keep a stale resource", asset)
 		}
 	}
@@ -460,6 +460,7 @@ func TestWorkspaceDialogsProtectDraftsAndScrollbars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read app.js: %v", err)
 	}
+	app = bytes.ReplaceAll(app, []byte("\r\n"), []byte("\n"))
 	for _, marker := range [][]byte{
 		[]byte("function pointerIsOutsideDialog"),
 		[]byte("function bindDialogBackdrop"),

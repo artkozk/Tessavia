@@ -105,8 +105,56 @@ test('shell updates are announced without forcing a reload over an unsaved draft
   const ui=fs.readFileSync(path.join(__dirname,'outbox-ui.js'),'utf8');
   const worker=fs.readFileSync(path.join(__dirname,'sw.js'),'utf8');
   assert.ok(ui.includes("event.data?.type !== 'tessavie-shell-updated'"));
-  assert.ok(ui.includes("toastAction('Интерфейс Tessavie обновлён', 'Обновить', reload)"));
+  assert.ok(ui.includes('watchShellUpdates(navigator.serviceWorker, toastAction, reloadInterface'));
   assert.ok(ui.includes('void registration.update?.()'));
   assert.ok(worker.includes("client.postMessage({ type: 'tessavie-shell-updated', version: CACHE })"));
   assert.ok(!worker.includes('client.navigate('));
+});
+
+test('an update received in a background phone tab stays pending and is offered on return', () => {
+  const listeners = () => { const handlers = new Map(); return { hidden: false, addEventListener: (name, fn) => handlers.set(name, fn), removeEventListener: name => handlers.delete(name), emit: (name, event = {}) => handlers.get(name)?.(event), handlers }; };
+  const serviceWorker = listeners(), page = listeners(), host = listeners();
+  const notices = [], versions = []; let reloads = 0;
+  const ui = fs.readFileSync(path.join(__dirname, 'outbox-ui.js'), 'utf8');
+  const local = vm.createContext({});
+  vm.runInContext(ui.slice(ui.indexOf('export function watchShellUpdates('), ui.indexOf('export function createOutboxUI(')).replace('export ', ''), local);
+  page.hidden = true;
+  const watcher = local.watchShellUpdates(serviceWorker, (...args) => notices.push(args), () => reloads++, { document: page, window: host, onPendingChange: version => versions.push(version), loadedVersion: 'tessavie-shell-current' });
+  const send = version => serviceWorker.emit('message', { data: { type: 'tessavie-shell-updated', version } });
+  send('tessavie-shell-current'); send('https://bad.test'); send('tessavie-shell-next');
+  assert.equal(watcher.pending, 'tessavie-shell-next'); assert.equal(versions.length, 1); assert.equal(notices.length, 0); assert.equal(reloads, 0);
+  page.hidden = false; page.emit('visibilitychange'); host.emit('pageshow'); send('tessavie-shell-next');
+  assert.equal(notices.length, 1); assert.equal(reloads, 0);
+  page.hidden = true; page.emit('visibilitychange'); page.hidden = false; page.emit('visibilitychange');
+  assert.equal(notices.length, 2, 'returning after the first toast expired offers the pending update again');
+  notices[1][2](); assert.equal(reloads, 1, 'only the explicit action invokes the draft-aware reload');
+  watcher.stop(); assert.equal(serviceWorker.handlers.size + page.handlers.size + host.handlers.size, 0);
+});
+
+test('returning to a suspended page asks the worker version even if its activation message was missed', () => {
+  const handlers = {}, ui = fs.readFileSync(path.join(__dirname, 'outbox-ui.js'), 'utf8');
+  const notices = [], requested = [], updates = [];
+  const local = vm.createContext({});
+  vm.runInContext(ui.slice(ui.indexOf('export function watchShellUpdates('), ui.indexOf('export function createOutboxUI(')).replace('export ', ''), local);
+  const sw = { addEventListener: (name, handler) => handlers[name] = handler, controller: { postMessage: value => requested.push(value.type) } };
+  const page = { hidden: false, addEventListener: (name, handler) => handlers[name] = handler };
+  local.watchShellUpdates(sw, (...args) => notices.push(args), () => {}, { document: page, window: null, loadedVersion: 'tessavie-shell-loaded', onPendingChange: version => updates.push(version) });
+  handlers.visibilitychange(); assert.deepEqual(requested, ['tessavie-shell-version-request']);
+  handlers.message({ data: { type: 'tessavie-shell-updated', version: 'tessavie-shell-latest' } });
+  assert.equal(notices.length, 1); assert.equal(updates[0], 'tessavie-shell-latest');
+  handlers.message({ data: { type: 'tessavie-shell-updated', version: 'tessavie-shell-loaded' } });
+  assert.equal(updates[1], '', 'a controller matching the loaded interface clears a stale pending indication');
+});
+
+test('an interface update respects cancelled editor closing and a live constructor draft', async () => {
+  const source = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+  let reloads = 0, closeCalls = 0, accept = false;
+  const state = {}, notices = [];
+  const local = vm.createContext({ state, toast: text => notices.push(text), location: { reload: () => reloads++ }, leaveSettingsFor: async (action, options) => { closeCalls++; assert.equal(options.closeAll, true); return accept ? action() : false; } });
+  vm.runInContext(source.slice(source.indexOf('async function reloadUpdatedInterface('), source.indexOf('function openInterfaceSettings(')), local);
+  assert.equal(await local.reloadUpdatedInterface(), false); assert.equal(reloads, 0);
+  state.pageLayoutDraft = { title: 'Unsaved page' }; accept = true;
+  assert.equal(await local.reloadUpdatedInterface(), false); assert.equal(reloads, 0); assert.equal(closeCalls, 1); assert.equal(state.pageLayoutDraft.title, 'Unsaved page');
+  delete state.pageLayoutDraft;
+  assert.equal(await local.reloadUpdatedInterface(), true); assert.equal(reloads, 1);
 });

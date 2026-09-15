@@ -1,3 +1,5 @@
+import { createMediaVariantsUI } from './media-variants.js?v=20260915-media-variants-1';
+
 export function validateNoteFiles(files,current=0){
   if(files.length+current>20)throw new Error('За один раз можно добавить до 20 файлов.');
   for(const file of files){if(!file.size||file.size>15*1024*1024)throw new Error('Каждый файл должен содержать от 1 байта до 15 МБ.');}
@@ -21,6 +23,7 @@ export function createNoteFileDraftStore(indexedDB=globalThis.indexedDB){
 export function createNoteMediaUI({state,api,outbox,escapeHTML:esc,icon,renderMarkdown,openModal,closeDialog,flushDrafts,loadPersonal,openPersonalEditor,toast,askChoice}){
   const q=(s,root=document)=>root.querySelector(s),qa=(s,root=document)=>[...root.querySelectorAll(s)];
   const drafts=createNoteFileDraftStore(),editors=new Map();
+  const variants=createMediaVariantsUI({state,api,escapeHTML:esc,icon,openModal,requestDialogClose:closeDialog,toast,draftStore:drafts});
   const bytes=n=>n>=1024*1024?`${(n/1024/1024).toFixed(1)} МБ`:`${Math.max(1,Math.round(n/1024))} КБ`;
   const date=value=>new Date(value).toLocaleString('ru-RU');
   const video=item=>['video/mp4','video/webm'].includes(item.contentType);
@@ -43,8 +46,49 @@ export function createNoteMediaUI({state,api,outbox,escapeHTML:esc,icon,renderMa
     return files.map(item=>`<div class="note-file-row"><button type="button" class="text-button" data-file-open="${esc(item.id)}">${item.preview?`<img class="note-file-thumbnail" src="${fileURL(item)}" loading="lazy" alt="">`:icon(video(item)?'play':'fileText')}<span><strong>${esc(item.name)}</strong><small>${bytes(item.size)}${item.removedAt?' · Удалённое вложение':''}</small></span></button><a class="icon-button" aria-label="Скачать ${esc(item.name)}" href="${fileURL(item)}?download=1" download>${icon('arrowDown')}</a>${readonly?'':`<button type="button" class="icon-button" data-file-state="${esc(item.id)}" aria-label="${item.removedAt?'Восстановить':'Удалить'} ${esc(item.name)}">${icon(item.removedAt?'rotate':'trash')}</button>`}</div>`).join('');
   }
   function bindFilePreview(root,files){qa('[data-file-open]',root).forEach(button=>button.onclick=()=>previewFile(files.find(file=>file.id===button.dataset.fileOpen)));}
+  function bindSavedEditor(form,note){
+    const root=document.createElement('section');root.className='note-files note-file-variants';
+    root.innerHTML='<div data-note-media-variants></div><div data-note-file-legacy-pending hidden></div><p data-file-error role="alert"></p>';
+    q('.personal-editor-actions',form).before(root);
+    const owner=state.me.id,workspace=state.activeWorkspaceId,dialog=form.closest('dialog');
+    const alive=()=>owner===state.me?.id&&workspace===state.activeWorkspaceId&&form.isConnected&&(!dialog||dialog.open);
+    const panel=variants.mount(q('[data-note-media-variants]',root),{kind:'note',ownerId:owner,workspaceId:workspace,noteId:note.id,isCurrent:alive});
+    const editor={root,form,note,owner,refreshVersion:0};editors.set(form,editor);
+    // Old outbox uploads, including files of a freshly saved note, keep their
+    // existing request keys. The new gallery reads them after confirmation.
+    const refreshPending=async()=>{
+      const version=++editor.refreshVersion;
+      try{
+        const items=await outbox().pendingNoteFiles(owner);
+        if(!alive()||version!==editor.refreshVersion)return;
+        const pending=items.filter(item=>item.note===note.id&&String(item.owner)===String(owner)),host=q('[data-note-file-legacy-pending]',root);
+        host.hidden=!pending.length;
+        host.innerHTML=pending.length?`<p class="muted">Файлы из прежней очереди отправки</p>${pending.map(item=>`<div class="note-file-pending" data-upload-id="${esc(item.id)}"><strong>${esc(item.fileName)}</strong><small>${esc(item.error||({sending:'Отправляется',blocked:'Требует действия',paused:'Повторы остановлены'}[item.status]||'В очереди отправки'))}</small><progress max="100" value="0" aria-label="Загрузка ${esc(item.fileName)}"></progress><button type="button" class="text-button" data-file-queue>Открыть очередь</button></div>`).join('')}`:'';
+        qa('[data-file-queue]',host).forEach(button=>button.onclick=()=>{if(alive())outbox().open();});
+        q('[data-file-error]',root).textContent='';
+      }catch(error){if(alive())q('[data-file-error]',root).textContent=error.message;}
+    };
+    editor.refreshPending=refreshPending;
+    editor.refresh=async()=>{if(!alive())return;try{await Promise.all([panel.refresh(),refreshPending()]);}catch(error){if(alive())q('[data-file-error]',root).textContent=error.message;}};
+    const add=async files=>{
+      if(!files.length||!alive())return;
+      try{await panel.addFiles(files);}
+      catch(error){if(alive())q('[data-file-error]',root).textContent=error.message;}
+    };
+    // Only file clipboard/drop payloads are intercepted; the text editor and
+    // its working draft remain untouched by gallery updates or previews.
+    form.addEventListener('paste',event=>{const files=[...(event.clipboardData?.files||[])];if(files.length&&alive()){event.preventDefault();event.stopImmediatePropagation();void add(files);}},true);
+    form.addEventListener('dragover',event=>{if(alive()&&event.dataTransfer?.types.includes('Files')){event.preventDefault();root.classList.add('receiving-files');}});
+    form.addEventListener('dragleave',()=>root.classList.remove('receiving-files'));
+    form.addEventListener('drop',event=>{const files=[...(event.dataTransfer?.files||[])];root.classList.remove('receiving-files');if(files.length&&alive()){event.preventDefault();event.stopImmediatePropagation();void add(files);}},true);
+    const history=document.createElement('button');history.type='button';history.className='text-button';history.textContent='История заметки';
+    q('.personal-editor-actions',form).append(history);history.onclick=()=>{if(alive())openHistory(note,form);};
+    void refreshPending();
+    return {async creation(){return{files:[]};},async clear(){}};
+  }
   function bindEditor(form,note){
     for(const [old] of editors)if(!old.isConnected)editors.delete(old);
+    if(note)return bindSavedEditor(form,note);
     const root=document.createElement('section');root.className='note-files';root.innerHTML=`<div class="note-files-heading"><strong>Файлы</strong><button type="button" class="text-button" data-file-choose>${icon('plus')} Добавить файлы</button><input type="file" multiple hidden data-note-files aria-label="Выбрать файлы для заметки"></div><p class="muted note-files-hint">До 15 МБ на файл. Можно вставить фото или перетащить файлы в заметку.</p><div data-note-file-list></div><p data-file-error role="alert"></p>`;
     q('.personal-editor-actions',form).before(root);
     const editor={root,form,note,owner:state.me.id,scope:form.dataset.workingDraftScope,files:[],pending:[],draft:null,showRemoved:false,version:0,busy:false};editors.set(form,editor);
