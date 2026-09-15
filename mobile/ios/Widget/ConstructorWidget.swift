@@ -19,7 +19,7 @@ struct WidgetSourceQuery: EntityQuery {
     private func available() throws -> [WidgetSourceEntity] {
         let store = try WidgetStore.shared()
         return try store.grants().map { grant in
-            WidgetSourceEntity(id: grant.id, title: try store.cached(for: grant)?.snapshot.title ?? "Источник \(grant.id.prefix(6))")
+            WidgetSourceEntity(id: grant.id, title: grant.displayTitle(snapshotTitle: try store.cached(for: grant)?.snapshot.title))
         }
     }
 }
@@ -81,7 +81,7 @@ struct ConstructorProvider: AppIntentTimelineProvider {
                         return ConstructorEntry(date: Date(), cache: nil, message: "Доступ отключён. Подключите источник заново")
                     }
                     return ConstructorEntry(date: Date(), cache: try store.cached(for: grant),
-                        message: failure == .rateLimited ? "Обновим позже · сохранённая копия" : "Нет связи · сохранённая копия")
+                        message: failure == .rateLimited ? "Обновим позже · сохранённая копия" : "Не удалось обновить · сохранённая копия")
                 }
             }
             let cache = try store.cached(for: grant)
@@ -96,42 +96,11 @@ struct ConstructorWidgetView: View {
     let entry: ConstructorEntry
     @Environment(\.widgetFamily) private var family
     @Environment(\.colorScheme) private var scheme
-    private var itemLimit: Int { family == .systemLarge ? 5 : family == .systemMedium ? 2 : 0 }
+    private var size: WidgetContentSize { family == .systemLarge ? .large : family == .systemMedium ? .medium : .small }
     var body: some View {
-        VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 10) {
-            Text("TESSAVIE").font(.caption2.weight(.semibold)).tracking(1).foregroundStyle(TessavieTheme.accent(scheme))
-            if let cache = entry.cache {
-                let snapshot = cache.snapshot
-                Text(snapshot.title).font(.headline).lineLimit(2).privacySensitive()
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text("\(snapshot.completed)").font(family == .systemSmall ? .title.bold() : .largeTitle.bold())
-                        .foregroundStyle(TessavieTheme.accent(scheme))
-                    Text("из \(snapshot.total)").font(.subheadline).foregroundStyle(.secondary)
-                }.accessibilityElement(children: .ignore).accessibilityLabel("Выполнено \(snapshot.completed) из \(snapshot.total)").privacySensitive()
-                ProgressView(value: Double(snapshot.completed), total: Double(max(1, snapshot.total)))
-                    .tint(TessavieTheme.accent(scheme)).privacySensitive()
-                if itemLimit > 0 {
-                    ForEach(Array(snapshot.items.prefix(itemLimit).enumerated()), id: \.offset) { _, item in
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: item.checked ? "checkmark.circle.fill" : "circle").foregroundStyle(TessavieTheme.accent(scheme))
-                            Text(item.label).font(.subheadline).lineLimit(1)
-                        }.privacySensitive().accessibilityElement(children: .combine)
-                    }
-                }
-                Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 2) {
-                    if !entry.message.isEmpty { Text(entry.message).lineLimit(2) }
-                    Text(cache.fetchedAt, format: .dateTime.day().month(.abbreviated).hour().minute())
-                }.font(.caption2).foregroundStyle(.secondary)
-            } else {
-                Text("Ваш виджет").font(.headline)
-                Text(entry.message).font(.subheadline).foregroundStyle(.secondary).lineLimit(family == .systemSmall ? 5 : 7)
-                Spacer(minLength: 0)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .containerBackground(for: .widget) { TessavieTheme.background(scheme) }
-        .widgetURL(WidgetContract.website)
+        ConstructorWidgetContent(cache: entry.cache, message: entry.message, size: size)
+            .containerBackground(for: .widget) { TessavieTheme.background(scheme) }
+            .widgetURL(WidgetContract.website)
     }
 }
 

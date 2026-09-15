@@ -124,6 +124,30 @@ final class WidgetStore {
             return grant
         }
     }
+    // Empty installs have no grant to read. Probe both Keychain and protected
+    // files before a single-use code is consumed, including write/read/delete.
+    func verifyWritable(now: Date = Date()) throws {
+        try locked {
+            let active = try readIDs().filter { try rawGrant($0)?.isUsable(at: now) == true }
+            guard active.count < 32 else { throw WidgetFailure.storageUnavailable }
+            let probe = "preflight-\(UUID().uuidString)"
+            let payload = Data(probe.utf8)
+            let file = directory.appendingPathComponent(probe)
+            do {
+                try vault.write(payload, account: probe)
+                guard try vault.read(probe) == payload else { throw WidgetFailure.storageUnavailable }
+                try vault.remove(probe)
+                guard try vault.read(probe) == nil else { throw WidgetFailure.storageUnavailable }
+                try payload.write(to: file, options: [.atomic, .completeFileProtection])
+                guard try Data(contentsOf: file) == payload else { throw WidgetFailure.storageUnavailable }
+                try files.removeItem(at: file)
+            } catch {
+                try? vault.remove(probe)
+                try? files.removeItem(at: file)
+                throw WidgetFailure.storageUnavailable
+            }
+        }
+    }
     func add(_ grant: WidgetGrant, now: Date = Date()) throws {
         guard grant.isUsable(at: now) else { throw WidgetFailure.accessDenied }
         try locked {

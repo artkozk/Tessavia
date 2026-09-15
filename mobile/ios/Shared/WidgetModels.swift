@@ -1,10 +1,11 @@
 import Foundation
 
 enum WidgetFailure: Error, LocalizedError, Equatable {
-    case invalidCode, invalidResponse, accessDenied, unavailable, rateLimited, storageUnavailable
+    case invalidCode, invalidName, invalidResponse, accessDenied, unavailable, rateLimited, storageUnavailable
     var errorDescription: String? {
         switch self {
         case .invalidCode: return "Код недействителен, уже использован или истёк. Создайте новый код в настройках Tessavie."
+        case .invalidName: return "Название должно занимать одну строку, до 80 символов."
         case .invalidResponse: return "Не удалось проверить ответ Tessavie. Попробуйте обновить позже."
         case .accessDenied: return "Доступ отключён или источник недоступен. Подключите виджет заново."
         case .unavailable: return "Не удалось связаться с Tessavie. Проверьте интернет."
@@ -56,10 +57,17 @@ struct WidgetGrant: Codable, Equatable, CustomStringConvertible, CustomDebugStri
     let id: String
     let token: String
     let expiresAt: Date
+    // Local name belongs in the shared Keychain, never the App Group index.
+    var localName: String? = nil
     var description: String { "WidgetGrant(redacted)" }
     var debugDescription: String { description }
     func isUsable(at now: Date) -> Bool {
         WidgetContract.isHex(id, length: 32) && WidgetContract.isHex(token, length: 64) && expiresAt > now
+            && (localName?.count ?? 0) <= 80
+    }
+    func displayTitle(snapshotTitle: String?) -> String {
+        if let localName, !localName.isEmpty { return localName }
+        return "\(snapshotTitle ?? "Источник") · \(id.prefix(6))"
     }
     static func decode(_ data: Data, now: Date = Date()) throws -> WidgetGrant {
         struct Response: Decodable { let widgetId: String; let token: String; let expiresAt: String }

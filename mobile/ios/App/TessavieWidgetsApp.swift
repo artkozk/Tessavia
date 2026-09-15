@@ -18,22 +18,21 @@ struct WidgetConnectionSummary: Identifiable {
             let store = try WidgetStore.shared()
             connections = try store.grants().map { grant in
                 let cache = try store.cached(for: grant)
-                return WidgetConnectionSummary(id: grant.id, title: cache?.snapshot.title ?? "Источник подключён",
+                return WidgetConnectionSummary(id: grant.id, title: grant.displayTitle(snapshotTitle: cache?.snapshot.title),
                     detail: cache.map { "\($0.snapshot.completed) из \($0.snapshot.total) · обновлено \($0.fetchedAt.formatted(date: .abbreviated, time: .shortened))" } ?? "Данные ещё не получены",
                     expiresAt: grant.expiresAt)
             }
         } catch { connections = []; report(.storageUnavailable) }
     }
     private func report(_ failure: WidgetFailure) { failed = true; message = failure.errorDescription ?? "Не удалось выполнить действие" }
-    func connect(_ code: String) async {
+    func connect(_ code: String, localName: String) async {
         guard !busy else { return }
         busy = true; message = ""; failed = false
         defer { busy = false }
         do {
-            let store = try WidgetStore.shared() // Verify entitlement/storage before consuming a code.
-            _ = try store.grants()
+            let store = try WidgetStore.shared()
             let api = WidgetAPI()
-            let grant = try await api.redeem(code: code)
+            let grant = try await WidgetPairing.redeem(code: code, localName: localName, store: store) { try await api.redeem(code: $0) }
             do { try store.add(grant) }
             catch { report(.storageUnavailable); message += " Код уже использован: отключите этот доступ на сайте и создайте новый."; return }
             do { try store.save(await api.snapshot(for: grant), for: grant) }
@@ -78,6 +77,7 @@ struct WidgetConnectionSummary: Identifiable {
 struct CompanionView: View {
     @StateObject private var model = CompanionModel()
     @State private var code = ""
+    @State private var localName = ""
     @State private var removing: String?
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var phase
@@ -92,19 +92,24 @@ struct CompanionView: View {
                     }
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Подключить источник").font(.title2.bold())
-                        Text("На сайте откройте Настройки → На телефоне → Виджеты. Выберите свою страницу и блок, затем создайте код.")
+                        Text("На сайте откройте Настройки → Личные настройки → На телефоне. Выберите страницу и блок в разделе виджетов, затем создайте код.")
+                        TextField("Название на этом телефоне (необязательно)", text: $localName)
+                            .textFieldStyle(.roundedBorder).privacySensitive().disabled(model.busy)
+                        Text("Например, «Привычки дома» или «Прогресс команды»: так проще выбрать источник для каждого виджета.")
+                            .font(.footnote).foregroundStyle(.secondary)
                         SecureField("Код подключения", text: $code)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                             .textContentType(.oneTimeCode).textFieldStyle(.roundedBorder).privacySensitive()
                             .disabled(model.busy)
                         Button {
                             let pending = code.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let pendingName = localName
                             code = "" // Never persist/repopulate a one-time pairing secret.
-                            Task { await model.connect(pending) }
+                            Task { await model.connect(pending, localName: pendingName) }
                         } label: {
                             HStack { if model.busy { ProgressView().tint(.white) }; Text("Подключить виджет").bold() }
                                 .frame(maxWidth: .infinity).padding(.vertical, 7)
-                        }.buttonStyle(.borderedProminent).disabled(model.busy || !WidgetContract.isHex(code.trimmingCharacters(in: .whitespacesAndNewlines), length: 32))
+                        }.buttonStyle(.borderedProminent).disabled(model.busy || localName.count > 80 || !WidgetContract.isHex(code.trimmingCharacters(in: .whitespacesAndNewlines), length: 32))
                         Text("Код действует 5 минут. Пароль от сайта здесь не нужен. Подключение разрешает чтение одного блока на 90 дней; доступ можно отозвать на сайте.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }

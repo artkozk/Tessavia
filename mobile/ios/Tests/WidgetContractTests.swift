@@ -3,9 +3,22 @@ import Foundation
 
 final class MemoryWidgetVault: WidgetCredentialVault {
     private var values: [String: Data] = [:]
-    func read(_ account: String) throws -> Data? { values[account] }
-    func write(_ data: Data, account: String) throws { values[account] = data }
-    func remove(_ account: String) throws { values.removeValue(forKey: account) }
+    var failWrites = false
+    var failReads = false
+    var failDeletes = false
+    func read(_ account: String) throws -> Data? {
+        if failReads { throw WidgetFailure.storageUnavailable }
+        return values[account]
+    }
+    func write(_ data: Data, account: String) throws {
+        if failWrites { throw WidgetFailure.storageUnavailable }
+        values[account] = data
+    }
+    func remove(_ account: String) throws {
+        if failDeletes { throw WidgetFailure.storageUnavailable }
+        values.removeValue(forKey: account)
+    }
+    var storedAccounts: [String] { Array(values.keys) }
 }
 
 final class WidgetContractTests: XCTestCase {
@@ -170,8 +183,67 @@ final class WidgetContractTests: XCTestCase {
         XCTAssertThrowsError(try WidgetContract.status(429, pairing: false)) { XCTAssertEqual($0 as? WidgetFailure, .rateLimited) }
         XCTAssertThrowsError(try WidgetContract.status(302, pairing: false))
         XCTAssertThrowsError(try WidgetContract.status(500, pairing: true))
-        for failure in [WidgetFailure.invalidCode, .invalidResponse, .accessDenied, .unavailable, .rateLimited, .storageUnavailable] {
+        for failure in [WidgetFailure.invalidCode, .invalidName, .invalidResponse, .accessDenied, .unavailable, .rateLimited, .storageUnavailable] {
             XCTAssertFalse(failure.localizedDescription.contains(token))
         }
+    }
+    func testFirstInstallStorageFailureDoesNotConsumePairingCode() async throws {
+        for failure in ["write", "read", "delete"] {
+            let (store, _, vault) = try store()
+            vault.failWrites = failure == "write"
+            vault.failReads = failure == "read"
+            vault.failDeletes = failure == "delete"
+            XCTAssertTrue(try store.grants().isEmpty)
+            var exchanges = 0
+            do {
+                _ = try await WidgetPairing.redeem(code: id, localName: "", store: store) { _ in
+                    exchanges += 1
+                    return self.grant()
+                }
+                XCTFail("A failed storage preflight must prevent exchange")
+            } catch { XCTAssertEqual(error as? WidgetFailure, .storageUnavailable) }
+            XCTAssertEqual(exchanges, 0)
+        }
+    }
+    func testPreflightCleansProbeAndKeepsLocalNameOutOfSharedFiles() async throws {
+        let (store, directory, vault) = try store()
+        var exchanges = 0
+        let credential = try await WidgetPairing.redeem(code: id, localName: "  Привычки дома  ", store: store) { code in
+            exchanges += 1
+            XCTAssertEqual(code, self.id)
+            XCTAssertTrue(vault.storedAccounts.isEmpty)
+            return self.grant()
+        }
+        XCTAssertEqual(exchanges, 1)
+        XCTAssertEqual(credential.localName, "Привычки дома")
+        XCTAssertEqual(credential.displayTitle(snapshotTitle: "Привычки"), "Привычки дома")
+        try store.add(credential)
+        XCTAssertEqual(try store.grant(id)?.localName, "Привычки дома")
+        for file in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+            let data = try Data(contentsOf: file)
+            XCTAssertNil(data.range(of: Data("Привычки дома".utf8)))
+            XCTAssertFalse(file.lastPathComponent.hasPrefix("preflight-"))
+        }
+        XCTAssertEqual(vault.storedAccounts, [id])
+    }
+    func testInvalidLocalNameDoesNotConsumePairingCodeAndOldGrantRemainsReadable() async throws {
+        let (store, _, _) = try store()
+        var exchanges = 0
+        for name in [String(repeating: "я", count: 81), "Дом\nРабота"] {
+            do {
+                _ = try await WidgetPairing.redeem(code: id, localName: name, store: store) { _ in
+                    exchanges += 1
+                    return self.grant()
+                }
+                XCTFail("Invalid name accepted")
+            } catch { XCTAssertEqual(error as? WidgetFailure, .invalidName) }
+        }
+        XCTAssertEqual(exchanges, 0)
+        let old = grant()
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as? [String: Any])
+        object.removeValue(forKey: "localName")
+        let decoded = try JSONDecoder().decode(WidgetGrant.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertNil(decoded.localName)
+        XCTAssertTrue(decoded.displayTitle(snapshotTitle: "Привычки").hasSuffix("aaaaaa"))
     }
 }
