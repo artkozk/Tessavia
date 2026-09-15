@@ -51,8 +51,20 @@ struct ConstructorWidgetContent: View {
             }.lineLimit(1).minimumScaleFactor(0.8)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Выполнено \(snapshot.completed) из \(snapshot.total)").privacySensitive()
-            ProgressView(value: Double(snapshot.completed), total: Double(max(1, snapshot.total)))
-                .tint(TessavieTheme.accent(scheme)).privacySensitive()
+            // Pure SwiftUI shapes render identically in WidgetKit and ImageRenderer;
+            // the platform-backed ProgressView can export an unsupported-view marker.
+            let fraction = min(1, max(0, Double(snapshot.completed) / Double(max(1, snapshot.total))))
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(TessavieTheme.accent(scheme).opacity(scheme == .dark ? 0.24 : 0.14))
+                    Capsule().fill(TessavieTheme.accent(scheme))
+                        .frame(width: geometry.size.width * CGFloat(fraction))
+                }
+            }.frame(height: compact ? 4 : 5)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Прогресс")
+                .accessibilityValue("\(snapshot.completed) из \(snapshot.total)")
+                .privacySensitive()
         }
     }
     private func items(_ snapshot: WidgetSnapshot, limit: Int, lineLimit: Int) -> some View {
