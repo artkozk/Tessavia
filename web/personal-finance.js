@@ -69,9 +69,49 @@ export function financeAccountBalances(data) {
   });
 }
 
-export function financeJournal(data, { kind = 'all', bucketId = '', payerKey = '' } = {}) {
-  const incomes = kind === 'expense' ? [] : (data.entries || []).filter(entry => (!payerKey || financePayerKey(entry) === payerKey) && (!bucketId || entry.allocations?.some(part => part.bucketId === bucketId))).map(entry => ({ ...entry, kind: 'income', journalAmountMinor: amount(bucketId ? entry.allocations.find(part => part.bucketId === bucketId).amountMinor : entry.grossMinor) }));
-  const expenses = kind === 'income' ? [] : (data.expenses || []).filter(entry => !bucketId || entry.bucketId === bucketId).map(entry => ({ ...entry, kind: 'expense', journalAmountMinor: amount(entry.amountMinor) }));
+export function financeCategoryOptions(data) {
+  const options = new Map((data.categories || []).map(category => [category.id, category]));
+  for (const operation of [...(data.entries || []), ...(data.expenses || [])]) {
+    if (operation.categoryId && !options.has(operation.categoryId)) options.set(operation.categoryId, { id: operation.categoryId, name: operation.categoryName || 'Сохранённая группа', archived: true });
+  }
+  return [...options.values()];
+}
+
+export function financeCategorySummary(data) {
+  const names = new Map(financeCategoryOptions(data).map(category => [category.id, category.name])), groups = new Map();
+  for (const row of financeJournal(data)) {
+    if (row.voided) continue;
+    const id = row.categoryId || '';
+    if (!groups.has(id)) groups.set(id, { id, name: id ? names.get(id) || row.categoryName || 'Сохранённая группа' : 'Без группы', incomeMinor: 0n, expenseMinor: 0n, count: 0 });
+    const group = groups.get(id); group.count += 1;
+    group[row.kind === 'income' ? 'incomeMinor' : 'expenseMinor'] += row.journalAmountMinor;
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ru'));
+}
+
+export function financeRelatedLinkCanOpen(link) {
+  // The personal editor currently loads active plans/goals only. Preserve an
+  // archived title without offering a button that closes finance into an error.
+  return Boolean(link && link.available !== false && !(link.archived && ['personal_goal', 'personal_plan'].includes(link.kind)));
+}
+
+export function financeOrganizationPayload(categoryId, links, categories, operation = null) {
+  const id = String(categoryId || ''), category = categories.find(item => item.id === id);
+  if (id && (!category || category.archived) && id !== operation?.categoryId) throw new Error('Выберите действующую группу или оставьте операцию без группы.');
+  if (!Array.isArray(links) || links.length > 10) throw new Error('Можно добавить до 10 связей к одной операции.');
+  const keys = new Set(), normalized = links.map(link => {
+    if (!['record', 'personal_goal', 'personal_plan'].includes(link?.kind) || !/^[a-zA-Z0-9_-]{1,64}$/.test(link?.id || '')) throw new Error('Связь недоступна. Уберите её и выберите снова.');
+    const key = `${link.kind}:${link.id}`;
+    if (keys.has(key)) throw new Error('Одна связь добавлена дважды.');
+    keys.add(key); return { kind: link.kind, id: link.id };
+  });
+  return { categoryId: id, expectedCategoryRevision: category?.revision || 0, links: normalized };
+}
+
+export function financeJournal(data, { kind = 'all', bucketId = '', payerKey = '', categoryId = '' } = {}) {
+  const inCategory = entry => !categoryId || (categoryId === '__none__' ? !entry.categoryId : entry.categoryId === categoryId);
+  const incomes = kind === 'expense' ? [] : (data.entries || []).filter(entry => inCategory(entry) && (!payerKey || financePayerKey(entry) === payerKey) && (!bucketId || entry.allocations?.some(part => part.bucketId === bucketId))).map(entry => ({ ...entry, kind: 'income', journalAmountMinor: amount(bucketId ? entry.allocations.find(part => part.bucketId === bucketId).amountMinor : entry.grossMinor) }));
+  const expenses = kind === 'income' ? [] : (data.expenses || []).filter(entry => inCategory(entry) && (!bucketId || entry.bucketId === bucketId)).map(entry => ({ ...entry, kind: 'expense', journalAmountMinor: amount(entry.amountMinor) }));
   return [...incomes, ...expenses].sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || '') || b.id.localeCompare(a.id));
 }
 
@@ -171,30 +211,31 @@ export function financeCSV(data) {
   const entries = (data.entries || []).filter(entry => !entry.voided);
   const buckets = new Map();
   for (const entry of entries) for (const part of entry.allocations || []) if (!buckets.has(part.bucketId)) buckets.set(part.bucketId, part.bucketName);
-  const rows = [['Дата', 'Источник', 'От кого', 'Доход, RUB', 'Исполнителям, RUB', 'К распределению, RUB', 'Примечание', ...[...buckets.values()].flatMap(name => [`${name}: распределено, RUB`, `${name}: отмечено переводом, RUB`, `${name}: осталось, RUB`])]];
+  const rows = [['Дата', 'Источник', 'От кого', 'Доход, RUB', 'Исполнителям, RUB', 'К распределению, RUB', 'Примечание', ...[...buckets.values()].flatMap(name => [`${name}: распределено, RUB`, `${name}: отмечено переводом, RUB`, `${name}: осталось, RUB`]), 'Группа', 'Связи']];
   // One income per row: summing the income column must not count it once per bucket.
   for (const entry of entries) rows.push([
     entry.date, entry.sourceName, entry.payer, moneyInput(entry.grossMinor), moneyInput(entry.workerMinor), moneyInput(entry.baseMinor), entry.note,
     ...[...buckets.keys()].flatMap(id => { const part = entry.allocations.find(item => item.bucketId === id); return part ? [moneyInput(part.amountMinor), moneyInput(part.paidMinor), moneyInput(amount(part.amountMinor) - amount(part.paidMinor))] : ['0.00', '0.00', '0.00']; }),
+    entry.categoryName || '', (entry.links || []).map(link => link.available === false ? 'Недоступная связь' : link.title || 'Связь').join(' · '),
   ]);
   return '\ufeff' + rows.map(row => row.map(cell).join(';')).join('\r\n');
 }
 
 export function financeLedgerCSV(rows) {
   const cell = value => { let text = String(value ?? ''); if (/^[\s]*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text)) text = `'${text}`; return `"${text.replaceAll('"', '""')}"`; };
-  const data = [['Дата', 'Операция', 'Счёт / источник', 'От кого / кому', 'Приход, RUB', 'Расход, RUB', 'Пометка']];
-  for (const row of rows) if (!row.voided) data.push([row.date, row.kind === 'expense' ? 'Расход' : 'Доход', row.kind === 'expense' ? row.bucketName : row.sourceName, row.kind === 'expense' ? row.payee : row.payer, row.kind === 'income' ? moneyInput(row.journalAmountMinor) : '0.00', row.kind === 'expense' ? moneyInput(row.journalAmountMinor) : '0.00', row.note]);
+  const data = [['Дата', 'Операция', 'Счёт / источник', 'От кого / кому', 'Приход, RUB', 'Расход, RUB', 'Пометка', 'Группа', 'Связи']];
+  for (const row of rows) if (!row.voided) data.push([row.date, row.kind === 'expense' ? 'Расход' : 'Доход', row.kind === 'expense' ? row.bucketName : row.sourceName, row.kind === 'expense' ? row.payee : row.payer, row.kind === 'income' ? moneyInput(row.journalAmountMinor) : '0.00', row.kind === 'expense' ? moneyInput(row.journalAmountMinor) : '0.00', row.note, row.categoryName || '', (row.links || []).map(link => link.available === false ? 'Недоступная связь' : link.title || 'Связь').join(' · ')]);
   return '\ufeff' + data.map(row => row.map(cell).join(';')).join('\r\n');
 }
 
-export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModal, requestDialogClose, toast, enhanceSelects, bindComposerForm, renderPersonal, confirmDiscard, getScope, isVisible, renderFinance, onOpenSettings, onOpenSource }) {
+export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModal, requestDialogClose, toast, enhanceSelects, bindComposerForm, renderPersonal, confirmDiscard, getScope, isVisible, renderFinance, onOpenSettings, onOpenSource, onOpenRelated }) {
   const e = value => escapeHTML(String(value ?? ''));
   const q = (selector, root = document) => root.querySelector(selector);
   const qa = (selector, root = document) => [...root.querySelectorAll(selector)];
   const dialog = () => q('#workspace-dialog'), content = () => q('#workspace-dialog-content');
   const controllerId = requestId();
   const dateLabel = date => /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? new Date(`${date}T12:00:00`).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }) : date;
-  let month = localDate().slice(0, 7), period = 'month', financeView = 'accounts', historyKind = 'all', historyBucket = '', payerFilter = '', cached = null, pending = null, generation = 0, dialogTurn = 0, ownerSeen = null, discardPending = false;
+  let month = localDate().slice(0, 7), period = 'month', financeView = 'accounts', historyKind = 'all', historyBucket = '', historyCategory = '', payerFilter = '', cached = null, pending = null, generation = 0, dialogTurn = 0, ownerSeen = null, discardPending = false;
   const owner = () => state.me?.id;
   const visible = () => isVisible ? isVisible() : state.view === 'personal' && state.personalTab === 'finance';
   const scope = () => getScope?.() || { kind: 'personal' };
@@ -218,12 +259,15 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
         headers['X-Finance-Source'] = ctx.source; headers['X-Finance-Revision'] = String(ctx.revision);
       }
     }
-    return api(`/api/${ctx.kind === 'team' ? 'workspace' : 'personal'}/finance${path}`, { ...options, headers });
+    return Promise.resolve(api(`/api/${ctx.kind === 'team' ? 'workspace' : 'personal'}/finance${path}`, { ...options, headers })).then(result => {
+      if (writing && typeof globalThis.CustomEvent === 'function' && typeof globalThis.dispatchEvent === 'function') globalThis.dispatchEvent(new CustomEvent('tessavie-finance-changed', { detail: { owner: ctx.owner, workspaceId: ctx.workspace, kind: ctx.kind, sourceWorkspaceId: ctx.source } }));
+      return result;
+    });
   };
   const range = () => financeReportRange(month, period);
   const rangeKey = () => { const selected = range(); return `${selected.from}:${selected.to}`; };
   const current = () => cached?.key === context().key && cached.rangeKey === rangeKey() ? cached.data : null;
-  function accountBoundary() { if (ownerSeen !== context().key) { ownerSeen = context().key; cached = null; pending = null; generation += 1; month = localDate().slice(0, 7); period = 'month'; financeView = 'accounts'; historyKind = 'all'; historyBucket = ''; payerFilter = ''; } }
+  function accountBoundary() { if (ownerSeen !== context().key) { ownerSeen = context().key; cached = null; pending = null; generation += 1; month = localDate().slice(0, 7); period = 'month'; financeView = 'accounts'; historyKind = 'all'; historyBucket = ''; historyCategory = ''; payerFilter = ''; } }
   function repaint() { if (visible() && !state.pageLayoutDraft && !state.layoutDraft) (renderFinance || renderPersonal)?.(); }
   function invalidate() { generation += 1; cached = null; pending = null; }
 
@@ -270,7 +314,7 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
     if (!rows.length) return '<p class="finance-empty-note">За выбранный период операций нет. Добавьте доход или расход либо измените фильтры.</p>';
     const groups = new Map();
     for (const row of compact ? rows.slice(0, 5) : rows) { if (!groups.has(row.date)) groups.set(row.date, []); groups.get(row.date).push(row); }
-    return `<div class="finance-journal">${[...groups].map(([date, entries]) => `<section class="finance-journal-day"><h4><time datetime="${e(date)}">${e(dateLabel(date))}</time></h4>${entries.map(entry => `<button type="button" class="finance-operation ${entry.voided ? 'is-voided' : ''}" data-finance-${entry.kind === 'expense' ? 'expense' : 'entry'}="${e(entry.id)}"><span class="finance-operation-icon" aria-hidden="true">${entry.kind === 'expense' ? '−' : '+'}</span><span class="finance-operation-copy"><strong>${e(entry.kind === 'expense' ? entry.note || entry.payee || 'Расход' : entry.sourceName)}</strong><small>${e(entry.kind === 'expense' ? `${entry.bucketName}${entry.payee && entry.note ? ` · ${entry.payee}` : ''}` : `${entry.payer || 'Отправитель не указан'}${entry.note ? ` · ${entry.note}` : ''}`)}${entry.voided ? ' · Отменён' : ''}</small></span><span class="finance-operation-amount ${entry.kind === 'income' ? 'is-income' : ''}"><strong>${entry.kind === 'expense' ? '−' : '+'}${e(financeMoney(entry.journalAmountMinor))}</strong><small>${entry.kind === 'expense' ? 'Расход' : historyBucket && !compact ? 'На счёт' : 'Доход'}</small></span>${icon('chevronRight')}</button>`).join('')}</section>`).join('')}</div>`;
+    return `<div class="finance-journal">${[...groups].map(([date, entries]) => `<section class="finance-journal-day"><h4><time datetime="${e(date)}">${e(dateLabel(date))}</time></h4>${entries.map(entry => `<button type="button" class="finance-operation ${entry.voided ? 'is-voided' : ''}" data-finance-${entry.kind === 'expense' ? 'expense' : 'entry'}="${e(entry.id)}"><span class="finance-operation-icon" aria-hidden="true">${entry.kind === 'expense' ? '−' : '+'}</span><span class="finance-operation-copy"><strong>${e(entry.kind === 'expense' ? entry.note || entry.payee || 'Расход' : entry.sourceName)}</strong><small>${e(entry.kind === 'expense' ? `${entry.bucketName}${entry.payee && entry.note ? ` · ${entry.payee}` : ''}` : `${entry.payer || 'Отправитель не указан'}${entry.note ? ` · ${entry.note}` : ''}`)}${entry.categoryId ? ` · ${e(entry.categoryName || 'Группа')}` : ''}${entry.links?.length ? ` · Связей: ${entry.links.length}` : ''}${entry.voided ? ' · Отменён' : ''}</small></span><span class="finance-operation-amount ${entry.kind === 'income' ? 'is-income' : ''}"><strong>${entry.kind === 'expense' ? '−' : '+'}${e(financeMoney(entry.journalAmountMinor))}</strong><small>${entry.kind === 'expense' ? 'Расход' : historyBucket && !compact ? 'На счёт' : 'Доход'}</small></span>${icon('chevronRight')}</button>`).join('')}</section>`).join('')}</div>`;
   }
 
   function payerSelect(choices) {
@@ -295,7 +339,7 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
     const choices = data ? financePayerOptions(data) : [], writable = canWrite(data);
     if (payerFilter && !choices.some(payer => payer.key === payerFilter)) choices.push({ key: payerFilter, name: payerFilter.startsWith('legacy:') ? payerFilter.slice(7) : payerFilter === 'none:' ? 'Не указан' : 'Выбранный отправитель', legacy: payerFilter.startsWith('legacy:') });
     const accounts = data ? financeAccountBalances(data) : [], visibleAccounts = accounts.filter(bucket => !bucket.archived || bucket.balanceMinor !== 0n || bucket.periodAllocatedMinor !== 0n || bucket.periodSpentMinor !== 0n);
-    const journal = data ? financeJournal(data, { kind: historyKind, bucketId: historyBucket, payerKey: historyKind === 'income' ? payerFilter : '' }) : [];
+    const journal = data ? financeJournal(data, { kind: historyKind, bucketId: historyBucket, categoryId: historyCategory, payerKey: historyKind === 'income' ? payerFilter : '' }) : [];
     const fullJournal = data ? financeJournal(data) : [], spent = accounts.reduce((sum, bucket) => sum + bucket.periodSpentMinor, 0n);
     const balance = accounts.reduce((sum, bucket) => sum + bucket.balanceMinor, 0n), inflow = accounts.reduce((sum, bucket) => sum + bucket.periodAllocatedMinor, 0n);
     return `<section class="personal-finance" data-personal-finance>
@@ -305,8 +349,8 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
       ${data ? `${!activeSources.length ? `<div class="finance-empty"><h3>${data.sources.length ? 'Нет активных источников дохода' : 'Начните со своих правил'}</h3><p>${isTeam() ? (writable ? 'Учёт этой команды начинается с пустого списка. В настройках создайте её счета и правила распределения доходов или явно подключите другую команду.' : 'В команде-источнике пока нет действующих источников дохода. Их может добавить её администратор.') : 'Создайте свои счета и источник дохода. Например, «Машина» и «Сбережения». Затем задайте доли распределения.'}</p>${writable ? `<button type="button" class="secondary" data-finance-settings>${icon('settings')} Настройки</button>` : ''}</div>` : ''}
       ${financeView === 'accounts' ? `<section class="finance-section finance-accounts-section" data-finance-accounts-block><div class="finance-balance-heading"><div><span data-page-label="finance-total-balance">Всего на счетах</span><strong>${e(financeMoney(balance))}</strong></div><p>На конец ${e(dateLabel(data.balanceThrough || selectedRange.to))}<br>По вашим записям, за всё время</p></div><div class="finance-period-totals"><span>За период распределено <strong>+${e(financeMoney(inflow))}</strong></span><span>Потрачено <strong>−${e(financeMoney(spent))}</strong></span></div>
       <div class="finance-account-grid">${visibleAccounts.map(bucket => `<article class="finance-account ${bucket.balanceMinor < 0n ? 'is-negative' : ''}"><header><h3>${e(bucket.name)}</h3>${bucket.archived ? '<small>В архиве</small>' : ''}</header>${bucket.destination ? `<p class="finance-account-destination">${e(bucket.destination)}</p>` : ''}<strong class="finance-account-balance">${e(financeMoney(bucket.balanceMinor))}</strong><p class="finance-account-period"><span>За период</span><span>+${e(financeMoney(bucket.periodAllocatedMinor))} <span aria-hidden="true">/</span> −${e(financeMoney(bucket.periodSpentMinor))}</span></p>${bucket.balanceMinor < 0n ? '<p class="finance-caption">Расходы превысили записанные поступления</p>' : ''}<footer><button type="button" class="text-button" data-finance-account-history="${e(bucket.id)}">История</button>${writable && !bucket.archived ? `<button type="button" class="secondary" data-finance-expense-add="${e(bucket.id)}">${icon('minus')} Расход</button>` : ''}</footer></article>`).join('')}</div><p class="finance-caption">${isTeam() ? 'Счета — отдельные суммы команды на её цели и расходы. Остатки меняются после записи поступления или расхода.' : 'Счета — ваши отдельные суммы на цели и расходы. Перевод десятины или заправка уменьшают нужный счёт после записи расхода.'}</p></section>
-      <section class="finance-section" data-finance-recent-block><div class="section-heading"><h3 data-page-label="finance-recent">Последние операции</h3><button type="button" class="text-button" data-finance-show-history>Все операции</button></div>${renderJournal(fullJournal, true)}</section>${renderReports(report, choices)}` :
-      `<section class="finance-section" data-finance-history-block><div class="finance-history-filters"><label>Операции<select data-finance-history-kind aria-label="Вид операций">${[['all', 'Все операции'], ['income', 'Доходы'], ['expense', 'Расходы']].map(([key, title]) => `<option value="${key}" ${historyKind === key ? 'selected' : ''}>${title}</option>`).join('')}</select></label><label>Счёт<select data-finance-history-bucket aria-label="Счёт в истории"><option value="">Все счета</option>${data.buckets.map(bucket => `<option value="${e(bucket.id)}" ${historyBucket === bucket.id ? 'selected' : ''}>${e(bucket.name)}${bucket.archived ? ' · архив' : ''}</option>`).join('')}</select></label>${historyKind === 'income' ? payerSelect(choices) : ''}</div><div class="section-heading"><h3 data-finance-journal-heading data-page-label="finance-operations" tabindex="-1">Операции за период</h3><span class="muted">${journal.length}</span></div>${historyBucket ? '<p class="finance-caption">У доходов показана только доля, поступившая на выбранный счёт. Отменённые записи не меняют остаток.</p>' : ''}${renderJournal(journal)}${journal.some(entry => !entry.voided) ? '<button type="button" class="text-button" data-finance-ledger-export>Скачать операции CSV</button>' : ''}</section>`}` : errorLine()}
+      <section class="finance-section" data-finance-recent-block><div class="section-heading"><h3 data-page-label="finance-recent">Последние операции</h3><button type="button" class="text-button" data-finance-show-history>Все операции</button></div>${renderJournal(fullJournal, true)}</section>${renderReports(report, choices)}${renderCategoryReport(data)}` :
+      `<section class="finance-section" data-finance-history-block><div class="finance-history-filters"><label>Операции<select data-finance-history-kind aria-label="Вид операций">${[['all', 'Все операции'], ['income', 'Доходы'], ['expense', 'Расходы']].map(([key, title]) => `<option value="${key}" ${historyKind === key ? 'selected' : ''}>${title}</option>`).join('')}</select></label><label>Счёт<select data-finance-history-bucket aria-label="Счёт в истории"><option value="">Все счета</option>${data.buckets.map(bucket => `<option value="${e(bucket.id)}" ${historyBucket === bucket.id ? 'selected' : ''}>${e(bucket.name)}${bucket.archived ? ' · архив' : ''}</option>`).join('')}</select></label>${categoryFilter(data)}${historyKind === 'income' ? payerSelect(choices) : ''}</div><div class="section-heading"><h3 data-finance-journal-heading data-page-label="finance-operations" tabindex="-1">Операции за период</h3><span class="muted">${journal.length}</span></div>${historyBucket ? '<p class="finance-caption">У доходов показана только доля, поступившая на выбранный счёт. Отменённые записи не меняют остаток.</p>' : ''}${renderJournal(journal)}${journal.some(entry => !entry.voided) ? '<button type="button" class="text-button" data-finance-ledger-export>Скачать операции CSV</button>' : ''}</section>`}` : errorLine()}
     </section>`;
   }
 
@@ -325,23 +369,25 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
     enhanceSelects?.(root);
     qa('[data-finance-payer-filter]', root).forEach(select => select.onchange = event => { payerFilter = event.target.value; repaint(); if (financeView === 'accounts') q('[data-finance-report-block]').open = true; });
     q('[data-finance-clear-payer]', root)?.addEventListener('click', () => { payerFilter = ''; repaint(); q('[data-finance-report-block]').open = true; });
-    qa('[data-finance-payer-report]', root).forEach(button => button.onclick = () => { payerFilter = button.dataset.financePayerReport; financeView = 'history'; historyKind = 'income'; historyBucket = ''; repaint(); });
+    qa('[data-finance-payer-report]', root).forEach(button => button.onclick = () => { payerFilter = button.dataset.financePayerReport; financeView = 'history'; historyKind = 'income'; historyBucket = ''; historyCategory = ''; repaint(); });
     qa('[data-finance-entry]', root).forEach(button => button.onclick = () => openEntry(button.dataset.financeEntry));
     qa('[data-finance-expense]', root).forEach(button => button.onclick = () => openExpense(button.dataset.financeExpense));
-    qa('[data-finance-account-history]', root).forEach(button => button.onclick = () => { historyBucket = button.dataset.financeAccountHistory; historyKind = 'all'; financeView = 'history'; repaint(); });
-    q('[data-finance-show-history]', root)?.addEventListener('click', () => { historyKind = 'all'; historyBucket = ''; financeView = 'history'; repaint(); });
+    qa('[data-finance-account-history]', root).forEach(button => button.onclick = () => { historyBucket = button.dataset.financeAccountHistory; historyCategory = ''; historyKind = 'all'; financeView = 'history'; repaint(); });
+    q('[data-finance-show-history]', root)?.addEventListener('click', () => { historyKind = 'all'; historyBucket = ''; historyCategory = ''; financeView = 'history'; repaint(); });
     q('[data-finance-history-kind]', root)?.addEventListener('change', event => { historyKind = event.target.value; repaint(); });
     q('[data-finance-history-bucket]', root)?.addEventListener('change', event => { historyBucket = event.target.value; repaint(); });
+    q('[data-finance-history-category]', root)?.addEventListener('change', event => { historyCategory = event.target.value; repaint(); });
+    qa('[data-finance-category-history]', root).forEach(button => button.onclick = () => { historyCategory = button.dataset.financeCategoryHistory; historyBucket = ''; historyKind = 'all'; financeView = 'history'; repaint(); });
     const download = (csv, suffix) => {
       const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
       const link = document.createElement('a'); link.href = url; link.download = `Tessavie-finance-${isTeam() ? `team-${context().workspace}-` : ''}${range().from}-${range().to}-${suffix}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
     q('[data-finance-export]', root)?.addEventListener('click', () => { const data = current(); if (data) download(financeCSV(filterFinanceByPayer(data, payerFilter)), 'income'); });
-    q('[data-finance-ledger-export]', root)?.addEventListener('click', () => { const data = current(); if (data) download(financeLedgerCSV(financeJournal(data, { kind: historyKind, bucketId: historyBucket, payerKey: historyKind === 'income' ? payerFilter : '' })), 'operations'); });
+    q('[data-finance-ledger-export]', root)?.addEventListener('click', () => { const data = current(); if (data) download(financeLedgerCSV(financeJournal(data, { kind: historyKind, bucketId: historyBucket, categoryId: historyCategory, payerKey: historyKind === 'income' ? payerFilter : '' })), 'operations'); });
   }
 
-  async function replaceDialog(title, body, back = null) {
-    const box = dialog(); if (!box || !owner()) return null;
+  async function replaceDialog(title, body, back = null, guard = () => true) {
+    const box = dialog(); if (!box || !owner() || !guard()) return null;
     if (discardPending) return null;
     if (box.dataset.settingsSaving === 'true') { toast('Дождитесь завершения сохранения.'); return null; }
     if (box.open && (box.dataset.financeOwner !== String(owner()) || box.dataset.financeController && box.dataset.financeController !== controllerId || box.dataset.financeScope && box.dataset.financeScope !== context().key || !q('[data-finance-dialog]', content()))) return null;
@@ -353,6 +399,7 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
       finally { discardPending = false; }
       if (!discard || !same(before) || beforeTurn !== dialogTurn || !box.open || box.dataset.financeOwner !== String(owner()) || box.dataset.settingsSaving === 'true') return null;
     }
+    if (!guard()) return null;
     box.dataset.composerDirty = 'false'; box.dataset.financeOwner = String(owner()); box.dataset.financeController = controllerId; box.dataset.financeScope = context().key;
     const turn = ++dialogTurn, ctx = context();
     content().innerHTML = `<div class="workspace-editor-shell finance-dialog" data-finance-dialog="${turn}"><header><div>${back ? `<button type="button" class="text-button finance-back" data-finance-back>${icon('chevronLeft')} Назад</button>` : ''}<h2>${e(title)}</h2>${isTeam() ? `<p class="finance-scope-caption">${e((scope().workspaceName || 'Финансы команды') + (current()?.scope?.linked ? ' · источник: ' + current().scope.sourceWorkspaceName : ''))}</p>` : ''}</div><button type="button" class="icon-button" data-finance-close aria-label="Закрыть финансы">${icon('x')}</button></header>${body}</div>`;
@@ -370,6 +417,77 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
   const formError = '<p class="form-error" data-finance-main-error role="alert" hidden></p>';
   const submitRow = label => `<div class="form-actions"><button type="submit" class="primary">${e(label)}</button></div>`;
   const moneyField = (name, label, value = '', required = true) => `<label>${e(label)}<input name="${name}" inputmode="decimal" type="text" autocomplete="off" ${required ? 'required' : ''} value="${e(value)}" placeholder="0,00"></label>`;
+  const relationLabel = link => link.available === false ? 'Недоступная связь' : link.title || 'Связь';
+  const relationKind = link => link.kind === 'personal_goal' || link.recordType === 'goal' ? 'Цель' : link.kind === 'personal_plan' ? 'Дело' : 'Карточка';
+  function organizationDetails(operation) {
+    if (!operation.categoryId && !operation.links?.length) return '';
+    return `<section class="finance-operation-organization">${operation.categoryId ? `<p><span class="muted">Группа</span> <strong>${e(operation.categoryName || 'Сохранённая группа')}</strong></p>` : ''}${operation.links?.length ? `<h3>Связи</h3><div class="finance-related-list">${operation.links.map((link, index) => financeRelatedLinkCanOpen(link) && onOpenRelated ? `<button type="button" class="text-button" data-finance-related="${index}">${icon('link')} <span>${e(relationLabel(link))}<small>${e(relationKind(link))}${link.archived ? ' · архив' : ''}</small></span>${icon('chevronRight')}</button>` : `<p><span>${e(relationLabel(link))}</span>${link.available === false ? '<small>Нет доступа или запись удалена. Связь можно убрать при редактировании.</small>' : link.archived ? '<small>В архиве. Связь сохранена в истории операции.</small>' : ''}</p>`).join('')}</div>` : ''}</section>`;
+  }
+  function bindOrganizationDetails(view, operation) {
+    qa('[data-finance-related]', view.root).forEach(button => button.onclick = async () => {
+      const link = operation.links?.[Number(button.dataset.financeRelated)];
+      if (!view.alive() || !financeRelatedLinkCanOpen(link) || !onOpenRelated) return;
+      try { await onOpenRelated({ kind: link.kind, id: link.id, workspaceId: link.workspaceId || (isTeam() ? current()?.scope?.sourceWorkspaceId : undefined) }); }
+      catch (error) { if (same(view.ctx)) toast(error.message || 'Не удалось открыть связанную запись.', true); }
+    });
+  }
+  function organizationFields(operation, data) {
+    const selected = operation?.categoryId || '', categories = financeCategoryOptions(data);
+    if (selected && !categories.some(category => category.id === selected)) categories.push({ id: selected, name: operation.categoryName || 'Сохранённая группа', archived: true });
+    return `<details class="finance-organization-fields" data-finance-organization ${selected || operation?.links?.length ? 'open' : ''}><summary>Группа и связи <span class="muted">· необязательно</span></summary><div><label>Группа операции<select name="categoryId"><option value="">Без группы</option>${categories.filter(category => !category.archived || category.id === selected).map(category => `<option value="${e(category.id)}" ${selected === category.id ? 'selected' : ''}>${e(category.name)}${category.archived ? ' · архив' : ''}</option>`).join('')}</select></label><div class="finance-category-help"><p class="finance-caption">Группы создаются и изменяются в общих настройках финансов.</p><button type="button" class="text-button" data-finance-refresh-categories>Обновить группы</button></div><div class="finance-link-picker"><label>${isTeam() ? 'Связать с карточкой или целью' : 'Связать с делом или целью'}<input type="search" name="financeLinkQuery" maxlength="120" autocomplete="off" placeholder="Название"></label><button type="button" class="secondary" data-finance-search-links>Найти</button></div><p class="finance-caption" data-finance-links-status role="status"></p><div class="finance-link-results" data-finance-link-results></div><div class="finance-selected-links" data-finance-selected-links></div><p class="form-error" data-finance-organization-error role="alert" hidden></p></div></details>`;
+  }
+  function bindOrganizationFields(view, getData, operation) {
+    const form = q('form', view.root), section = q('[data-finance-organization]', form);
+    if (!section) return { payload: () => ({}), setLocked() {} };
+    let links = (operation?.links || []).map(link => ({ ...link })), searchTurn = 0, locked = false, refreshing = false, lastPayload = null;
+    const status = q('[data-finance-links-status]', section), results = q('[data-finance-link-results]', section), selected = q('[data-finance-selected-links]', section), error = q('[data-finance-organization-error]', section);
+    const dirty = () => form.dispatchEvent(new Event('input', { bubbles: true }));
+    const isBusy = () => locked || !view.alive() || dialog()?.dataset.settingsSaving === 'true';
+    function renderSelected() {
+      selected.innerHTML = links.map((link, index) => `<div><span><strong>${e(relationLabel(link))}</strong><small>${link.available === false ? 'Прежняя связь сохранена без раскрытия записи' : e(relationKind(link))}</small></span><button type="button" class="icon-button" data-finance-remove-link="${index}" aria-label="Убрать связь ${e(relationLabel(link))}" ${locked ? 'disabled' : ''}>${icon('x')}</button></div>`).join('');
+      qa('[data-finance-remove-link]', selected).forEach(button => button.onclick = () => { if (isBusy()) return; links.splice(Number(button.dataset.financeRemoveLink), 1); renderSelected(); dirty(); });
+    }
+    const search = async () => {
+      if (isBusy()) return;
+      const turn = ++searchTurn, query = form.elements.financeLinkQuery.value.trim();
+      results.innerHTML = ''; status.textContent = 'Ищем доступные записи…'; error.hidden = true;
+      try {
+        const response = await request(view.ctx, `/link-targets?q=${encodeURIComponent(query)}&limit=30`);
+        if (!view.alive() || turn !== searchTurn || locked) return;
+        const items = response.items || [];
+        status.textContent = items.length ? response.hasMore ? 'Показаны первые 30 записей. Уточните название, если нужной нет.' : `Найдено: ${items.length}` : 'Подходящих доступных записей нет. Попробуйте другое название.';
+        results.innerHTML = items.map((link, index) => `<button type="button" data-finance-add-link="${index}"><span><strong>${e(link.title || 'Без названия')}</strong><small>${e(relationKind(link))}</small></span>${icon('plus')}</button>`).join('');
+        qa('[data-finance-add-link]', results).forEach(button => button.onclick = () => {
+          if (isBusy()) return;
+          const link = items[Number(button.dataset.financeAddLink)];
+          if (links.some(item => item.kind === link.kind && item.id === link.id)) { status.textContent = 'Эта связь уже добавлена.'; return; }
+          if (links.length >= 10) { status.textContent = 'Уже добавлено 10 связей. Уберите ненужную перед добавлением новой.'; return; }
+          links.push({ ...link, available: true }); renderSelected(); dirty(); button.disabled = true; status.textContent = `Связь добавлена. Всего: ${links.length} из 10.`;
+        });
+      } catch (cause) { if (view.alive() && turn === searchTurn && !locked) { status.textContent = ''; error.textContent = cause.message || 'Поиск не завершился. Выбранные связи сохранены.'; error.hidden = false; } }
+    };
+    q('[data-finance-search-links]', section).onclick = search;
+    form.elements.financeLinkQuery.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); void search(); } });
+    q('[data-finance-refresh-categories]', section).onclick = async event => {
+      if (isBusy() || refreshing) return;
+      refreshing = true; const button = event.currentTarget; button.disabled = true; error.hidden = true;
+      try {
+        const updated = await load({ force: true }); if (!view.alive()) return;
+        if (!updated) throw new Error(cached?.error || 'Группы не загрузились.');
+        const previous = form.elements.categoryId, value = previous.value, categories = financeCategoryOptions(updated);
+        const replacement = document.createElement('select'); replacement.name = 'categoryId';
+        replacement.innerHTML = `<option value="">Без группы</option>${value && !categories.some(category => category.id === value) ? `<option value="${e(value)}" selected>Выбранная группа недоступна — выберите другую</option>` : ''}${categories.filter(category => !category.archived || category.id === value).map(category => `<option value="${e(category.id)}" ${category.id === value ? 'selected' : ''}>${e(category.name)}${category.archived ? ' · архив' : ''}</option>`).join('')}`;
+        const shell = previous.closest('.custom-select'); if (shell) shell.replaceWith(replacement); else previous.replaceWith(replacement);
+        enhanceSelects?.(section); status.textContent = 'Группы обновлены. Сумма, текст и выбранные связи сохранены.';
+      } catch (cause) { if (view.alive()) { error.textContent = cause.message; error.hidden = false; } }
+      finally { refreshing = false; if (view.alive()) button.disabled = locked; }
+    };
+    renderSelected();
+    return {
+      payload: () => locked && lastPayload ? lastPayload : (lastPayload = financeOrganizationPayload(form.elements.categoryId.value, links, current()?.categories || getData()?.categories || [], operation)),
+      setLocked(value) { locked = value; if (locked) { searchTurn += 1; results.innerHTML = ''; status.textContent = 'Сохранение ещё не подтверждено. Группа и связи сохранятся при повторе прежнего запроса.'; } qa('button', section).forEach(button => button.disabled = locked); renderSelected(); },
+    };
+  }
   function bindForm(view, save, after, onFailure = null) {
     const form = q('form', view.root); if (!form) return;
     bindComposerForm?.(form); let busy = false;
@@ -401,35 +519,38 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
     let expense = supplied || current()?.expenses?.find(item => item.id === id);
     if (!expense) { try { expense = await request(ctx, `/expenses/${id}`); } catch (error) { if (same(ctx)) toast(error.message, true); return; } }
     if (!same(ctx) || turn !== dialogTurn) return;
-    const view = await replaceDialog(expense.voided ? 'Отменённый расход' : 'Расход', `<div class="finance-expense-detail"><strong class="finance-expense-total">−${e(financeMoney(expense.amountMinor))}</strong><dl><div><dt>Со счёта</dt><dd>${e(expense.bucketName)}</dd></div><div><dt>Дата</dt><dd>${e(dateLabel(expense.date))}</dd></div>${expense.payee ? `<div><dt>Кому</dt><dd>${e(expense.payee)}</dd></div>` : ''}${expense.note ? `<div><dt>Пометка</dt><dd>${e(expense.note)}</dd></div>` : ''}</dl><p class="finance-caption">${expense.voided ? 'Этот расход не уменьшает остаток. Запись можно восстановить.' : 'Сумма вычтена из остатка этого счёта. Распределение доходов сохранено.'}</p></div>${canWrite() ? `<footer class="form-actions">${!expense.voided ? '<button type="button" class="secondary" data-finance-expense-edit>Изменить расход</button>' : ''}<button type="button" class="${expense.voided ? 'secondary' : 'danger-text'}" data-finance-expense-void>${expense.voided ? 'Восстановить расход' : 'Отменить расход'}</button></footer>` : ''}`);
+    const view = await replaceDialog(expense.voided ? 'Отменённый расход' : 'Расход', `<div class="finance-expense-detail"><strong class="finance-expense-total">−${e(financeMoney(expense.amountMinor))}</strong><dl><div><dt>Со счёта</dt><dd>${e(expense.bucketName)}</dd></div><div><dt>Дата</dt><dd>${e(dateLabel(expense.date))}</dd></div>${expense.payee ? `<div><dt>Кому</dt><dd>${e(expense.payee)}</dd></div>` : ''}${expense.note ? `<div><dt>Пометка</dt><dd>${e(expense.note)}</dd></div>` : ''}</dl><p class="finance-caption">${expense.voided ? 'Этот расход не уменьшает остаток. Запись можно восстановить.' : 'Сумма вычтена из остатка этого счёта. Распределение доходов сохранено.'}</p></div>${organizationDetails(expense)}${canWrite() ? `<footer class="form-actions">${!expense.voided ? '<button type="button" class="secondary" data-finance-expense-edit>Изменить расход</button>' : ''}<button type="button" class="${expense.voided ? 'secondary' : 'danger-text'}" data-finance-expense-void>${expense.voided ? 'Восстановить расход' : 'Отменить расход'}</button></footer>` : ''}`);
     if (!view) return;
+    bindOrganizationDetails(view, expense);
     q('[data-finance-expense-edit]', view.root)?.addEventListener('click', () => openExpenseForm(expense));
     q('[data-finance-expense-void]', view.root)?.addEventListener('click', () => openExpenseVoid(expense));
   }
 
-  async function openExpenseForm(expense = null, initialBucketId = '') {
+  async function openExpenseForm(expense = null, initialBucketId = '', guard = () => true) {
+    if (!guard()) return;
     const ctx = context(), turn = dialogTurn; let data = await ensureData();
-    if (!same(ctx) || turn !== dialogTurn || !data) return;
+    if (!same(ctx) || turn !== dialogTurn || !data || !guard()) return;
     if (!canWrite(data)) return;
     const buckets = data.buckets.filter(bucket => !bucket.archived || bucket.id === expense?.bucketId);
     if (!buckets.length) return openSettings();
     const initial = buckets.find(bucket => bucket.id === (expense?.bucketId || initialBucketId)) || buckets[0], draft = createFinanceRequestDraft();
     const bucketOptions = selected => `${selected && !data.buckets.some(bucket => bucket.id === selected) ? '<option value="" selected disabled>Счёт недоступен — выберите другой</option>' : ''}${data.buckets.filter(bucket => !bucket.archived || bucket.id === expense?.bucketId || bucket.id === selected).map(bucket => `<option value="${e(bucket.id)}" ${bucket.id === selected ? 'selected' : ''}>${e(bucket.name)}${bucket.archived ? ' · архив' : ''}</option>`).join('')}`;
-    const view = await replaceDialog(expense ? 'Изменить расход' : 'Добавить расход', `<form class="finance-form finance-expense-form"><label>Со счёта<select name="bucketId">${bucketOptions(initial.id)}</select></label><div class="form-grid two">${moneyField('amount', 'Сумма, ₽', expense ? moneyInput(expense.amountMinor) : '')}<label>Дата<input type="date" name="date" required min="1900-01-01" max="9998-12-31" value="${e(expense?.date || localDate())}"></label></div><p class="finance-caption" data-finance-expense-balance></p><label>На что потрачено<textarea name="note" rows="2" maxlength="2000" placeholder="${isTeam() ? 'Например, разработка логотипа или аренда' : 'Например, заправка или десятина за неделю'}">${e(expense?.note || '')}</textarea></label><details class="finance-expense-extra" ${expense?.payee ? 'open' : ''}><summary>Получатель</summary><label>Кому<input name="payee" maxlength="120" value="${e(expense?.payee || '')}" placeholder="Необязательно. Человек или организация"></label></details>${formError}${submitRow(expense ? 'Сохранить изменения' : 'Записать расход')}</form>`, expense ? () => openExpense(expense.id, expense) : null);
+    const view = await replaceDialog(expense ? 'Изменить расход' : 'Добавить расход', `<form class="finance-form finance-expense-form"><label>Со счёта<select name="bucketId">${bucketOptions(initial.id)}</select></label><div class="form-grid two">${moneyField('amount', 'Сумма, ₽', expense ? moneyInput(expense.amountMinor) : '')}<label>Дата<input type="date" name="date" required min="1900-01-01" max="9998-12-31" value="${e(expense?.date || localDate())}"></label></div><p class="finance-caption" data-finance-expense-balance></p><label>На что потрачено<textarea name="note" rows="2" maxlength="2000" placeholder="${isTeam() ? 'Например, разработка логотипа или аренда' : 'Например, заправка или десятина за неделю'}">${e(expense?.note || '')}</textarea></label><details class="finance-expense-extra" ${expense?.payee ? 'open' : ''}><summary>Получатель</summary><label>Кому<input name="payee" maxlength="120" value="${e(expense?.payee || '')}" placeholder="Необязательно. Человек или организация"></label></details>${organizationFields(expense, data)}${formError}${submitRow(expense ? 'Сохранить изменения' : 'Записать расход')}</form>`, expense ? () => openExpense(expense.id, expense) : null, guard);
     if (!view) return;
-    const form = q('form', view.root);
+    const form = q('form', view.root), organization = bindOrganizationFields(view, () => data, expense);
     const showBalance = () => {
       const bucket = financeAccountBalances(data).find(item => item.id === form.elements.bucketId.value);
       q('[data-finance-expense-balance]', form).textContent = bucket ? `На конец ${dateLabel(data.balanceThrough || range().to)} на счёте записано ${financeMoney(bucket.balanceMinor)}. Расход уменьшит остаток; при нехватке он может стать отрицательным.` : '';
     };
     form.elements.bucketId.onchange = showBalance; showBalance();
     bindForm(view, (form, ctx) => {
-      const payload = financeExpensePayload({ bucketId: form.elements.bucketId.value, amount: form.elements.amount.value, date: form.elements.date.value, note: form.elements.note.value, payee: form.elements.payee.value }, data.buckets, expense);
+      const payload = { ...financeExpensePayload({ bucketId: form.elements.bucketId.value, amount: form.elements.amount.value, date: form.elements.date.value, note: form.elements.note.value, payee: form.elements.payee.value }, data.buckets, expense), ...organization.payload() };
       const send = body => request(ctx, `/expenses${expense ? `/${expense.id}` : ''}`, { method: expense ? 'PUT' : 'POST', body: JSON.stringify(body) });
       return expense ? send(payload) : draft.submit(payload, send);
-    }, async result => { period = 'month'; month = result.date.slice(0, 7); if (historyBucket && historyBucket !== result.bucketId) historyBucket = ''; await refreshThen(() => openExpense(result.id, result)); }, (failure, form, error) => {
+    }, async result => { period = 'month'; month = result.date.slice(0, 7); if (historyCategory && (historyCategory === '__none__' ? Boolean(result.categoryId) : historyCategory !== result.categoryId)) historyCategory = ''; if (historyBucket && historyBucket !== result.bucketId) historyBucket = ''; await refreshThen(() => openExpense(result.id, result)); }, (failure, form, error) => {
       qa('[data-finance-expense-recovery]', form).forEach(node => node.remove());
       const locked = !expense && draft.isUncertain();
+      organization.setLocked(locked);
       qa('input, textarea', form).forEach(input => { input.readOnly = locked; });
       qa('select, .custom-select-trigger', form).forEach(input => { input.disabled = locked; });
       if (!locked && failure.status && failure.status < 500 && failure.status !== 409) return;
@@ -483,16 +604,18 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
 
   async function openEntry(id, supplied = null) {
     const ctx = context(), turn = dialogTurn, data = await ensureData(), entry = supplied || data?.entries.find(item => item.id === id); if (!same(ctx) || turn !== dialogTurn || !entry) return;
-    const view = await replaceDialog(entry.voided ? 'Отменённый доход' : 'Разбор дохода', `<div class="finance-entry-meta"><strong>${e(entry.sourceName)}</strong><span>${e(dateLabel(entry.date))}${entry.payer ? ` · ${e(entry.payer)}` : ''}</span>${entry.note ? `<p>${e(entry.note)}</p>` : ''}</div><div class="finance-totals">${reportStat('Доход', entry.grossMinor)}${reportStat('Исполнителям', entry.workerMinor)}${reportStat('К распределению', entry.baseMinor)}</div>${entry.voided ? '<p class="finance-notice">Доход исключён из отчёта. Расчёт и отметки сохранены; его можно восстановить.</p>' : ''}<div class="finance-entry-parts">${entry.allocations.map(part => `<article><div class="section-heading"><h3>${e(part.bucketName)}</h3><span>${e(percent(part.basisPoints))}%</span></div><p class="muted">${e(data?.buckets.find(bucket => bucket.id === part.bucketId)?.destination || 'Назначение не указано')}</p><div class="finance-bucket-amounts">${reportStat('Распределено', part.amountMinor)}${reportStat('Переложено', part.paidMinor)}${reportStat('Не отмечено', amount(part.amountMinor) - amount(part.paidMinor))}</div>${canWrite() && !entry.voided ? `<div class="form-actions">${part.paidMinor < part.amountMinor ? `<button type="button" class="secondary" data-finance-transfer="${e(part.bucketId)}">Отметить перевод</button>` : '<span class="finance-settled">Вся сумма отмечена</span>'}${part.paidMinor > 0 ? `<button type="button" class="text-button" data-finance-correct="${e(part.bucketId)}">Исправить отметку</button>` : ''}</div>` : ''}</article>`).join('')}</div><p class="finance-caption">Отметка перевода учитывает перекладывание денег по своим счетам. Она не уменьшает остаток. Оплату покупки или передачу денег другому человеку записывайте расходом.</p>${canWrite() ? `<footer class="form-actions">${entry.voided ? '' : `<button type="button" class="secondary" data-finance-edit>${icon('edit')} Изменить доход</button>`}<button type="button" class="${entry.voided ? 'secondary' : 'danger-text'}" data-finance-void>${entry.voided ? 'Восстановить доход' : 'Отменить доход'}</button></footer>` : ''}`);
+    const view = await replaceDialog(entry.voided ? 'Отменённый доход' : 'Разбор дохода', `<div class="finance-entry-meta"><strong>${e(entry.sourceName)}</strong><span>${e(dateLabel(entry.date))}${entry.payer ? ` · ${e(entry.payer)}` : ''}</span>${entry.note ? `<p>${e(entry.note)}</p>` : ''}</div><div class="finance-totals">${reportStat('Доход', entry.grossMinor)}${reportStat('Исполнителям', entry.workerMinor)}${reportStat('К распределению', entry.baseMinor)}</div>${entry.voided ? '<p class="finance-notice">Доход исключён из отчёта. Расчёт и отметки сохранены; его можно восстановить.</p>' : ''}<div class="finance-entry-parts">${entry.allocations.map(part => `<article><div class="section-heading"><h3>${e(part.bucketName)}</h3><span>${e(percent(part.basisPoints))}%</span></div><p class="muted">${e(data?.buckets.find(bucket => bucket.id === part.bucketId)?.destination || 'Назначение не указано')}</p><div class="finance-bucket-amounts">${reportStat('Распределено', part.amountMinor)}${reportStat('Переложено', part.paidMinor)}${reportStat('Не отмечено', amount(part.amountMinor) - amount(part.paidMinor))}</div>${canWrite() && !entry.voided ? `<div class="form-actions">${part.paidMinor < part.amountMinor ? `<button type="button" class="secondary" data-finance-transfer="${e(part.bucketId)}">Отметить перевод</button>` : '<span class="finance-settled">Вся сумма отмечена</span>'}${part.paidMinor > 0 ? `<button type="button" class="text-button" data-finance-correct="${e(part.bucketId)}">Исправить отметку</button>` : ''}</div>` : ''}</article>`).join('')}</div><p class="finance-caption">Отметка перевода учитывает перекладывание денег по своим счетам. Она не уменьшает остаток. Оплату покупки или передачу денег другому человеку записывайте расходом.</p>${organizationDetails(entry)}${canWrite() ? `<footer class="form-actions">${entry.voided ? '' : `<button type="button" class="secondary" data-finance-edit>${icon('edit')} Изменить доход</button>`}<button type="button" class="${entry.voided ? 'secondary' : 'danger-text'}" data-finance-void>${entry.voided ? 'Восстановить доход' : 'Отменить доход'}</button></footer>` : ''}`);
     if (!view) return;
+    bindOrganizationDetails(view, entry);
     q('[data-finance-edit]', view.root)?.addEventListener('click', () => openEntryForm(entry));
     q('[data-finance-void]', view.root)?.addEventListener('click', () => openVoid(entry));
     qa('[data-finance-transfer]', view.root).forEach(button => button.onclick = () => openTransfer(entry, button.dataset.financeTransfer));
     qa('[data-finance-correct]', view.root).forEach(button => button.onclick = () => openTransfer(entry, button.dataset.financeCorrect, true));
   }
 
-  async function openEntryForm(entry = null) {
-    const ctx = context(), turn = dialogTurn; let data = await ensureData(); if (!same(ctx) || turn !== dialogTurn || !data) return;
+  async function openEntryForm(entry = null, guard = () => true) {
+    if (!guard()) return;
+    const ctx = context(), turn = dialogTurn; let data = await ensureData(); if (!same(ctx) || turn !== dialogTurn || !data || !guard()) return;
     if (!canWrite(data)) return;
     let sources = data.sources.filter(source => !source.archived || source.id === entry?.sourceId);
     if (!sources.length) return openSettings();
@@ -501,9 +624,9 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
     const payerOptions = selectedId => `<option value="" ${!selectedId ? 'selected' : ''}>Не указан</option>${counterparties.filter(payer => !payer.archived || payer.id === entry?.payerId || payer.id === selectedId).map(payer => `<option value="${e(payer.id)}" ${payer.id === selectedId ? 'selected' : ''}>${e(payerChoiceLabel(payer))}</option>`).join('')}<option value="__manual__" ${selectedId === '__manual__' ? 'selected' : ''}>Указать без справочника</option>`;
     const initialPayer = entry?.payerId || (entry?.payer ? '__manual__' : '');
     const payerFields = `<div class="finance-payer-choice"><label>От кого<select name="payerId">${payerOptions(initialPayer)}</select></label><p class="finance-caption" data-finance-payer-context></p><label data-finance-payer-manual ${initialPayer === '__manual__' ? '' : 'hidden'}>От кого, без справочника<input name="payer" maxlength="160" value="${e(entry?.payerId ? '' : entry?.payer || '')}" placeholder="Имя человека или название компании"><small>Текст сохранится в доходе. Автоматической связи со справочником не будет.</small></label><details class="finance-inline-payer" data-finance-inline-payer><summary>Новый отправитель</summary><div><label>Имя или название<input name="newPayerName" maxlength="160" autocomplete="off"></label><label>Заметка об отправителе<textarea name="newPayerNote" rows="2" maxlength="2000" placeholder="Необязательно. Общая заметка, а не описание этого дохода"></textarea></label><p class="form-error" role="alert" data-finance-inline-error hidden></p><div class="form-actions"><button type="button" class="secondary" data-finance-inline-save>Создать и выбрать</button><button type="button" class="text-button" data-finance-inline-cancel>Отмена</button><button type="button" class="text-button" data-finance-inline-refresh hidden>Обновить список отправителей</button></div></div></details></div>`;
-    const view = await replaceDialog(entry ? 'Изменить доход' : 'Добавить доход', `<form class="finance-form"><div class="form-grid two"><label>Источник<select name="sourceId">${sources.map(source => `<option value="${e(source.id)}" ${source.id === initialSource.id ? 'selected' : ''}>${e(source.name)}${source.archived ? ' · в архиве' : ''}</option>`).join('')}</select></label><label>Дата<input type="date" name="date" required min="1900-01-01" max="9998-12-31" value="${e(entry?.date || localDate())}"></label></div><div class="form-grid two">${moneyField('grossMinor', 'Доход, ₽', entry ? moneyInput(entry.grossMinor) : '')}<div data-finance-worker>${moneyField('workerMinor', 'Выплаты исполнителям, ₽', entry ? moneyInput(entry.workerMinor) : '0')}</div></div><p class="finance-base-preview" data-finance-base></p>${payerFields}<label>Пометка к доходу<textarea name="note" rows="3" maxlength="2000" placeholder="Например, за какую работу или период получены деньги">${e(entry?.note || '')}</textarea></label><div class="finance-rule-preview" data-finance-rules></div>${formError}${submitRow(entry ? 'Сохранить изменения' : 'Добавить доход')}</form>`, entry ? () => openEntry(entry.id, entry) : null);
+    const view = await replaceDialog(entry ? 'Изменить доход' : 'Добавить доход', `<form class="finance-form"><div class="form-grid two"><label>Источник<select name="sourceId">${sources.map(source => `<option value="${e(source.id)}" ${source.id === initialSource.id ? 'selected' : ''}>${e(source.name)}${source.archived ? ' · в архиве' : ''}</option>`).join('')}</select></label><label>Дата<input type="date" name="date" required min="1900-01-01" max="9998-12-31" value="${e(entry?.date || localDate())}"></label></div><div class="form-grid two">${moneyField('grossMinor', 'Доход, ₽', entry ? moneyInput(entry.grossMinor) : '')}<div data-finance-worker>${moneyField('workerMinor', 'Выплаты исполнителям, ₽', entry ? moneyInput(entry.workerMinor) : '0')}</div></div><p class="finance-base-preview" data-finance-base></p>${payerFields}<label>Пометка к доходу<textarea name="note" rows="3" maxlength="2000" placeholder="Например, за какую работу или период получены деньги">${e(entry?.note || '')}</textarea></label><div class="finance-rule-preview" data-finance-rules></div>${organizationFields(entry, data)}${formError}${submitRow(entry ? 'Сохранить изменения' : 'Добавить доход')}</form>`, entry ? () => openEntry(entry.id, entry) : null, guard);
     if (!view) return;
-    const form = q('form', view.root);
+    const form = q('form', view.root), organization = bindOrganizationFields(view, () => data, entry);
     const selected = () => sources.find(source => source.id === form.elements.sourceId.value);
     function rebuildSelect(name, markup, onchange) {
       let select = form.elements[name]; const wrapper = select.closest('.custom-select');
@@ -572,12 +695,13 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
       if (source.archived && source.id !== entry?.sourceId) throw new Error('Источник в архиве. Выберите действующий источник.');
       if (form.elements.newPayerName.value.trim() || form.elements.newPayerNote.value.trim()) throw new Error('Сначала создайте отправителя или отмените его добавление. Поля дохода остаются в форме.');
       const payerData = financeEntryPayerPayload(entry, form.elements.payerId.value, counterparties, form.elements.payer.value);
-      const payload = { sourceId: source.id, expectedSourceRevision: source.revision, date: validateFinanceDate(form.elements.date.value), ...payerData, note: form.elements.note.value.trim(), grossMinor, workerMinor, ...(entry ? { expectedRevision: entry.revision } : {}) };
+      const payload = { sourceId: source.id, expectedSourceRevision: source.revision, date: validateFinanceDate(form.elements.date.value), ...payerData, ...organization.payload(), note: form.elements.note.value.trim(), grossMinor, workerMinor, ...(entry ? { expectedRevision: entry.revision } : {}) };
       const send = body => request(ctx, `/entries${entry ? `/${entry.id}` : ''}`, { method: entry ? 'PUT' : 'POST', body: JSON.stringify(body) });
       return entry ? send(payload) : draft.submit(payload, send);
-    }, async result => { period = 'month'; month = result.date.slice(0, 7); if (payerFilter && financePayerKey(result) !== payerFilter) payerFilter = ''; await refreshThen(() => openEntry(result.id, result)); }, (failure, form, error) => {
+    }, async result => { period = 'month'; month = result.date.slice(0, 7); if (historyCategory && (historyCategory === '__none__' ? Boolean(result.categoryId) : historyCategory !== result.categoryId)) historyCategory = ''; if (payerFilter && financePayerKey(result) !== payerFilter) payerFilter = ''; await refreshThen(() => openEntry(result.id, result)); }, (failure, form, error) => {
       qa('[data-finance-recovery]', form).forEach(node => node.remove());
       const locked = !entry && draft.isUncertain();
+      organization.setLocked(locked);
       qa('input, textarea', form).forEach(input => { input.readOnly = locked; });
       qa('select', form).forEach(select => { select.disabled = locked; });
       qa('.custom-select-trigger', form).forEach(button => { button.disabled = locked; });
@@ -713,6 +837,7 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
     const data = loaded || { scope: settings.scope, buckets: [], sources: [], counterparties: [], entries: [] };
     const activeBuckets = data.buckets.filter(bucket => !bucket.archived), writable = canWrite(loaded);
     const view = await replaceDialog('Настройки финансов', `${isTeam() ? teamSourceSettings(settings, loaded) : ''}${writable ? `<p class="finance-caption">${isTeam() ? 'Счета, отправители и правила этой команды.' : 'Личные отправители, счета и правила источников.'} Изменения справочников действуют на новые доходы; прежние имена и расчёты сохраняются.</p>
+      <section class="finance-settings-section"><div class="section-heading"><div><h3>Группы операций</h3><p class="muted">Для чего получены или потрачены деньги</p></div><button type="button" class="secondary" data-finance-category-add>${icon('plus')} Группа</button></div><div class="finance-settings-list">${(data.categories || []).map(category => `<button type="button" data-finance-category="${e(category.id)}"><span><strong>${e(category.name)}</strong><small>${category.archived ? 'В архиве' : 'Для доходов и расходов'}</small></span>${icon('chevronRight')}</button>`).join('') || '<p class="finance-empty-note">Создавайте нужные вам группы. Например, развитие продукта, аренда или обучение. Назначение группы каждой операции необязательно.</p>'}</div></section>
       <section class="finance-settings-section"><div class="section-heading"><div><h3>Клиенты и другие отправители</h3><p class="muted">Люди и компании, от которых поступают деньги</p></div><button type="button" class="secondary" data-finance-payer-add>${icon('plus')} Отправитель</button></div><div class="finance-settings-list">${(data.counterparties || []).map(payer => `<button type="button" data-finance-payer="${e(payer.id)}"><span><strong>${e(payer.name)}</strong><small>${e(payer.note || 'Без заметки')}${payer.archived ? ' · В архиве' : ''}</small></span>${icon('chevronRight')}</button>`).join('') || '<p class="finance-empty-note">Сохраните имя человека или название компании и общую заметку. В каждом доходе можно будет выбрать отправителя и добавить отдельную пометку.</p>'}</div></section>
       <section class="finance-settings-section"><div class="section-heading"><div><h3>Счета</h3><p class="muted">На что откладывать и куда переводить</p></div><button type="button" class="secondary" data-finance-bucket-add>${icon('plus')} Счёт</button></div><div class="finance-settings-list">${data.buckets.map(bucket => `<button type="button" data-finance-bucket="${e(bucket.id)}"><span><strong>${e(bucket.name)}</strong><small>${e(bucket.destination || 'Назначение не указано')}${bucket.archived ? ' · В архиве' : ''}</small></span>${icon('chevronRight')}</button>`).join('') || '<p class="finance-empty-note">Добавьте первый счёт. Например, цель, накопления или текущие расходы — названия выбираете вы.</p>'}</div></section>
       <section class="finance-settings-section"><div class="section-heading"><div><h3>Источники дохода</h3><p class="muted">Как распределять поступления</p></div><button type="button" class="secondary" data-finance-source-add ${activeBuckets.length ? '' : 'disabled'}>${icon('plus')} Источник</button></div><div class="finance-settings-list">${data.sources.map(source => `<button type="button" data-finance-source="${e(source.id)}"><span><strong>${e(source.name)}</strong><small>${source.deductWorkers ? 'После выплат исполнителям' : 'От полной суммы'}${source.archived ? ' · В архиве' : ''}</small></span>${icon('chevronRight')}</button>`).join('') || `<p class="finance-empty-note">${activeBuckets.length ? 'Создайте источник и задайте доли. Их сумма должна составлять 100%.' : 'Сначала добавьте хотя бы один активный счёт.'}</p>`}</div></section>` : ''}`);
@@ -720,6 +845,8 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
     if (settings?.scope?.canConfigure) bindSourceSettings(view, settings);
     q('[data-finance-open-source]', view.root)?.addEventListener('click', event => openSourceWorkspace(event.currentTarget.dataset.financeOpenSource));
     if (!writable) return true;
+    q('[data-finance-category-add]', view.root).onclick = () => openCategoryForm();
+    qa('[data-finance-category]', view.root).forEach(button => button.onclick = () => openCategoryForm((data.categories || []).find(category => category.id === button.dataset.financeCategory)));
     q('[data-finance-payer-add]', view.root).onclick = () => openCounterpartyForm();
     qa('[data-finance-payer]', view.root).forEach(button => button.onclick = () => openCounterpartyForm((data.counterparties || []).find(payer => payer.id === button.dataset.financePayer)));
     q('[data-finance-bucket-add]', view.root).onclick = () => openBucketForm();
@@ -727,6 +854,51 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
     qa('[data-finance-bucket]', view.root).forEach(button => button.onclick = () => openBucketForm(data.buckets.find(bucket => bucket.id === button.dataset.financeBucket)));
     qa('[data-finance-source]', view.root).forEach(button => button.onclick = () => openSourceForm(data.sources.find(source => source.id === button.dataset.financeSource)));
     return true;
+  }
+
+  async function openCategoryForm(category = null) {
+    if (!canWrite()) return;
+    let uncertain = false;
+    const view = await replaceDialog(category ? 'Изменить группу' : 'Новая группа операций', `<form class="finance-form"><label>Название<input name="name" maxlength="120" required value="${e(category?.name || '')}" placeholder="Например, разработка логотипа"></label>${category ? `<label class="finance-checkbox"><input type="checkbox" name="archived" ${category.archived ? 'checked' : ''}> Убрать в архив</label>` : ''}<p class="finance-caption">Группу можно назначить доходу и расходу. Архивная группа останется у прежних операций и в статистике.</p>${formError}${submitRow(category ? 'Сохранить группу' : 'Создать группу')}</form>`, openSettings);
+    if (!view) return;
+    bindForm(view, (form, ctx) => {
+      if (uncertain) throw new Error('Сначала проверьте список групп: прежняя попытка могла уже сохраниться.');
+      const name = form.elements.name.value.trim();
+      if (!name || [...name].length > 120) throw new Error('Введите название группы до 120 символов.');
+      return request(ctx, `/categories${category ? `/${category.id}` : ''}`, { method: category ? 'PUT' : 'POST', body: JSON.stringify({ name, archived: Boolean(form.elements.archived?.checked), ...(category ? { expectedRevision: category.revision } : {}) }) }).catch(error => {
+        if (!category && (!error.status || error.status >= 500)) { uncertain = true; form.dataset.financeUncertainCreate = 'true'; }
+        throw error;
+      });
+    }, () => refreshThen(openSettings), (failure, form, error) => {
+      if (failure.status && failure.status < 500 && failure.status !== 409 || q('[data-finance-category-recovery]', form)) return;
+      const recovery = document.createElement('div'); recovery.className = 'finance-save-recovery'; recovery.dataset.financeCategoryRecovery = 'true';
+      const check = document.createElement('button'); check.type = 'button'; check.className = 'secondary'; check.textContent = category ? 'Показать текущую группу' : 'Проверить список групп';
+      check.onclick = async () => {
+        if (!view.alive() || dialog().dataset.settingsSaving === 'true') return;
+        check.disabled = true; dialog().dataset.settingsSaving = 'true';
+        try {
+          const data = await load({ force: true }); if (!view.alive()) return;
+          if (!data) throw new Error(cached?.error || 'Группы не загрузились.');
+          qa('[data-finance-category-current]', recovery).forEach(node => node.remove());
+          const actual = document.createElement('div'); actual.dataset.financeCategoryCurrent = 'true'; actual.className = 'finance-notice';
+          if (category) {
+            const latest = (data.categories || []).find(item => item.id === category.id);
+            if (!latest) throw new Error('Группа больше недоступна.');
+            actual.innerHTML = `<p><strong>${e(latest.name)}</strong>${latest.archived ? ' · В архиве' : ''}</p>`;
+            const accept = document.createElement('button'); accept.type = 'button'; accept.className = 'secondary'; accept.textContent = 'Продолжить с этой версией';
+            accept.onclick = () => { category = latest; accept.disabled = true; error.textContent = 'Введённое название сохранено. При сохранении оно заменит показанную версию.'; }; actual.append(accept);
+          } else {
+            actual.innerHTML = (data.categories || []).map(item => `<button type="button" class="text-button" data-finance-recovered-category="${e(item.id)}">${e(item.name)}${item.archived ? ' · В архиве' : ''}</button>`).join('') || '<p>Групп пока нет.</p>';
+            qa('[data-finance-recovered-category]', actual).forEach(button => button.onclick = () => openCategoryForm(data.categories.find(item => item.id === button.dataset.financeRecoveredCategory)));
+            const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'secondary'; retry.textContent = 'Проверено: создать новую группу';
+            retry.onclick = () => { uncertain = false; delete form.dataset.financeUncertainCreate; qa('[type="submit"]', form).forEach(button => button.disabled = false); retry.disabled = true; error.hidden = true; }; actual.append(retry);
+          }
+          recovery.append(actual);
+        } catch (cause) { if (view.alive()) { error.textContent = cause.message; error.hidden = false; } }
+        finally { if (view.alive()) { check.disabled = false; delete dialog().dataset.settingsSaving; } }
+      };
+      recovery.append(check); error.after(recovery);
+    });
   }
 
   async function openCounterpartyForm(payer = null) {
@@ -827,7 +999,38 @@ export function createPersonalFinanceUI({ state, api, escapeHTML, icon, openModa
     }, () => refreshThen(openSettings));
   }
 
-  function reset() { ownerSeen = null; month = localDate().slice(0, 7); period = 'month'; financeView = 'accounts'; historyKind = 'all'; historyBucket = ''; payerFilter = ''; invalidate(); dialogTurn += 1; if (dialog()?.dataset.financeController === controllerId) { delete dialog().dataset.settingsSaving; delete dialog().dataset.financeOwner; delete dialog().dataset.financeScope; delete dialog().dataset.financeController; } }
+  async function openAction(action, { expectedWorkspaceId, expectedSourceWorkspaceId, expectedSourceRevision, guard: expectedGuard = () => true } = {}) {
+    if (!['income', 'expense'].includes(action)) throw new Error('Выберите доход или расход.');
+    const activeWorkspace = expectedWorkspaceId ?? state.activeWorkspaceId;
+    if (state.activeWorkspaceId !== activeWorkspace || !expectedGuard()) return false;
+    const ctx = context(), turn = dialogTurn, data = await load({ force: true });
+    if (!same(ctx) || turn !== dialogTurn || state.activeWorkspaceId !== activeWorkspace || !expectedGuard()) return false;
+    if (!data) throw new Error(cached?.error || 'Финансы не загрузились.');
+    if (!canWrite(data)) throw new Error('Этот финансовый блок доступен только для просмотра.');
+    if (isTeam() && ((expectedSourceWorkspaceId !== undefined && expectedSourceWorkspaceId !== data.scope.sourceWorkspaceId) || (expectedSourceRevision !== undefined && expectedSourceRevision !== data.scope.revision))) throw new Error('Источник финансов изменился. Обновите блок перед добавлением операции.');
+    if (!(action === 'income' ? data.sources : data.buckets)?.some(item => !item.archived)) {
+      if (!onOpenSettings) throw new Error('Сначала добавьте счёт и источник дохода в общих настройках финансов.');
+      await onOpenSettings(); return same(ctx);
+    }
+    if (state.activeWorkspaceId !== activeWorkspace) return false;
+    const guard = () => same(ctx) && state.activeWorkspaceId === activeWorkspace && expectedGuard();
+    if (action === 'income') await openEntryForm(null, guard); else await openExpenseForm(null, '', guard);
+    return guard() && dialog()?.dataset.financeController === controllerId && Boolean(dialog()?.open);
+  }
+
+  function categoryFilter(data) {
+    const categories = financeCategoryOptions(data);
+    if (historyCategory && historyCategory !== '__none__' && !categories.some(category => category.id === historyCategory)) categories.push({ id: historyCategory, name: 'Выбранная группа', archived: true });
+    return `<label>Группа<select data-finance-history-category aria-label="Группа операций"><option value="">Все группы</option><option value="__none__" ${historyCategory === '__none__' ? 'selected' : ''}>Без группы</option>${categories.map(category => `<option value="${e(category.id)}" ${historyCategory === category.id ? 'selected' : ''}>${e(category.name)}${category.archived ? ' · архив' : ''}</option>`).join('')}</select></label>`;
+  }
+
+  function renderCategoryReport(data) {
+    const groups = financeCategorySummary(data);
+    if (!groups.length || !groups.some(group => group.id)) return '';
+    return `<details class="finance-category-report" data-finance-category-report><summary>Доходы и расходы по группам</summary><p class="finance-caption">За выбранный период. Доходы показаны до выплат исполнителям; отменённые записи исключены. Группы не меняют остатки счетов.</p><div>${groups.map(group => `<button type="button" data-finance-category-history="${e(group.id || '__none__')}"><span><strong>${e(group.name)}</strong><small>Операций: ${group.count}</small></span><span><small>Доходы</small><strong>+${e(financeMoney(group.incomeMinor))}</strong></span><span><small>Расходы</small><strong>−${e(financeMoney(group.expenseMinor))}</strong></span>${icon('chevronRight')}</button>`).join('')}</div></details>`;
+  }
+
+  function reset() { ownerSeen = null; month = localDate().slice(0, 7); period = 'month'; financeView = 'accounts'; historyKind = 'all'; historyBucket = ''; historyCategory = ''; payerFilter = ''; invalidate(); dialogTurn += 1; if (dialog()?.dataset.financeController === controllerId) { delete dialog().dataset.settingsSaving; delete dialog().dataset.financeOwner; delete dialog().dataset.financeScope; delete dialog().dataset.financeController; } }
   dialog()?.addEventListener('close', () => { if (dialog().dataset.financeController === controllerId) { delete dialog().dataset.financeOwner; delete dialog().dataset.settingsSaving; delete dialog().dataset.financeScope; delete dialog().dataset.financeController; dialog().dataset.composerDirty = 'false'; dialogTurn += 1; } });
-  return { render, bind, openSettings, reset, invalidate };
+  return { render, bind, openSettings, openAction, reset, invalidate };
 }

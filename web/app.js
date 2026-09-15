@@ -1,35 +1,35 @@
-import { selectMenuPosition, selectOptionScrollTop } from './select-positioning.js?v=20260915-team-finance-media-1';
-import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260915-team-finance-media-1';
-import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260915-team-finance-media-1';
-import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260915-team-finance-media-1';
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260915-team-finance-media-1';
-import { recordMediaMarkup, bindRecordMediaPreview } from './page-media.js?v=20260915-team-finance-media-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260915-team-finance-media-1';
-import { createSettingsHub } from './settings-hub.js?v=20260915-team-finance-media-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260915-team-finance-media-1';
-import { createPageAppUI } from './page-apps.js?v=20260915-team-finance-media-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260915-team-finance-media-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260915-team-finance-media-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260915-team-finance-media-1';
+import { selectMenuPosition, selectOptionScrollTop } from './select-positioning.js?v=20260915-finance-constructor-1';
+import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260915-finance-constructor-1';
+import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260915-finance-constructor-1';
+import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260915-finance-constructor-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260915-finance-constructor-1';
+import { recordMediaMarkup, bindRecordMediaPreview } from './page-media.js?v=20260915-finance-constructor-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260915-finance-constructor-1';
+import { createSettingsHub } from './settings-hub.js?v=20260915-finance-constructor-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260915-finance-constructor-1';
+import { createPageAppUI } from './page-apps.js?v=20260915-finance-constructor-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260915-finance-constructor-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260915-finance-constructor-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260915-finance-constructor-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260915-team-finance-media-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260915-finance-constructor-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260915-team-finance-media-1';
-import { createReminderSettingsUI } from './reminder-settings.js?v=20260915-team-finance-media-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260915-team-finance-media-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260915-team-finance-media-1';
-import { createFirstUseUI } from './first-use.js?v=20260915-team-finance-media-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260915-finance-constructor-1';
+import { createReminderSettingsUI } from './reminder-settings.js?v=20260915-finance-constructor-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260915-finance-constructor-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260915-finance-constructor-1';
+import { createFirstUseUI } from './first-use.js?v=20260915-finance-constructor-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260915-team-finance-media-1';
+import { createLifeMapUI } from './life-map.js?v=20260915-finance-constructor-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
-import { createNoteMediaUI } from './note-media.js?v=20260915-team-finance-media-1';
+import { createNoteMediaUI } from './note-media.js?v=20260915-finance-constructor-1';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260915-team-finance-media-1';
-import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260915-team-finance-media-1';
+import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260915-finance-constructor-1';
+import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260915-finance-constructor-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260915-team-finance-media-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260915-finance-constructor-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -1262,7 +1262,7 @@ offlineOutbox = createOutboxUI({
 
 let pageAppUI;
 async function bootstrap() {
-  pageAppUI=createPageAppUI({state,api,escapeHTML,icon,$,$$,openModal,requestDialogClose,toast,canConfigureWorkspace,reloadPages:async()=>{const workspace=state.activeWorkspaceId,headers={'X-Workspace-ID':workspace};const [pages,collections]=await Promise.all([api('/api/workspace/pages?includeArchived=true',{headers}),api('/api/collections',{headers})]);if(state.activeWorkspaceId!==workspace)return;state.workspacePages=pages;state.collections=collections;renderNav();},navigate:navigateToView,openRecordPageEditor:()=>openWorkspacePageEditor(),openRecord,createRecord:collection=>openCollectionCardDialog(collection),displayField:collectionFieldDisplay,dataDependencies:{loadPersonal,habitUI,openPlan:openPersonalPlanDetails,togglePlan:togglePersonalPlan,openRecurrence:plan=>personalCalendarUI.openRecurrence(plan.id,plan),openWork:(id,workspaceId)=>openPersonalReviewSource({sourceKind:'record',sourceId:id,workspaceId}),enhance:enhanceSelects},formDependencies:{fieldInput:collectionFieldInput,readCustomFields:customFieldsFromForm,enhance:enhanceSelects,bindMulti:bindCollectionMultiFields,priorityLabels,onCreated:renderNav}});
+  pageAppUI=createPageAppUI({state,api,escapeHTML,icon,$,$$,openModal,requestDialogClose,toast,canConfigureWorkspace,onFinanceAction:openPageFinanceAction,reloadPages:async()=>{const workspace=state.activeWorkspaceId,headers={'X-Workspace-ID':workspace};const [pages,collections]=await Promise.all([api('/api/workspace/pages?includeArchived=true',{headers}),api('/api/collections',{headers})]);if(state.activeWorkspaceId!==workspace)return;state.workspacePages=pages;state.collections=collections;renderNav();},navigate:navigateToView,openRecordPageEditor:()=>openWorkspacePageEditor(),openRecord,createRecord:collection=>openCollectionCardDialog(collection),displayField:collectionFieldDisplay,dataDependencies:{loadPersonal,habitUI,openPlan:openPersonalPlanDetails,togglePlan:togglePersonalPlan,openRecurrence:plan=>personalCalendarUI.openRecurrence(plan.id,plan),openWork:(id,workspaceId)=>openPersonalReviewSource({sourceKind:'record',sourceId:id,workspaceId}),enhance:enhanceSelects},formDependencies:{fieldInput:collectionFieldInput,readCustomFields:customFieldsFromForm,enhance:enhanceSelects,bindMulti:bindCollectionMultiFields,priorityLabels,onCreated:renderNav}});
   initializeOfflineOutbox();
   bindGlobalEvents();
   enhanceSelects(document);
@@ -2904,12 +2904,13 @@ function renderPlanRow(plan, links) {
 }
 
 const personalWaitingUI=createPersonalWaitingUI({state,api,navigate:navigateToView,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,renderPersonal,toast,openPlan:openPersonalPlanDetails});
-const personalFinanceUI=createPersonalFinanceUI({state,api,escapeHTML,icon,openModal,requestDialogClose,toast,enhanceSelects,bindComposerForm,renderPersonal,confirmDiscard:async()=> (await askChoice({eyebrow:'Финансы',title:'Несохранённая запись',label:'Вернуться без сохранения введённых изменений?',choices:[{value:'discard',label:'Вернуться без сохранения'}]}))==='discard'});
+const personalFinanceUI=createPersonalFinanceUI({state,api,escapeHTML,icon,openModal,requestDialogClose,toast,enhanceSelects,bindComposerForm,renderPersonal,onOpenRelated:openFinanceRelated,onOpenSettings:()=>openInterfaceSettings('personal'),confirmDiscard:async()=> (await askChoice({eyebrow:'Финансы',title:'Несохранённая запись',label:'Вернуться без сохранения введённых изменений?',choices:[{value:'discard',label:'Вернуться без сохранения'}]}))==='discard'});
 const teamFinanceUI = createPersonalFinanceUI({
   state, api, escapeHTML, icon, openModal, requestDialogClose, toast, enhanceSelects, bindComposerForm,
   getScope: () => ({kind: 'team', workspaceId: state.activeWorkspaceId, workspaceName: activeWorkspace()?.name || 'Команда'}),
   isVisible: () => state.view === 'finance' && activeWorkspace()?.kind !== 'personal',
   renderFinance: renderTeamFinance,
+  onOpenRelated: openFinanceRelated,
   onOpenSettings: () => openInterfaceSettings('workspace'),
   onOpenSource: async ({workspaceId}) => {
     if (!state.workspaces.some(item => item.id === workspaceId && item.kind !== 'personal')) throw new Error('Команда-источник недоступна. Обновите список команд.');
@@ -2921,6 +2922,54 @@ const teamFinanceUI = createPersonalFinanceUI({
   },
   confirmDiscard: async () => (await askChoice({eyebrow:'Финансы команды',title:'Несохранённая запись',label:'Вернуться без сохранения введённых изменений?',choices:[{value:'discard',label:'Вернуться без сохранения'}]})) === 'discard',
 });
+
+async function openPageFinanceAction({ action, workspaceId, ownerId, sourceWorkspaceId, sourceRevision, onChanged }) {
+  const owner = state.me?.id;
+  const workspace = activeWorkspace();
+  if (!owner || String(ownerId) !== String(owner) || workspaceId !== state.activeWorkspaceId || !workspace) throw new Error('Пространство изменилось. Откройте блок ещё раз.');
+  const view = state.view, tab = state.personalTab, epoch = state.projectContextEpoch, routeRequest = state.viewRestoreRequest;
+  const originalContext = () => owner === state.me?.id && workspaceId === state.activeWorkspaceId && view === state.view && tab === state.personalTab && epoch === state.projectContextEpoch && routeRequest === state.viewRestoreRequest;
+  if (action === 'open') return navigateToView(workspace.kind === 'personal' ? 'personal:finance' : 'finance');
+  if (!['income', 'expense'].includes(action)) throw new Error('Это действие финансов недоступно.');
+  const controller = workspace.kind === 'personal' ? personalFinanceUI : teamFinanceUI;
+  const opened = await controller.openAction(action, { expectedWorkspaceId: workspaceId, expectedSourceWorkspaceId: sourceWorkspaceId, expectedSourceRevision: sourceRevision, guard: originalContext });
+  if (opened !== false && originalContext() && $('#workspace-dialog').open) {
+    $('#workspace-dialog').addEventListener('close', () => {
+      if (owner === state.me?.id && workspaceId === state.activeWorkspaceId) onChanged?.();
+    }, { once: true });
+  }
+  return opened;
+}
+
+async function openFinanceRelated({ kind, id, workspaceId }) {
+  const owner = state.me?.id;
+  if (!owner || !id || !['record', 'personal_goal', 'personal_plan'].includes(kind)) throw new Error('Связь недоступна.');
+  const sourceWorkspace = state.activeWorkspaceId, sourceView = state.view, sourceTab = state.personalTab, sourceEpoch = state.projectContextEpoch, sourceRequest = state.viewRestoreRequest;
+  const originalContext = () => owner === state.me?.id && sourceWorkspace === state.activeWorkspaceId && sourceView === state.view && sourceTab === state.personalTab && sourceEpoch === state.projectContextEpoch && sourceRequest === state.viewRestoreRequest;
+  try { return await leaveSettingsFor(async () => {
+    if (!originalContext()) return false;
+    if (kind === 'record') {
+      if (!workspaceId || !state.workspaces.some(item => item.id === workspaceId && item.kind !== 'personal')) throw new Error('Команда связанной карточки недоступна.');
+      const routeRequest = state.viewRestoreRequest;
+      if (workspaceId !== state.activeWorkspaceId && !await switchWorkspace(workspaceId, {restoring:true})) return false;
+      if (owner !== state.me?.id || workspaceId !== state.activeWorkspaceId || routeRequest !== state.viewRestoreRequest) return false;
+      return openRecord(id);
+    }
+    if (!await navigateToView(kind === 'personal_goal' ? 'personal:goals' : 'personal:plans')) return false;
+    if (owner !== state.me?.id) return false;
+    const targetWorkspace = state.activeWorkspaceId, targetView = state.view, targetTab = state.personalTab, targetEpoch = state.projectContextEpoch, targetRequest = state.viewRestoreRequest;
+    await loadPersonal({force:true});
+    if (owner !== state.me?.id || targetWorkspace !== state.activeWorkspaceId || targetView !== state.view || targetTab !== state.personalTab || targetEpoch !== state.projectContextEpoch || targetRequest !== state.viewRestoreRequest || state.personalError) return false;
+    const type = kind === 'personal_goal' ? 'goal' : 'plan';
+    const items = type === 'goal' ? state.personal?.goals : state.personal?.plans;
+    if (!items?.some(item => item.id === id)) throw new Error('Связанный объект больше недоступен.');
+    return openPersonalEditor(type, id);
+  }, {closeAll:true}); }
+  catch (error) {
+    if (owner === state.me?.id) toast(error.message || 'Не удалось открыть связанную запись.', true);
+    return false;
+  }
+}
 
 function renderTeamFinance() {
   if (state.view !== 'finance' || activeWorkspace()?.kind === 'personal') return;

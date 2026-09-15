@@ -180,6 +180,8 @@ func TestWorkspaceFinanceAllWritesRespectScopeRoleAndStaleForms(t *testing.T) {
 	workspaceFinanceMember(t, owner, server.URL, a, "finance_editor", "member")
 	var counterparty financeCounterparty
 	workspaceFinanceRequest(t, owner, "POST", server.URL, "/counterparties", a.ID, a.ID, "0", map[string]any{"name": "Командный заказчик"}, 201, &counterparty)
+	var category financeCategory
+	workspaceFinanceRequest(t, owner, "POST", server.URL, "/categories", a.ID, a.ID, "0", map[string]any{"name": "Командная группа"}, 201, &category)
 	entryInput := financeInput(source.ID, 26000, 0)
 	entryInput.ClientRequestID = ""
 	entryInput.ExpectedRevision = 1
@@ -196,6 +198,8 @@ func TestWorkspaceFinanceAllWritesRespectScopeRoleAndStaleForms(t *testing.T) {
 		{"PUT", "/sources/" + source.ID, map[string]any{"name": "Change", "allocations": source.Allocations, "expectedRevision": 1}},
 		{"POST", "/counterparties", map[string]any{"name": "New"}},
 		{"PUT", "/counterparties/" + counterparty.ID, map[string]any{"name": "Change", "expectedRevision": 1}},
+		{"POST", "/categories", map[string]any{"name": "New"}},
+		{"PUT", "/categories/" + category.ID, map[string]any{"name": "Change", "expectedRevision": 1}},
 		{"POST", "/entries", financeInput(source.ID, 200, 0)},
 		{"PUT", "/entries/" + entry.ID, entryInput},
 		{"PATCH", "/entries/" + entry.ID + "/transfers", map[string]any{"bucketId": bucket.ID, "paidMinor": 10, "expectedRevision": 1}},
@@ -211,6 +215,7 @@ func TestWorkspaceFinanceAllWritesRespectScopeRoleAndStaleForms(t *testing.T) {
 		workspaceFinanceRequest(t, owner, write.method, server.URL, write.path, a.ID, a.ID, "99", write.input, 409, nil)
 	}
 	workspaceFinanceRequest(t, owner, "GET", server.URL, "/expenses/"+expense.ID, a.ID, a.ID, "99", nil, 409, nil)
+	workspaceFinanceRequest(t, owner, "GET", server.URL, "/link-targets", a.ID, a.ID, "99", nil, 409, nil)
 	workspaceFinanceRequest(t, owner, "GET", server.URL, "/expenses/"+expense.ID, b.ID, "", "", nil, 404, nil)
 	workspaceFinanceRequest(t, owner, "PUT", server.URL, "/settings", b.ID, "", "", map[string]any{"sourceWorkspaceId": a.ID, "expectedRevision": 0}, 200, nil)
 	for _, write := range writes {
@@ -229,6 +234,7 @@ func TestWorkspaceFinanceAllWritesRespectScopeRoleAndStaleForms(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspaceFinanceRequest(t, member, "GET", server.URL, "", a.ID, "", "", nil, 403, nil)
+	workspaceFinanceRequest(t, member, "GET", server.URL, "/link-targets", a.ID, a.ID, "0", nil, 403, nil)
 }
 
 func TestWorkspaceFinanceCrossScopeReferencesAndLedgerIdempotency(t *testing.T) {
@@ -418,6 +424,15 @@ func TestWorkspaceFinanceMigration073PreservesEveryExistingTable(t *testing.T) {
 		if err := db.QueryRow(`SELECT COUNT(*) FROM workspace_finance_` + suffix).Scan(&count); err != nil || count != 0 {
 			t.Fatalf("seeded %s %d %v", suffix, count, err)
 		}
+	}
+	// The preservation assertions above isolate migration 073. HTTP handlers
+	// below use the current application, so bring the fixture to its full schema
+	// before checking that the historical request receipt still replays.
+	if _, err := db.Exec(`INSERT INTO schema_migrations(version,applied_at) VALUES('073_workspace_finance.sql',?)`, nowText()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.migrate(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 	var repeated financeEntry
 	requestJSON(t, client, "POST", server.URL+"/api/personal/finance/entries", financeInput(source.ID, 10000, 0), 200, &repeated)

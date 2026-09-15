@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -367,7 +368,7 @@ func TestPersonalFinanceExpenseReadAcrossPeriodForConflictRecovery(t *testing.T)
 	}
 	var fresh financeExpense
 	requestJSON(t, client, "GET", path, nil, 200, &fresh)
-	if fresh != expense || fresh.Date != "2026-10-01" {
+	if !reflect.DeepEqual(fresh, expense) || fresh.Date != "2026-10-01" {
 		t.Fatal("read lost latest revision outside current period")
 	}
 }

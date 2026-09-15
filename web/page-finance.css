@@ -1,0 +1,29 @@
+.page-finance-block { min-width:0;display:grid;gap:20px; }
+.page-finance-context { display:flex;align-items:center;justify-content:space-between;gap:12px; }
+.page-finance-scope,.page-finance-period { margin:0;color:var(--muted);font-size:.8125rem;line-height:1.5; }
+.page-finance-total { display:grid;gap:6px; }
+.page-finance-total>strong { font-size:1.75em;line-height:1.2;overflow-wrap:anywhere; }
+.page-finance-total>small { color:var(--muted); }
+.page-finance-block h3 { margin:0 0 10px;font-size:1em; }
+.page-finance-accounts { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:10px; }
+.page-finance-accounts>article { min-width:0;display:grid;gap:8px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface); }
+.page-finance-accounts>article>span,.page-finance-accounts>article>strong { overflow-wrap:anywhere; }
+.page-finance-accounts>article>strong { font-size:1.2em; }
+.page-finance-accounts .is-negative { color:var(--red); }
+.page-finance-compact .page-finance-accounts { grid-template-columns:1fr;gap:0; }
+.page-finance-compact .page-finance-accounts>article { grid-template-columns:minmax(0,1fr) auto;padding:12px 0;border-width:0 0 1px;border-radius:0;background:none; }
+.page-finance-recent>article { display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line); }
+.page-finance-recent>article>div { display:grid;gap:5px;min-width:0; }
+.page-finance-recent strong,.page-finance-recent small { overflow-wrap:anywhere; }
+.page-finance-recent small { color:var(--muted);font-size:.8125rem;line-height:1.4;white-space:pre-wrap;max-height:3.5em;overflow:hidden; }
+.page-finance-operation-value { flex:none;text-align:right;max-width:48%; }
+.page-finance-actions { display:flex;flex-wrap:wrap;align-items:center;gap:8px; }
+.page-finance-config { display:grid;gap:10px; }
+.page-finance-labels>label { margin-top:12px; }
+@media(max-width:480px) {
+ .page-finance-block { gap:16px; }
+ .page-finance-actions>.secondary { width:100%; }
+ .page-finance-accounts { grid-template-columns:1fr; }
+ .page-finance-compact .page-finance-accounts>article { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+ .page-finance-compact .page-finance-accounts>article>strong { text-align:right; }
+}

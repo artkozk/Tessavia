@@ -53,7 +53,7 @@ test('CSV has one row per income, zeroes missing buckets, and omits cancelled in
   assert.equal(rows.length, 3);
   const values = rows.slice(1).map(row => row.split(';').map(cell => cell.slice(1, -1)));
   assert.equal(values.reduce((sum, row) => sum + c.parseFinanceMinor(row[3]), 0), 10102);
-  assert.equal(values[0].length, 13); assert.equal(values[0][7], '40.01'); assert.equal(values[0][8], '10.01');
+  assert.equal(values[0].length, 15); assert.equal(values[0][7], '40.01'); assert.equal(values[0][8], '10.01');
   data.entries[1].allocations = [];
   assert.match(c.financeCSV(data).split('\r\n')[2], /"0\.00";"0\.00";"0\.00"/);
 });
@@ -256,7 +256,7 @@ function financeUIHarness({ team = false, expose = false } = {}) {
   const state = { me: { id: 'first-owner' }, activeWorkspaceId: 'private', view: 'personal', personalTab: 'finance' };
   const context = vm.createContext({ Date: Clock, document: { querySelector(selector) { return selector === '[data-personal-finance]' ? root : null; } } });
   let source = fs.readFileSync(path.join(__dirname, 'personal-finance.js'), 'utf8').replaceAll('export ', '');
-  if (expose) source = source.replace('return { render, bind, openSettings, reset, invalidate };', 'return { render, bind, openSettings, reset, invalidate, context, request, teamSourceSettings };');
+  if (expose) source = source.replace('return { render, bind, openSettings, openAction, reset, invalidate };', 'return { render, bind, openSettings, openAction, reset, invalidate, context, request, teamSourceSettings };');
   vm.runInContext(source, context);
   let ui;
   ui = context.createPersonalFinanceUI({ state, api(url, options) { return new Promise((resolve, reject) => calls.push({ url, options, resolve, reject })); }, escapeHTML: value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;'), icon: () => '', toast: () => {}, renderPersonal() { html.push(ui.render()); }, ...(team ? { getScope: () => ({ kind: 'team', workspaceId: state.activeWorkspaceId, workspaceName: 'Current team' }), isVisible: () => true, onOpenSource() {} } : {}) });
@@ -297,7 +297,7 @@ test('dirty finance back waits for one confirmation and ignores an answer after 
   const close = { focus() {} }, root = { isConnected: true, querySelector: selector => selector === '[data-finance-close]' ? close : null };
   const content = { innerHTML: 'UNCHANGED DRAFT', querySelector: () => root };
   const ctx = vm.createContext({ document: { querySelector: selector => selector === '#workspace-dialog' ? box : selector === '#workspace-dialog-content' ? content : null } });
-  const source = fs.readFileSync(path.join(__dirname, 'personal-finance.js'), 'utf8').replaceAll('export ', '').replace('return { render, bind, openSettings, reset, invalidate };', 'return { render, bind, openSettings, reset, invalidate, replaceDialog };');
+  const source = fs.readFileSync(path.join(__dirname, 'personal-finance.js'), 'utf8').replaceAll('export ', '').replace('return { render, bind, openSettings, openAction, reset, invalidate };', 'return { render, bind, openSettings, openAction, reset, invalidate, replaceDialog };');
   vm.runInContext(source, ctx);
   const ui = ctx.createPersonalFinanceUI({ state, api: () => {}, escapeHTML: value => value, icon: () => '', openModal: () => {}, requestDialogClose: () => {}, toast: () => {}, renderPersonal: () => {}, confirmDiscard: () => new Promise(resolve => confirmations.push(resolve)) });
   const first = ui.replaceDialog('Next', 'NEW');
@@ -309,6 +309,10 @@ test('dirty finance back waits for one confirmation and ignores an answer after 
   state.me = { id: 'owner' };
   const accepted = ui.replaceDialog('Next', 'NEW'); confirmations[2](true);
   const view = await accepted; assert.equal(view.alive(), true); assert.equal(box.dataset.composerDirty, 'false'); assert.ok(content.innerHTML.includes('NEW'));
+  let allowed = true; box.dataset.composerDirty = 'true'; const previousHTML = content.innerHTML;
+  const guarded = ui.replaceDialog('Action from old block', 'MUST NOT REPLACE', null, () => allowed);
+  allowed = false; confirmations[3](true);
+  assert.equal(await guarded, null); assert.equal(content.innerHTML, previousHTML); assert.equal(box.dataset.composerDirty, 'true');
 });
 
 test('income preview explains the selected worker rule and never subtracts hidden worker values', () => {
@@ -404,4 +408,112 @@ test('source settings keep a lost link selected, offer an explicit own-ledger re
   assert.doesNotMatch(html, /value="own" selected/);
   settings.scope.canConfigure = false;
   assert.doesNotMatch(h.ui.teamSourceSettings(settings, null), /<form|<select/);
+});
+
+test('category groups combine income and expenses by identity without counting allocations or cancelled rows twice', () => {
+  const data = fixture(); data.categories = [{ id: 'design', name: 'Renamed design', revision: 2 }, { id: 'archive', name: 'Archived group', archived: true }];
+  data.entries[0].categoryId = 'design'; data.entries[0].categoryName = 'Old label';
+  data.entries.push({ ...data.entries[0], id: 'void', voided: true });
+  data.expenses = [{ id: 'logo', categoryId: 'design', categoryName: 'Old label', date: '2026-09-03', amountMinor: 3500 }, { id: 'no-group', date: '2026-09-04', amountMinor: 200 }];
+  const groups = c.financeCategorySummary(data), design = groups.find(group => group.id === 'design'), ungrouped = groups.find(group => !group.id);
+  assert.equal(design.name, 'Renamed design'); assert.equal(design.count, 2); assert.equal(design.incomeMinor, 10001n); assert.equal(design.expenseMinor, 3500n);
+  assert.equal(ungrouped.count, 2); assert.equal(ungrouped.incomeMinor, 101n); assert.equal(ungrouped.expenseMinor, 200n);
+  assert.equal(data.entries[0].categoryName, 'Old label');
+});
+
+test('category history intersects account and income payer filters and keeps uncategorized records discoverable', () => {
+  const data = fixture(); data.entries[0].categoryId = 'project';
+  data.expenses = [{ id: 'one-cost', categoryId: 'project', bucketId: 'a', date: '2026-09-03', amountMinor: 1500 }, { id: 'other', bucketId: 'b', date: '2026-09-03', amountMinor: 50 }];
+  const rows = c.financeJournal(data, { categoryId: 'project', bucketId: 'a', payerKey: 'legacy:Client' });
+  assert.deepEqual(Array.from(rows, row => row.id), ['one-cost', 'one']); assert.equal(rows[1].journalAmountMinor, 4001n);
+  assert.deepEqual(Array.from(c.financeJournal(data, { categoryId: '__none__' }), row => row.id), ['other', 'two']);
+  assert.equal(c.financeJournal(data, { categoryId: 'missing' }).length, 0);
+});
+
+test('organization payload preserves old archived groups and unavailable links but rejects new archived selections and duplicate/unsafe references', () => {
+  const categories = [{ id: 'old', name: 'Old', revision: 4, archived: true }, { id: 'new', revision: 1 }], prior = { categoryId: 'old' };
+  const payload = c.financeOrganizationPayload('old', [{ kind: 'record', id: 'removed-card', available: false, title: 'Private title must not be sent' }], categories, prior);
+  assert.equal(payload.expectedCategoryRevision, 4); assert.deepEqual(JSON.parse(JSON.stringify(payload.links)), [{ kind: 'record', id: 'removed-card' }]);
+  assert.throws(() => c.financeOrganizationPayload('old', [], categories), /действующую группу/);
+  assert.throws(() => c.financeOrganizationPayload('missing', [], categories), /действующую группу/);
+  assert.equal(c.financeOrganizationPayload('', [], categories, prior).categoryId, '');
+  for (const links of [[{ kind: 'record', id: 'same' }, { kind: 'record', id: 'same' }], [{ kind: 'unknown', id: 'item' }], [{ kind: 'record', id: '../foreign' }], Array.from({ length: 11 }, (_, i) => ({ kind: 'record', id: 'r' + i }))]) assert.throws(() => c.financeOrganizationPayload('', links, []));
+  assert.equal(c.financeOrganizationPayload('', [{ kind: 'personal_goal', id: 'goal' }, { kind: 'personal_plan', id: 'plan' }], []).links.length, 2);
+});
+
+test('both financial CSV exports include group and permitted link titles while redacting inaccessible link text', () => {
+  const data = fixture(); data.entries[0].categoryName = '=malicious'; data.entries[0].links = [{ kind: 'record', id: 'visible', title: 'Visible goal', available: true }, { kind: 'record', id: 'private', title: 'FORBIDDEN SECRET', available: false }];
+  for (const csv of [c.financeCSV(data), c.financeLedgerCSV(c.financeJournal(data))]) {
+    assert.match(csv, /"Группа";"Связи"/); assert.ok(csv.includes('"\'=malicious"')); assert.ok(csv.includes('Visible goal · Недоступная связь')); assert.equal(csv.includes('FORBIDDEN SECRET'), false); assert.equal(csv.includes('private'), false);
+  }
+});
+
+test('archived personal links retain a visible title but do not offer an unsupported editor while team archives remain navigable', () => {
+  const ctx = vm.createContext({ document: { querySelector: () => null } });
+  const source = fs.readFileSync(path.join(__dirname, 'personal-finance.js'), 'utf8').replaceAll('export ', '').replace('return { render, bind, openSettings, openAction, reset, invalidate };', 'return { organizationDetails };');
+  vm.runInContext(source, ctx);
+  const ui = ctx.createPersonalFinanceUI({ state: { me: { id: 'owner' } }, escapeHTML: value => String(value).replaceAll('<', '&lt;'), icon: () => '', onOpenRelated() {} });
+  for (const kind of ['personal_goal', 'personal_plan']) {
+    const link = { kind, id: 'archived', archived: true, available: true, title: 'Allowed <title>' };
+    assert.equal(c.financeRelatedLinkCanOpen(link), false);
+    const html = ui.organizationDetails({ links: [link] });
+    assert.match(html, /Allowed &lt;title>/); assert.match(html, /В архиве/); assert.doesNotMatch(html, /<button|data-finance-related/);
+    assert.equal(c.financeRelatedLinkCanOpen({ ...link, archived: false }), true);
+  }
+  assert.equal(c.financeRelatedLinkCanOpen({ kind: 'record', archived: true, available: true }), true);
+  assert.equal(c.financeRelatedLinkCanOpen({ kind: 'record', available: false }), false);
+  assert.doesNotMatch(ui.organizationDetails({ links: [{ kind: 'record', available: false, title: 'PRIVATE TITLE' }] }), /PRIVATE TITLE/);
+});
+
+test('related navigation errors remain visible after finance closes but do not leak into another workspace', async () => {
+  const pending = [], notices = [], state = { me: { id: 'owner' }, activeWorkspaceId: 'team' }, button = { dataset: { financeRelated: '0' } };
+  const root = { querySelectorAll: () => [button] }, ctx = vm.createContext({ document: { querySelector: () => null } });
+  const source = fs.readFileSync(path.join(__dirname, 'personal-finance.js'), 'utf8').replaceAll('export ', '').replace('return { render, bind, openSettings, openAction, reset, invalidate };', 'return { bindOrganizationDetails, context };');
+  vm.runInContext(source, ctx);
+  const ui = ctx.createPersonalFinanceUI({ state, escapeHTML: String, icon: () => '', toast: message => notices.push(message), onOpenRelated: () => new Promise((resolve, reject) => pending.push(reject)) });
+  let alive = true;
+  const view = { root, ctx: ui.context(), alive: () => alive }, operation = { links: [{ kind: 'personal_plan', id: 'plan', available: true }] };
+  ui.bindOrganizationDetails(view, operation);
+  const first = button.onclick(); alive = false; pending[0](new Error('Запись больше недоступна.')); await first;
+  assert.deepEqual(notices, ['Запись больше недоступна.']);
+  alive = true; const switched = button.onclick(); alive = false; state.activeWorkspaceId = 'other'; pending[1](new Error('Hidden later error')); await switched;
+  assert.equal(notices.length, 1);
+});
+
+test('constructor finance action rechecks fresh source revision and readonly rights before opening an operation form', async () => {
+  for (const changed of [{ sourceWorkspaceId: 'other', linked: false, canWrite: true }, { revision: 3 }, { canWrite: false }]) {
+    const h = financeUIHarness({ team: true }); h.state.activeWorkspaceId = 'a';
+    const opening = h.ui.openAction('income', { expectedSourceWorkspaceId: 'a', expectedSourceRevision: 1 });
+    h.calls[0].resolve(teamFinance('a', { scope: changed }));
+    await assert.rejects(opening, /Источник финансов изменился|только для просмотра/);
+    assert.equal(h.calls.length, 1);
+  }
+});
+
+test('constructor action ignores a delayed response after workspace switch and rejects setup-free empty action explicitly', async () => {
+  const h = financeUIHarness({ team: true }); h.state.activeWorkspaceId = 'a';
+  const pending = h.ui.openAction('expense'); h.state.activeWorkspaceId = 'b'; h.calls[0].resolve(teamFinance('a'));
+  assert.equal(await pending, false);
+  const empty = h.ui.openAction('expense'); h.calls[1].resolve(teamFinance('b'));
+  await assert.rejects(empty, /общих настройках/);
+  await assert.rejects(h.ui.openAction('unknown'), /доход или расход/);
+  assert.equal(h.calls.length, 2);
+});
+
+test('constructor action workspace pin also protects personal forms and rejects already stale block clicks before loading', async () => {
+  const h = financeUIHarness(); h.state.activeWorkspaceId = 'personal-page';
+  assert.equal(await h.ui.openAction('income', { expectedWorkspaceId: 'old-page' }), false); assert.equal(h.calls.length, 0);
+  const pending = h.ui.openAction('income', { expectedWorkspaceId: 'personal-page' });
+  h.state.activeWorkspaceId = 'new-team'; h.calls[0].resolve({ buckets: [], sources: [], entries: [] });
+  assert.equal(await pending, false); assert.equal(h.calls.length, 1);
+});
+
+test('constructor action drops a late load when the originating page guard changes in the same workspace', async () => {
+  const h = financeUIHarness({team:true}); h.state.activeWorkspaceId = 'a'; let stillOnPage = true;
+  const opening = h.ui.openAction('expense', {expectedWorkspaceId:'a', guard:()=>stillOnPage});
+  assert.equal(h.calls.length,1); stillOnPage = false;
+  h.calls[0].resolve(teamFinance('a'));
+  assert.equal(await opening,false);
+  assert.equal(await h.ui.openAction('income', {expectedWorkspaceId:'a', guard:()=>false}),false);
+  assert.equal(h.calls.length,1);
 });

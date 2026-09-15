@@ -14,6 +14,7 @@ import (
 const personalFinanceMaxTotalMinor int64 = 9_007_199_254_740_991
 
 type financeExpense struct {
+	financeOrganization
 	ID          string `json:"id"`
 	BucketID    string `json:"bucketId"`
 	BucketName  string `json:"bucketName"`
@@ -28,6 +29,7 @@ type financeExpense struct {
 }
 
 type financeExpenseInput struct {
+	financeOrganizationInput
 	ClientRequestID        string `json:"clientRequestId,omitempty"`
 	BucketID               string `json:"bucketId"`
 	ExpectedBucketRevision int64  `json:"expectedBucketRevision,omitempty"`
@@ -57,7 +59,11 @@ func scanFinanceExpense(row financeScanner) (financeExpense, error) {
 }
 
 func readFinanceExpense(tx *financeTx, r *http.Request, id string) (financeExpense, error) {
-	return scanFinanceExpense(tx.QueryRowContext(r.Context(), `SELECT `+financeExpenseColumns+` FROM personal_finance_expenses WHERE owner_id=? AND id=?`, tx.owner, id))
+	value, err := scanFinanceExpense(tx.QueryRowContext(r.Context(), `SELECT `+financeExpenseColumns+` FROM personal_finance_expenses WHERE owner_id=? AND id=?`, tx.owner, id))
+	if err == nil {
+		value.financeOrganization, err = readFinanceOrganization(tx, r, "expense", id)
+	}
+	return value, err
 }
 
 func readFinanceExpenses(tx *financeTx, r *http.Request, from, to string) ([]financeExpense, error) {
@@ -285,8 +291,20 @@ func (s *Server) handleFinanceExpense(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, 0, err
 		}
+		var previousOrganization financeOrganization
+		if prior != nil {
+			previousOrganization = prior.financeOrganization
+		}
+		organization, err := prepareFinanceOrganization(tx, r, input.financeOrganizationInput, previousOrganization)
+		if err != nil {
+			return nil, 0, err
+		}
+		expense.financeOrganization = organization
 		if prior != nil {
 			err = updateFinanceExpense(tx, r, &expense, prior.Revision)
+			if err == nil {
+				err = saveFinanceOrganization(tx, r, "expense", expense.ID, input.financeOrganizationInput, organization)
+			}
 			return expense, 200, err
 		}
 		expense.ID, err = newID()
@@ -301,6 +319,9 @@ func (s *Server) handleFinanceExpense(w http.ResponseWriter, r *http.Request) {
 			return nil, 0, err
 		}
 		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_finance_expense_requests(owner_id,request_id,payload_hash,expense_id,created_at) VALUES(?,?,?,?,?)`, owner, input.ClientRequestID, fingerprint, expense.ID, expense.CreatedAt)
+		if err == nil {
+			err = saveFinanceOrganization(tx, r, "expense", expense.ID, input.financeOrganizationInput, organization)
+		}
 		return expense, 201, err
 	})
 }

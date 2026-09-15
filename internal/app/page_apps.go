@@ -16,6 +16,7 @@ type PageAppItem struct {
 	Label  string `json:"label"`
 }
 type PageAppBlock struct {
+	Finance        *PageFinanceConfig          `json:"finance,omitempty"`
 	Sheet          *PageSheetConfig            `json:"sheet,omitempty"`
 	RecordCard     *PageRecordCard             `json:"recordCard,omitempty"`
 	ParentID       string                      `json:"parentId,omitempty"`
@@ -77,10 +78,13 @@ func validatePageApp(d *PageAppDefinition) error {
 		if !pageAppID.MatchString(b.ID) || ids[b.ID] != "" {
 			return errors.New("У блоков должны быть разные постоянные ключи")
 		}
-		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" && b.Kind != "data" && b.Kind != "group" && b.Kind != "sheet" && b.Kind != "media" {
+		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" && b.Kind != "data" && b.Kind != "group" && b.Kind != "sheet" && b.Kind != "media" && b.Kind != "finance" {
 			return errors.New("Неизвестный тип блока")
 		}
 		if err := validatePageSheet(b); err != nil {
+			return err
+		}
+		if err := validatePageFinance(b); err != nil {
 			return err
 		}
 		if pageAppHasSource(*b) && (!pageAppID.MatchString(b.CollectionID) || len(b.Fields) > 40 || len([]rune(b.ActionLabel)) > 80) {

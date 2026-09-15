@@ -42,7 +42,7 @@ func validatePageElementStyles(b PageAppBlock) error {
 	for key, style := range b.ElementStyles {
 		valid := false
 		switch key {
-		case "title", "text", "item", "progressValue", "progressCount", "progressBar", "button", "row", "rowTitle", "rowSubtitle", "fieldLabel", "fieldValue", "createButton", "actionButton", "formLabel", "formControl", "formSubmit", "formResult", "sheetLabel", "sheetValue", "sheetUnit":
+		case "title", "text", "item", "progressValue", "progressCount", "progressBar", "button", "row", "rowTitle", "rowSubtitle", "fieldLabel", "fieldValue", "createButton", "actionButton", "formLabel", "formControl", "formSubmit", "formResult", "sheetLabel", "sheetValue", "sheetUnit", "financeLabel", "financeValue", "financeAccount", "financeButton":
 			valid = true
 		}
 		for _, prefix := range []string{"formLabel:", "formControl:"} {

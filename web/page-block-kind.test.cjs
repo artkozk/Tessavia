@@ -49,7 +49,7 @@ function harness(value = block()) {
     document: { createElement: element }, content: () => form,
     $: selector => selector === '.app-block-library' ? catalog : selector === '[data-builder-add]' ? buttons[0] : null,
     $$: (selector, root) => selector === '[data-builder-add]' && root === catalog ? buttons : [],
-    updateVisibility: () => false, updateDataConfig: () => false, updateActionProperty: () => false, updateFormProperty: () => false,
+    updateVisibility: () => false, updateDataConfig: () => false, updatePageFinanceConfig: () => false, updateActionProperty: () => false, updateFormProperty: () => false,
     persist: () => { saved++; }, draw: () => { painted++; }, refreshElementPreview: () => { previewed++; },
   });
   vm.runInContext(helper.replace(/^export /gm, ''), context);

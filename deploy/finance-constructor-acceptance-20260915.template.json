@@ -1,0 +1,24 @@
+{
+  "goTests": false,
+  "goVet": false,
+  "migrationPreserved": false,
+  "rollbackTrial": false,
+  "goTestCount": null,
+  "nodeTests": null,
+  "buildInputs": null,
+  "verifierTests": null,
+  "viewports": [],
+  "browserSummary": "",
+  "scenarios": {
+    "groupsCreateAssignFilterTotals": false,
+    "groupArchiveRestore": false,
+    "linksCreateReadRevoke": false,
+    "personalTeamIsolation": false,
+    "linkedBudgetReadOnly": false,
+    "constructorAddSaveReload": false,
+    "constructorMultipleBlocksAndActions": false,
+    "portableKitWithoutFinancialData": false,
+    "staleContextAndDraftRecovery": false
+  },
+  "physicalPhoneVerified": false
+}

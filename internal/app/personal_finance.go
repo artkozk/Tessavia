@@ -49,6 +49,7 @@ type financeAllocation struct {
 	PaidMinor   int64  `json:"paidMinor"`
 }
 type financeEntry struct {
+	financeOrganization
 	ID            string              `json:"id"`
 	SourceID      string              `json:"sourceId"`
 	SourceName    string              `json:"sourceName"`
@@ -67,6 +68,7 @@ type financeEntry struct {
 	UpdatedAt     string              `json:"updatedAt"`
 }
 type financeOverview struct {
+	Categories     []financeCategory      `json:"categories"`
 	Scope          *workspaceFinanceScope `json:"scope,omitempty"`
 	Currency       string                 `json:"currency"`
 	Buckets        []financeBucket        `json:"buckets"`
@@ -78,6 +80,7 @@ type financeOverview struct {
 	BalanceThrough string                 `json:"balanceThrough"`
 }
 type financeEntryInput struct {
+	financeOrganizationInput
 	ClientRequestID        string  `json:"clientRequestId,omitempty"`
 	SourceID               string  `json:"sourceId"`
 	ExpectedSourceRevision int64   `json:"expectedSourceRevision,omitempty"`
@@ -123,6 +126,7 @@ func (s *Server) registerPersonalFinanceRoutes() {
 		s.mux.Handle(pattern, s.requireAuth(handler))
 	}
 	s.registerWorkspaceFinanceRoutes()
+	s.registerFinanceOrganizationRoutes()
 }
 
 func financeWriteError(w http.ResponseWriter, err error) {
@@ -199,7 +203,11 @@ func scanFinanceEntry(row financeScanner) (financeEntry, error) {
 	return e, err
 }
 func readFinanceEntry(tx *financeTx, r *http.Request, id string) (financeEntry, error) {
-	return scanFinanceEntry(tx.QueryRowContext(r.Context(), `SELECT `+financeEntryColumns+` FROM personal_finance_entries WHERE owner_id=? AND id=?`, tx.owner, id))
+	value, err := scanFinanceEntry(tx.QueryRowContext(r.Context(), `SELECT `+financeEntryColumns+` FROM personal_finance_entries WHERE owner_id=? AND id=?`, tx.owner, id))
+	if err == nil {
+		value.financeOrganization, err = readFinanceOrganization(tx, r, "income", id)
+	}
+	return value, err
 }
 func readFinanceSource(tx *financeTx, r *http.Request, id string) (financeSource, error) {
 	var source financeSource
@@ -289,6 +297,13 @@ func (s *Server) handlePersonalFinance(w http.ResponseWriter, r *http.Request) {
 		}
 		result.Balances, err = readFinanceBalances(tx, r, result.Buckets, from, to)
 		if err != nil {
+			return nil, 0, err
+		}
+		result.Categories, err = readFinanceCategories(tx, r)
+		if err != nil {
+			return nil, 0, err
+		}
+		if err = hydrateFinanceOverview(tx, r, &result); err != nil {
 			return nil, 0, err
 		}
 		result.BalanceThrough = to
@@ -626,8 +641,20 @@ func (s *Server) handleFinanceEntry(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, 0, err
 		}
+		var previousOrganization financeOrganization
+		if prior != nil {
+			previousOrganization = prior.financeOrganization
+		}
+		organization, err := prepareFinanceOrganization(tx, r, input.financeOrganizationInput, previousOrganization)
+		if err != nil {
+			return nil, 0, err
+		}
+		entry.financeOrganization = organization
 		if prior != nil {
 			err = updateFinanceEntry(tx, r, &entry, prior.Revision)
+			if err == nil {
+				err = saveFinanceOrganization(tx, r, "income", entry.ID, input.financeOrganizationInput, organization)
+			}
 			return entry, 200, err
 		}
 		entry.ID, err = newID()
@@ -646,6 +673,9 @@ func (s *Server) handleFinanceEntry(w http.ResponseWriter, r *http.Request) {
 			return nil, 0, err
 		}
 		_, err = tx.ExecContext(r.Context(), `INSERT INTO personal_finance_requests(owner_id,request_id,payload_hash,entry_id,created_at) VALUES(?,?,?,?,?)`, owner, input.ClientRequestID, fingerprint, entry.ID, entry.CreatedAt)
+		if err == nil {
+			err = saveFinanceOrganization(tx, r, "income", entry.ID, input.financeOrganizationInput, organization)
+		}
 		return entry, 201, err
 	})
 }

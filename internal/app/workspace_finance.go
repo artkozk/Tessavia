@@ -12,6 +12,8 @@ import (
 // Only this constant mapping can choose finance tables. Neither SQL nor table
 // names are accepted from a client. Personal requests keep their original SQL.
 var workspaceFinanceSQL = strings.NewReplacer(
+	"personal_finance_categories", "workspace_finance_categories",
+	"personal_finance_organization", "workspace_finance_organization",
 	"personal_finance_expense_requests", "workspace_finance_expense_requests",
 	"personal_finance_counterparties", "workspace_finance_counterparties",
 	"personal_finance_requests", "workspace_finance_requests",

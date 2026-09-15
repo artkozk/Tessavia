@@ -1,4 +1,4 @@
-import { createNoteFileDraftStore, validateNoteFiles } from './note-media.js?v=20260915-team-finance-media-1';
+import { createNoteFileDraftStore, validateNoteFiles } from './note-media.js?v=20260915-finance-constructor-1';
 
 export function privateMediaKind(type) {
   if (['image/png','image/jpeg','image/gif','image/webp'].includes(type)) return 'image';
