@@ -30,11 +30,11 @@ SPEC.loader.exec_module(helpers)
 require = helpers.require
 PARENT_ID = '3d81cdb847c8fcfdb329639c22f3067a'
 TASKS = (
-    {'id': '9c0795b89d32595e73550dd3eca14fcd2',
+    {'id': '9c0795b89d32595e7350dd3eca14fcd2',
      'title': 'P1 · Варианты и история версий медиа в записях',
      'request': '[request:media-variants-20260915]',
      'result': '[release:media-variants-20260915]'},
-    {'id': '22bfe15d744ab5a9b92510f1a03fdede5',
+    {'id': '22bfe15d74ab5a9b92510f1a03fdede5',
      'title': 'P1 · Повторная проверка списков выбора и доставки обновления',
      'request': '[request:select-delivery-followup-20260915]',
      'result': '[release:select-delivery-followup-20260915]'},
