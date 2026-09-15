@@ -1,7 +1,6 @@
 package app
 
 import (
-	"database/sql"
 	"net/http"
 	"strings"
 )
@@ -14,9 +13,9 @@ type financeCounterparty struct {
 	Revision int64  `json:"revision"`
 }
 
-func readFinanceCounterparties(tx *sql.Tx, r *http.Request) ([]financeCounterparty, error) {
+func readFinanceCounterparties(tx *financeTx, r *http.Request) ([]financeCounterparty, error) {
 	result := []financeCounterparty{}
-	rows, err := tx.QueryContext(r.Context(), `SELECT id,name,note,archived,revision FROM personal_finance_counterparties WHERE owner_id=? ORDER BY name,id`, currentUser(r).ID)
+	rows, err := tx.QueryContext(r.Context(), `SELECT id,name,note,archived,revision FROM personal_finance_counterparties WHERE owner_id=? ORDER BY name,id`, tx.owner)
 	if err != nil {
 		return nil, err
 	}
@@ -31,9 +30,9 @@ func readFinanceCounterparties(tx *sql.Tx, r *http.Request) ([]financeCounterpar
 	return result, rows.Err()
 }
 
-func readFinanceCounterparty(tx *sql.Tx, r *http.Request, id string) (financeCounterparty, error) {
+func readFinanceCounterparty(tx *financeTx, r *http.Request, id string) (financeCounterparty, error) {
 	var item financeCounterparty
-	err := tx.QueryRowContext(r.Context(), `SELECT id,name,note,archived,revision FROM personal_finance_counterparties WHERE owner_id=? AND id=?`, currentUser(r).ID, id).Scan(&item.ID, &item.Name, &item.Note, &item.Archived, &item.Revision)
+	err := tx.QueryRowContext(r.Context(), `SELECT id,name,note,archived,revision FROM personal_finance_counterparties WHERE owner_id=? AND id=?`, tx.owner, id).Scan(&item.ID, &item.Name, &item.Note, &item.Archived, &item.Revision)
 	return item, err
 }
 
@@ -53,10 +52,10 @@ func (s *Server) handleFinanceCounterparty(w http.ResponseWriter, r *http.Reques
 		financeWriteError(w, financeInvalid("Укажите имя или название до 160 символов и пометку до 2000 символов"))
 		return
 	}
-	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
+	s.financeTransaction(w, r, func(tx *financeTx) (any, int, error) {
 		item := financeCounterparty{Name: input.Name, Note: input.Note, Archived: input.Archived, Revision: 1}
 		now := nowText()
-		owner := currentUser(r).ID
+		owner := tx.owner
 		if r.Method == http.MethodPost {
 			var err error
 			item.ID, err = newID()
@@ -87,7 +86,7 @@ func (s *Server) handleFinanceCounterparty(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-func financeResolvePayer(tx *sql.Tx, r *http.Request, input financeEntryInput, prior *financeEntry) (string, string, error) {
+func financeResolvePayer(tx *financeTx, r *http.Request, input financeEntryInput, prior *financeEntry) (string, string, error) {
 	payerID := ""
 	if input.PayerID != nil {
 		payerID = strings.TrimSpace(*input.PayerID)

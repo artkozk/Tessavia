@@ -23,7 +23,7 @@ function harness(){
  let reload=()=>Promise.resolve();
  const $=(selector,root)=>root?root.querySelector(selector):({'#workspace-dialog':box,'#workspace-dialog-content':host,'#main-content':main}[selector]||null);
  const context=vm.createContext({structuredClone,crypto:{randomUUID:()=> `00000000-0000-4000-8000-${String(++nextID).padStart(12,'0')}`},localStorage:{getItem(key){reads.push(key);return storage.get(key)||null;},setItem(key,value){storage.set(key,value);},removeItem(key){storage.delete(key);}},
-  createPageDataUI:()=>({mount(){}}),mountPageForms(){},applyElementStyles(){},migrateFormElementStyles(){},blockVisible:()=>true,blockOutline:def=>def.blocks.map(block=>({block,depth:0})),groupChoices:()=>[],elementStyleConfig:()=>'',visibilityConfig:()=>''});
+  createPageMediaUI:()=>({mount(){}}),createPageDataUI:()=>({mount(){}}),mountPageForms(){},applyElementStyles(){},migrateFormElementStyles(){},blockVisible:()=>true,blockOutline:def=>def.blocks.map(block=>({block,depth:0})),groupChoices:()=>[],elementStyleConfig:()=>'',visibilityConfig:()=>''});
  for(const file of ['page-sheets.js','page-components.js','page-block-kind.js','page-block-trash.js','page-apps.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),context);
  const createComponents=context.createPageComponentEditor;context.createPageComponentEditor=options=>{const editor=createComponents(options);components.push(editor);return editor;};
  context.createPageSheetUI=()=>({mount(){},reset(){}});

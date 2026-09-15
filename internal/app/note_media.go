@@ -450,7 +450,7 @@ func (s *Server) handleNoteAttachmentFile(w http.ResponseWriter, r *http.Request
 	}
 	disposition := "attachment"
 	contentType := "application/octet-stream"
-	if noteImageType(kind) && r.URL.Query().Get("download") != "1" {
+	if attachmentPreviewKind(kind) != "" && r.URL.Query().Get("download") != "1" {
 		disposition = "inline"
 		contentType = kind
 	}

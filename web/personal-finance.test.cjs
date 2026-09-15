@@ -243,7 +243,7 @@ test('expense uncertain retry keeps original account and exact amount; known buc
   assert.equal(result.clientRequestId, 'expense-stable-key'); assert.equal(result.expectedBucketRevision, 2);
 });
 
-function financeUIHarness() {
+function financeUIHarness({ team = false, expose = false } = {}) {
   const buttons = new Map(), calls = [], html = [];
   const makeButton = (dataset = {}) => ({ dataset, addEventListener(name, action) { this[name] = action; } });
   const periodButtons = ['today', 'week', 'month'].map(financePeriod => makeButton({ financePeriod }));
@@ -255,9 +255,11 @@ function financeUIHarness() {
   class Clock extends Date { constructor(...args) { super(...(args.length ? args : ['2026-09-14T12:00:00Z'])); } }
   const state = { me: { id: 'first-owner' }, activeWorkspaceId: 'private', view: 'personal', personalTab: 'finance' };
   const context = vm.createContext({ Date: Clock, document: { querySelector(selector) { return selector === '[data-personal-finance]' ? root : null; } } });
-  vm.runInContext(fs.readFileSync(path.join(__dirname, 'personal-finance.js'), 'utf8').replaceAll('export ', ''), context);
+  let source = fs.readFileSync(path.join(__dirname, 'personal-finance.js'), 'utf8').replaceAll('export ', '');
+  if (expose) source = source.replace('return { render, bind, openSettings, reset, invalidate };', 'return { render, bind, openSettings, reset, invalidate, context, request, teamSourceSettings };');
+  vm.runInContext(source, context);
   let ui;
-  ui = context.createPersonalFinanceUI({ state, api(url, options) { return new Promise((resolve, reject) => calls.push({ url, options, resolve, reject })); }, escapeHTML: value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;'), icon: () => '', toast: () => {}, renderPersonal() { html.push(ui.render()); } });
+  ui = context.createPersonalFinanceUI({ state, api(url, options) { return new Promise((resolve, reject) => calls.push({ url, options, resolve, reject })); }, escapeHTML: value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;'), icon: () => '', toast: () => {}, renderPersonal() { html.push(ui.render()); }, ...(team ? { getScope: () => ({ kind: 'team', workspaceId: state.activeWorkspaceId, workspaceName: 'Current team' }), isVisible: () => true, onOpenSource() {} } : {}) });
   return { state, ui, calls, html, buttons, periodButtons, viewButtons, tick: () => new Promise(resolve => setImmediate(resolve)) };
 }
 
@@ -315,4 +317,91 @@ test('income preview explains the selected worker rule and never subtracts hidde
   assert.equal(c.financeIncomeBasePreview('100', '500', false), 'К распределению: 100 ₽');
   assert.equal(c.financeIncomeBasePreview('100', '25,50', true), 'К распределению: 74,50 ₽');
   assert.equal(c.financeIncomeBasePreview('100', '101', true), 'Выплаты исполнителям не могут превышать доход.');
+});
+
+const teamFinance = (workspaceId, extras = {}) => ({ buckets: [], sources: [], counterparties: [], entries: [], expenses: [], balances: [], ...extras, scope: { kind: 'team', workspaceId, workspaceName: `Team ${workspaceId}`, sourceWorkspaceId: workspaceId, sourceWorkspaceName: `Team ${workspaceId}`, linked: false, canWrite: true, canConfigure: true, revision: 1, ...extras.scope } });
+
+test('team finance starts with its own empty ledger and never requests the personal endpoint', async () => {
+  const h = financeUIHarness({ team: true }); h.state.activeWorkspaceId = 'team-a'; h.ui.render(); h.ui.bind();
+  assert.match(h.calls[0].url, /^\/api\/workspace\/finance\?/);
+  assert.equal(h.calls[0].options.headers['X-Workspace-ID'], 'team-a');
+  h.calls[0].resolve(teamFinance('team-a')); await h.tick();
+  const html = h.ui.render();
+  assert.match(html, /Финансы команды/); assert.match(html, /Учёт.*пустого списка/);
+  assert.equal(/data-finance-account-history=/.test(html), false);
+  assert.equal(/Машина|Десятина|Папе/.test(html), false);
+  assert.equal(h.calls.some(call => call.url.includes('/personal/')), false);
+});
+
+test('changing teams immediately hides prior balances and discards a delayed previous-team reply', async () => {
+  const h = financeUIHarness({ team: true }); h.state.activeWorkspaceId = 'a'; h.ui.render(); h.ui.bind();
+  h.state.activeWorkspaceId = 'b'; h.ui.render(); h.ui.bind();
+  h.calls[1].resolve(teamFinance('b', { buckets: [{ id: 'b-only', name: 'B OWN ACCOUNT' }] })); await h.tick();
+  h.calls[0].resolve(teamFinance('a', { buckets: [{ id: 'a-only', name: 'A CONFIDENTIAL BALANCE' }] })); await h.tick();
+  assert.match(h.ui.render(), /B OWN ACCOUNT/); assert.doesNotMatch(h.ui.render(), /A CONFIDENTIAL/);
+  h.state.activeWorkspaceId = 'c';
+  assert.doesNotMatch(h.ui.render(), /B OWN ACCOUNT/);
+});
+
+test('a team response missing or mismatching the confirmed scope fails closed instead of showing personal rows', async () => {
+  for (const scope of [undefined, { kind: 'personal' }, { kind: 'team', workspaceId: 'other' }]) {
+    const h = financeUIHarness({ team: true }); h.state.activeWorkspaceId = 'team-a'; h.ui.render(); h.ui.bind();
+    h.calls[0].resolve({ ...teamFinance('team-a'), scope, buckets: [{ id: 'secret', name: 'DO NOT SHOW' }] }); await h.tick();
+    assert.doesNotMatch(h.ui.render(), /DO NOT SHOW/); assert.match(h.ui.render(), /Не удалось подтвердить команду/);
+  }
+});
+
+test('linked finance labels its source and retains reports/export but removes creation and account-spending actions', async () => {
+  const h = financeUIHarness({ team: true }); h.state.activeWorkspaceId = 'viewer'; h.ui.render(); h.ui.bind();
+  const data = fixture(); data.sources = [{ id: 's', name: 'Income' }];
+  h.calls[0].resolve(teamFinance('viewer', { ...data, scope: { sourceWorkspaceId: 'source', sourceWorkspaceName: '<Source & team>', linked: true, canWrite: false } })); await h.tick();
+  const html = h.ui.render();
+  assert.match(html, /Источник: &lt;Source &amp; team>/); assert.match(html, /только при собственном доступе/);
+  assert.match(html, /data-finance-open-source="source"/); assert.match(html, /data-finance-export/);
+  assert.doesNotMatch(html, /data-finance-add|data-finance-expense-add/);
+  h.viewButtons[1].onclick(); assert.match(h.ui.render(), /data-finance-ledger-export/);
+});
+
+test('a read-only member of the owning team cannot dispatch a write through a stale action', async () => {
+  const h = financeUIHarness({ team: true, expose: true }); h.ui.render(); h.ui.bind();
+  h.calls[0].resolve(teamFinance('private', { scope: { canWrite: false, canConfigure: false } })); await h.tick();
+  assert.doesNotMatch(h.ui.render(), /data-finance-add|data-finance-expense-add/);
+  await assert.rejects(h.ui.request(h.ui.context(), '/expenses', { method: 'POST', body: '{}' }), /только для просмотра/);
+  assert.equal(h.calls.length, 1);
+});
+
+test('open team forms pin source and revision; a later source change cannot silently retarget their requests', async () => {
+  const h = financeUIHarness({ team: true, expose: true }); h.state.activeWorkspaceId = 'a'; h.ui.render(); h.ui.bind();
+  h.calls[0].resolve(teamFinance('a', { scope: { revision: 3 } })); await h.tick();
+  const draft = h.ui.context();
+  h.ui.invalidate(); h.ui.bind(); h.calls[1].resolve(teamFinance('a', { scope: { revision: 5 } })); await h.tick();
+  const saving = h.ui.request(draft, '/expenses', { method: 'POST', body: '{"amountMinor":12345}' });
+  assert.equal(h.calls[2].options.headers['X-Finance-Source'], 'a');
+  assert.equal(h.calls[2].options.headers['X-Finance-Revision'], '3');
+  assert.equal(h.calls[2].options.headers['X-Workspace-ID'], 'a');
+  h.calls[2].reject(Object.assign(new Error('Источник изменился'), { status: 409 }));
+  await assert.rejects(saving, /Источник изменился/);
+  h.state.activeWorkspaceId = 'b';
+  await assert.rejects(h.ui.request(draft, '/expenses', { method: 'POST', body: '{}' }), /Пространство изменилось/);
+  assert.equal(h.calls.length, 3);
+});
+
+test('personal finance keeps its own API even while its settings are opened from a team workspace', async () => {
+  const h = financeUIHarness(); h.state.activeWorkspaceId = 'business'; h.ui.render(); h.ui.bind();
+  assert.match(h.calls[0].url, /^\/api\/personal\/finance\?/);
+  assert.equal(h.calls[0].options.headers['X-Finance-Source'], undefined);
+  h.calls[0].resolve({ buckets: [{ id: 'my', name: 'My savings' }], sources: [], entries: [] }); await h.tick();
+  assert.match(h.ui.render(), /My savings/); assert.doesNotMatch(h.ui.render(), /Финансы команды/);
+});
+
+test('source settings keep a lost link selected, offer an explicit own-ledger return, and do not expose its hidden name', () => {
+  const h = financeUIHarness({ team: true, expose: true });
+  const settings = { scope: { workspaceId: 'own', sourceWorkspaceId: 'lost', canConfigure: true, sourceAvailable: false }, options: [{ workspaceId: 'own', workspaceName: 'Own' }, { workspaceId: 'allowed', workspaceName: 'Allowed <team>' }] };
+  const html = h.ui.teamSourceSettings(settings, null);
+  assert.match(html, /value="lost" selected disabled/);
+  assert.match(html, /value="own" >Собственные финансы этой команды/);
+  assert.match(html, /Allowed &lt;team>/); assert.match(html, /Возврат к собственным финансам сохраняет прежние/);
+  assert.doesNotMatch(html, /value="own" selected/);
+  settings.scope.canConfigure = false;
+  assert.doesNotMatch(h.ui.teamSourceSettings(settings, null), /<form|<select/);
 });

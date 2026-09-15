@@ -1,0 +1,31 @@
+.page-media-toolbar,.page-media-file-actions { display:flex;align-items:center;flex-wrap:wrap;gap:8px; }
+.page-media-toolbar { margin-bottom:8px; }
+.page-media-hint { font-size:.875rem;line-height:1.5; }
+.page-media-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(min(190px,100%),1fr));gap:16px;min-width:0; }
+.page-media-tile { min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface); }
+.page-media-open { width:100%;display:flex;flex-direction:column;gap:8px;padding:10px;border:0;background:none;color:inherit;text-align:left;cursor:pointer;font:inherit; }
+.page-media-open img,.page-media-placeholder { width:100%;aspect-ratio:4/3;object-fit:contain;border-radius:6px;background:var(--bg); }
+.page-media-placeholder { display:grid;place-items:center;color:var(--muted); }
+.page-media-placeholder svg { width:36px;height:36px; }
+.page-media-open strong { overflow-wrap:anywhere;line-height:1.35; }
+.page-media-open small { color:var(--muted); }
+.page-media-file-actions { padding:0 10px 10px;justify-content:space-between; }
+.page-media-file-actions .text-button { min-height:40px; }
+.page-media-tile.is-removed { border-style:dashed; }
+.page-media-pending { margin-top:16px;border:1px solid var(--line);border-radius:12px;padding:12px; }
+.page-media-pending>div { display:flex;align-items:center;justify-content:space-between;gap:12px; }
+.page-media-pending>div>span { min-width:0;overflow-wrap:anywhere; }
+[data-app-media].receiving-files { outline:2px dashed var(--accent);outline-offset:6px; }
+.private-media-preview { max-width:100%; }
+.private-media-preview>a.secondary,.page-media-file-actions>a { color:var(--accent);text-decoration:none; }
+.private-media-preview>a.secondary:hover,.page-media-file-actions>a:hover { color:var(--accent-strong); }
+.private-media-image,.private-media-video { display:block;max-width:100%;width:auto;max-height:65dvh;object-fit:contain;margin:0 auto 16px; }
+.note-file-thumbnail { width:72px;height:58px;object-fit:contain;border:1px solid var(--line);border-radius:6px;flex:none;background:var(--bg); }
+@media(max-width:480px) {
+ .page-media-grid { grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+ .page-media-open { padding:8px;font-size:.875rem; }
+ .page-media-file-actions { padding:0 8px 8px;gap:0; }
+ .page-media-file-actions .text-button { font-size:.8125rem;padding-inline:3px; }
+ .page-media-toolbar>.secondary { width:100%; }
+ .note-file-thumbnail { width:52px;height:48px; }
+}

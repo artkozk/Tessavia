@@ -77,7 +77,7 @@ func validatePageApp(d *PageAppDefinition) error {
 		if !pageAppID.MatchString(b.ID) || ids[b.ID] != "" {
 			return errors.New("У блоков должны быть разные постоянные ключи")
 		}
-		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" && b.Kind != "data" && b.Kind != "group" && b.Kind != "sheet" {
+		if b.Kind != "heading" && b.Kind != "text" && b.Kind != "tracker" && b.Kind != "progress" && b.Kind != "button" && b.Kind != "records" && b.Kind != "form" && b.Kind != "data" && b.Kind != "group" && b.Kind != "sheet" && b.Kind != "media" {
 			return errors.New("Неизвестный тип блока")
 		}
 		if err := validatePageSheet(b); err != nil {

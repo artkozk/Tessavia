@@ -50,6 +50,7 @@ export function personalNavigationTarget(view, options = {}) {
 export function personalRoute(route, workspaces) {
   route = { ...route, ...personalNavigationTarget(route.view, route) };
   if (route.view === 'dashboard' && workspaces.some(item=>item.id===route.workspaceId && item.kind==='personal')) route={...route,view:'personal',personalTab:'today',calendarScope:'personal'};
+  if (route.view === 'finance' && workspaces.some(item => item.id === route.workspaceId && item.kind === 'personal')) route = {...route, view:'personal', personalTab:'finance'};
   // An explicit source switch inside a calendar keeps that calendar's workspace
   // and interface profile. Legacy private links still resolve to personal below.
   if (route.view === 'calendar' && ['personal', 'project'].includes(route.calendarScope) && route.calendarContextWorkspaceId === route.workspaceId && workspaces.some(item => item.id === route.workspaceId)) return { ...route };

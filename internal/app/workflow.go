@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -820,7 +819,7 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request) 
 	if header.Header.Get("Content-Type") != "" && contentType == "application/octet-stream" {
 		contentType = header.Header.Get("Content-Type")
 	}
-	if !allowedAttachment(name, contentType) {
+	if !allowedAttachment(name, contentType) && !(strings.EqualFold(filepath.Ext(name), ".gif") && contentType == "image/gif") {
 		writeError(w, http.StatusBadRequest, "Этот тип файла не разрешён")
 		return
 	}
@@ -888,22 +887,25 @@ func (s *Server) handleDownloadAttachment(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusNotFound, "Файл не найден")
 		return
 	}
+	// Browser links cannot set X-Workspace-ID. An explicit URL scope still
+	// requires membership and must contain the attachment's record.
+	if requested := strings.TrimSpace(r.URL.Query().Get("workspaceId")); requested != "" {
+		access, accessErr := s.resolveWorkspaceAccess(r.Context(), currentUser(r).ID, requested)
+		if accessErr != nil {
+			writeError(w, http.StatusNotFound, "Файл не найден в этой команде")
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), workspaceContextKey, access))
+	}
 	if _, err = s.getRecord(r.Context(), recordID); err != nil {
 		writeError(w, http.StatusNotFound, "Файл не найден в этой команде")
 		return
 	}
-	path := filepath.Join(s.config.UploadPath, stored)
-	file, err := os.Open(path)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "Файл отсутствует в хранилище")
+	if filepath.Base(stored) != stored || strings.ContainsAny(stored, "/\\") {
+		writeError(w, http.StatusNotFound, "Файл не найден")
 		return
 	}
-	defer file.Close()
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": original}))
-	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	w.Header().Set("Cache-Control", "private, no-store")
-	_, _ = io.Copy(w, file)
+	servePrivateMediaFile(w, r, filepath.Join(s.config.UploadPath, stored), original, contentType, r.URL.Query().Get("preview") == "1" && r.URL.Query().Get("download") != "1")
 }
 
 func insertNotification(ctx context.Context, tx *sql.Tx, userID int64, notificationType, title, body, entityType, entityID string) error {

@@ -101,7 +101,7 @@ test('page app integration rejects previous account GET before mounting its priv
     const state={me:{id:1},activeWorkspaceId:'workspace',view:'page:page',collections:[],records:[]};
     const c=vm.createContext({
       createPageSheetUI:()=>({mount:(_,__,current)=>mounted.push(current),reset:()=>resets++}),
-      createPageDataUI:()=>({mount:()=>{}}),mountPageForms:()=>{},
+      createPageMediaUI:()=>({mount(){}}),createPageDataUI:()=>({mount:()=>{}}),mountPageForms:()=>{},
     });
     vm.runInContext(fs.readFileSync(path.join(__dirname,'page-apps.js'),'utf8').replaceAll('\r\n','\n').replace(/^import .*;\n/gm,'').replaceAll('export ',''),c);
     c.applyAppStyles=()=>{};c.pageAppMarkup=()=>'<p>Page</p>';

@@ -67,14 +67,15 @@ type financeEntry struct {
 	UpdatedAt     string              `json:"updatedAt"`
 }
 type financeOverview struct {
-	Currency       string                `json:"currency"`
-	Buckets        []financeBucket       `json:"buckets"`
-	Sources        []financeSource       `json:"sources"`
-	Entries        []financeEntry        `json:"entries"`
-	Counterparties []financeCounterparty `json:"counterparties"`
-	Expenses       []financeExpense      `json:"expenses"`
-	Balances       []financeBalance      `json:"balances"`
-	BalanceThrough string                `json:"balanceThrough"`
+	Scope          *workspaceFinanceScope `json:"scope,omitempty"`
+	Currency       string                 `json:"currency"`
+	Buckets        []financeBucket        `json:"buckets"`
+	Sources        []financeSource        `json:"sources"`
+	Entries        []financeEntry         `json:"entries"`
+	Counterparties []financeCounterparty  `json:"counterparties"`
+	Expenses       []financeExpense       `json:"expenses"`
+	Balances       []financeBalance       `json:"balances"`
+	BalanceThrough string                 `json:"balanceThrough"`
 }
 type financeEntryInput struct {
 	ClientRequestID        string  `json:"clientRequestId,omitempty"`
@@ -121,6 +122,7 @@ func (s *Server) registerPersonalFinanceRoutes() {
 	} {
 		s.mux.Handle(pattern, s.requireAuth(handler))
 	}
+	s.registerWorkspaceFinanceRoutes()
 }
 
 func financeWriteError(w http.ResponseWriter, err error) {
@@ -133,9 +135,9 @@ func financeWriteError(w http.ResponseWriter, err error) {
 		writeError(w, 404, "Запись не найдена")
 		return
 	}
-	writeError(w, 500, "Не удалось сохранить или прочитать личные финансы")
+	writeError(w, 500, "Не удалось сохранить или прочитать финансы")
 }
-func (s *Server) financeTransaction(w http.ResponseWriter, r *http.Request, work func(*sql.Tx) (any, int, error)) {
+func (s *Server) financeTransaction(w http.ResponseWriter, r *http.Request, work func(*financeTx) (any, int, error)) {
 	w.Header().Set("Cache-Control", "no-store")
 	tx, err := s.store.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -143,7 +145,20 @@ func (s *Server) financeTransaction(w http.ResponseWriter, r *http.Request, work
 		return
 	}
 	defer tx.Rollback()
-	value, status, err := work(tx)
+	ledger := &financeTx{Tx: tx, owner: currentUser(r).ID}
+	if strings.HasPrefix(r.URL.Path, "/api/workspace/finance") {
+		scope, scopeErr := readWorkspaceFinanceScope(tx, r, true)
+		if scopeErr != nil {
+			financeWriteError(w, scopeErr)
+			return
+		}
+		if scopeErr = checkWorkspaceFinanceRequest(r, scope); scopeErr != nil {
+			financeWriteError(w, scopeErr)
+			return
+		}
+		ledger.scope, ledger.owner = &scope, scope.SourceWorkspaceID
+	}
+	value, status, err := work(ledger)
 	if err == nil {
 		err = tx.Commit()
 	}
@@ -183,13 +198,13 @@ func scanFinanceEntry(row financeScanner) (financeEntry, error) {
 	}
 	return e, err
 }
-func readFinanceEntry(tx *sql.Tx, r *http.Request, id string) (financeEntry, error) {
-	return scanFinanceEntry(tx.QueryRowContext(r.Context(), `SELECT `+financeEntryColumns+` FROM personal_finance_entries WHERE owner_id=? AND id=?`, currentUser(r).ID, id))
+func readFinanceEntry(tx *financeTx, r *http.Request, id string) (financeEntry, error) {
+	return scanFinanceEntry(tx.QueryRowContext(r.Context(), `SELECT `+financeEntryColumns+` FROM personal_finance_entries WHERE owner_id=? AND id=?`, tx.owner, id))
 }
-func readFinanceSource(tx *sql.Tx, r *http.Request, id string) (financeSource, error) {
+func readFinanceSource(tx *financeTx, r *http.Request, id string) (financeSource, error) {
 	var source financeSource
 	var data string
-	err := tx.QueryRowContext(r.Context(), `SELECT id,name,deduct_workers,allocations_json,archived,revision FROM personal_finance_sources WHERE owner_id=? AND id=?`, currentUser(r).ID, id).Scan(&source.ID, &source.Name, &source.DeductWorkers, &data, &source.Archived, &source.Revision)
+	err := tx.QueryRowContext(r.Context(), `SELECT id,name,deduct_workers,allocations_json,archived,revision FROM personal_finance_sources WHERE owner_id=? AND id=?`, tx.owner, id).Scan(&source.ID, &source.Name, &source.DeductWorkers, &data, &source.Archived, &source.Revision)
 	if err == nil {
 		err = json.Unmarshal([]byte(data), &source.Allocations)
 	}
@@ -202,9 +217,9 @@ func (s *Server) handlePersonalFinance(w http.ResponseWriter, r *http.Request) {
 		financeWriteError(w, err)
 		return
 	}
-	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
-		owner := currentUser(r).ID
-		result := financeOverview{Currency: "RUB", Buckets: []financeBucket{}, Sources: []financeSource{}, Entries: []financeEntry{}}
+	s.financeTransaction(w, r, func(tx *financeTx) (any, int, error) {
+		owner := tx.owner
+		result := financeOverview{Scope: tx.scope, Currency: "RUB", Buckets: []financeBucket{}, Sources: []financeSource{}, Entries: []financeEntry{}}
 		var err error
 		result.Counterparties, err = readFinanceCounterparties(tx, r)
 		if err != nil {
@@ -297,11 +312,11 @@ func (s *Server) handleFinanceBucket(w http.ResponseWriter, r *http.Request) {
 		financeWriteError(w, financeInvalid("Укажите название до 120 символов и назначение до 240 символов"))
 		return
 	}
-	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
+	s.financeTransaction(w, r, func(tx *financeTx) (any, int, error) {
 		id := r.PathValue("id")
 		revision := int64(1)
 		now := nowText()
-		owner := currentUser(r).ID
+		owner := tx.owner
 		status := 201
 		if r.Method == http.MethodPost {
 			var err error
@@ -354,17 +369,17 @@ func financeValidateRules(rules []financeRule) error {
 	}
 	return nil
 }
-func financeSnapshotRules(tx *sql.Tx, r *http.Request, rules []financeRule) ([]financeAllocation, error) {
+func financeSnapshotRules(tx *financeTx, r *http.Request, rules []financeRule) ([]financeAllocation, error) {
 	return financeReadRules(tx, r, rules, true)
 }
-func financeReadRules(tx *sql.Tx, r *http.Request, rules []financeRule, requireActive bool) ([]financeAllocation, error) {
+func financeReadRules(tx *financeTx, r *http.Request, rules []financeRule, requireActive bool) ([]financeAllocation, error) {
 	if err := financeValidateRules(rules); err != nil {
 		return nil, err
 	}
 	result := make([]financeAllocation, 0, len(rules))
 	for _, rule := range rules {
 		var name string
-		err := tx.QueryRowContext(r.Context(), `SELECT name FROM personal_finance_buckets WHERE owner_id=? AND id=? AND (?=0 OR archived=0)`, currentUser(r).ID, rule.BucketID, requireActive).Scan(&name)
+		err := tx.QueryRowContext(r.Context(), `SELECT name FROM personal_finance_buckets WHERE owner_id=? AND id=? AND (?=0 OR archived=0)`, tx.owner, rule.BucketID, requireActive).Scan(&name)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, financeInvalid("Выберите свои действующие счета для всех долей")
 		}
@@ -391,7 +406,7 @@ func (s *Server) handleFinanceSource(w http.ResponseWriter, r *http.Request) {
 		financeWriteError(w, financeInvalid("Укажите название источника до 120 символов"))
 		return
 	}
-	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
+	s.financeTransaction(w, r, func(tx *financeTx) (any, int, error) {
 		id := r.PathValue("id")
 		revision := int64(1)
 		status := 201
@@ -418,7 +433,7 @@ func (s *Server) handleFinanceSource(w http.ResponseWriter, r *http.Request) {
 			return nil, 0, err
 		}
 		now := nowText()
-		owner := currentUser(r).ID
+		owner := tx.owner
 		if r.Method == http.MethodPost {
 			id, err = newID()
 			if err != nil {
@@ -487,7 +502,7 @@ func financeHasPaid(entry financeEntry) bool {
 	return false
 }
 
-func financePrepareEntry(tx *sql.Tx, r *http.Request, input financeEntryInput, prior *financeEntry) (financeEntry, error) {
+func financePrepareEntry(tx *financeTx, r *http.Request, input financeEntryInput, prior *financeEntry) (financeEntry, error) {
 	entry := financeEntry{}
 	if !validFinanceDate(input.Date) {
 		return entry, financeInvalid("Выберите дату дохода с 1 января 1900 года по 31 декабря 9998 года")
@@ -544,14 +559,14 @@ func financePrepareEntry(tx *sql.Tx, r *http.Request, input financeEntryInput, p
 	return entry, err
 }
 
-func updateFinanceEntry(tx *sql.Tx, r *http.Request, entry *financeEntry, expected int64) error {
+func updateFinanceEntry(tx *financeTx, r *http.Request, entry *financeEntry, expected int64) error {
 	data, err := json.Marshal(entry.Allocations)
 	if err != nil {
 		return err
 	}
 	entry.UpdatedAt = nowText()
 	entry.Revision = expected + 1
-	result, err := tx.ExecContext(r.Context(), `UPDATE personal_finance_entries SET source_id=?,source_name=?,deduct_workers=?,date=?,payer=?,note=?,gross_minor=?,worker_minor=?,base_minor=?,allocations_json=?,revision=?,voided=?,updated_at=?,payer_id=NULLIF(?,'') WHERE owner_id=? AND id=? AND revision=?`, entry.SourceID, entry.SourceName, entry.DeductWorkers, entry.Date, entry.Payer, entry.Note, entry.GrossMinor, entry.WorkerMinor, entry.BaseMinor, string(data), entry.Revision, entry.Voided, entry.UpdatedAt, entry.PayerID, currentUser(r).ID, entry.ID, expected)
+	result, err := tx.ExecContext(r.Context(), `UPDATE personal_finance_entries SET source_id=?,source_name=?,deduct_workers=?,date=?,payer=?,note=?,gross_minor=?,worker_minor=?,base_minor=?,allocations_json=?,revision=?,voided=?,updated_at=?,payer_id=NULLIF(?,'') WHERE owner_id=? AND id=? AND revision=?`, entry.SourceID, entry.SourceName, entry.DeductWorkers, entry.Date, entry.Payer, entry.Note, entry.GrossMinor, entry.WorkerMinor, entry.BaseMinor, string(data), entry.Revision, entry.Voided, entry.UpdatedAt, entry.PayerID, tx.owner, entry.ID, expected)
 	if err != nil {
 		return err
 	}
@@ -578,8 +593,8 @@ func (s *Server) handleFinanceEntry(w http.ResponseWriter, r *http.Request) {
 		financeWriteError(w, financeInvalid("Ключ создания не используется при изменении дохода"))
 		return
 	}
-	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
-		owner := currentUser(r).ID
+	s.financeTransaction(w, r, func(tx *financeTx) (any, int, error) {
+		owner := tx.owner
 		var prior *financeEntry
 		var fingerprint string
 		if r.Method == http.MethodPost {
@@ -648,7 +663,7 @@ func (s *Server) handleFinanceTransfer(w http.ResponseWriter, r *http.Request) {
 		financeWriteError(w, financeInvalid("Укажите отмеченную сумму перевода, включая ноль при исправлении"))
 		return
 	}
-	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
+	s.financeTransaction(w, r, func(tx *financeTx) (any, int, error) {
 		entry, err := readFinanceEntry(tx, r, r.PathValue("id"))
 		if err != nil {
 			return nil, 0, err
@@ -688,7 +703,7 @@ func (s *Server) handleFinanceVoid(w http.ResponseWriter, r *http.Request) {
 		financeWriteError(w, financeInvalid("Укажите отмену или восстановление дохода"))
 		return
 	}
-	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
+	s.financeTransaction(w, r, func(tx *financeTx) (any, int, error) {
 		entry, err := readFinanceEntry(tx, r, r.PathValue("id"))
 		if err != nil {
 			return nil, 0, err

@@ -70,7 +70,7 @@ test('day settings keep changed fields and allow saving again after a failed wri
 test('own page keeps editing and sharing callable without displaying configuration buttons in viewing mode',async()=>{
  const state={me:{id:17},view:'page:p1',activeWorkspaceId:'team',workspacePages:[],collections:[],records:[]},root={innerHTML:''},title={},dialog={dataset:{}},content={innerHTML:''},close={},form={},toasts=[];let opened=0,admin=true;
  const q=(selector,parent)=>parent===content?(selector==='[data-app-close]'?close:selector==='[data-app-share-form]'?form:null):selector==='#main-content'?root:selector==='#page-title'?title:selector==='#workspace-dialog'?dialog:selector==='#workspace-dialog-content'?content:null;
- const ctx=vm.createContext({createPageSheetUI:()=>({mount(){},reset(){}}),createPageDataUI:()=>({mount(){}}),applyElementStyles(){},mountPageForms(){},recordActionMenu(){},recordRowText(){},Intl});
+ const ctx=vm.createContext({createPageSheetUI:()=>({mount(){},reset(){}}),createPageMediaUI:()=>({mount(){}}),createPageDataUI:()=>({mount(){}}),applyElementStyles(){},mountPageForms(){},recordActionMenu(){},recordRowText(){},Intl});
  vm.runInContext(read('page-apps.js').replace(/^import .*;\n/gm,'').replaceAll('export ',''),ctx);
  const ui=ctx.createPageAppUI({state,api:async()=>({revision:1,definition:{version:1,blocks:[]},marks:{}}),escapeHTML:String,icon:()=>'', $:q,$$:()=>[],openModal(){opened++;},requestDialogClose:async()=>true,canConfigureWorkspace:()=>admin,toast:(...args)=>toasts.push(args)});
  assert.equal(await ui.share(),false);assert.match(toasts.pop()[0],/ещё не загрузилась/);assert.equal(opened,0);

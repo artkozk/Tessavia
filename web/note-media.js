@@ -23,6 +23,7 @@ export function createNoteMediaUI({state,api,outbox,escapeHTML:esc,icon,renderMa
   const drafts=createNoteFileDraftStore(),editors=new Map();
   const bytes=n=>n>=1024*1024?`${(n/1024/1024).toFixed(1)} МБ`:`${Math.max(1,Math.round(n/1024))} КБ`;
   const date=value=>new Date(value).toLocaleString('ru-RU');
+  const video=item=>['video/mp4','video/webm'].includes(item.contentType);
   const fileURL=item=>`/api/personal/note-attachments/${encodeURIComponent(item.id)}/file`;
   const read=(owner,path,options={})=>api(path,{...options,headers:{'X-Outbox-Owner':String(owner)}});
   function surface(title){
@@ -35,11 +36,11 @@ export function createNoteMediaUI({state,api,outbox,escapeHTML:esc,icon,renderMa
   function error(ui,message,retry){if(!current(ui))return;ui.body.innerHTML=`<p role="alert">${esc(message)}</p><button type="button" class="secondary" data-media-retry>Повторить</button>`;q('[data-media-retry]',ui.body).onclick=retry;}
   function previewFile(item){
     const ui=surface(item.name);if(!ui)return;
-    ui.body.innerHTML=`${item.preview?`<img class="note-file-preview" src="${fileURL(item)}" alt="${esc(item.name)}">`:'<p class="muted">Этот файл открывается в приложении для его формата.</p>'}<p class="muted">${bytes(item.size)}</p><a class="secondary" href="${fileURL(item)}?download=1" download>${icon('arrowDown')} Скачать файл</a><p data-media-error role="alert"></p>`;
-    q('img',ui.body)?.addEventListener('error',()=>{if(current(ui))q('[data-media-error]',ui.body).textContent='Не удалось загрузить изображение. Проверьте соединение и откройте файл снова.';});
+    ui.body.innerHTML=`${item.preview?`<img class="note-file-preview" src="${fileURL(item)}" alt="${esc(item.name)}">`:video(item)?`<video class="note-file-preview" src="${fileURL(item)}" controls playsinline preload="metadata" aria-label="${esc(item.name)}"></video>`:'<p class="muted">Этот файл открывается в приложении для его формата.</p>'}<p class="muted">${bytes(item.size)}</p><a class="secondary" href="${fileURL(item)}?download=1" download>${icon('arrowDown')} Скачать файл</a><p data-media-error role="alert"></p>`;
+    q('img,video',ui.body)?.addEventListener('error',()=>{if(current(ui))q('[data-media-error]',ui.body).textContent='Не удалось загрузить изображение. Проверьте соединение и откройте файл снова.';});
   }
   function fileRows(files,{readonly=false}={}){
-    return files.map(item=>`<div class="note-file-row"><button type="button" class="text-button" data-file-open="${esc(item.id)}">${icon(item.preview?'camera':'fileText')}<span><strong>${esc(item.name)}</strong><small>${bytes(item.size)}${item.removedAt?' · Удалённое вложение':''}</small></span></button><a class="icon-button" aria-label="Скачать ${esc(item.name)}" href="${fileURL(item)}?download=1" download>${icon('arrowDown')}</a>${readonly?'':`<button type="button" class="icon-button" data-file-state="${esc(item.id)}" aria-label="${item.removedAt?'Восстановить':'Удалить'} ${esc(item.name)}">${icon(item.removedAt?'rotate':'trash')}</button>`}</div>`).join('');
+    return files.map(item=>`<div class="note-file-row"><button type="button" class="text-button" data-file-open="${esc(item.id)}">${item.preview?`<img class="note-file-thumbnail" src="${fileURL(item)}" loading="lazy" alt="">`:icon(video(item)?'play':'fileText')}<span><strong>${esc(item.name)}</strong><small>${bytes(item.size)}${item.removedAt?' · Удалённое вложение':''}</small></span></button><a class="icon-button" aria-label="Скачать ${esc(item.name)}" href="${fileURL(item)}?download=1" download>${icon('arrowDown')}</a>${readonly?'':`<button type="button" class="icon-button" data-file-state="${esc(item.id)}" aria-label="${item.removedAt?'Восстановить':'Удалить'} ${esc(item.name)}">${icon(item.removedAt?'rotate':'trash')}</button>`}</div>`).join('');
   }
   function bindFilePreview(root,files){qa('[data-file-open]',root).forEach(button=>button.onclick=()=>previewFile(files.find(file=>file.id===button.dataset.fileOpen)));}
   function bindEditor(form,note){

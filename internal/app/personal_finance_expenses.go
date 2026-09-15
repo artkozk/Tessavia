@@ -56,13 +56,13 @@ func scanFinanceExpense(row financeScanner) (financeExpense, error) {
 	return value, err
 }
 
-func readFinanceExpense(tx *sql.Tx, r *http.Request, id string) (financeExpense, error) {
-	return scanFinanceExpense(tx.QueryRowContext(r.Context(), `SELECT `+financeExpenseColumns+` FROM personal_finance_expenses WHERE owner_id=? AND id=?`, currentUser(r).ID, id))
+func readFinanceExpense(tx *financeTx, r *http.Request, id string) (financeExpense, error) {
+	return scanFinanceExpense(tx.QueryRowContext(r.Context(), `SELECT `+financeExpenseColumns+` FROM personal_finance_expenses WHERE owner_id=? AND id=?`, tx.owner, id))
 }
 
-func readFinanceExpenses(tx *sql.Tx, r *http.Request, from, to string) ([]financeExpense, error) {
+func readFinanceExpenses(tx *financeTx, r *http.Request, from, to string) ([]financeExpense, error) {
 	result := []financeExpense{}
-	rows, err := tx.QueryContext(r.Context(), `SELECT `+financeExpenseColumns+` FROM personal_finance_expenses WHERE owner_id=? AND date>=? AND date<=? ORDER BY date DESC,created_at DESC,id DESC LIMIT ?`, currentUser(r).ID, from, to, personalFinanceMaxEntries+1)
+	rows, err := tx.QueryContext(r.Context(), `SELECT `+financeExpenseColumns+` FROM personal_finance_expenses WHERE owner_id=? AND date>=? AND date<=? ORDER BY date DESC,created_at DESC,id DESC LIMIT ?`, tx.owner, from, to, personalFinanceMaxEntries+1)
 	if err != nil {
 		return nil, err
 	}
@@ -93,14 +93,14 @@ func financeAddTotal(total *int64, amount int64) error {
 
 // Read all history independently of the journal's date range and row cap.
 // A bucket is an envelope: paidMinor only marks a transfer and is not spending.
-func readFinanceBalances(tx *sql.Tx, r *http.Request, buckets []financeBucket, from, to string) ([]financeBalance, error) {
+func readFinanceBalances(tx *financeTx, r *http.Request, buckets []financeBucket, from, to string) ([]financeBalance, error) {
 	result := make([]financeBalance, len(buckets))
 	indices := make(map[string]int, len(buckets))
 	for i, bucket := range buckets {
 		result[i].BucketID = bucket.ID
 		indices[bucket.ID] = i
 	}
-	owner := currentUser(r).ID
+	owner := tx.owner
 	var totalAllocated, totalSpent int64
 	rows, err := tx.QueryContext(r.Context(), `SELECT date,allocations_json FROM personal_finance_entries WHERE owner_id=? AND voided=0 AND date<=? ORDER BY date,id`, owner, to)
 	if err != nil {
@@ -186,7 +186,7 @@ func readFinanceBalances(tx *sql.Tx, r *http.Request, buckets []financeBucket, f
 	return result, nil
 }
 
-func financePrepareExpense(tx *sql.Tx, r *http.Request, input financeExpenseInput, prior *financeExpense) (financeExpense, error) {
+func financePrepareExpense(tx *financeTx, r *http.Request, input financeExpenseInput, prior *financeExpense) (financeExpense, error) {
 	expense := financeExpense{}
 	if prior != nil {
 		expense = *prior
@@ -202,7 +202,7 @@ func financePrepareExpense(tx *sql.Tx, r *http.Request, input financeExpenseInpu
 	}
 	if prior == nil || prior.BucketID != input.BucketID {
 		var bucket financeBucket
-		err := tx.QueryRowContext(r.Context(), `SELECT id,name,archived,revision FROM personal_finance_buckets WHERE owner_id=? AND id=?`, currentUser(r).ID, input.BucketID).Scan(&bucket.ID, &bucket.Name, &bucket.Archived, &bucket.Revision)
+		err := tx.QueryRowContext(r.Context(), `SELECT id,name,archived,revision FROM personal_finance_buckets WHERE owner_id=? AND id=?`, tx.owner, input.BucketID).Scan(&bucket.ID, &bucket.Name, &bucket.Archived, &bucket.Revision)
 		if err != nil {
 			return expense, err
 		}
@@ -222,10 +222,10 @@ func financePrepareExpense(tx *sql.Tx, r *http.Request, input financeExpenseInpu
 	return expense, nil
 }
 
-func updateFinanceExpense(tx *sql.Tx, r *http.Request, expense *financeExpense, expected int64) error {
+func updateFinanceExpense(tx *financeTx, r *http.Request, expense *financeExpense, expected int64) error {
 	expense.UpdatedAt = nowText()
 	expense.Revision = expected + 1
-	result, err := tx.ExecContext(r.Context(), `UPDATE personal_finance_expenses SET bucket_id=?,bucket_name=?,date=?,amount_minor=?,payee=?,note=?,revision=?,voided=?,updated_at=? WHERE owner_id=? AND id=? AND revision=?`, expense.BucketID, expense.BucketName, expense.Date, expense.AmountMinor, expense.Payee, expense.Note, expense.Revision, expense.Voided, expense.UpdatedAt, currentUser(r).ID, expense.ID, expected)
+	result, err := tx.ExecContext(r.Context(), `UPDATE personal_finance_expenses SET bucket_id=?,bucket_name=?,date=?,amount_minor=?,payee=?,note=?,revision=?,voided=?,updated_at=? WHERE owner_id=? AND id=? AND revision=?`, expense.BucketID, expense.BucketName, expense.Date, expense.AmountMinor, expense.Payee, expense.Note, expense.Revision, expense.Voided, expense.UpdatedAt, tx.owner, expense.ID, expected)
 	if err != nil {
 		return err
 	}
@@ -252,8 +252,8 @@ func (s *Server) handleFinanceExpense(w http.ResponseWriter, r *http.Request) {
 		financeWriteError(w, financeInvalid("Ключ создания не используется при изменении расхода"))
 		return
 	}
-	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
-		owner := currentUser(r).ID
+	s.financeTransaction(w, r, func(tx *financeTx) (any, int, error) {
+		owner := tx.owner
 		var prior *financeExpense
 		var fingerprint string
 		if r.Method == http.MethodPost {
@@ -308,7 +308,7 @@ func (s *Server) handleFinanceExpense(w http.ResponseWriter, r *http.Request) {
 // Conflict recovery works even when another session moved an expense outside
 // the selected period. It uses the same account boundary as the journal.
 func (s *Server) handleReadFinanceExpense(w http.ResponseWriter, r *http.Request) {
-	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
+	s.financeTransaction(w, r, func(tx *financeTx) (any, int, error) {
 		expense, err := readFinanceExpense(tx, r, r.PathValue("id"))
 		return expense, 200, err
 	})
@@ -326,7 +326,7 @@ func (s *Server) handleFinanceExpenseVoid(w http.ResponseWriter, r *http.Request
 		financeWriteError(w, financeInvalid("Укажите отмену или восстановление расхода"))
 		return
 	}
-	s.financeTransaction(w, r, func(tx *sql.Tx) (any, int, error) {
+	s.financeTransaction(w, r, func(tx *financeTx) (any, int, error) {
 		expense, err := readFinanceExpense(tx, r, r.PathValue("id"))
 		if err != nil {
 			return nil, 0, err

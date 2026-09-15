@@ -1,4 +1,12 @@
 .personal-finance { min-width: 0; display: grid; gap: 24px; }
+.finance-scope-notice { display: flex; align-items: center; justify-content: space-between; gap: 14px 24px; flex-wrap: wrap; padding: 14px 0; border-block: 1px solid var(--line); min-width: 0; }
+.finance-scope-notice > div { display: grid; gap: 6px; flex: 1 1 260px; min-width: 0; }
+.finance-scope-notice strong { color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.finance-scope-notice p, .finance-scope-caption { color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.finance-scope-notice .text-button { display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px; text-align: left; white-space: normal; max-width: 100%; min-height: 44px; }
+.finance-source-settings { min-width: 0; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+.finance-source-settings > div:first-child { display: grid; gap: 8px; }
+.finance-source-settings .finance-form { width: 100%; max-width: 640px; min-width: 0; }
 .finance-heading, .finance-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .finance-heading > div { display: grid; gap: 7px; min-width: 0; }
 .finance-heading p, .finance-caption, .finance-empty-note { color: var(--muted); font-size: 13px; line-height: 1.6; }

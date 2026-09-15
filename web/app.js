@@ -1,34 +1,35 @@
-import { selectMenuPosition, selectOptionScrollTop } from './select-positioning.js?v=20260915-smart-select-1';
-import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260915-smart-select-1';
-import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260915-smart-select-1';
-import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260915-smart-select-1';
-import { createPersonalFinanceUI } from './personal-finance.js?v=20260915-smart-select-1';
-import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260915-smart-select-1';
-import { createSettingsHub } from './settings-hub.js?v=20260915-smart-select-1';
-import { reviewFieldConflict } from './field-conflicts.js?v=20260915-smart-select-1';
-import { createPageAppUI } from './page-apps.js?v=20260915-smart-select-1';
-import { createChatGroupUI } from './chat-groups.js?v=20260915-smart-select-1';
-import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260915-smart-select-1';
-import { createPersonalCalendarUI } from './personal-calendar.js?v=20260915-smart-select-1';
+import { selectMenuPosition, selectOptionScrollTop } from './select-positioning.js?v=20260915-team-finance-media-1';
+import { createMobileAccessUI, mobileLaunchURL } from './mobile-access.js?v=20260915-team-finance-media-1';
+import {personalPlanReferenceOptions,restorePersonalPlanReferenceChoice,personalPlanReferenceError,bindPersonalPlanReferenceFields,bindPersonalPlanDraftReview,personalPlanReferenceSummary,personalPlanReferenceDetails} from './personal-plan-references.js?v=20260915-team-finance-media-1';
+import {collectionFieldTypeNames, fieldConversionChoices, fieldConversionPreviewHTML, incompatibleChoiceDraft} from './field-conversion.js?v=20260915-team-finance-media-1';
+import { createPersonalFinanceUI } from './personal-finance.js?v=20260915-team-finance-media-1';
+import { recordMediaMarkup, bindRecordMediaPreview } from './page-media.js?v=20260915-team-finance-media-1';
+import { pageLabelTargets, applyPageLabels, updatePageTexts } from './page-labels.js?v=20260915-team-finance-media-1';
+import { createSettingsHub } from './settings-hub.js?v=20260915-team-finance-media-1';
+import { reviewFieldConflict } from './field-conflicts.js?v=20260915-team-finance-media-1';
+import { createPageAppUI } from './page-apps.js?v=20260915-team-finance-media-1';
+import { createChatGroupUI } from './chat-groups.js?v=20260915-team-finance-media-1';
+import { conversationFolder, filterConversations, conversationTimeLabel, pendingConversationItems, chatDraftKey, chooseConversation, readConversationDraft, writeConversationDraft, mergeChatHistory, createChatWorkspaceUI } from './chat-workspace.js?v=20260915-team-finance-media-1';
+import { createPersonalCalendarUI } from './personal-calendar.js?v=20260915-team-finance-media-1';
 import { createPersonalReviewUI } from './personal-review.js?v=20260904-personal-review-3';
-import { createPersonalWaitingUI } from './personal-waiting.js?v=20260915-smart-select-1';
+import { createPersonalWaitingUI } from './personal-waiting.js?v=20260915-team-finance-media-1';
 import { createHabitReminderUI } from './habit-reminders.js?v=20260904-habit-reminders-1';
-import { createPersonalRemindersUI } from './personal-reminders.js?v=20260915-smart-select-1';
-import { createReminderSettingsUI } from './reminder-settings.js?v=20260915-smart-select-1';
-import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260915-smart-select-1';
-import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260915-smart-select-1';
-import { createFirstUseUI } from './first-use.js?v=20260915-smart-select-1';
+import { createPersonalRemindersUI } from './personal-reminders.js?v=20260915-team-finance-media-1';
+import { createReminderSettingsUI } from './reminder-settings.js?v=20260915-team-finance-media-1';
+import { personalRoute, personalNavigationItems, personalNavigationKey, personalNavigationTarget, navigationItemVisible, navigationOrderWithInactive } from './personal-navigation.js?v=20260915-team-finance-media-1';
+import { createPersonalTodayUI, useProgressiveToday } from './personal-today.js?v=20260915-team-finance-media-1';
+import { createFirstUseUI } from './first-use.js?v=20260915-team-finance-media-1';
 import { createPersonalInboxUI } from './personal-inbox.js?v=20260904-first-use-4';
 import { createPersonalPublishUI } from './personal-publish.js?v=20260904-personal-batch-3';
-import { createLifeMapUI } from './life-map.js?v=20260915-smart-select-1';
+import { createLifeMapUI } from './life-map.js?v=20260915-team-finance-media-1';
 import { createEmojiPickerUI, createEmojiPreferences, emojiKey, insertEmojiAtSelection } from './emoji-picker.js?v=20260904-chat-emoji-3';
-import { createNoteMediaUI } from './note-media.js?v=20260904-note-media-3';
+import { createNoteMediaUI } from './note-media.js?v=20260915-team-finance-media-1';
 import { createNoteLibraryUI, parseNoteTags } from './note-library.js?v=20260904-note-media-3';
-import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260915-smart-select-1';
-import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260915-smart-select-1';
+import { createHabitUI, habitTodaySummary } from './habit-tracker.js?v=20260915-team-finance-media-1';
+import { installSwipeTabs, revealSwipeTab } from './swipe-tabs.js?v=20260915-team-finance-media-1';
 import { createReadingUI } from './reading.js?v=20260906-reading-groups-1';
 import { createBulkWorkUI } from './bulk-work.js?v=20260904-bulk-actions-3';
-import { createOutboxUI } from './outbox-ui.js?v=20260915-smart-select-1';
+import { createOutboxUI } from './outbox-ui.js?v=20260915-team-finance-media-1';
 let offlineOutbox;
 import { createGraphLayoutStore } from './graph-layout-state.js?v=20260903-graph-layouts-1';
 
@@ -187,6 +188,7 @@ const navItems = [
   ['personal', 'Личное', 'lock', 'Личное'],
   ['dashboard', 'Обзор', 'dashboard', 'Работа'], ['work', 'Работа', 'checkSquare', 'Работа'],
   ['calendar', 'Календарь', 'calendar', 'Работа'],
+  ['finance', 'Финансы', 'scale', 'Работа'],
 	['collections', 'Доски', 'network', 'Работа'],
 	['chat', 'Чат', 'messages', 'Работа'],
   ['principles', 'Правила и критерии', 'bookOpen', 'Основа'], ['goal', 'Цели', 'target', 'Основа'],
@@ -1288,6 +1290,7 @@ async function bootstrap() {
 
 function clearProjectClientState({ closeWindows = true } = {}) {
   state.projectContextEpoch = (state.projectContextEpoch || 0) + 1;
+  teamFinanceUI.reset();
   state.projectDataReady = false;
   if(closeWindows) $$('dialog[open]').forEach(dialog=>{
     flushDialogDrafts(dialog);
@@ -2587,6 +2590,7 @@ async function runSettingsAction(key, {context}) {
   if (key === 'reminders') return reminderSettingsUI.open();
   if (key === 'day') return personalTodayUI.openSettings();
   if (key === 'finance') return personalFinanceUI.openSettings();
+  if (key === 'team-finance' && workspace?.kind !== 'personal') return teamFinanceUI.openSettings();
   if (key === 'pages') return openNavigationSettings('pages');
   if (key === 'modules') return openNavigationSettings('modules');
   if (key === 'team' && workspace?.teamId) return openTeamSettings(workspace.teamId);
@@ -2678,6 +2682,7 @@ function renderContent() {
     return readingUI.render();
   }
   if (state.view === 'calendar') return renderCalendarPage();
+  if (state.view === 'finance') return renderTeamFinance();
   if (state.view === 'day') { $('#page-title').textContent = 'День'; return renderDayWorkspace(); }
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'work') return renderWorkList();
@@ -2900,6 +2905,31 @@ function renderPlanRow(plan, links) {
 
 const personalWaitingUI=createPersonalWaitingUI({state,api,navigate:navigateToView,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,renderPersonal,toast,openPlan:openPersonalPlanDetails});
 const personalFinanceUI=createPersonalFinanceUI({state,api,escapeHTML,icon,openModal,requestDialogClose,toast,enhanceSelects,bindComposerForm,renderPersonal,confirmDiscard:async()=> (await askChoice({eyebrow:'Финансы',title:'Несохранённая запись',label:'Вернуться без сохранения введённых изменений?',choices:[{value:'discard',label:'Вернуться без сохранения'}]}))==='discard'});
+const teamFinanceUI = createPersonalFinanceUI({
+  state, api, escapeHTML, icon, openModal, requestDialogClose, toast, enhanceSelects, bindComposerForm,
+  getScope: () => ({kind: 'team', workspaceId: state.activeWorkspaceId, workspaceName: activeWorkspace()?.name || 'Команда'}),
+  isVisible: () => state.view === 'finance' && activeWorkspace()?.kind !== 'personal',
+  renderFinance: renderTeamFinance,
+  onOpenSettings: () => openInterfaceSettings('workspace'),
+  onOpenSource: async ({workspaceId}) => {
+    if (!state.workspaces.some(item => item.id === workspaceId && item.kind !== 'personal')) throw new Error('Команда-источник недоступна. Обновите список команд.');
+    const owner = state.me?.id;
+    return leaveSettingsFor(async () => {
+      if (owner !== state.me?.id || !await switchWorkspace(workspaceId, {restoring: true})) return false;
+      return navigateToView('finance');
+    }, {closeAll: true});
+  },
+  confirmDiscard: async () => (await askChoice({eyebrow:'Финансы команды',title:'Несохранённая запись',label:'Вернуться без сохранения введённых изменений?',choices:[{value:'discard',label:'Вернуться без сохранения'}]})) === 'discard',
+});
+
+function renderTeamFinance() {
+  if (state.view !== 'finance' || activeWorkspace()?.kind === 'personal') return;
+  $('#page-title').textContent = 'Финансы';
+  $('#new-record-button').hidden = true;
+  $('#main-content').innerHTML = `<div class="team-finance-content">${teamFinanceUI.render()}</div>`;
+  teamFinanceUI.bind();
+  applyPageLayout();
+}
 const personalRemindersUI=createPersonalRemindersUI({state,api,escapeHTML,icon,openModal,closeDialog:requestDialogClose,bindDraft:bindWorkingDraft,clearDraft:clearWorkingDraftFor,flushDrafts:flushDialogDrafts,toast,renderPersonal,openSource:openPersonalReminderSource,openHabit:openHabitReminderSource,openPlans:()=>navigateToView('personal',{personalTab:'plans'}),refreshNotifications:loadNotificationInbox});
 async function openPersonalReminderSource(id){const owner=state.me?.id;await navigateToView('personal',{personalTab:'today'});if(owner!==state.me?.id)return;await loadPersonal({force:true});if(owner===state.me?.id)openPersonalPlanDetails(id);}
 const settingsHub=createSettingsHub({getContext:settingsContext,escapeHTML,icon,openModal,requestDialogClose,runAction:runSettingsAction});
@@ -3379,6 +3409,7 @@ async function navigateToView(view, options = {}) {
     if (state.personalTab === 'review') personalReviewUI.invalidate();
     if (state.personalTab === 'finance') personalFinanceUI.invalidate();
   }
+  if (normalized === 'finance') teamFinanceUI.invalidate();
   for (const key of ['calendarDay', 'calendarCollection', 'calendarOwner', 'calendarStatus', 'calendarExpanded']) {
     if (Object.hasOwn(options, key)) state[key] = options[key];
   }
@@ -7151,7 +7182,7 @@ function formatFileSize(bytes) {
 function renderFilesPane(detail, canEdit) {
   if (!detail.workflowLoaded) return renderWorkflowLoading('files');
   const attachments = detail.workflow.attachments || [];
-  return `<div class="record-pane ${state.activeRecordTab === 'files' ? 'active' : ''}" data-record-pane="files"><section class="files-panel"><div class="section-heading"><div><p class="eyebrow">Материалы карточки</p><h3>Файлы</h3><p>Файл нельзя бесследно удалить; имя, автор, размер и контрольная сумма остаются в аудите.</p></div></div><div class="attachment-list">${attachments.map((file) => `<a class="attachment" href="/api/attachments/${file.id}/download"><span class="type-icon type-document">${icon('fileText')}</span><span><strong>${escapeHTML(file.originalName)}</strong><small>${formatFileSize(file.sizeBytes)} · ${escapeHTML(file.uploaderUsername)} · ${formatDate(file.createdAt, true)}</small></span>${icon('chevronRight')}</a>`).join('') || `<div class="guided-empty compact">${icon('fileText')}<h3>Файлов пока нет</h3><p>Приложите отчёт, таблицу, изображение или исходный документ.</p></div>`}</div>${canEdit ? `<form id="attachment-form" class="attachment-form"><label class="file-drop" data-file-drop><input name="files" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md,.csv,.xlsx,.docx,.pptx,.zip"><span class="file-drop-icon">${icon('fileText')}</span><span><strong>Перетащите файлы сюда</strong><small>или выберите несколько файлов · до 15 МБ каждый</small></span><button type="button" class="secondary" data-choose-files>${icon('plus')} Выбрать</button></label><div class="upload-queue" id="upload-queue" aria-live="polite"></div><button type="submit" class="primary upload-submit" disabled>${icon('send')} Загрузить выбранные</button></form>` : ''}</section></div>`;
+  return `<div class="record-pane ${state.activeRecordTab === 'files' ? 'active' : ''}" data-record-pane="files"><section class="files-panel"><div class="section-heading"><div><p class="eyebrow">Материалы карточки</p><h3>Файлы</h3><p>Файл нельзя бесследно удалить; имя, автор, размер и контрольная сумма остаются в аудите.</p></div></div><div class="page-media-grid">${recordMediaMarkup(attachments,state.activeWorkspaceId,escapeHTML,icon) || `<div class="guided-empty compact">${icon('fileText')}<h3>Файлов пока нет</h3><p>Приложите отчёт, таблицу, изображение или исходный документ.</p></div>`}</div>${canEdit ? `<form id="attachment-form" class="attachment-form"><label class="file-drop" data-file-drop><input name="files" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.heic,.mp4,.webm,.txt,.md,.csv,.xlsx,.docx,.pptx,.zip"><span class="file-drop-icon">${icon('fileText')}</span><span><strong>Перетащите файлы сюда</strong><small>или выберите несколько файлов · до 15 МБ каждый</small></span><button type="button" class="secondary" data-choose-files>${icon('plus')} Выбрать</button></label><div class="upload-queue" id="upload-queue" aria-live="polite"></div><button type="submit" class="primary upload-submit" disabled>${icon('send')} Загрузить выбранные</button></form>` : ''}</section></div>`;
 }
 
 function renderUploadQueue(files) {
@@ -7836,6 +7867,7 @@ function bindRecordDialogEvents() {
     if (saved) clearWorkingDraftFor(event.currentTarget);
   });
 	const attachmentForm = $('#attachment-form');
+	bindRecordMediaPreview($('[data-record-pane="files"]'), detail.workflow?.attachments || [], { state, workspace: state.activeWorkspaceId, escapeHTML, icon, openModal, requestDialogClose });
 	if (attachmentForm) {
 		const input = attachmentForm.elements.files;
 		const drop = $('[data-file-drop]', attachmentForm);
@@ -9335,7 +9367,7 @@ function applyInterfaceLayout() {
   root.dataset.layoutDevice = state.pageLayoutDraft?.device || state.layoutDraft?.device || interfaceDevice();
   Object.entries(toolbarSelectors).forEach(([key, selector]) => {
     const button = $(selector); const index = layout.toolbarActions.indexOf(key);
-    button.hidden = index < 0; button.style.order = index + 1;
+    button.hidden = index < 0 || (key === 'create' && state.view === 'finance'); button.style.order = index + 1;
   });
   const actions = $('.topbar-actions');
   const ordered = [$('#interface-settings-button'), ...layout.toolbarActions.map((key) => $(toolbarSelectors[key])), ...Object.keys(toolbarSelectors).filter((key) => !layout.toolbarActions.includes(key)).map((key) => $(toolbarSelectors[key]))];
