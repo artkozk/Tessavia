@@ -198,7 +198,7 @@ export function createOutboxUI({ user, workspace, openDialog, closeDialog, newPe
     pump: () => queue.pump(), open,
   };
   if ('serviceWorker' in navigator) {
-    watchShellUpdates(navigator.serviceWorker, toastAction, reloadInterface, { onPendingChange: onShellUpdate, loadedVersion: 'tessavie-shell-20260915-media-variants-1' });
+    watchShellUpdates(navigator.serviceWorker, toastAction, reloadInterface, { onPendingChange: onShellUpdate, loadedVersion: 'tessavie-shell-20260915-team-accounting-1' });
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(registration => { void registration.update?.(); return navigator.serviceWorker.ready; }).then(() => { local.querySelector('[data-offline-ready]').textContent = 'Оболочка доступна для следующего запуска без сети.'; }).catch(() => { local.querySelector('[data-offline-ready]').textContent = 'Оболочка ещё не сохранена для запуска без сети.'; });
   }
   return ui;

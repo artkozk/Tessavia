@@ -1,4 +1,4 @@
-import { createMediaVariantsUI } from './media-variants.js?v=20260915-media-variants-1';
+import { createMediaVariantsUI } from './media-variants.js?v=20260915-team-accounting-1';
 
 export function validateNoteFiles(files,current=0){
   if(files.length+current>20)throw new Error('За один раз можно добавить до 20 файлов.');

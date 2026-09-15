@@ -287,6 +287,13 @@ func (s *Server) handleFinanceExpense(w http.ResponseWriter, r *http.Request) {
 			}
 			prior = &value
 		}
+		if tx.scope != nil && input.BucketID == "" && prior == nil {
+			bucket, err := workspaceCashbookBucket(tx, r, "", 0)
+			if err != nil {
+				return nil, 0, err
+			}
+			input.BucketID, input.ExpectedBucketRevision = bucket.ID, bucket.Revision
+		}
 		expense, err := financePrepareExpense(tx, r, input, prior)
 		if err != nil {
 			return nil, 0, err

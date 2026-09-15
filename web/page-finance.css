@@ -27,3 +27,7 @@
  .page-finance-compact .page-finance-accounts>article { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
  .page-finance-compact .page-finance-accounts>article>strong { text-align:right; }
 }
+.page-finance-team-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 10px 16px; min-width: 0; padding-top: 14px; border-top: 1px solid var(--line); }
+.page-finance-team-totals > div { min-width: 0; display: grid; gap: 6px; }
+.page-finance-team-totals span { font-size: 12px; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.page-finance-total .page-finance-team-totals strong { font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }

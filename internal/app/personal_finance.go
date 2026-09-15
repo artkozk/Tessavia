@@ -34,6 +34,7 @@ type financeRule struct {
 	BasisPoints int64  `json:"basisPoints"`
 }
 type financeSource struct {
+	ReceiptKind   string        `json:"receiptKind,omitempty"`
 	ID            string        `json:"id"`
 	Name          string        `json:"name"`
 	DeductWorkers bool          `json:"deductWorkers"`
@@ -50,6 +51,7 @@ type financeAllocation struct {
 }
 type financeEntry struct {
 	financeOrganization
+	ReceiptKind   string              `json:"receiptKind,omitempty"`
 	ID            string              `json:"id"`
 	SourceID      string              `json:"sourceId"`
 	SourceName    string              `json:"sourceName"`
@@ -68,16 +70,17 @@ type financeEntry struct {
 	UpdatedAt     string              `json:"updatedAt"`
 }
 type financeOverview struct {
-	Categories     []financeCategory      `json:"categories"`
-	Scope          *workspaceFinanceScope `json:"scope,omitempty"`
-	Currency       string                 `json:"currency"`
-	Buckets        []financeBucket        `json:"buckets"`
-	Sources        []financeSource        `json:"sources"`
-	Entries        []financeEntry         `json:"entries"`
-	Counterparties []financeCounterparty  `json:"counterparties"`
-	Expenses       []financeExpense       `json:"expenses"`
-	Balances       []financeBalance       `json:"balances"`
-	BalanceThrough string                 `json:"balanceThrough"`
+	TeamSummary    *workspaceCashbookSummary `json:"teamSummary,omitempty"`
+	Categories     []financeCategory         `json:"categories"`
+	Scope          *workspaceFinanceScope    `json:"scope,omitempty"`
+	Currency       string                    `json:"currency"`
+	Buckets        []financeBucket           `json:"buckets"`
+	Sources        []financeSource           `json:"sources"`
+	Entries        []financeEntry            `json:"entries"`
+	Counterparties []financeCounterparty     `json:"counterparties"`
+	Expenses       []financeExpense          `json:"expenses"`
+	Balances       []financeBalance          `json:"balances"`
+	BalanceThrough string                    `json:"balanceThrough"`
 }
 type financeEntryInput struct {
 	financeOrganizationInput
@@ -207,6 +210,9 @@ func readFinanceEntry(tx *financeTx, r *http.Request, id string) (financeEntry, 
 	if err == nil {
 		value.financeOrganization, err = readFinanceOrganization(tx, r, "income", id)
 	}
+	if err == nil && tx.scope != nil {
+		value.ReceiptKind, err = readWorkspaceReceiptKind(tx, r, id)
+	}
 	return value, err
 }
 func readFinanceSource(tx *financeTx, r *http.Request, id string) (financeSource, error) {
@@ -305,6 +311,11 @@ func (s *Server) handlePersonalFinance(w http.ResponseWriter, r *http.Request) {
 		}
 		if err = hydrateFinanceOverview(tx, r, &result); err != nil {
 			return nil, 0, err
+		}
+		if tx.scope != nil {
+			if err = hydrateWorkspaceCashbook(tx, r, &result); err != nil {
+				return nil, 0, err
+			}
 		}
 		result.BalanceThrough = to
 		return result, 200, nil
@@ -469,7 +480,7 @@ func (s *Server) handleFinanceSource(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, 0, err
 		}
-		return financeSource{id, input.Name, input.DeductWorkers, input.Allocations, input.Archived, revision}, status, nil
+		return financeSource{ID: id, Name: input.Name, DeductWorkers: input.DeductWorkers, Allocations: input.Allocations, Archived: input.Archived, Revision: revision}, status, nil
 	})
 }
 
@@ -636,6 +647,9 @@ func (s *Server) handleFinanceEntry(w http.ResponseWriter, r *http.Request) {
 				return nil, 0, err
 			}
 			prior = &value
+			if value.ReceiptKind != "" {
+				return nil, 0, financeConflict("Откройте поступление заново: его вид и счёт изменяются в форме поступления")
+			}
 		}
 		entry, err := financePrepareEntry(tx, r, input, prior)
 		if err != nil {
@@ -703,6 +717,9 @@ func (s *Server) handleFinanceTransfer(w http.ResponseWriter, r *http.Request) {
 		}
 		if entry.Voided {
 			return nil, 0, financeConflict("Сначала восстановите отменённый доход")
+		}
+		if entry.ReceiptKind != "" && *input.PaidMinor > 0 {
+			return nil, 0, financeConflict("В простом учёте выбытие денег записывается расходом. Прежнюю отметку перевода можно снять, указав ноль")
 		}
 		found := false
 		for i := range entry.Allocations {

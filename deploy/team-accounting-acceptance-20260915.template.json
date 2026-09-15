@@ -1,0 +1,25 @@
+{
+  "goTests": false,
+  "goVet": false,
+  "migrationPreserved": false,
+  "rollbackTrial": false,
+  "goTestCount": 0,
+  "nodeTests": 0,
+  "buildInputs": 0,
+  "verifierTests": 0,
+  "viewports": [],
+  "browserSummary": "",
+  "scenarios": {
+    "menuSettingsDesktopPhone": false,
+    "menuPersistenceAndScope": false,
+    "emptyTeamContributionAndRevenue": false,
+    "expensesBalanceAndNegativeBalance": false,
+    "receiptEditVoidRestore": false,
+    "receiptIdempotencyAndDraftRecovery": false,
+    "legacyPersonalAndTeamPreserved": false,
+    "optionalLinksNoDoubleCounting": false,
+    "constructorBlockSummary": false,
+    "linkedReadOnlyAndContextChanges": false
+  },
+  "physicalPhoneVerified": false
+}

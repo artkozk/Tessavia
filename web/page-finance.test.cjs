@@ -22,6 +22,16 @@ test('overview uses cumulative balances including archived accounts and only rec
  assert.ok(html.includes(c.financeMoney(460000)));assert.ok(html.includes('Архивный'));assert.ok(html.includes('&lt;Заправка&gt;'));assert.ok(!html.includes('&lt;Клиент&gt;'));assert.ok(!html.includes('Removed transaction'));assert.ok(html.includes('За последние 30 дней'));
  assert.match(html,/data-page-finance-action="income"/);assert.match(html,/data-page-finance-action="expense"/);
 });
+
+test('team constructor overview exposes lifetime contributions, revenue and spending without importing a private ledger or changing custom labels',()=>{
+ const c=load(),data=teamData();data.teamSummary={contributionMinor:100000,revenueMinor:20000,spentMinor:30000,balanceMinor:90000,unclassifiedMinor:500};
+ const block={finance:{totalLabel:'Осталось на запуск',incomeLabel:'Записать взнос'}};
+ const html=c.pageFinanceOverviewMarkup(block,data,{kind:'team',workspaceName:'Студия'},e,()=>'',true);
+ assert.match(html,/Осталось на запуск/);assert.match(html,/Записать взнос/);assert.match(html,/page-finance-team-totals/);assert.match(html,/Вложено/);assert.match(html,/Доходы от работы/);assert.match(html,/Все записанные операции/);
+ assert.ok(html.includes(c.financeMoney(90000)));assert.ok(html.includes(c.financeMoney(100000)));assert.match(html,/Прежние поступления/);
+ assert.doesNotMatch(c.pageFinanceOverviewMarkup({finance:{showTotal:false}},data,{kind:'team'},e,()=>'',true),/page-finance-team-totals/);
+ assert.doesNotMatch(c.pageFinanceOverviewMarkup(block,data,{kind:'personal'},e,()=>'',true),/page-finance-team-totals/);
+});
 test('linked and ordinary member views expose context and cannot offer mutations',()=>{
  const c=load(),data=teamData();data.scope={...data.scope,linked:true,sourceWorkspaceId:'other',sourceWorkspaceName:'<Другой бюджет>',canWrite:false};
  let html=c.pageFinanceOverviewMarkup({},data,{kind:'team',workspaceName:'Студия'},e,()=>'',true);

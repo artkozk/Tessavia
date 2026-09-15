@@ -331,7 +331,7 @@ test('team finance starts with its own empty ledger and never requests the perso
   assert.equal(h.calls[0].options.headers['X-Workspace-ID'], 'team-a');
   h.calls[0].resolve(teamFinance('team-a')); await h.tick();
   const html = h.ui.render();
-  assert.match(html, /Финансы команды/); assert.match(html, /Учёт.*пустого списка/);
+  assert.match(html, /Финансы команды/); assert.doesNotMatch(html, /Начните со своих правил/); assert.match(html, /data-finance-add >.*Поступление/); assert.match(html, /data-finance-expense-add >/);
   assert.equal(/data-finance-account-history=/.test(html), false);
   assert.equal(/Машина|Десятина|Папе/.test(html), false);
   assert.equal(h.calls.some(call => call.url.includes('/personal/')), false);
@@ -490,12 +490,12 @@ test('constructor finance action rechecks fresh source revision and readonly rig
   }
 });
 
-test('constructor action ignores a delayed response after workspace switch and rejects setup-free empty action explicitly', async () => {
+test('constructor action ignores a delayed response after workspace switch and permits a team operation without a setup detour', async () => {
   const h = financeUIHarness({ team: true }); h.state.activeWorkspaceId = 'a';
   const pending = h.ui.openAction('expense'); h.state.activeWorkspaceId = 'b'; h.calls[0].resolve(teamFinance('a'));
   assert.equal(await pending, false);
   const empty = h.ui.openAction('expense'); h.calls[1].resolve(teamFinance('b'));
-  await assert.rejects(empty, /общих настройках/);
+  assert.equal(await empty, false); // No real dialog exists in this harness; importantly no setup error is raised.
   await assert.rejects(h.ui.openAction('unknown'), /доход или расход/);
   assert.equal(h.calls.length, 2);
 });
@@ -516,4 +516,56 @@ test('constructor action drops a late load when the originating page guard chang
   assert.equal(await opening,false);
   assert.equal(await h.ui.openAction('income', {expectedWorkspaceId:'a', guard:()=>false}),false);
   assert.equal(h.calls.length,1);
+});
+
+test('direct team receipts work without accounts or percentage rules and keep exact cents and edit revision', () => {
+  const values = { receiptKind: 'contribution', bucketId: '', date: '2026-09-15', grossMinor: '12,34' };
+  const payload = c.financeReceiptPayload(values, []);
+  assert.equal(payload.grossMinor, 1234); assert.equal(payload.bucketId, ''); assert.equal(payload.receiptKind, 'contribution');
+  assert.equal(payload.expectedSourceRevision, undefined); assert.equal(payload.workerMinor, undefined);
+  assert.throws(() => c.financeReceiptPayload({ ...values, receiptKind: 'profit' }, []), /вид/);
+  assert.throws(() => c.financeReceiptPayload({ ...values, grossMinor: '-1' }, []));
+  assert.throws(() => c.financeReceiptPayload(values, [{id:'a'}, {id:'b'}]), /Выберите счёт/);
+  assert.throws(() => c.financeReceiptPayload({ ...values, bucketId: 'gone' }, []), /действующий/);
+  const prior = { revision: 7, allocations: [{bucketId:'old'}] };
+  const edited = c.financeReceiptPayload({ ...values, receiptKind:'revenue', bucketId:'old' }, [{id:'old', archived:true, revision:3}], prior);
+  assert.equal(edited.expectedRevision, 7); assert.equal(edited.expectedBucketRevision, 3);
+  assert.throws(() => c.financeReceiptPayload({ ...values, bucketId:'old' }, [{id:'old', archived:true}]), /действующий/);
+});
+
+test('receipt chooser never infers kinds from names or changes a legacy calculation into a direct receipt', () => {
+  const data = { sources: [{id:'legacy', name:'Вложение в проект'}, {id:'internal', receiptKind:'contribution'}, {id:'archived', archived:true}] };
+  const fresh = c.financeReceiptSources(data);
+  assert.equal(fresh.length, 4); assert.equal(fresh[0].receiptKind, 'contribution'); assert.equal(fresh.at(-1).receiptKind, undefined);
+  assert.equal(c.financeReceiptSources(data, {sourceId:'legacy'}).length, 1);
+  assert.equal(c.financeReceiptSources(data, {sourceId:'internal', receiptKind:'contribution'}).length, 3);
+  assert.equal(c.financeReceiptSources(data, {sourceId:'archived'}).length, 2);
+  const oldClientEntry = c.financeReceiptSources(data, {sourceId:'internal'});
+  assert.equal(oldClientEntry.some(source=>source.id==='internal'),true);
+  assert.equal(oldClientEntry.find(source=>source.id==='internal').receiptKind,'');
+  assert.equal(data.sources.find(source=>source.id==='internal').receiptKind,'contribution');
+});
+
+test('team overview uses authoritative lifetime totals including negative remainder, never substitutes filtered month', async () => {
+  const summary = {contributionMinor:'12345678901234567', revenueMinor:2000, otherMinor:30, unclassifiedMinor:80, spentMinor:9000, workerMinor:20, balanceMinor:-500};
+  assert.equal(c.financeTeamSummary({teamSummary:summary}).contributionMinor, 12345678901234567n);
+  assert.equal(c.financeTeamSummary({entries:fixture().entries}), null);
+  const h = financeUIHarness({team:true});h.ui.render();h.ui.bind();
+  h.calls[0].resolve(teamFinance('private', {teamSummary:summary}));await h.tick();
+  const html=h.ui.render();
+  assert.match(html,/Вложено участниками/);assert.match(html,/Все записанные операции/);assert.match(html,/−5 ₽/);assert.match(html,/Прежние поступления без вида/);
+  assert.ok(html.indexOf('data-finance-team-overview') < html.indexOf('data-finance-navigation-block'));
+  assert.doesNotMatch(html,/Начните со своих правил/);
+});
+
+test('record filter intersects current journal scope and counts shared operations only once without exposing unavailable titles', () => {
+  const data=fixture();
+  data.entries[0].links=[{kind:'record',id:'logo',title:'Логотип'},{kind:'record',id:'forum',title:'Форум'}];
+  data.entries[1].links=[{kind:'record',id:'secret',title:'Secret title',available:false}];
+  data.expenses=[{id:'expense',date:'2026-09-15',bucketId:'a',amountMinor:120,links:[{kind:'record',id:'logo',title:'Логотип'}]}];
+  const filtered=c.financeJournal(data,{linkKey:'record:logo'});
+  assert.equal(filtered.length,2);assert.equal(filtered.reduce((sum,row)=>sum+row.journalAmountMinor,0n),10121n);
+  assert.equal(c.financeJournal(data,{linkKey:'record:logo',kind:'expense'}).length,1);
+  assert.equal(c.financeJournal(data,{linkKey:'record:secret'}).length,0);
+  assert.equal(c.financeLinkOptions(data).length,2);assert.equal(c.financeLinkOptions(data).some(link=>link.title==='Secret title'),false);
 });

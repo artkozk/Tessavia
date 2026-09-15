@@ -1,4 +1,4 @@
-import { createMobileWidgetsUI } from './mobile-widgets.js?v=20260915-media-variants-1';
+import { createMobileWidgetsUI } from './mobile-widgets.js?v=20260915-team-accounting-1';
 
 const launchActions = new Set(['note', 'plan', 'today', 'notes', 'notifications']);
 

@@ -1,5 +1,5 @@
-import { createNoteFileDraftStore, validateNoteFiles } from './note-media.js?v=20260915-media-variants-1';
-import { createMediaVariantsUI } from './media-variants.js?v=20260915-media-variants-1';
+import { createNoteFileDraftStore, validateNoteFiles } from './note-media.js?v=20260915-team-accounting-1';
+import { createMediaVariantsUI } from './media-variants.js?v=20260915-team-accounting-1';
 
 export function privateMediaKind(type) {
   if (['image/png','image/jpeg','image/gif','image/webp'].includes(type)) return 'image';

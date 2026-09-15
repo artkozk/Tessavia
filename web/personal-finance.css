@@ -1,4 +1,17 @@
 .personal-finance { min-width: 0; display: grid; gap: 24px; }
+.finance-team-overview { display: grid; gap: 16px; min-width: 0; }
+.finance-team-overview h2 { font-size: 20px; }
+.finance-team-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.finance-team-metrics > div { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.finance-team-metrics span { color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.finance-team-metrics strong { font-size: clamp(18px, 2vw, 27px); line-height: 1.25; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.finance-single-account { display: none !important; }
+.finance-linked-totals { display: grid; gap: 8px; }
+.finance-team-accounts { display: grid; gap: 12px; min-width: 0; }
+.finance-team-accounts > summary { color: var(--accent); cursor: pointer; min-height: 44px; line-height: 1.5; align-content: center; font-weight: 600; }
+.finance-dialog [data-finance-receipt-bucket] { display: grid; gap: 8px; }
+.finance-dialog [data-finance-receipt-bucket][hidden], .finance-dialog [data-finance-rules][hidden], .finance-dialog [data-finance-base][hidden] { display: none; }
+@media(max-width: 700px) { .finance-team-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .finance-team-metrics > div { padding: 14px; } }
 .finance-scope-notice { display: flex; align-items: center; justify-content: space-between; gap: 14px 24px; flex-wrap: wrap; padding: 14px 0; border-block: 1px solid var(--line); min-width: 0; }
 .finance-scope-notice > div { display: grid; gap: 6px; flex: 1 1 260px; min-width: 0; }
 .finance-scope-notice strong { color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
